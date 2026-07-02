@@ -49,17 +49,35 @@ export interface Driver {
   notes?: string;
 }
 
+export type CustomerStatus = "active" | "at_risk" | "inactive" | "archived";
+
+export type PaymentTerms = "due_on_receipt" | "net_15" | "net_30" | "net_45";
+
 export interface Customer {
   id: string;
   name: string;
   industry: string;
-  city: string;
   contactPerson: string;
   phone: string;
   email: string;
   address: string;
+  city: string;
+  country: string;
+  taxId?: string;
+  paymentTerms: PaymentTerms;
+  creditLimit: number;
   usualRoutes: string[];
-  notes?: string;
+  deliveryNotes?: string;
+  internalNotes?: string;
+  status: CustomerStatus;
+  createdAt: string;
+}
+
+export interface CustomerNote {
+  id: string;
+  customerId: string;
+  text: string;
+  at: string;
 }
 
 export interface StatusHistoryEntry {
@@ -98,11 +116,12 @@ export interface Payment {
 export interface Invoice {
   id: string;
   customerId: string;
-  orderId: string;
+  orderId?: string;
   amount: number;
   issuedAt: string;
   dueAt: string;
   payments: Payment[];
+  notes?: string;
 }
 
 export interface Expense {

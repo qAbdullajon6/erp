@@ -16,7 +16,7 @@ function nextMessageId(): string {
 }
 
 export function AiAssistantView() {
-  const { orders, drivers, vehicles, invoices, expenses } = useAppData();
+  const { orders, drivers, vehicles, invoices, expenses, customers } = useAppData();
   const [messages, setMessages] = React.useState<ChatMessageData[]>(() => [
     {
       id: nextMessageId(),
@@ -38,7 +38,7 @@ export function AiAssistantView() {
     const trimmed = question.trim();
     if (!trimmed) return;
 
-    const answer = askAssistant(trimmed, { orders, drivers, vehicles, invoices, expenses });
+    const answer = askAssistant(trimmed, { orders, drivers, vehicles, invoices, expenses, customers });
 
     setMessages((prev) => [
       ...prev,

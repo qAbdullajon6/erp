@@ -1,5 +1,4 @@
 import {
-  customers,
   formatCurrency,
   formatDate,
   getCustomer,
@@ -11,7 +10,7 @@ import {
   isOrderDelayed,
   isWithinLastDay,
 } from "@/lib/mock-data";
-import type { Driver, Expense, Invoice, Order, Vehicle } from "@/lib/types";
+import type { Customer, Driver, Expense, Invoice, Order, Vehicle } from "@/lib/types";
 
 export interface AssistantData {
   orders: Order[];
@@ -19,6 +18,7 @@ export interface AssistantData {
   vehicles: Vehicle[];
   invoices: Invoice[];
   expenses: Expense[];
+  customers: Customer[];
 }
 
 export interface AnswerItem {
@@ -45,7 +45,7 @@ function matches(...patterns: RegExp[]) {
 const intents: Intent[] = [
   {
     match: matches(/delay|kechik|late/i),
-    answer: ({ orders }) => {
+    answer: ({ orders, customers }) => {
       const delayed = orders.filter(isOrderDelayed);
       return {
         summary:
@@ -54,7 +54,7 @@ const intents: Intent[] = [
             : `${delayed.length} deliver${delayed.length === 1 ? "y is" : "ies are"} currently delayed:`,
         emptyNote: "Everything is on schedule.",
         items: delayed.map((o) => {
-          const customer = getCustomer(o.customerId);
+          const customer = getCustomer(o.customerId, customers);
           const driver = getDriver(o.driverId);
           return {
             label: `${o.id} · ${customer?.name ?? "Unknown"}`,
@@ -84,7 +84,7 @@ const intents: Intent[] = [
   },
   {
     match: matches(/debt|qarzdor|unpaid|owe|qarz|indebted/i),
-    answer: ({ invoices }) => {
+    answer: ({ invoices, customers }) => {
       const debtors = customers
         .map((c) => ({ customer: c, balance: getCustomerOutstandingBalance(c.id, invoices) }))
         .filter((d) => d.balance > 0)
@@ -124,12 +124,12 @@ const intents: Intent[] = [
   },
   {
     match: matches(/cancel|bekor/i),
-    answer: ({ orders }) => {
+    answer: ({ orders, customers }) => {
       const cancelled = orders.filter((o) => o.status === "cancelled");
       return {
         summary: `${cancelled.length} order${cancelled.length === 1 ? " has" : "s have"} been cancelled.`,
         items: cancelled.map((o) => {
-          const customer = getCustomer(o.customerId);
+          const customer = getCustomer(o.customerId, customers);
           return { label: o.id, value: customer?.name ?? "Unknown" };
         }),
       };

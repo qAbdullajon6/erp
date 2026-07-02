@@ -22,7 +22,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { customers } from "@/lib/mock-data";
 import { useAppData, type NewOrderInput } from "@/lib/store";
 
 function toDatetimeLocal(date: Date): string {
@@ -30,25 +29,42 @@ function toDatetimeLocal(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-const emptyForm = {
-  customerId: "",
-  contactPerson: "",
-  cargo: "",
-  weightTons: "",
-  packageCount: "",
-  origin: "",
-  destination: "",
-  pickupDate: toDatetimeLocal(new Date(Date.now() + 24 * 60 * 60 * 1000)),
-  deliveryDate: toDatetimeLocal(new Date(Date.now() + 48 * 60 * 60 * 1000)),
-  amount: "",
-  operator: "Oyatillo Farhadov",
-  notes: "",
-};
+interface NewOrderDialogProps {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  defaultCustomerId?: string;
+  hideTrigger?: boolean;
+}
 
-export function NewOrderDialog() {
-  const { addOrder } = useAppData();
-  const [open, setOpen] = React.useState(false);
-  const [form, setForm] = React.useState(emptyForm);
+export function NewOrderDialog({
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+  defaultCustomerId,
+  hideTrigger,
+}: NewOrderDialogProps = {}) {
+  const { customers, addOrder } = useAppData();
+  const isControlled = controlledOpen !== undefined;
+  const [internalOpen, setInternalOpen] = React.useState(false);
+  const open = isControlled ? controlledOpen : internalOpen;
+  const setOpen = isControlled ? (controlledOnOpenChange ?? (() => {})) : setInternalOpen;
+
+  const activeCustomers = customers.filter((c) => c.status !== "archived");
+  const preselectedCustomer = customers.find((c) => c.id === defaultCustomerId);
+
+  const [form, setForm] = React.useState(() => ({
+    customerId: defaultCustomerId ?? "",
+    contactPerson: preselectedCustomer?.contactPerson ?? "",
+    cargo: "",
+    weightTons: "",
+    packageCount: "",
+    origin: "",
+    destination: "",
+    pickupDate: toDatetimeLocal(new Date(Date.now() + 24 * 60 * 60 * 1000)),
+    deliveryDate: toDatetimeLocal(new Date(Date.now() + 48 * 60 * 60 * 1000)),
+    amount: "",
+    operator: "Oyatillo Farhadov",
+    notes: "",
+  }));
 
   const canSubmit =
     form.customerId &&
@@ -78,18 +94,28 @@ export function NewOrderDialog() {
       notes: form.notes || undefined,
     };
     addOrder(input);
-    setForm(emptyForm);
     setOpen(false);
+  }
+
+  function handleCustomerChange(customerId: string) {
+    const customer = customers.find((c) => c.id === customerId);
+    setForm((f) => ({
+      ...f,
+      customerId,
+      contactPerson: customer?.contactPerson ?? f.contactPerson,
+    }));
   }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button className="gap-2">
-          <Plus className="size-4" />
-          New Order
-        </Button>
-      </DialogTrigger>
+      {!hideTrigger && (
+        <DialogTrigger asChild>
+          <Button className="gap-2">
+            <Plus className="size-4" />
+            New Order
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Create Order</DialogTitle>
@@ -105,13 +131,14 @@ export function NewOrderDialog() {
               <Label htmlFor="customer">Customer</Label>
               <Select
                 value={form.customerId}
-                onValueChange={(v) => setForm((f) => ({ ...f, customerId: v }))}
+                onValueChange={handleCustomerChange}
+                disabled={!!defaultCustomerId}
               >
                 <SelectTrigger id="customer" className="w-full">
                   <SelectValue placeholder="Select customer" />
                 </SelectTrigger>
                 <SelectContent>
-                  {customers.map((c) => (
+                  {activeCustomers.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
                       {c.name}
                     </SelectItem>

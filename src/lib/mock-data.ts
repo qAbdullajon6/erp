@@ -1,5 +1,6 @@
 import type {
   Customer,
+  CustomerNote,
   Driver,
   Expense,
   ExpenseCategory,
@@ -58,91 +59,149 @@ export const customers: Customer[] = [
     name: "Uzbek Textile Group",
     industry: "Textiles",
     city: "Tashkent",
+    country: "Uzbekistan",
     contactPerson: "Aziza Rahimova",
     phone: "+998 71 200 11 22",
     email: "a.rahimova@uztextile.uz",
     address: "Chilonzor tumani, Bunyodkor ko'chasi 12, Tashkent",
+    taxId: "301245678",
+    paymentTerms: "net_30",
+    creditLimit: 25000,
     usualRoutes: ["Tashkent → Almaty", "Tashkent → Fergana"],
+    status: "active",
+    createdAt: daysAgo(640),
   },
   {
     id: "cus-2",
     name: "Silk Road Foods",
     industry: "F&B Distribution",
     city: "Samarkand",
+    country: "Uzbekistan",
     contactPerson: "Sardor Aliyev",
     phone: "+998 66 233 44 55",
     email: "s.aliyev@silkroadfoods.uz",
     address: "Registon ko'chasi 5, Samarkand",
+    taxId: "302356789",
+    paymentTerms: "net_15",
+    creditLimit: 10000,
     usualRoutes: ["Samarkand → Bukhara", "Samarkand → Tashkent"],
+    internalNotes: "To'lovlar tez-tez kechikadi, keyingi buyurtmalarda ehtiyot bo'lish kerak",
+    status: "at_risk",
+    createdAt: daysAgo(410),
   },
   {
     id: "cus-3",
     name: "MetalTrade Invest",
     industry: "Metal & Steel",
     city: "Navoiy",
+    country: "Uzbekistan",
     contactPerson: "Ravshan Yoldoshev",
     phone: "+998 79 223 55 66",
     email: "r.yoldoshev@metaltrade.uz",
     address: "Sanoat zonasi 3-uchastka, Navoiy",
+    taxId: "303467890",
+    paymentTerms: "net_45",
+    creditLimit: 30000,
     usualRoutes: ["Navoiy → Tashkent", "Tashkent → Navoiy"],
+    status: "active",
+    createdAt: daysAgo(870),
   },
   {
     id: "cus-4",
     name: "Fergana AgroExport",
     industry: "Agriculture",
     city: "Fergana",
+    country: "Uzbekistan",
     contactPerson: "Malika Yusupova",
     phone: "+998 73 244 66 77",
     email: "m.yusupova@ferganaagro.uz",
     address: "Marg'ilon shoh ko'chasi 44, Fergana",
+    taxId: "304578901",
+    paymentTerms: "net_30",
+    creditLimit: 12000,
     usualRoutes: ["Fergana → Tashkent"],
+    status: "active",
+    createdAt: daysAgo(520),
   },
   {
     id: "cus-5",
     name: "Bukhara Ceramics Co.",
     industry: "Manufacturing",
     city: "Bukhara",
+    country: "Uzbekistan",
     contactPerson: "Gulnora Sharipova",
     phone: "+998 65 255 77 88",
     email: "g.sharipova@bukharaceramics.uz",
     address: "Hunarmandlar ko'chasi 8, Bukhara",
+    taxId: "305689012",
+    paymentTerms: "due_on_receipt",
+    creditLimit: 8000,
     usualRoutes: ["Bukhara → Samarkand"],
-    notes: "Faqat ertalab soat 8-11 orasida yuk qabul qiladi",
+    deliveryNotes: "Faqat ertalab soat 8-11 orasida yuk qabul qiladi",
+    status: "active",
+    createdAt: daysAgo(310),
   },
   {
     id: "cus-6",
     name: "Nukus Chemical Plant",
     industry: "Chemicals",
     city: "Nukus",
+    country: "Uzbekistan",
     contactPerson: "Ulugbek Nazarov",
     phone: "+998 61 266 88 99",
     email: "u.nazarov@nukuschem.uz",
     address: "Sanoat ko'chasi 21, Nukus",
+    taxId: "306790123",
+    paymentTerms: "net_15",
+    creditLimit: 9000,
     usualRoutes: ["Nukus → Urgench"],
-    notes: "Xavfli yuk uchun qo'shimcha hujjatlar talab qilinadi",
+    deliveryNotes: "Xavfli yuk uchun qo'shimcha hujjatlar talab qilinadi",
+    status: "active",
+    createdAt: daysAgo(275),
   },
   {
     id: "cus-7",
     name: "Andijan Auto Parts",
     industry: "Automotive",
     city: "Andijan",
+    country: "Uzbekistan",
     contactPerson: "Otabek Yusupov",
     phone: "+998 74 277 99 00",
     email: "o.yusupov@andijanautoparts.uz",
     address: "Bobur shoh ko'chasi 17, Andijan",
+    taxId: "307801234",
+    paymentTerms: "net_30",
+    creditLimit: 6000,
     usualRoutes: ["Andijan → Namangan"],
+    status: "inactive",
+    createdAt: daysAgo(180),
   },
   {
     id: "cus-8",
     name: "Tashkent Retail Chain",
     industry: "Retail",
     city: "Tashkent",
+    country: "Uzbekistan",
     contactPerson: "Shahnoza Tosheva",
     phone: "+998 71 211 33 44",
     email: "s.tosheva@tashretail.uz",
     address: "Yunusobod tumani, Amir Temur shoh ko'chasi 108, Tashkent",
+    taxId: "308912345",
+    paymentTerms: "net_30",
+    creditLimit: 40000,
     usualRoutes: ["Tashkent → Nukus", "Tashkent → Samarkand"],
-    notes: "Yirik hajmli buyurtmalar uchun 5% chegirma kelishilgan",
+    internalNotes: "Yirik hajmli buyurtmalar uchun 5% chegirma kelishilgan",
+    status: "active",
+    createdAt: daysAgo(760),
+  },
+];
+
+export const customerNotes: CustomerNote[] = [
+  {
+    id: "note-1",
+    customerId: "cus-2",
+    text: "Buxgalteriya bilan bog'landik, INV-2026-5002 bo'yicha to'lov rejasi so'raldi.",
+    at: daysAgo(1),
   },
 ];
 
@@ -646,8 +705,88 @@ export function getCustomerOutstandingBalance(
     .reduce((sum, i) => sum + getInvoiceRemaining(i), 0);
 }
 
-export function getCustomer(id: string): Customer | undefined {
-  return customers.find((c) => c.id === id);
+export function getCustomerOverdueBalance(customerId: string, allInvoices: Invoice[]): number {
+  return allInvoices
+    .filter((i) => i.customerId === customerId && getInvoiceStatus(i) === "overdue")
+    .reduce((sum, i) => sum + getInvoiceRemaining(i), 0);
+}
+
+export function getLastOrderDate(customerId: string, allOrders: Order[]): string | undefined {
+  const orders = getCustomerOrders(customerId, allOrders);
+  return orders[0]?.createdAt;
+}
+
+export interface ActivityEvent {
+  id: string;
+  at: string;
+  label: string;
+  description: string;
+}
+
+export function getCustomerActivity(
+  customer: Customer,
+  allOrders: Order[],
+  allInvoices: Invoice[],
+  allNotes: CustomerNote[],
+): ActivityEvent[] {
+  const events: ActivityEvent[] = [
+    {
+      id: `created-${customer.id}`,
+      at: customer.createdAt,
+      label: "Customer created",
+      description: `${customer.name} added to CRM`,
+    },
+  ];
+
+  for (const o of getCustomerOrders(customer.id, allOrders)) {
+    for (const h of o.statusHistory) {
+      events.push({
+        id: `order-${o.id}-${h.status}-${h.at}`,
+        at: h.at,
+        label: h.status === "pending" ? "Order created" : "Order status changed",
+        description: `${o.id} · ${orderStatusLabel(h.status)}`,
+      });
+    }
+  }
+
+  for (const inv of getCustomerInvoices(customer.id, allInvoices)) {
+    events.push({
+      id: `invoice-${inv.id}`,
+      at: inv.issuedAt,
+      label: "Invoice generated",
+      description: `${inv.id} · ${formatCurrency(inv.amount)}`,
+    });
+    for (const p of inv.payments) {
+      events.push({
+        id: `payment-${p.id}`,
+        at: p.paidAt,
+        label: "Payment recorded",
+        description: `${formatCurrency(p.amount)} on ${inv.id}`,
+      });
+    }
+  }
+
+  for (const n of allNotes.filter((n) => n.customerId === customer.id)) {
+    events.push({
+      id: `note-${n.id}`,
+      at: n.at,
+      label: "Note added",
+      description: n.text,
+    });
+  }
+
+  return events.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+}
+
+function orderStatusLabel(status: Order["status"]): string {
+  return status
+    .split("_")
+    .map((w) => w[0].toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+export function getCustomer(id: string, allCustomers: Customer[]): Customer | undefined {
+  return allCustomers.find((c) => c.id === id);
 }
 
 export function getOrderExpenses(orderId: string, allExpenses: Expense[]): Expense[] {

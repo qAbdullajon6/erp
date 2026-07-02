@@ -26,7 +26,7 @@ import type { Invoice } from "@/lib/types";
 import { RecordPaymentDialog } from "@/components/finance/record-payment-dialog";
 
 export function InvoiceTable() {
-  const { invoices } = useAppData();
+  const { invoices, customers } = useAppData();
   const [paying, setPaying] = React.useState<Invoice | null>(null);
 
   const sorted = [...invoices].sort(
@@ -52,14 +52,14 @@ export function InvoiceTable() {
           </TableHeader>
           <TableBody>
             {sorted.map((inv) => {
-              const customer = getCustomer(inv.customerId);
+              const customer = getCustomer(inv.customerId, customers);
               const status = getInvoiceStatus(inv);
               const remaining = getInvoiceRemaining(inv);
               return (
                 <TableRow key={inv.id}>
                   <TableCell className="font-medium">{inv.id}</TableCell>
                   <TableCell className="text-muted-foreground">{customer?.name}</TableCell>
-                  <TableCell className="text-muted-foreground">{inv.orderId}</TableCell>
+                  <TableCell className="text-muted-foreground">{inv.orderId ?? "—"}</TableCell>
                   <TableCell className="text-right">{formatCurrency(inv.amount)}</TableCell>
                   <TableCell className="text-right text-muted-foreground">
                     {formatCurrency(getInvoicePaidAmount(inv))}

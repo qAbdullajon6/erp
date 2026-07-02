@@ -30,13 +30,13 @@ export function AssignDialog({
   order: Order | null;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { drivers, vehicles, assignOrder } = useAppData();
+  const { drivers, vehicles, customers, assignOrder } = useAppData();
   const [driverId, setDriverId] = React.useState<string>("");
   const [vehicleId, setVehicleId] = React.useState<string>("");
 
   if (!order) return null;
 
-  const customer = getCustomer(order.customerId);
+  const customer = getCustomer(order.customerId, customers);
   const availableDrivers = drivers.filter((d) => d.status === "available");
   const availableVehicles = vehicles.filter((v) => v.status === "available");
   const selectedVehicle = availableVehicles.find((v) => v.id === vehicleId);

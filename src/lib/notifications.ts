@@ -10,7 +10,7 @@ import {
   isOrderDelayed,
   isOrderUnassignedTooLong,
 } from "@/lib/mock-data";
-import type { Driver, Invoice, Order, Vehicle } from "@/lib/types";
+import type { Customer, Driver, Invoice, Order, Vehicle } from "@/lib/types";
 
 export type NotificationSeverity = "critical" | "warning" | "info";
 
@@ -27,6 +27,7 @@ interface NotificationData {
   drivers: Driver[];
   vehicles: Vehicle[];
   invoices: Invoice[];
+  customers: Customer[];
 }
 
 const severityRank: Record<NotificationSeverity, number> = {
@@ -58,7 +59,7 @@ export function getNotifications(data: NotificationData): AppNotification[] {
     }
 
     if (isOrderUnassignedTooLong(o)) {
-      const customer = getCustomer(o.customerId);
+      const customer = getCustomer(o.customerId, data.customers);
       notifications.push({
         id: `order-unassigned-${o.id}`,
         severity: "warning",
@@ -71,7 +72,7 @@ export function getNotifications(data: NotificationData): AppNotification[] {
 
   for (const inv of data.invoices) {
     if (getInvoiceStatus(inv) === "overdue") {
-      const customer = getCustomer(inv.customerId);
+      const customer = getCustomer(inv.customerId, data.customers);
       notifications.push({
         id: `invoice-overdue-${inv.id}`,
         severity: "critical",

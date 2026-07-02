@@ -23,7 +23,7 @@ import { delayedStatusMeta, orderStatusMeta } from "@/lib/status-meta";
 import { useAppData } from "@/lib/store";
 
 export function RecentOrdersTable() {
-  const { orders, drivers } = useAppData();
+  const { orders, drivers, customers } = useAppData();
 
   const recent = [...orders]
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
@@ -55,7 +55,7 @@ export function RecentOrdersTable() {
           </TableHeader>
           <TableBody>
             {recent.map((order) => {
-              const customer = getCustomer(order.customerId);
+              const customer = getCustomer(order.customerId, customers);
               const driver = drivers.find((d) => d.id === order.driverId);
               const delayed = isOrderDelayed(order);
               const meta = orderStatusMeta[order.status];

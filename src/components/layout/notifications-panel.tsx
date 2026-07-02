@@ -22,8 +22,8 @@ const severityIconClass: Record<NotificationSeverity, string> = {
 };
 
 export function NotificationsPanel() {
-  const { orders, drivers, vehicles, invoices } = useAppData();
-  const notifications = getNotifications({ orders, drivers, vehicles, invoices });
+  const { orders, drivers, vehicles, invoices, customers } = useAppData();
+  const notifications = getNotifications({ orders, drivers, vehicles, invoices, customers });
 
   return (
     <DropdownMenu>

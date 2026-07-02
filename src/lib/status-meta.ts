@@ -1,9 +1,11 @@
 import type {
+  CustomerStatus,
   DriverStatus,
   ExpenseCategory,
   InvoiceStatus,
   OrderStatus,
   PaymentMethod,
+  PaymentTerms,
   VehicleStatus,
 } from "@/lib/types";
 
@@ -107,6 +109,24 @@ export const expenseCategoryOrder: ExpenseCategory[] = [
   "loading",
   "other",
 ];
+
+export const customerStatusMeta: Record<CustomerStatus, { label: string; badgeClass: string }> = {
+  active: { label: "Active", badgeClass: "bg-chart-2/10 text-chart-2 border-chart-2/20" },
+  at_risk: { label: "At Risk", badgeClass: "bg-chart-3/10 text-chart-3 border-chart-3/20" },
+  inactive: { label: "Inactive", badgeClass: "bg-muted text-muted-foreground border-transparent" },
+  archived: { label: "Archived", badgeClass: "bg-muted text-muted-foreground border-transparent" },
+};
+
+export const customerStatusOrder: CustomerStatus[] = ["active", "at_risk", "inactive", "archived"];
+
+export const paymentTermsMeta: Record<PaymentTerms, { label: string }> = {
+  due_on_receipt: { label: "Due on Receipt" },
+  net_15: { label: "Net 15" },
+  net_30: { label: "Net 30" },
+  net_45: { label: "Net 45" },
+};
+
+export const paymentTermsOrder: PaymentTerms[] = ["due_on_receipt", "net_15", "net_30", "net_45"];
 
 const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   draft: ["pending", "cancelled"],

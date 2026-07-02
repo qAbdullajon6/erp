@@ -28,7 +28,7 @@ function initials(name: string) {
 }
 
 export function DispatchBoard() {
-  const { orders, drivers, vehicles } = useAppData();
+  const { orders, drivers, vehicles, customers } = useAppData();
   const [assigning, setAssigning] = React.useState<Order | null>(null);
 
   const unassigned = orders
@@ -66,7 +66,7 @@ export function DispatchBoard() {
             <p className="text-sm text-muted-foreground">All orders are assigned.</p>
           )}
           {unassigned.map((order) => {
-            const customer = getCustomer(order.customerId);
+            const customer = getCustomer(order.customerId, customers);
             return (
               <div key={order.id} className="rounded-lg border border-border p-3">
                 <div className="flex items-center justify-between">

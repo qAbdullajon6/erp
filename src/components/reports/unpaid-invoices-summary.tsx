@@ -15,7 +15,7 @@ import { invoiceStatusMeta } from "@/lib/status-meta";
 import { useAppData } from "@/lib/store";
 
 export function UnpaidInvoicesSummary() {
-  const { invoices } = useAppData();
+  const { invoices, customers } = useAppData();
 
   const unpaid = invoices
     .filter((i) => getInvoiceStatus(i) !== "paid")
@@ -38,7 +38,7 @@ export function UnpaidInvoicesSummary() {
         )}
         {unpaid.map((inv) => {
           const status = getInvoiceStatus(inv);
-          const customer = getCustomer(inv.customerId);
+          const customer = getCustomer(inv.customerId, customers);
           return (
             <div key={inv.id} className="flex items-center justify-between text-sm">
               <div className="min-w-0">

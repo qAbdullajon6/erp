@@ -2,6 +2,8 @@
 
 import * as React from "react";
 import {
+  customerNotes as seedCustomerNotes,
+  customers as seedCustomers,
   drivers as seedDrivers,
   expenses as seedExpenses,
   invoices as seedInvoices,
@@ -9,6 +11,9 @@ import {
   vehicles as seedVehicles,
 } from "@/lib/mock-data";
 import type {
+  Customer,
+  CustomerNote,
+  CustomerStatus,
   Driver,
   Expense,
   ExpenseCategory,
@@ -16,10 +21,11 @@ import type {
   Order,
   OrderStatus,
   PaymentMethod,
+  PaymentTerms,
   Vehicle,
 } from "@/lib/types";
 
-const STORAGE_KEY = "flowerp:data:v3";
+const STORAGE_KEY = "flowerp:data:v4";
 
 interface StoredData {
   orders: Order[];
@@ -27,6 +33,8 @@ interface StoredData {
   vehicles: Vehicle[];
   invoices: Invoice[];
   expenses: Expense[];
+  customers: Customer[];
+  customerNotes: CustomerNote[];
 }
 
 export interface NewExpenseInput {
@@ -36,6 +44,31 @@ export interface NewExpenseInput {
   orderId?: string;
   vehicleId?: string;
   driverId?: string;
+  notes?: string;
+}
+
+export interface CustomerInput {
+  name: string;
+  industry: string;
+  contactPerson: string;
+  phone: string;
+  email: string;
+  address: string;
+  city: string;
+  country: string;
+  taxId?: string;
+  paymentTerms: PaymentTerms;
+  creditLimit: number;
+  usualRoutes: string[];
+  deliveryNotes?: string;
+  internalNotes?: string;
+}
+
+export interface NewInvoiceInput {
+  customerId: string;
+  orderId?: string;
+  amount: number;
+  dueAt: string;
   notes?: string;
 }
 
@@ -61,6 +94,8 @@ function seedData(): StoredData {
     vehicles: seedVehicles,
     invoices: seedInvoices,
     expenses: seedExpenses,
+    customers: seedCustomers,
+    customerNotes: seedCustomerNotes,
   };
 }
 
@@ -110,6 +145,24 @@ function nextExpenseId(expenses: Expense[]): string {
     .map((match) => parseInt(match[1], 10));
   const next = (numbers.length ? Math.max(...numbers) : 1000) + 1;
   return `EXP-${next}`;
+}
+
+function nextCustomerId(customers: Customer[]): string {
+  const numbers = customers
+    .map((c) => /cus-(\d+)/.exec(c.id))
+    .filter((match): match is RegExpExecArray => match !== null)
+    .map((match) => parseInt(match[1], 10));
+  const next = (numbers.length ? Math.max(...numbers) : 0) + 1;
+  return `cus-${next}`;
+}
+
+function nextCustomerNoteId(notes: CustomerNote[]): string {
+  const numbers = notes
+    .map((n) => /note-(\d+)/.exec(n.id))
+    .filter((match): match is RegExpExecArray => match !== null)
+    .map((match) => parseInt(match[1], 10));
+  const next = (numbers.length ? Math.max(...numbers) : 0) + 1;
+  return `note-${next}`;
 }
 
 type Listener = () => void;
@@ -277,6 +330,57 @@ class AppDataStore {
     this.commit({ ...prev, orders: [newOrder, ...prev.orders] });
   };
 
+  addCustomer = (input: CustomerInput): string => {
+    const prev = this.data;
+    const id = nextCustomerId(prev.customers);
+    const newCustomer: Customer = {
+      ...input,
+      id,
+      status: "active",
+      createdAt: new Date().toISOString(),
+    };
+    this.commit({ ...prev, customers: [newCustomer, ...prev.customers] });
+    return id;
+  };
+
+  updateCustomer = (id: string, input: CustomerInput) => {
+    const prev = this.data;
+    this.commit({
+      ...prev,
+      customers: prev.customers.map((c) => (c.id === id ? { ...c, ...input } : c)),
+    });
+  };
+
+  setCustomerStatus = (id: string, status: CustomerStatus) => {
+    const prev = this.data;
+    this.commit({
+      ...prev,
+      customers: prev.customers.map((c) => (c.id === id ? { ...c, status } : c)),
+    });
+  };
+
+  addCustomerNote = (customerId: string, text: string) => {
+    const prev = this.data;
+    const note: CustomerNote = {
+      id: nextCustomerNoteId(prev.customerNotes),
+      customerId,
+      text,
+      at: new Date().toISOString(),
+    };
+    this.commit({ ...prev, customerNotes: [note, ...prev.customerNotes] });
+  };
+
+  addInvoice = (input: NewInvoiceInput) => {
+    const prev = this.data;
+    const newInvoice: Invoice = {
+      ...input,
+      id: nextInvoiceId(prev.invoices),
+      issuedAt: new Date().toISOString(),
+      payments: [],
+    };
+    this.commit({ ...prev, invoices: [newInvoice, ...prev.invoices] });
+  };
+
   resetDemoData = () => {
     try {
       window.localStorage.removeItem(STORAGE_KEY);
@@ -310,11 +414,18 @@ export function useAppData() {
     vehicles: data.vehicles,
     invoices: data.invoices,
     expenses: data.expenses,
+    customers: data.customers,
+    customerNotes: data.customerNotes,
     assignOrder: store.assignOrder,
     updateOrderStatus: store.updateOrderStatus,
     addOrder: store.addOrder,
     recordPayment: store.recordPayment,
     addExpense: store.addExpense,
+    addCustomer: store.addCustomer,
+    updateCustomer: store.updateCustomer,
+    setCustomerStatus: store.setCustomerStatus,
+    addCustomerNote: store.addCustomerNote,
+    addInvoice: store.addInvoice,
     resetDemoData: store.resetDemoData,
   };
 }

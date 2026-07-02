@@ -29,11 +29,11 @@ export function OrderDetailSheet({
   order: Order | null;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { drivers, vehicles, expenses, updateOrderStatus } = useAppData();
+  const { drivers, vehicles, expenses, customers, updateOrderStatus } = useAppData();
 
   if (!order) return null;
 
-  const customer = getCustomer(order.customerId);
+  const customer = getCustomer(order.customerId, customers);
   const driver = drivers.find((d) => d.id === order.driverId);
   const vehicle = vehicles.find((v) => v.id === order.vehicleId);
   const delayed = isOrderDelayed(order);

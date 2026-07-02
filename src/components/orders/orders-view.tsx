@@ -20,7 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Card, CardContent } from "@/components/ui/card";
-import { customers, formatCurrency, formatDate, getCustomer, isOrderDelayed } from "@/lib/mock-data";
+import { formatCurrency, formatDate, getCustomer, isOrderDelayed } from "@/lib/mock-data";
 import { delayedStatusMeta, orderStatusMeta, orderStatusOrder } from "@/lib/status-meta";
 import { useAppData } from "@/lib/store";
 import type { Order, OrderStatus } from "@/lib/types";
@@ -28,7 +28,7 @@ import { NewOrderDialog } from "@/components/orders/new-order-dialog";
 import { OrderDetailSheet } from "@/components/orders/order-detail-sheet";
 
 export function OrdersView() {
-  const { orders, drivers } = useAppData();
+  const { orders, drivers, customers } = useAppData();
   const [search, setSearch] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<OrderStatus | "all">("all");
   const [customerFilter, setCustomerFilter] = React.useState<string>("all");
@@ -40,7 +40,7 @@ export function OrdersView() {
     .filter((o) => {
       if (!search.trim()) return true;
       const q = search.toLowerCase();
-      const customer = getCustomer(o.customerId);
+      const customer = getCustomer(o.customerId, customers);
       return (
         o.id.toLowerCase().includes(q) ||
         o.origin.toLowerCase().includes(q) ||
@@ -120,7 +120,7 @@ export function OrdersView() {
             </TableHeader>
             <TableBody>
               {filtered.map((order) => {
-                const customer = getCustomer(order.customerId);
+                const customer = getCustomer(order.customerId, customers);
                 const driver = drivers.find((d) => d.id === order.driverId);
                 const delayed = isOrderDelayed(order);
                 const meta = orderStatusMeta[order.status];

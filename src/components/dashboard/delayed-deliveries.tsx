@@ -12,7 +12,7 @@ import { formatRelativeTime, getCustomer, isOrderDelayed } from "@/lib/mock-data
 import { useAppData } from "@/lib/store";
 
 export function DelayedDeliveries() {
-  const { orders, drivers } = useAppData();
+  const { orders, drivers, customers } = useAppData();
   const delayed = orders.filter(isOrderDelayed);
 
   return (
@@ -31,7 +31,7 @@ export function DelayedDeliveries() {
           <p className="text-sm text-muted-foreground">No delayed deliveries right now.</p>
         )}
         {delayed.map((order) => {
-          const customer = getCustomer(order.customerId);
+          const customer = getCustomer(order.customerId, customers);
           const driver = drivers.find((d) => d.id === order.driverId);
           return (
             <div

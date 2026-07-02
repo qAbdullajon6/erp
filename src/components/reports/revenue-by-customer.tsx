@@ -16,11 +16,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { customers, getCustomerLifetimeValue } from "@/lib/mock-data";
+import { getCustomerLifetimeValue } from "@/lib/mock-data";
 import { useAppData } from "@/lib/store";
 
 export function RevenueByCustomer() {
-  const { orders } = useAppData();
+  const { orders, customers } = useAppData();
 
   const data = customers
     .map((c) => ({

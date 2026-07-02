@@ -7,11 +7,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { customers, formatCurrency, getCustomerOutstandingBalance } from "@/lib/mock-data";
+import { formatCurrency, getCustomerOutstandingBalance } from "@/lib/mock-data";
 import { useAppData } from "@/lib/store";
 
 export function TopDebtors() {
-  const { invoices } = useAppData();
+  const { invoices, customers } = useAppData();
 
   const debtors = customers
     .map((c) => ({
