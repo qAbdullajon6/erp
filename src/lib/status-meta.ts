@@ -1,6 +1,7 @@
 import type {
   CustomerStatus,
   DriverStatus,
+  ExpenseApprovalStatus,
   ExpenseCategory,
   InvoiceStatus,
   OrderStatus,
@@ -80,24 +81,39 @@ export const vehicleStatusMeta: Record<VehicleStatus, { label: string; badgeClas
 };
 
 export const invoiceStatusMeta: Record<InvoiceStatus, { label: string; badgeClass: string }> = {
+  draft: { label: "Draft", badgeClass: "bg-muted text-muted-foreground border-transparent" },
   sent: { label: "Sent", badgeClass: "bg-chart-5/10 text-chart-5 border-chart-5/20" },
   partially_paid: { label: "Partially Paid", badgeClass: "bg-chart-3/10 text-chart-3 border-chart-3/20" },
   paid: { label: "Paid", badgeClass: "bg-chart-2/10 text-chart-2 border-chart-2/20" },
   overdue: { label: "Overdue", badgeClass: "bg-destructive/10 text-destructive border-destructive/20" },
+  cancelled: { label: "Cancelled", badgeClass: "bg-muted text-muted-foreground border-transparent line-through" },
 };
+
+export const invoiceStatusOrder: InvoiceStatus[] = [
+  "draft",
+  "sent",
+  "partially_paid",
+  "paid",
+  "overdue",
+  "cancelled",
+];
 
 export const paymentMethodMeta: Record<PaymentMethod, { label: string }> = {
   bank_transfer: { label: "Bank Transfer" },
   cash: { label: "Cash" },
   card: { label: "Card" },
+  other: { label: "Other" },
 };
+
+export const paymentMethodOrder: PaymentMethod[] = ["bank_transfer", "cash", "card", "other"];
 
 export const expenseCategoryMeta: Record<ExpenseCategory, { label: string }> = {
   fuel: { label: "Fuel" },
   driver_advance: { label: "Driver Advance" },
-  toll: { label: "Road Toll" },
-  repair: { label: "Repair" },
+  toll: { label: "Toll/Road Fee" },
+  maintenance: { label: "Maintenance" },
   loading: { label: "Loading/Unloading" },
+  insurance: { label: "Insurance" },
   other: { label: "Other" },
 };
 
@@ -105,9 +121,25 @@ export const expenseCategoryOrder: ExpenseCategory[] = [
   "fuel",
   "driver_advance",
   "toll",
-  "repair",
+  "maintenance",
   "loading",
+  "insurance",
   "other",
+];
+
+export const expenseApprovalStatusMeta: Record<
+  ExpenseApprovalStatus,
+  { label: string; badgeClass: string }
+> = {
+  pending: { label: "Pending", badgeClass: "bg-chart-3/10 text-chart-3 border-chart-3/20" },
+  approved: { label: "Approved", badgeClass: "bg-chart-2/10 text-chart-2 border-chart-2/20" },
+  rejected: { label: "Rejected", badgeClass: "bg-destructive/10 text-destructive border-destructive/20" },
+};
+
+export const expenseApprovalStatusOrder: ExpenseApprovalStatus[] = [
+  "pending",
+  "approved",
+  "rejected",
 ];
 
 export const customerStatusMeta: Record<CustomerStatus, { label: string; badgeClass: string }> = {

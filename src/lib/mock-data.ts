@@ -1,3 +1,4 @@
+import { DEFAULT_CURRENCY, formatMoney } from "@/lib/currency";
 import type {
   Customer,
   CustomerNote,
@@ -18,6 +19,11 @@ import type {
 // different strings and trigger a hydration mismatch. A frozen reference
 // point keeps server and client output identical.
 const DEMO_EPOCH = new Date("2026-07-03T09:00:00.000Z").getTime();
+
+/** The demo's frozen "now" as a Date — use this instead of `new Date()` for anything derived during render. */
+export function getReferenceNow(): Date {
+  return new Date(DEMO_EPOCH);
+}
 
 function hoursAgo(hours: number): string {
   return new Date(DEMO_EPOCH - hours * 60 * 60 * 1000).toISOString();
@@ -529,17 +535,25 @@ export const invoices: Invoice[] = [
     id: "INV-2026-5001",
     customerId: "cus-4",
     orderId: "ORD-2026-00209",
+    currency: "USD",
+    subtotal: 1750,
+    discount: 0,
+    taxRate: 0,
     amount: 1750,
     issuedAt: daysAgo(1),
     dueAt: hoursFromNow(240),
     payments: [
-      { id: "PAY-1001", amount: 1750, method: "bank_transfer", paidAt: hoursAgo(12) },
+      { id: "PAY-1001", amount: 1750, currency: "USD", method: "bank_transfer", referenceNumber: "TRX-88213", paidAt: hoursAgo(12) },
     ],
   },
   {
     id: "INV-2026-5002",
     customerId: "cus-2",
     orderId: "ORD-2026-00210",
+    currency: "USD",
+    subtotal: 1120,
+    discount: 0,
+    taxRate: 0,
     amount: 1120,
     issuedAt: daysAgo(4),
     dueAt: daysAgo(1),
@@ -549,17 +563,25 @@ export const invoices: Invoice[] = [
     id: "INV-2026-5003",
     customerId: "cus-3",
     orderId: "ORD-2026-00211",
+    currency: "USD",
+    subtotal: 3750,
+    discount: 0,
+    taxRate: 0,
     amount: 3750,
     issuedAt: daysAgo(3),
     dueAt: hoursFromNow(48),
     payments: [
-      { id: "PAY-1002", amount: 2000, method: "cash", paidAt: daysAgo(1) },
+      { id: "PAY-1002", amount: 2000, currency: "USD", method: "cash", paidAt: daysAgo(1) },
     ],
   },
   {
     id: "INV-2026-5004",
     customerId: "cus-5",
     orderId: "ORD-2026-00212",
+    currency: "USD",
+    subtotal: 970,
+    discount: 0,
+    taxRate: 0,
     amount: 970,
     issuedAt: daysAgo(1),
     dueAt: hoursFromNow(240),
@@ -568,26 +590,26 @@ export const invoices: Invoice[] = [
 ];
 
 export const expenses: Expense[] = [
-  { id: "EXP-1001", category: "fuel", amount: 180, date: daysAgo(2), orderId: "ORD-2026-00209", vehicleId: "veh-4", driverId: "drv-4" },
-  { id: "EXP-1002", category: "driver_advance", amount: 100, date: daysAgo(2), orderId: "ORD-2026-00209", driverId: "drv-4" },
-  { id: "EXP-1003", category: "toll", amount: 25, date: daysAgo(2), orderId: "ORD-2026-00209", vehicleId: "veh-4" },
-  { id: "EXP-1004", category: "fuel", amount: 140, date: daysAgo(4), orderId: "ORD-2026-00210", vehicleId: "veh-1", driverId: "drv-2" },
-  { id: "EXP-1005", category: "toll", amount: 20, date: daysAgo(4), orderId: "ORD-2026-00210", vehicleId: "veh-1" },
-  { id: "EXP-1006", category: "fuel", amount: 320, date: daysAgo(3), orderId: "ORD-2026-00211", vehicleId: "veh-5", driverId: "drv-5" },
-  { id: "EXP-1007", category: "driver_advance", amount: 150, date: daysAgo(3), orderId: "ORD-2026-00211", driverId: "drv-5" },
-  { id: "EXP-1008", category: "toll", amount: 40, date: daysAgo(3), orderId: "ORD-2026-00211", vehicleId: "veh-5" },
-  { id: "EXP-1009", category: "repair", amount: 200, date: daysAgo(3), orderId: "ORD-2026-00211", vehicleId: "veh-5", notes: "Shina almashtirish" },
-  { id: "EXP-1010", category: "fuel", amount: 110, date: daysAgo(2), orderId: "ORD-2026-00212", vehicleId: "veh-7", driverId: "drv-7" },
-  { id: "EXP-1011", category: "toll", amount: 15, date: daysAgo(2), orderId: "ORD-2026-00212", vehicleId: "veh-7" },
-  { id: "EXP-1012", category: "fuel", amount: 300, date: hoursAgo(5), orderId: "ORD-2026-00207", vehicleId: "veh-2", driverId: "drv-1" },
-  { id: "EXP-1013", category: "toll", amount: 60, date: hoursAgo(5), orderId: "ORD-2026-00207", vehicleId: "veh-2", notes: "Chegara o'tish to'lovi" },
-  { id: "EXP-1014", category: "fuel", amount: 280, date: hoursAgo(19), orderId: "ORD-2026-00208", vehicleId: "veh-3", driverId: "drv-3" },
-  { id: "EXP-1015", category: "repair", amount: 450, date: hoursAgo(18), orderId: "ORD-2026-00208", vehicleId: "veh-3", notes: "Yo'lda dvigatel nosozligi tuzatildi — kechikishga sabab bo'ldi" },
-  { id: "EXP-1016", category: "toll", amount: 30, date: hoursAgo(19), orderId: "ORD-2026-00208", vehicleId: "veh-3" },
-  { id: "EXP-1017", category: "fuel", amount: 250, date: hoursAgo(20), orderId: "ORD-2026-00206", vehicleId: "veh-6", driverId: "drv-6" },
-  { id: "EXP-1018", category: "driver_advance", amount: 80, date: hoursAgo(20), orderId: "ORD-2026-00206", driverId: "drv-6" },
-  { id: "EXP-1019", category: "repair", amount: 450, date: hoursAgo(6), vehicleId: "veh-4", notes: "Rejadan tashqari texnik xizmat" },
-  { id: "EXP-1020", category: "other", amount: 60, date: daysAgo(1), notes: "Ofis xarajatlari" },
+  { id: "EXP-1001", category: "fuel", amount: 180, currency: "USD", date: daysAgo(2), orderId: "ORD-2026-00209", vehicleId: "veh-4", driverId: "drv-4", payee: "Uzbekneftegaz AZS-14", approvalStatus: "approved" },
+  { id: "EXP-1002", category: "driver_advance", amount: 100, currency: "USD", date: daysAgo(2), orderId: "ORD-2026-00209", driverId: "drv-4", payee: "Elyor Rashidov", approvalStatus: "approved" },
+  { id: "EXP-1003", category: "toll", amount: 25, currency: "USD", date: daysAgo(2), orderId: "ORD-2026-00209", vehicleId: "veh-4", payee: "Avtomobil Yo'llari Agentligi", approvalStatus: "approved" },
+  { id: "EXP-1004", category: "fuel", amount: 140, currency: "USD", date: daysAgo(4), orderId: "ORD-2026-00210", vehicleId: "veh-1", driverId: "drv-2", payee: "Uzbekneftegaz AZS-7", approvalStatus: "approved" },
+  { id: "EXP-1005", category: "toll", amount: 20, currency: "USD", date: daysAgo(4), orderId: "ORD-2026-00210", vehicleId: "veh-1", payee: "Avtomobil Yo'llari Agentligi", approvalStatus: "approved" },
+  { id: "EXP-1006", category: "fuel", amount: 320, currency: "USD", date: daysAgo(3), orderId: "ORD-2026-00211", vehicleId: "veh-5", driverId: "drv-5", payee: "Uzbekneftegaz AZS-14", approvalStatus: "approved" },
+  { id: "EXP-1007", category: "driver_advance", amount: 150, currency: "USD", date: daysAgo(3), orderId: "ORD-2026-00211", driverId: "drv-5", payee: "Farrux Nematov", approvalStatus: "approved" },
+  { id: "EXP-1008", category: "toll", amount: 40, currency: "USD", date: daysAgo(3), orderId: "ORD-2026-00211", vehicleId: "veh-5", payee: "Avtomobil Yo'llari Agentligi", approvalStatus: "approved" },
+  { id: "EXP-1009", category: "maintenance", amount: 200, currency: "USD", date: daysAgo(3), orderId: "ORD-2026-00211", vehicleId: "veh-5", payee: "SamAvtoServis", notes: "Shina almashtirish", approvalStatus: "approved" },
+  { id: "EXP-1010", category: "fuel", amount: 110, currency: "USD", date: daysAgo(2), orderId: "ORD-2026-00212", vehicleId: "veh-7", driverId: "drv-7", payee: "Uzbekneftegaz AZS-3", approvalStatus: "approved" },
+  { id: "EXP-1011", category: "toll", amount: 15, currency: "USD", date: daysAgo(2), orderId: "ORD-2026-00212", vehicleId: "veh-7", payee: "Avtomobil Yo'llari Agentligi", approvalStatus: "approved" },
+  { id: "EXP-1012", category: "fuel", amount: 300, currency: "USD", date: hoursAgo(5), orderId: "ORD-2026-00207", vehicleId: "veh-2", driverId: "drv-1", payee: "Uzbekneftegaz AZS-1", approvalStatus: "approved" },
+  { id: "EXP-1013", category: "toll", amount: 60, currency: "USD", date: hoursAgo(5), orderId: "ORD-2026-00207", vehicleId: "veh-2", payee: "Chegara nazorati", notes: "Chegara o'tish to'lovi", approvalStatus: "approved" },
+  { id: "EXP-1014", category: "fuel", amount: 280, currency: "USD", date: hoursAgo(19), orderId: "ORD-2026-00208", vehicleId: "veh-3", driverId: "drv-3", payee: "Uzbekneftegaz AZS-9", approvalStatus: "approved" },
+  { id: "EXP-1015", category: "maintenance", amount: 450, currency: "USD", date: hoursAgo(18), orderId: "ORD-2026-00208", vehicleId: "veh-3", payee: "Yo'l yordami xizmati", notes: "Yo'lda dvigatel nosozligi tuzatildi — kechikishga sabab bo'ldi", approvalStatus: "approved" },
+  { id: "EXP-1016", category: "toll", amount: 30, currency: "USD", date: hoursAgo(19), orderId: "ORD-2026-00208", vehicleId: "veh-3", payee: "Avtomobil Yo'llari Agentligi", approvalStatus: "approved" },
+  { id: "EXP-1017", category: "fuel", amount: 250, currency: "USD", date: hoursAgo(20), orderId: "ORD-2026-00206", vehicleId: "veh-6", driverId: "drv-6", payee: "Uzbekneftegaz AZS-14", approvalStatus: "approved" },
+  { id: "EXP-1018", category: "driver_advance", amount: 80, currency: "USD", date: hoursAgo(20), orderId: "ORD-2026-00206", driverId: "drv-6", payee: "Jasur Alimov", approvalStatus: "approved" },
+  { id: "EXP-1019", category: "maintenance", amount: 450, currency: "USD", date: hoursAgo(6), vehicleId: "veh-4", payee: "Techno Avto Servis", notes: "Rejadan tashqari texnik xizmat", approvalStatus: "pending" },
+  { id: "EXP-1020", category: "other", amount: 60, currency: "USD", date: daysAgo(1), payee: "Ofis xo'jaligi", notes: "Ofis xarajatlari", approvalStatus: "approved" },
 ];
 
 function buildRevenueTrend(): RevenuePoint[] {
@@ -685,11 +707,20 @@ export function getInvoiceRemaining(invoice: Invoice): number {
 }
 
 export function getInvoiceStatus(invoice: Invoice): InvoiceStatus {
+  if (invoice.manualStatus) return invoice.manualStatus;
   const paid = getInvoicePaidAmount(invoice);
   if (paid >= invoice.amount) return "paid";
   if (paid > 0) return "partially_paid";
   if (new Date(invoice.dueAt).getTime() < DEMO_EPOCH) return "overdue";
   return "sent";
+}
+
+export function getInvoiceOverdueDays(invoice: Invoice): number {
+  if (getInvoiceStatus(invoice) !== "overdue") return 0;
+  return Math.max(
+    0,
+    Math.floor((DEMO_EPOCH - new Date(invoice.dueAt).getTime()) / (24 * 60 * 60 * 1000)),
+  );
 }
 
 export function getCustomerInvoices(customerId: string, allInvoices: Invoice[]): Invoice[] {
@@ -789,13 +820,33 @@ export function getCustomer(id: string, allCustomers: Customer[]): Customer | un
   return allCustomers.find((c) => c.id === id);
 }
 
+/** Only approved expenses count toward cost/profit — pending ones aren't confirmed yet, rejected ones never happened. */
 export function getOrderExpenses(orderId: string, allExpenses: Expense[]): Expense[] {
-  return allExpenses.filter((e) => e.orderId === orderId);
+  return allExpenses.filter((e) => e.orderId === orderId && e.approvalStatus === "approved");
 }
 
-export function getOrderProfit(order: Order, allExpenses: Expense[]): number {
+/** The order's active (non-cancelled) invoice total if one exists, else the agreed order price. */
+export function getOrderRevenue(order: Order, allInvoices: Invoice[]): number {
+  const activeInvoice = allInvoices.find(
+    (i) => i.orderId === order.id && getInvoiceStatus(i) !== "cancelled",
+  );
+  return activeInvoice ? activeInvoice.amount : order.amount;
+}
+
+export function getOrderProfit(order: Order, allExpenses: Expense[], allInvoices: Invoice[]): number {
+  const revenue = getOrderRevenue(order, allInvoices);
   const cost = getOrderExpenses(order.id, allExpenses).reduce((sum, e) => sum + e.amount, 0);
-  return order.amount - cost;
+  return revenue - cost;
+}
+
+export function getOrderMarginPercent(
+  order: Order,
+  allExpenses: Expense[],
+  allInvoices: Invoice[],
+): number {
+  const revenue = getOrderRevenue(order, allInvoices);
+  if (revenue <= 0) return 0;
+  return (getOrderProfit(order, allExpenses, allInvoices) / revenue) * 100;
 }
 
 export function getExpensesByCategory(
@@ -805,8 +856,9 @@ export function getExpensesByCategory(
     fuel: 0,
     driver_advance: 0,
     toll: 0,
-    repair: 0,
+    maintenance: 0,
     loading: 0,
+    insurance: 0,
     other: 0,
   };
   for (const e of allExpenses) {
@@ -823,7 +875,13 @@ export function getVehicleRevenue(vehicleId: string, allOrders: Order[]): number
 
 export function getVehicleExpenseTotal(vehicleId: string, allExpenses: Expense[]): number {
   return allExpenses
-    .filter((e) => e.vehicleId === vehicleId)
+    .filter((e) => e.vehicleId === vehicleId && e.approvalStatus === "approved")
+    .reduce((sum, e) => sum + e.amount, 0);
+}
+
+export function getDriverExpenseTotal(driverId: string, allExpenses: Expense[]): number {
+  return allExpenses
+    .filter((e) => e.driverId === driverId && e.approvalStatus === "approved")
     .reduce((sum, e) => sum + e.amount, 0);
 }
 
@@ -868,12 +926,9 @@ export function getVehicle(id: string | null | undefined): Vehicle | undefined {
   return vehicles.find((v) => v.id === id);
 }
 
+/** Legacy USD-only formatter kept for the many non-finance call sites (Dashboard, Orders, Dispatch, Reports) that predate per-record currencies. New finance UI should call formatMoney(amount, record.currency) directly. */
 export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(amount);
+  return formatMoney(amount, DEFAULT_CURRENCY);
 }
 
 export function formatDate(iso: string): string {

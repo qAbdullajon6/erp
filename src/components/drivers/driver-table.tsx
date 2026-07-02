@@ -16,8 +16,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  formatCurrency,
   formatDate,
   getDriverDelayCount,
+  getDriverExpenseTotal,
   isLicenseExpiringSoon,
 } from "@/lib/mock-data";
 import { driverStatusMeta } from "@/lib/status-meta";
@@ -33,7 +35,7 @@ function initials(name: string) {
 }
 
 export function DriverTable() {
-  const { drivers, vehicles, orders } = useAppData();
+  const { drivers, vehicles, orders, expenses } = useAppData();
 
   return (
     <Card>
@@ -48,6 +50,7 @@ export function DriverTable() {
               <TableHead className="text-right">Deliveries</TableHead>
               <TableHead className="text-right">On-time</TableHead>
               <TableHead className="text-right">Delays</TableHead>
+              <TableHead className="text-right">Total expenses</TableHead>
               <TableHead className="text-right">Rating</TableHead>
             </TableRow>
           </TableHeader>
@@ -103,6 +106,9 @@ export function DriverTable() {
                     }
                   >
                     {delayCount}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {formatCurrency(getDriverExpenseTotal(d.id, expenses))}
                   </TableCell>
                   <TableCell className="text-right">
                     <span className="inline-flex items-center gap-1">

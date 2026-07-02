@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { DEFAULT_CURRENCY } from "@/lib/currency";
 import {
   customerNotes as seedCustomerNotes,
   customers as seedCustomers,
@@ -11,11 +12,13 @@ import {
   vehicles as seedVehicles,
 } from "@/lib/mock-data";
 import type {
+  Currency,
   Customer,
   CustomerNote,
   CustomerStatus,
   Driver,
   Expense,
+  ExpenseApprovalStatus,
   ExpenseCategory,
   Invoice,
   Order,
@@ -25,7 +28,7 @@ import type {
   Vehicle,
 } from "@/lib/types";
 
-const STORAGE_KEY = "flowerp:data:v4";
+const STORAGE_KEY = "flowerp:data:v5";
 
 interface StoredData {
   orders: Order[];
@@ -40,10 +43,13 @@ interface StoredData {
 export interface NewExpenseInput {
   category: ExpenseCategory;
   amount: number;
+  currency: Currency;
   date: string;
   orderId?: string;
   vehicleId?: string;
   driverId?: string;
+  payee?: string;
+  receiptRef?: string;
   notes?: string;
 }
 
@@ -67,9 +73,21 @@ export interface CustomerInput {
 export interface NewInvoiceInput {
   customerId: string;
   orderId?: string;
-  amount: number;
+  currency: Currency;
+  subtotal: number;
+  discount: number;
+  taxRate: number;
   dueAt: string;
   notes?: string;
+}
+
+export interface PaymentInput {
+  amount: number;
+  currency: Currency;
+  method: PaymentMethod;
+  referenceNumber?: string;
+  notes?: string;
+  paidAt?: string;
 }
 
 export interface NewOrderInput {
@@ -165,6 +183,15 @@ function nextCustomerNoteId(notes: CustomerNote[]): string {
   return `note-${next}`;
 }
 
+function computeInvoiceTotal(subtotal: number, discount: number, taxRate: number): number {
+  const taxable = Math.max(0, subtotal - discount);
+  return taxable + taxable * (taxRate / 100);
+}
+
+function isInvoiceActive(invoice: Invoice): boolean {
+  return invoice.manualStatus !== "cancelled";
+}
+
 type Listener = () => void;
 
 class AppDataStore {
@@ -236,7 +263,8 @@ class AppDataStore {
     const now = new Date();
 
     const generatesInvoice =
-      status === "delivered" && !prev.invoices.some((i) => i.orderId === orderId);
+      status === "delivered" &&
+      !prev.invoices.some((i) => i.orderId === orderId && isInvoiceActive(i));
 
     this.commit({
       ...prev,
@@ -276,6 +304,10 @@ class AppDataStore {
               id: nextInvoiceId(prev.invoices),
               customerId: order.customerId,
               orderId: order.id,
+              currency: DEFAULT_CURRENCY,
+              subtotal: order.amount,
+              discount: 0,
+              taxRate: 0,
               amount: order.amount,
               issuedAt: now.toISOString(),
               dueAt: new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString(),
@@ -286,8 +318,15 @@ class AppDataStore {
     });
   };
 
-  recordPayment = (invoiceId: string, amount: number, method: PaymentMethod) => {
+  recordPayment = (
+    invoiceId: string,
+    amount: number,
+    method: PaymentMethod,
+    extra?: { referenceNumber?: string; notes?: string },
+  ) => {
     const prev = this.data;
+    const invoice = prev.invoices.find((i) => i.id === invoiceId);
+    if (!invoice) return;
     const paidAt = new Date().toISOString();
     this.commit({
       ...prev,
@@ -297,9 +336,48 @@ class AppDataStore {
               ...inv,
               payments: [
                 ...inv.payments,
-                { id: nextPaymentId(prev.invoices), amount, method, paidAt },
+                {
+                  id: nextPaymentId(prev.invoices),
+                  amount,
+                  currency: invoice.currency,
+                  method,
+                  referenceNumber: extra?.referenceNumber,
+                  notes: extra?.notes,
+                  paidAt,
+                },
               ],
             }
+          : inv,
+      ),
+    });
+  };
+
+  updatePayment = (invoiceId: string, paymentId: string, input: PaymentInput) => {
+    const prev = this.data;
+    this.commit({
+      ...prev,
+      invoices: prev.invoices.map((inv) =>
+        inv.id === invoiceId
+          ? {
+              ...inv,
+              payments: inv.payments.map((p) =>
+                p.id === paymentId
+                  ? { ...p, ...input, paidAt: input.paidAt ?? p.paidAt }
+                  : p,
+              ),
+            }
+          : inv,
+      ),
+    });
+  };
+
+  deletePayment = (invoiceId: string, paymentId: string) => {
+    const prev = this.data;
+    this.commit({
+      ...prev,
+      invoices: prev.invoices.map((inv) =>
+        inv.id === invoiceId
+          ? { ...inv, payments: inv.payments.filter((p) => p.id !== paymentId) }
           : inv,
       ),
     });
@@ -310,8 +388,30 @@ class AppDataStore {
     const newExpense: Expense = {
       ...input,
       id: nextExpenseId(prev.expenses),
+      approvalStatus: "pending",
     };
     this.commit({ ...prev, expenses: [newExpense, ...prev.expenses] });
+  };
+
+  updateExpense = (id: string, input: NewExpenseInput) => {
+    const prev = this.data;
+    this.commit({
+      ...prev,
+      expenses: prev.expenses.map((e) => (e.id === id ? { ...e, ...input } : e)),
+    });
+  };
+
+  deleteExpense = (id: string) => {
+    const prev = this.data;
+    this.commit({ ...prev, expenses: prev.expenses.filter((e) => e.id !== id) });
+  };
+
+  setExpenseApproval = (id: string, approvalStatus: ExpenseApprovalStatus) => {
+    const prev = this.data;
+    this.commit({
+      ...prev,
+      expenses: prev.expenses.map((e) => (e.id === id ? { ...e, approvalStatus } : e)),
+    });
   };
 
   addOrder = (input: NewOrderInput) => {
@@ -370,15 +470,80 @@ class AppDataStore {
     this.commit({ ...prev, customerNotes: [note, ...prev.customerNotes] });
   };
 
-  addInvoice = (input: NewInvoiceInput) => {
+  /** Returns the new invoice id, or null if a business rule blocked creation
+   *  (archived customer, or the order already has an active invoice). */
+  addInvoice = (input: NewInvoiceInput): string | null => {
     const prev = this.data;
+    const customer = prev.customers.find((c) => c.id === input.customerId);
+    if (!customer || customer.status === "archived") return null;
+    if (
+      input.orderId &&
+      prev.invoices.some((i) => i.orderId === input.orderId && isInvoiceActive(i))
+    ) {
+      return null;
+    }
+
+    const id = nextInvoiceId(prev.invoices);
     const newInvoice: Invoice = {
-      ...input,
-      id: nextInvoiceId(prev.invoices),
+      customerId: input.customerId,
+      orderId: input.orderId,
+      currency: input.currency,
+      subtotal: input.subtotal,
+      discount: input.discount,
+      taxRate: input.taxRate,
+      amount: computeInvoiceTotal(input.subtotal, input.discount, input.taxRate),
+      manualStatus: "draft",
+      id,
       issuedAt: new Date().toISOString(),
+      dueAt: input.dueAt,
       payments: [],
+      notes: input.notes,
     };
     this.commit({ ...prev, invoices: [newInvoice, ...prev.invoices] });
+    return id;
+  };
+
+  updateInvoice = (id: string, input: NewInvoiceInput) => {
+    const prev = this.data;
+    this.commit({
+      ...prev,
+      invoices: prev.invoices.map((inv) =>
+        inv.id === id
+          ? {
+              ...inv,
+              customerId: input.customerId,
+              orderId: input.orderId,
+              currency: input.currency,
+              subtotal: input.subtotal,
+              discount: input.discount,
+              taxRate: input.taxRate,
+              amount: computeInvoiceTotal(input.subtotal, input.discount, input.taxRate),
+              dueAt: input.dueAt,
+              notes: input.notes,
+            }
+          : inv,
+      ),
+    });
+  };
+
+  markInvoiceSent = (id: string) => {
+    const prev = this.data;
+    this.commit({
+      ...prev,
+      invoices: prev.invoices.map((inv) =>
+        inv.id === id ? { ...inv, manualStatus: undefined } : inv,
+      ),
+    });
+  };
+
+  cancelInvoice = (id: string) => {
+    const prev = this.data;
+    this.commit({
+      ...prev,
+      invoices: prev.invoices.map((inv) =>
+        inv.id === id ? { ...inv, manualStatus: "cancelled" as const } : inv,
+      ),
+    });
   };
 
   resetDemoData = () => {
@@ -420,12 +585,20 @@ export function useAppData() {
     updateOrderStatus: store.updateOrderStatus,
     addOrder: store.addOrder,
     recordPayment: store.recordPayment,
+    updatePayment: store.updatePayment,
+    deletePayment: store.deletePayment,
     addExpense: store.addExpense,
+    updateExpense: store.updateExpense,
+    deleteExpense: store.deleteExpense,
+    setExpenseApproval: store.setExpenseApproval,
     addCustomer: store.addCustomer,
     updateCustomer: store.updateCustomer,
     setCustomerStatus: store.setCustomerStatus,
     addCustomerNote: store.addCustomerNote,
     addInvoice: store.addInvoice,
+    updateInvoice: store.updateInvoice,
+    markInvoiceSent: store.markInvoiceSent,
+    cancelInvoice: store.cancelInvoice,
     resetDemoData: store.resetDemoData,
   };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Check } from "lucide-react";
+import { AlertTriangle, ArrowRight, Check } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -16,6 +16,8 @@ import {
   formatDateTime,
   getCustomer,
   getOrderExpenses,
+  getOrderMarginPercent,
+  getOrderRevenue,
   isOrderDelayed,
 } from "@/lib/mock-data";
 import { delayedStatusMeta, expenseCategoryMeta, nextStatusOptions, orderStatusMeta } from "@/lib/status-meta";
@@ -29,7 +31,7 @@ export function OrderDetailSheet({
   order: Order | null;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { drivers, vehicles, expenses, customers, updateOrderStatus } = useAppData();
+  const { drivers, vehicles, expenses, customers, invoices, updateOrderStatus } = useAppData();
 
   if (!order) return null;
 
@@ -40,7 +42,9 @@ export function OrderDetailSheet({
   const nextOptions = nextStatusOptions(order.status);
   const orderExpenses = getOrderExpenses(order.id, expenses);
   const totalCost = orderExpenses.reduce((sum, e) => sum + e.amount, 0);
-  const profit = order.amount - totalCost;
+  const revenue = getOrderRevenue(order, invoices);
+  const profit = revenue - totalCost;
+  const marginPercent = getOrderMarginPercent(order, expenses, invoices);
 
   return (
     <Sheet open onOpenChange={onOpenChange}>
@@ -133,18 +137,22 @@ export function OrderDetailSheet({
             )}
           </dl>
 
-          {orderExpenses.length > 0 && (
+          {(orderExpenses.length > 0 || revenue !== order.amount) && (
             <>
               <Separator />
               <div>
                 <p className="mb-2 text-xs font-medium text-muted-foreground">Costs & Profit</p>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Revenue</span>
+                  <span>{formatCurrency(revenue)}</span>
+                </div>
                 <div className="space-y-1.5">
                   {orderExpenses.map((e) => (
                     <div key={e.id} className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">
                         {expenseCategoryMeta[e.category].label}
                       </span>
-                      <span>{formatCurrency(e.amount)}</span>
+                      <span>-{formatCurrency(e.amount)}</span>
                     </div>
                   ))}
                 </div>
@@ -163,6 +171,22 @@ export function OrderDetailSheet({
                     {formatCurrency(profit)}
                   </span>
                 </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Margin</span>
+                  <span
+                    className={
+                      marginPercent >= 0 ? "font-medium text-chart-2" : "font-medium text-destructive"
+                    }
+                  >
+                    {marginPercent.toFixed(1)}%
+                  </span>
+                </div>
+                {profit < 0 && (
+                  <p className="mt-2 flex items-center gap-1.5 text-xs text-destructive">
+                    <AlertTriangle className="size-3.5" />
+                    This order is running at a loss.
+                  </p>
+                )}
               </div>
             </>
           )}

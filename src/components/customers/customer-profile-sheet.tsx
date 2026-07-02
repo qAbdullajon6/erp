@@ -19,7 +19,7 @@ import { CustomerInvoicesTab } from "@/components/customers/customer-invoices-ta
 import { CustomerActivityTab } from "@/components/customers/customer-activity-tab";
 import { CustomerFormDialog } from "@/components/customers/customer-form-dialog";
 import { ArchiveCustomerDialog } from "@/components/customers/archive-customer-dialog";
-import { CreateInvoiceDialog } from "@/components/customers/create-invoice-dialog";
+import { InvoiceFormDialog } from "@/components/finance/invoice-form-dialog";
 import { NewOrderDialog } from "@/components/orders/new-order-dialog";
 
 export function CustomerProfileSheet({
@@ -103,7 +103,7 @@ export function CustomerProfileSheet({
         />
       )}
       {showCreateInvoice && (
-        <CreateInvoiceDialog customerId={customer.id} onOpenChange={setShowCreateInvoice} />
+        <InvoiceFormDialog customerId={customer.id} onOpenChange={setShowCreateInvoice} />
       )}
       {showEdit && <CustomerFormDialog customer={customer} onOpenChange={setShowEdit} />}
       {showArchive && <ArchiveCustomerDialog customer={customer} onOpenChange={setShowArchive} />}

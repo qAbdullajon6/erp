@@ -11,17 +11,32 @@ export type DriverStatus = "available" | "on_delivery" | "off_duty";
 
 export type VehicleStatus = "available" | "on_delivery" | "maintenance" | "inactive";
 
-export type InvoiceStatus = "sent" | "partially_paid" | "paid" | "overdue";
+export type Currency = "USD" | "UZS";
 
-export type PaymentMethod = "bank_transfer" | "cash" | "card";
+export type InvoiceStatus =
+  | "draft"
+  | "sent"
+  | "partially_paid"
+  | "paid"
+  | "overdue"
+  | "cancelled";
+
+// Only "draft" and "cancelled" are ever stored (as Invoice.manualStatus) —
+// every other status is derived from payments vs amount vs due date.
+export type InvoiceManualStatus = "draft" | "cancelled";
+
+export type PaymentMethod = "bank_transfer" | "cash" | "card" | "other";
 
 export type ExpenseCategory =
   | "fuel"
   | "driver_advance"
   | "toll"
-  | "repair"
+  | "maintenance"
   | "loading"
+  | "insurance"
   | "other";
+
+export type ExpenseApprovalStatus = "pending" | "approved" | "rejected";
 
 export interface Vehicle {
   id: string;
@@ -109,7 +124,10 @@ export interface Order {
 export interface Payment {
   id: string;
   amount: number;
+  currency: Currency;
   method: PaymentMethod;
+  referenceNumber?: string;
+  notes?: string;
   paidAt: string;
 }
 
@@ -117,7 +135,13 @@ export interface Invoice {
   id: string;
   customerId: string;
   orderId?: string;
+  currency: Currency;
+  subtotal: number;
+  discount: number;
+  taxRate: number;
+  /** subtotal - discount + tax, i.e. the total amount due */
   amount: number;
+  manualStatus?: InvoiceManualStatus;
   issuedAt: string;
   dueAt: string;
   payments: Payment[];
@@ -128,10 +152,14 @@ export interface Expense {
   id: string;
   category: ExpenseCategory;
   amount: number;
+  currency: Currency;
   date: string;
   orderId?: string;
   vehicleId?: string;
   driverId?: string;
+  payee?: string;
+  receiptRef?: string;
+  approvalStatus: ExpenseApprovalStatus;
   notes?: string;
 }
 

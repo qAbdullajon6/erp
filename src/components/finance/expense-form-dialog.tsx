@@ -22,9 +22,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { currencyOrder } from "@/lib/currency";
 import { expenseCategoryMeta, expenseCategoryOrder } from "@/lib/status-meta";
 import { useAppData, type NewExpenseInput } from "@/lib/store";
-import type { ExpenseCategory } from "@/lib/types";
+import type { Currency, Expense, ExpenseCategory } from "@/lib/types";
 
 function toDateInput(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -33,28 +34,38 @@ function toDateInput(date: Date): string {
 
 const NONE = "none";
 
-export function AddExpenseDialog() {
-  const { orders, vehicles, drivers, addExpense } = useAppData();
-  const [open, setOpen] = React.useState(false);
-  const [category, setCategory] = React.useState<ExpenseCategory>("fuel");
-  const [amount, setAmount] = React.useState("");
-  const [date, setDate] = React.useState(toDateInput(new Date()));
-  const [orderId, setOrderId] = React.useState(NONE);
-  const [vehicleId, setVehicleId] = React.useState(NONE);
-  const [driverId, setDriverId] = React.useState(NONE);
-  const [notes, setNotes] = React.useState("");
+export function ExpenseFormDialog({
+  expense,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+  hideTrigger,
+}: {
+  expense?: Expense;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
+} = {}) {
+  const { orders, vehicles, drivers, addExpense, updateExpense } = useAppData();
+  const isEdit = !!expense;
+  const isControlled = controlledOpen !== undefined;
+  const [internalOpen, setInternalOpen] = React.useState(false);
+  const open = isControlled ? controlledOpen : internalOpen;
+  const setOpen = isControlled ? (controlledOnOpenChange ?? (() => {})) : setInternalOpen;
+
+  const [category, setCategory] = React.useState<ExpenseCategory>(expense?.category ?? "fuel");
+  const [amount, setAmount] = React.useState(expense ? String(expense.amount) : "");
+  const [currency, setCurrency] = React.useState<Currency>(expense?.currency ?? "USD");
+  const [date, setDate] = React.useState(() =>
+    expense ? toDateInput(new Date(expense.date)) : toDateInput(new Date()),
+  );
+  const [orderId, setOrderId] = React.useState(expense?.orderId ?? NONE);
+  const [vehicleId, setVehicleId] = React.useState(expense?.vehicleId ?? NONE);
+  const [driverId, setDriverId] = React.useState(expense?.driverId ?? NONE);
+  const [payee, setPayee] = React.useState(expense?.payee ?? "");
+  const [receiptRef, setReceiptRef] = React.useState(expense?.receiptRef ?? "");
+  const [notes, setNotes] = React.useState(expense?.notes ?? "");
 
   const canSubmit = Number(amount) > 0 && date;
-
-  function reset() {
-    setCategory("fuel");
-    setAmount("");
-    setDate(toDateInput(new Date()));
-    setOrderId(NONE);
-    setVehicleId(NONE);
-    setDriverId(NONE);
-    setNotes("");
-  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -62,14 +73,20 @@ export function AddExpenseDialog() {
     const input: NewExpenseInput = {
       category,
       amount: Number(amount),
+      currency,
       date: new Date(date).toISOString(),
       orderId: orderId === NONE ? undefined : orderId,
       vehicleId: vehicleId === NONE ? undefined : vehicleId,
       driverId: driverId === NONE ? undefined : driverId,
+      payee: payee || undefined,
+      receiptRef: receiptRef || undefined,
       notes: notes || undefined,
     };
-    addExpense(input);
-    reset();
+    if (isEdit) {
+      updateExpense(expense.id, input);
+    } else {
+      addExpense(input);
+    }
     setOpen(false);
   }
 
@@ -79,17 +96,20 @@ export function AddExpenseDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button className="gap-2">
-          <Plus className="size-4" />
-          Add Expense
-        </Button>
-      </DialogTrigger>
+      {!hideTrigger && !isEdit && (
+        <DialogTrigger asChild>
+          <Button className="gap-2">
+            <Plus className="size-4" />
+            Add Expense
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Add Expense</DialogTitle>
+          <DialogTitle>{isEdit ? "Edit Expense" : "Add Expense"}</DialogTitle>
           <DialogDescription>
-            Optionally link it to an order, vehicle or driver to track real profit.
+            Optionally link it to an order, vehicle or driver to track real profit. New expenses
+            need approval before they count toward profitability.
           </DialogDescription>
         </DialogHeader>
 
@@ -112,7 +132,7 @@ export function AddExpenseDialog() {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="amount">Amount (USD)</Label>
+              <Label htmlFor="amount">Amount</Label>
               <Input
                 id="amount"
                 type="number"
@@ -123,13 +143,39 @@ export function AddExpenseDialog() {
               />
             </div>
 
-            <div className="col-span-2 space-y-1.5">
+            <div className="space-y-1.5">
+              <Label>Currency</Label>
+              <Select value={currency} onValueChange={(v) => setCurrency(v as Currency)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {currencyOrder.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
               <Label htmlFor="date">Date</Label>
               <Input
                 id="date"
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
+              />
+            </div>
+
+            <div className="col-span-2 space-y-1.5">
+              <Label htmlFor="payee">Vendor / Payee (optional)</Label>
+              <Input
+                id="payee"
+                value={payee}
+                onChange={(e) => setPayee(e.target.value)}
+                placeholder="e.g. Uzbekneftegaz AZS-14"
               />
             </div>
 
@@ -185,6 +231,16 @@ export function AddExpenseDialog() {
             </div>
 
             <div className="col-span-2 space-y-1.5">
+              <Label htmlFor="receiptRef">Receipt / document (optional)</Label>
+              <Input
+                id="receiptRef"
+                value={receiptRef}
+                onChange={(e) => setReceiptRef(e.target.value)}
+                placeholder="Receipt number or filename (upload not implemented yet)"
+              />
+            </div>
+
+            <div className="col-span-2 space-y-1.5">
               <Label htmlFor="notes">Notes (optional)</Label>
               <Textarea
                 id="notes"
@@ -200,7 +256,7 @@ export function AddExpenseDialog() {
               Cancel
             </Button>
             <Button type="submit" disabled={!canSubmit}>
-              Add Expense
+              {isEdit ? "Save Changes" : "Add Expense"}
             </Button>
           </DialogFooter>
         </form>

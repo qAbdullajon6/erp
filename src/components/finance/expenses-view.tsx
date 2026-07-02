@@ -1,19 +1,13 @@
-import { AddExpenseDialog } from "@/components/finance/add-expense-dialog";
-import { ExpenseTable } from "@/components/finance/expense-table";
+import { ExpenseList } from "@/components/finance/expense-list";
 import { ExpensesSummary } from "@/components/finance/expenses-summary";
 
 export function ExpensesView() {
   return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <AddExpenseDialog />
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div className="lg:col-span-2">
+        <ExpenseList />
       </div>
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <ExpenseTable />
-        </div>
-        <ExpensesSummary />
-      </div>
+      <ExpensesSummary />
     </div>
   );
 }

@@ -11,12 +11,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatDate, isMaintenanceDueSoon } from "@/lib/mock-data";
+import { formatCurrency, formatDate, getVehicleExpenseTotal, isMaintenanceDueSoon } from "@/lib/mock-data";
 import { vehicleStatusMeta } from "@/lib/status-meta";
 import { useAppData } from "@/lib/store";
 
 export function VehicleTable() {
-  const { vehicles, drivers, orders } = useAppData();
+  const { vehicles, drivers, orders, expenses } = useAppData();
 
   return (
     <Card>
@@ -30,6 +30,7 @@ export function VehicleTable() {
               <TableHead>Status</TableHead>
               <TableHead>Driver</TableHead>
               <TableHead>Current order</TableHead>
+              <TableHead className="text-right">Total expenses</TableHead>
               <TableHead>Next maintenance</TableHead>
             </TableRow>
           </TableHeader>
@@ -61,6 +62,9 @@ export function VehicleTable() {
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {currentOrder?.id ?? "—"}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {formatCurrency(getVehicleExpenseTotal(v.id, expenses))}
                   </TableCell>
                   <TableCell>
                     <p

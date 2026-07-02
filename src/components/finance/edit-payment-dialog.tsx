@@ -20,35 +20,43 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { formatCurrency, getInvoiceRemaining } from "@/lib/mock-data";
+import { formatMoney } from "@/lib/currency";
+import { getInvoicePaidAmount } from "@/lib/mock-data";
 import { paymentMethodMeta, paymentMethodOrder } from "@/lib/status-meta";
-import { useAppData } from "@/lib/store";
-import type { Invoice, PaymentMethod } from "@/lib/types";
+import { useAppData, type PaymentInput } from "@/lib/store";
+import type { Invoice, Payment, PaymentMethod } from "@/lib/types";
 
-export function RecordPaymentDialog({
+export function EditPaymentDialog({
   invoice,
+  payment,
   onOpenChange,
 }: {
   invoice: Invoice;
+  payment: Payment;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { recordPayment } = useAppData();
-  const remaining = getInvoiceRemaining(invoice);
-  const [amount, setAmount] = React.useState(String(remaining));
-  const [method, setMethod] = React.useState<PaymentMethod>("bank_transfer");
-  const [referenceNumber, setReferenceNumber] = React.useState("");
-  const [notes, setNotes] = React.useState("");
+  const { updatePayment } = useAppData();
+  const [amount, setAmount] = React.useState(String(payment.amount));
+  const [method, setMethod] = React.useState<PaymentMethod>(payment.method);
+  const [referenceNumber, setReferenceNumber] = React.useState(payment.referenceNumber ?? "");
+  const [notes, setNotes] = React.useState(payment.notes ?? "");
 
+  const otherPaymentsTotal = getInvoicePaidAmount(invoice) - payment.amount;
+  const maxAllowed = invoice.amount - otherPaymentsTotal;
   const parsedAmount = Number(amount);
-  const canSubmit = parsedAmount > 0 && parsedAmount <= remaining;
+  const canSubmit = parsedAmount > 0 && parsedAmount <= maxAllowed;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
-    recordPayment(invoice.id, parsedAmount, method, {
+    const input: PaymentInput = {
+      amount: parsedAmount,
+      currency: payment.currency,
+      method,
       referenceNumber: referenceNumber || undefined,
       notes: notes || undefined,
-    });
+    };
+    updatePayment(invoice.id, payment.id, input);
     onOpenChange(false);
   }
 
@@ -56,27 +64,28 @@ export function RecordPaymentDialog({
     <Dialog open onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Record Payment</DialogTitle>
+          <DialogTitle>Edit Payment</DialogTitle>
           <DialogDescription>
-            {invoice.id} · {formatCurrency(remaining)} remaining
+            {invoice.id} · max {formatMoney(maxAllowed, payment.currency)} for this payment
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="amount">Amount (USD)</Label>
+            <Label htmlFor="edit-amount">Amount</Label>
             <Input
-              id="amount"
+              id="edit-amount"
               type="number"
               min="0"
-              max={remaining}
+              max={maxAllowed}
               step="0.01"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
             />
-            {parsedAmount > remaining && (
+            {parsedAmount > maxAllowed && (
               <p className="text-xs text-destructive">
-                Cannot exceed remaining balance of {formatCurrency(remaining)}.
+                Cannot exceed {formatMoney(maxAllowed, payment.currency)} (invoice total minus
+                other payments).
               </p>
             )}
           </div>
@@ -103,7 +112,6 @@ export function RecordPaymentDialog({
               id="reference"
               value={referenceNumber}
               onChange={(e) => setReferenceNumber(e.target.value)}
-              placeholder="Bank transaction ID, receipt no..."
             />
           </div>
 
@@ -122,7 +130,7 @@ export function RecordPaymentDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={!canSubmit}>
-              Record Payment
+              Save Changes
             </Button>
           </DialogFooter>
         </form>
