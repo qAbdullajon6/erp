@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Package,
+  Radar,
   Truck,
   Users,
   Wallet,
@@ -13,10 +14,12 @@ import {
   Boxes,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { roleAllowedPaths, useRole } from "@/lib/role";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/orders", label: "Orders", icon: Package },
+  { href: "/dispatch", label: "Dispatch Board", icon: Radar },
   { href: "/drivers", label: "Drivers & Vehicles", icon: Truck },
   { href: "/customers", label: "Customers / CRM", icon: Users },
   { href: "/finance", label: "Finance", icon: Wallet },
@@ -26,6 +29,9 @@ const navItems = [
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const { role } = useRole();
+  const allowed = roleAllowedPaths[role];
+  const visibleNavItems = navItems.filter((item) => allowed.includes(item.href));
 
   return (
     <aside className="hidden md:flex w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
@@ -40,7 +46,7 @@ export function AppSidebar() {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const active = pathname === item.href;
           const Icon = item.icon;
           return (

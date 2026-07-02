@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { Bell, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -14,10 +14,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { NotificationsPanel } from "@/components/layout/notifications-panel";
+import { RoleSwitcher } from "@/components/layout/role-switcher";
 
 const titles: Record<string, string> = {
   "/": "Dashboard",
   "/orders": "Orders",
+  "/dispatch": "Dispatch Board",
   "/drivers": "Drivers & Vehicles",
   "/customers": "Customers / CRM",
   "/finance": "Finance",
@@ -42,10 +45,8 @@ export function AppTopbar() {
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        <Button variant="ghost" size="icon" className="relative size-9">
-          <Bell className="size-4" />
-          <span className="absolute right-2 top-2 size-1.5 rounded-full bg-destructive" />
-        </Button>
+        <RoleSwitcher />
+        <NotificationsPanel />
         <ThemeToggle />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

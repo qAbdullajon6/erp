@@ -1,3 +1,5 @@
+"use client";
+
 import { AlertTriangle, ArrowRight } from "lucide-react";
 import {
   Card,
@@ -6,11 +8,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { formatRelativeTime, getCustomer, getDriver, orders } from "@/lib/mock-data";
-
-const delayed = orders.filter((o) => o.status === "delayed");
+import { formatRelativeTime, getCustomer, isOrderDelayed } from "@/lib/mock-data";
+import { useAppData } from "@/lib/store";
 
 export function DelayedDeliveries() {
+  const { orders, drivers } = useAppData();
+  const delayed = orders.filter(isOrderDelayed);
+
   return (
     <Card className="h-full">
       <CardHeader>
@@ -28,7 +32,7 @@ export function DelayedDeliveries() {
         )}
         {delayed.map((order) => {
           const customer = getCustomer(order.customerId);
-          const driver = getDriver(order.driverId);
+          const driver = drivers.find((d) => d.id === order.driverId);
           return (
             <div
               key={order.id}
@@ -44,7 +48,7 @@ export function DelayedDeliveries() {
                 </p>
               </div>
               <span className="shrink-0 text-xs font-medium text-destructive">
-                ETA {formatRelativeTime(order.eta)}
+                Due {formatRelativeTime(order.deliveryDate)}
               </span>
             </div>
           );

@@ -8,33 +8,26 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { orders } from "@/lib/mock-data";
-import type { OrderStatus } from "@/lib/types";
-
-const statusConfig: Record<OrderStatus, { label: string; color: string }> = {
-  pending: { label: "Pending", color: "var(--chart-3)" },
-  assigned: { label: "Assigned", color: "var(--chart-5)" },
-  in_transit: { label: "In Transit", color: "var(--chart-1)" },
-  delivered: { label: "Delivered", color: "var(--chart-2)" },
-  delayed: { label: "Delayed", color: "var(--chart-4)" },
-  cancelled: { label: "Cancelled", color: "var(--muted-foreground)" },
-};
-
-const counts = orders.reduce<Record<string, number>>((acc, o) => {
-  acc[o.status] = (acc[o.status] ?? 0) + 1;
-  return acc;
-}, {});
-
-const data = (Object.keys(statusConfig) as OrderStatus[])
-  .filter((status) => counts[status] > 0)
-  .map((status) => ({
-    status,
-    label: statusConfig[status].label,
-    value: counts[status],
-    color: statusConfig[status].color,
-  }));
+import { orderStatusMeta, orderStatusOrder } from "@/lib/status-meta";
+import { useAppData } from "@/lib/store";
 
 export function DeliveryStatusChart() {
+  const { orders } = useAppData();
+
+  const counts = orders.reduce<Record<string, number>>((acc, o) => {
+    acc[o.status] = (acc[o.status] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  const data = orderStatusOrder
+    .filter((status) => counts[status] > 0)
+    .map((status) => ({
+      status,
+      label: orderStatusMeta[status].label,
+      value: counts[status],
+      color: orderStatusMeta[status].dotColor,
+    }));
+
   return (
     <Card className="h-full">
       <CardHeader>

@@ -1,12 +1,5 @@
-import { Wallet } from "lucide-react";
-import { ComingSoon } from "@/components/layout/coming-soon";
+import { FinanceView } from "@/components/finance/finance-view";
 
 export default function FinancePage() {
-  return (
-    <ComingSoon
-      icon={Wallet}
-      title="Finance module"
-      description="Invoices, payments and profit overview. Coming next."
-    />
-  );
+  return <FinanceView />;
 }

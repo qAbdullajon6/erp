@@ -1,21 +1,37 @@
 export type OrderStatus =
+  | "draft"
   | "pending"
   | "assigned"
+  | "picked_up"
   | "in_transit"
   | "delivered"
-  | "delayed"
   | "cancelled";
 
 export type DriverStatus = "available" | "on_delivery" | "off_duty";
 
-export type InvoiceStatus = "paid" | "pending" | "overdue";
+export type VehicleStatus = "available" | "on_delivery" | "maintenance" | "inactive";
+
+export type InvoiceStatus = "sent" | "partially_paid" | "paid" | "overdue";
+
+export type PaymentMethod = "bank_transfer" | "cash" | "card";
+
+export type ExpenseCategory =
+  | "fuel"
+  | "driver_advance"
+  | "toll"
+  | "repair"
+  | "loading"
+  | "other";
 
 export interface Vehicle {
   id: string;
   plate: string;
   model: string;
-  type: "Truck" | "Van" | "Refrigerated Truck";
+  type: "Truck" | "Van" | "Refrigerated Truck" | "Container Truck";
   capacityTons: number;
+  status: VehicleStatus;
+  lastMaintenanceAt: string;
+  nextMaintenanceAt: string;
 }
 
 export interface Driver {
@@ -28,6 +44,9 @@ export interface Driver {
   vehicleId: string;
   completedDeliveries: number;
   onTimeRate: number;
+  licenseNumber: string;
+  licenseExpiresAt: string;
+  notes?: string;
 }
 
 export interface Customer {
@@ -35,23 +54,45 @@ export interface Customer {
   name: string;
   industry: string;
   city: string;
-  totalOrders: number;
-  outstandingBalance: number;
-  lifetimeValue: number;
+  contactPerson: string;
+  phone: string;
+  email: string;
+  address: string;
+  usualRoutes: string[];
+  notes?: string;
+}
+
+export interface StatusHistoryEntry {
+  status: OrderStatus;
+  at: string;
 }
 
 export interface Order {
   id: string;
   customerId: string;
-  origin: string;
-  destination: string;
-  driverId: string | null;
-  status: OrderStatus;
-  amount: number;
-  createdAt: string;
-  eta: string;
+  contactPerson: string;
   cargo: string;
   weightTons: number;
+  packageCount: number;
+  origin: string;
+  destination: string;
+  pickupDate: string;
+  deliveryDate: string;
+  amount: number;
+  operator: string;
+  driverId: string | null;
+  vehicleId: string | null;
+  status: OrderStatus;
+  statusHistory: StatusHistoryEntry[];
+  notes?: string;
+  createdAt: string;
+}
+
+export interface Payment {
+  id: string;
+  amount: number;
+  method: PaymentMethod;
+  paidAt: string;
 }
 
 export interface Invoice {
@@ -59,9 +100,20 @@ export interface Invoice {
   customerId: string;
   orderId: string;
   amount: number;
-  status: InvoiceStatus;
   issuedAt: string;
   dueAt: string;
+  payments: Payment[];
+}
+
+export interface Expense {
+  id: string;
+  category: ExpenseCategory;
+  amount: number;
+  date: string;
+  orderId?: string;
+  vehicleId?: string;
+  driverId?: string;
+  notes?: string;
 }
 
 export interface RevenuePoint {

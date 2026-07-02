@@ -1,3 +1,5 @@
+"use client";
+
 import {
   Card,
   CardContent,
@@ -8,14 +10,9 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { drivers, getVehicle } from "@/lib/mock-data";
+import { driverStatusMeta } from "@/lib/status-meta";
+import { useAppData } from "@/lib/store";
 import type { DriverStatus } from "@/lib/types";
-
-const statusMeta: Record<DriverStatus, { label: string; badgeClass: string }> = {
-  available: { label: "Available", badgeClass: "bg-chart-2/10 text-chart-2 border-chart-2/20" },
-  on_delivery: { label: "On Delivery", badgeClass: "bg-primary/10 text-primary border-primary/20" },
-  off_duty: { label: "Off Duty", badgeClass: "bg-muted text-muted-foreground border-transparent" },
-};
 
 function initials(name: string) {
   return name
@@ -27,6 +24,7 @@ function initials(name: string) {
 }
 
 export function DriverFleetStatus() {
+  const { drivers, vehicles } = useAppData();
   const total = drivers.length;
   const byStatus = (status: DriverStatus) =>
     drivers.filter((d) => d.status === status).length;
@@ -50,7 +48,7 @@ export function DriverFleetStatus() {
           {summary.map((s) => (
             <div key={s.status} className="space-y-1">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">{statusMeta[s.status].label}</span>
+                <span className="text-muted-foreground">{driverStatusMeta[s.status].label}</span>
                 <span className="font-medium">{s.count}</span>
               </div>
               <Progress value={(s.count / total) * 100} className="h-1.5" />
@@ -61,7 +59,7 @@ export function DriverFleetStatus() {
         <div className="space-y-2 border-t border-border pt-3">
           <p className="text-xs font-medium text-muted-foreground">Currently on delivery</p>
           {onDeliveryDrivers.map((d) => {
-            const vehicle = getVehicle(d.vehicleId);
+            const vehicle = vehicles.find((v) => v.id === d.vehicleId);
             return (
               <div key={d.id} className="flex items-center gap-2">
                 <Avatar className="size-7">
@@ -73,8 +71,8 @@ export function DriverFleetStatus() {
                     {vehicle?.model} · {vehicle?.plate}
                   </p>
                 </div>
-                <Badge variant="outline" className={statusMeta[d.status].badgeClass}>
-                  {statusMeta[d.status].label}
+                <Badge variant="outline" className={driverStatusMeta[d.status].badgeClass}>
+                  {driverStatusMeta[d.status].label}
                 </Badge>
               </div>
             );

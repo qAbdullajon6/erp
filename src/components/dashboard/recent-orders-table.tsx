@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import {
   Card,
@@ -16,32 +18,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatCurrency, formatRelativeTime, getCustomer, getDriver, orders } from "@/lib/mock-data";
-import type { OrderStatus } from "@/lib/types";
-
-const statusBadge: Record<OrderStatus, string> = {
-  pending: "bg-chart-3/10 text-chart-3 border-chart-3/20",
-  assigned: "bg-chart-5/10 text-chart-5 border-chart-5/20",
-  in_transit: "bg-primary/10 text-primary border-primary/20",
-  delivered: "bg-chart-2/10 text-chart-2 border-chart-2/20",
-  delayed: "bg-destructive/10 text-destructive border-destructive/20",
-  cancelled: "bg-muted text-muted-foreground border-transparent",
-};
-
-const statusLabel: Record<OrderStatus, string> = {
-  pending: "Pending",
-  assigned: "Assigned",
-  in_transit: "In Transit",
-  delivered: "Delivered",
-  delayed: "Delayed",
-  cancelled: "Cancelled",
-};
-
-const recent = [...orders]
-  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-  .slice(0, 8);
+import { formatCurrency, formatRelativeTime, getCustomer, isOrderDelayed } from "@/lib/mock-data";
+import { delayedStatusMeta, orderStatusMeta } from "@/lib/status-meta";
+import { useAppData } from "@/lib/store";
 
 export function RecentOrdersTable() {
+  const { orders, drivers } = useAppData();
+
+  const recent = [...orders]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 8);
+
   return (
     <Card className="h-full">
       <CardHeader>
@@ -69,7 +56,9 @@ export function RecentOrdersTable() {
           <TableBody>
             {recent.map((order) => {
               const customer = getCustomer(order.customerId);
-              const driver = getDriver(order.driverId);
+              const driver = drivers.find((d) => d.id === order.driverId);
+              const delayed = isOrderDelayed(order);
+              const meta = orderStatusMeta[order.status];
               return (
                 <TableRow key={order.id}>
                   <TableCell className="font-medium">{order.id}</TableCell>
@@ -81,9 +70,16 @@ export function RecentOrdersTable() {
                     {driver?.name ?? "Unassigned"}
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline" className={statusBadge[order.status]}>
-                      {statusLabel[order.status]}
-                    </Badge>
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant="outline" className={meta.badgeClass}>
+                        {meta.label}
+                      </Badge>
+                      {delayed && (
+                        <Badge variant="outline" className={delayedStatusMeta.badgeClass}>
+                          {delayedStatusMeta.label}
+                        </Badge>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="text-right font-medium">
                     {formatCurrency(order.amount)}
