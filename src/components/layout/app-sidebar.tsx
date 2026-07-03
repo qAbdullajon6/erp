@@ -13,6 +13,7 @@ import {
   BarChart3,
   Bell,
   Boxes,
+  MapPinned,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { roleAllowedPaths, useRole } from "@/lib/role";
@@ -24,6 +25,7 @@ const navItems = [
   { href: "/drivers", label: "Drivers & Vehicles", icon: Truck },
   { href: "/customers", label: "Customers / CRM", icon: Users },
   { href: "/finance", label: "Finance", icon: Wallet },
+  { href: "/my-deliveries", label: "My Deliveries", icon: MapPinned },
   { href: "/ai-assistant", label: "AI Assistant", icon: Sparkles },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/notifications", label: "Notifications", icon: Bell },

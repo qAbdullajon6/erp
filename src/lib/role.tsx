@@ -2,19 +2,61 @@
 
 import * as React from "react";
 
-export type Role = "admin" | "dispatcher" | "accountant";
+export type Role = "admin" | "ops_manager" | "dispatcher" | "accountant" | "driver" | "sales";
 
-export const roleMeta: Record<Role, { label: string; description: string }> = {
-  admin: { label: "Admin", description: "Full access to every module" },
+export const roleMeta: Record<
+  Role,
+  { label: string; description: string; personName: string; initials: string }
+> = {
+  admin: {
+    label: "Admin / Owner",
+    description: "Full access to every module and setting",
+    personName: "Oyatillo Farhadov",
+    initials: "OF",
+  },
+  ops_manager: {
+    label: "Operations Manager",
+    description: "Oversees orders, dispatch, fleet, customers and reports",
+    personName: "Nodira Karimova",
+    initials: "NK",
+  },
   dispatcher: {
     label: "Dispatcher",
-    description: "Orders, Dispatch Board, Drivers & Vehicles",
+    description: "Assigns drivers and manages the Dispatch Board",
+    personName: "Jahongir Mirzayev",
+    initials: "JM",
   },
   accountant: {
     label: "Accountant",
-    description: "Finance, Reports, Customers",
+    description: "Manages invoices, payments and financial reporting",
+    personName: "Sabina Yusupova",
+    initials: "SY",
+  },
+  driver: {
+    label: "Driver",
+    description: "Views and updates assigned deliveries only",
+    personName: "Aziz Karimov",
+    initials: "AK",
+  },
+  sales: {
+    label: "Sales / CRM Manager",
+    description: "Manages customers and creates new orders",
+    personName: "Dilnoza Ergasheva",
+    initials: "DE",
   },
 };
+
+export const roleOrder: Role[] = [
+  "admin",
+  "ops_manager",
+  "dispatcher",
+  "accountant",
+  "driver",
+  "sales",
+];
+
+/** The single driver identity the demo signs in as when "Driver" role is selected. */
+export const DEMO_DRIVER_ID = "drv-1";
 
 export const roleAllowedPaths: Record<Role, string[]> = {
   admin: [
@@ -27,15 +69,44 @@ export const roleAllowedPaths: Record<Role, string[]> = {
     "/ai-assistant",
     "/reports",
     "/notifications",
+    "/my-deliveries",
+  ],
+  ops_manager: [
+    "/",
+    "/orders",
+    "/dispatch",
+    "/drivers",
+    "/customers",
+    "/reports",
+    "/notifications",
+    "/ai-assistant",
   ],
   dispatcher: ["/", "/orders", "/dispatch", "/drivers", "/notifications"],
-  accountant: ["/", "/finance", "/reports", "/customers", "/notifications"],
+  accountant: ["/", "/finance", "/customers", "/reports", "/notifications", "/ai-assistant"],
+  driver: ["/", "/my-deliveries", "/notifications"],
+  sales: ["/", "/customers", "/orders", "/notifications", "/ai-assistant"],
 };
 
-const STORAGE_KEY = "flowerp:role:v1";
+export const roleHomePath: Record<Role, string> = {
+  admin: "/",
+  ops_manager: "/",
+  dispatcher: "/",
+  accountant: "/",
+  driver: "/my-deliveries",
+  sales: "/",
+};
+
+const STORAGE_KEY = "flowerp:role:v2";
 
 function isRole(value: unknown): value is Role {
-  return value === "admin" || value === "dispatcher" || value === "accountant";
+  return (
+    value === "admin" ||
+    value === "ops_manager" ||
+    value === "dispatcher" ||
+    value === "accountant" ||
+    value === "driver" ||
+    value === "sales"
+  );
 }
 
 type Listener = () => void;

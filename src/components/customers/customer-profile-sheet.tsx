@@ -21,6 +21,8 @@ import { CustomerFormDialog } from "@/components/customers/customer-form-dialog"
 import { ArchiveCustomerDialog } from "@/components/customers/archive-customer-dialog";
 import { InvoiceFormDialog } from "@/components/finance/invoice-form-dialog";
 import { NewOrderDialog } from "@/components/orders/new-order-dialog";
+import { useRole } from "@/lib/role";
+import { hasCapability } from "@/lib/permissions";
 
 export function CustomerProfileSheet({
   customer,
@@ -29,6 +31,8 @@ export function CustomerProfileSheet({
   customer: Customer | null;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { role } = useRole();
+  const canManageCustomers = hasCapability(role, "manage_customers");
   const [tab, setTab] = React.useState("overview");
   const [showNewOrder, setShowNewOrder] = React.useState(false);
   const [showCreateInvoice, setShowCreateInvoice] = React.useState(false);
@@ -55,11 +59,13 @@ export function CustomerProfileSheet({
         </SheetHeader>
 
         <div className="px-4 pb-6">
-          <div className="mb-3 flex justify-end">
-            <Button variant="outline" size="sm" onClick={() => setShowArchive(true)}>
-              {customer.status === "archived" ? "Restore Customer" : "Archive Customer"}
-            </Button>
-          </div>
+          {canManageCustomers && (
+            <div className="mb-3 flex justify-end">
+              <Button variant="outline" size="sm" onClick={() => setShowArchive(true)}>
+                {customer.status === "archived" ? "Restore Customer" : "Archive Customer"}
+              </Button>
+            </div>
+          )}
 
           <Tabs value={tab} onValueChange={setTab}>
             <TabsList>

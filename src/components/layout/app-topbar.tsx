@@ -16,6 +16,7 @@ import {
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NotificationsPanel } from "@/components/layout/notifications-panel";
 import { RoleSwitcher } from "@/components/layout/role-switcher";
+import { useRole } from "@/lib/role";
 
 const titles: Record<string, string> = {
   "/": "Dashboard",
@@ -27,11 +28,13 @@ const titles: Record<string, string> = {
   "/ai-assistant": "AI Assistant",
   "/reports": "Reports",
   "/notifications": "Notifications",
+  "/my-deliveries": "My Deliveries",
 };
 
 export function AppTopbar() {
   const pathname = usePathname();
   const title = titles[pathname] ?? "FlowERP AI";
+  const { meta } = useRole();
 
   return (
     <header className="flex h-16 shrink-0 items-center gap-4 border-b border-border bg-background px-6">
@@ -54,16 +57,19 @@ export function AppTopbar() {
             <Button variant="ghost" className="gap-2 px-2">
               <Avatar className="size-7">
                 <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                  OF
+                  {meta.initials}
                 </AvatarFallback>
               </Avatar>
               <span className="hidden text-sm font-medium sm:inline">
-                Oyatillo F.
+                {meta.personName}
               </span>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuLabel>My Account</DropdownMenuLabel>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel className="flex flex-col gap-0.5">
+              <span>{meta.personName}</span>
+              <span className="text-xs font-normal text-muted-foreground">{meta.label} · Demo mode</span>
+            </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem>Profile</DropdownMenuItem>
             <DropdownMenuItem>Company Settings</DropdownMenuItem>

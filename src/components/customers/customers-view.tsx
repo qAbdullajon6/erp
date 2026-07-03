@@ -30,6 +30,8 @@ import {
 } from "@/lib/mock-data";
 import { customerStatusMeta, customerStatusOrder } from "@/lib/status-meta";
 import { useAppData } from "@/lib/store";
+import { useRole } from "@/lib/role";
+import { hasCapability } from "@/lib/permissions";
 import type { CustomerStatus } from "@/lib/types";
 import { CustomerSummaryCards } from "@/components/customers/customer-summary-cards";
 import { CustomerFormDialog } from "@/components/customers/customer-form-dialog";
@@ -48,6 +50,8 @@ const PAGE_SIZE = 8;
 
 export function CustomersView() {
   const { customers, orders, invoices } = useAppData();
+  const { role } = useRole();
+  const canManageCustomers = hasCapability(role, "manage_customers");
   const [search, setSearch] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("all");
   const [overdueOnly, setOverdueOnly] = React.useState(false);
@@ -169,12 +173,14 @@ export function CustomersView() {
           Has Overdue Balance
         </Button>
 
-        <div className="sm:ml-auto">
-          <Button className="gap-2" onClick={() => setShowCreate(true)}>
-            <Plus className="size-4" />
-            New Customer
-          </Button>
-        </div>
+        {canManageCustomers && (
+          <div className="sm:ml-auto">
+            <Button className="gap-2" onClick={() => setShowCreate(true)}>
+              <Plus className="size-4" />
+              New Customer
+            </Button>
+          </div>
+        )}
       </div>
 
       <Card>

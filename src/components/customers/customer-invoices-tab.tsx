@@ -21,11 +21,15 @@ import {
 } from "@/lib/mock-data";
 import { invoiceStatusMeta, paymentMethodMeta } from "@/lib/status-meta";
 import { useAppData } from "@/lib/store";
+import { useRole } from "@/lib/role";
+import { hasCapability } from "@/lib/permissions";
 import type { Invoice } from "@/lib/types";
 import { RecordPaymentDialog } from "@/components/finance/record-payment-dialog";
 
 export function CustomerInvoicesTab({ customerId }: { customerId: string }) {
   const { invoices } = useAppData();
+  const { role } = useRole();
+  const canRecordPayments = hasCapability(role, "record_payments");
   const [paying, setPaying] = React.useState<Invoice | null>(null);
 
   const customerInvoices = getCustomerInvoices(customerId, invoices).sort(
@@ -77,7 +81,7 @@ export function CustomerInvoicesTab({ customerId }: { customerId: string }) {
                 </TableCell>
                 <TableCell className="text-muted-foreground">{formatDate(inv.dueAt)}</TableCell>
                 <TableCell>
-                  {status !== "paid" && (
+                  {status !== "paid" && canRecordPayments && (
                     <Button size="sm" variant="outline" onClick={() => setPaying(inv)}>
                       Record Payment
                     </Button>

@@ -13,6 +13,8 @@ import {
 } from "@/lib/mock-data";
 import { paymentTermsMeta } from "@/lib/status-meta";
 import { useAppData } from "@/lib/store";
+import { useRole } from "@/lib/role";
+import { hasCapability } from "@/lib/permissions";
 import type { Customer } from "@/lib/types";
 
 export function CustomerOverviewTab({
@@ -29,6 +31,11 @@ export function CustomerOverviewTab({
   onGoToInvoices: () => void;
 }) {
   const { orders, invoices } = useAppData();
+  const { role } = useRole();
+  const canCreateOrder = hasCapability(role, "create_order");
+  const canManageFinanceConfig = hasCapability(role, "manage_finance_config");
+  const canRecordPayments = hasCapability(role, "record_payments");
+  const canManageCustomers = hasCapability(role, "manage_customers");
 
   const totalRevenue = getCustomerLifetimeValue(customer.id, orders);
   const outstanding = getCustomerOutstandingBalance(customer.id, invoices);
@@ -40,22 +47,30 @@ export function CustomerOverviewTab({
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" onClick={onCreateOrder} className="gap-1.5">
-          <PackagePlus className="size-3.5" />
-          Create Order
-        </Button>
-        <Button size="sm" variant="outline" onClick={onCreateInvoice} className="gap-1.5">
-          <FilePlus className="size-3.5" />
-          Create Invoice
-        </Button>
-        <Button size="sm" variant="outline" onClick={onGoToInvoices} className="gap-1.5">
-          <Wallet className="size-3.5" />
-          Record Payment
-        </Button>
-        <Button size="sm" variant="outline" onClick={onEdit} className="gap-1.5">
-          <Pencil className="size-3.5" />
-          Edit Customer
-        </Button>
+        {canCreateOrder && (
+          <Button size="sm" onClick={onCreateOrder} className="gap-1.5">
+            <PackagePlus className="size-3.5" />
+            Create Order
+          </Button>
+        )}
+        {canManageFinanceConfig && (
+          <Button size="sm" variant="outline" onClick={onCreateInvoice} className="gap-1.5">
+            <FilePlus className="size-3.5" />
+            Create Invoice
+          </Button>
+        )}
+        {canRecordPayments && (
+          <Button size="sm" variant="outline" onClick={onGoToInvoices} className="gap-1.5">
+            <Wallet className="size-3.5" />
+            Record Payment
+          </Button>
+        )}
+        {canManageCustomers && (
+          <Button size="sm" variant="outline" onClick={onEdit} className="gap-1.5">
+            <Pencil className="size-3.5" />
+            Edit Customer
+          </Button>
+        )}
       </div>
 
       <Separator />

@@ -22,6 +22,8 @@ import {
 } from "@/lib/mock-data";
 import { delayedStatusMeta, expenseCategoryMeta, nextStatusOptions, orderStatusMeta } from "@/lib/status-meta";
 import { useAppData } from "@/lib/store";
+import { useRole } from "@/lib/role";
+import { hasCapability } from "@/lib/permissions";
 import type { Order } from "@/lib/types";
 
 export function OrderDetailSheet({
@@ -32,6 +34,9 @@ export function OrderDetailSheet({
   onOpenChange: (open: boolean) => void;
 }) {
   const { drivers, vehicles, expenses, customers, invoices, updateOrderStatus } = useAppData();
+  const { role } = useRole();
+  const canViewFinancials = hasCapability(role, "view_order_financials");
+  const canEditStatus = hasCapability(role, "edit_order_status");
 
   if (!order) return null;
 
@@ -39,7 +44,7 @@ export function OrderDetailSheet({
   const driver = drivers.find((d) => d.id === order.driverId);
   const vehicle = vehicles.find((v) => v.id === order.vehicleId);
   const delayed = isOrderDelayed(order);
-  const nextOptions = nextStatusOptions(order.status);
+  const nextOptions = canEditStatus ? nextStatusOptions(order.status) : [];
   const orderExpenses = getOrderExpenses(order.id, expenses);
   const totalCost = orderExpenses.reduce((sum, e) => sum + e.amount, 0);
   const revenue = getOrderRevenue(order, invoices);
@@ -137,7 +142,7 @@ export function OrderDetailSheet({
             )}
           </dl>
 
-          {(orderExpenses.length > 0 || revenue !== order.amount) && (
+          {canViewFinancials && (orderExpenses.length > 0 || revenue !== order.amount) && (
             <>
               <Separator />
               <div>
