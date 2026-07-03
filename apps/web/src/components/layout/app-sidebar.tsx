@@ -16,6 +16,8 @@ import {
   Boxes,
   MapPinned,
   Menu,
+  Settings,
+  UserCog,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,6 +25,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { cn } from "@/lib/utils";
 import { roleAllowedPaths, useRole } from "@/lib/role";
 import { useDemoGuide } from "@/lib/demo-guide";
+import { getDataMode } from "@/lib/data-mode";
 
 interface NavItem {
   href: string;
@@ -41,6 +44,15 @@ const navItems: NavItem[] = [
   { href: "/ai-assistant", label: "AI Assistant", icon: Sparkles },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/notifications", label: "Notifications", icon: Bell },
+];
+
+/// Shown only when NEXT_PUBLIC_DATA_MODE=api, and deliberately NOT filtered
+/// by the demo role switcher's roleAllowedPaths (src/lib/role.tsx) — access
+/// to these pages is governed by the real API session's role instead (see
+/// components/layout/protected-api-route.tsx).
+const connectedNavItems: NavItem[] = [
+  { href: "/settings/organization", label: "Organization Settings", icon: Settings },
+  { href: "/settings/members", label: "Members", icon: UserCog },
 ];
 
 function SidebarBrand() {
@@ -63,7 +75,7 @@ function SidebarBrand() {
   );
 }
 
-function SidebarNavList({
+function NavLinks({
   items,
   pathname,
   onNavigate,
@@ -73,7 +85,7 @@ function SidebarNavList({
   onNavigate?: () => void;
 }) {
   return (
-    <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+    <>
       {items.map((item) => {
         const active = pathname === item.href;
         const Icon = item.icon;
@@ -94,6 +106,32 @@ function SidebarNavList({
           </Link>
         );
       })}
+    </>
+  );
+}
+
+function SidebarNavList({
+  items,
+  connectedItems,
+  pathname,
+  onNavigate,
+}: {
+  items: NavItem[];
+  connectedItems?: NavItem[];
+  pathname: string;
+  onNavigate?: () => void;
+}) {
+  return (
+    <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+      <NavLinks items={items} pathname={pathname} onNavigate={onNavigate} />
+      {connectedItems && connectedItems.length > 0 && (
+        <>
+          <p className="px-3 pt-3 pb-1 text-[11px] font-medium uppercase tracking-wide text-sidebar-foreground/40">
+            Connected Workspace
+          </p>
+          <NavLinks items={connectedItems} pathname={pathname} onNavigate={onNavigate} />
+        </>
+      )}
     </nav>
   );
 }
@@ -129,11 +167,16 @@ export function AppSidebar() {
   const { role } = useRole();
   const allowed = roleAllowedPaths[role];
   const visibleNavItems = navItems.filter((item) => allowed.includes(item.href));
+  const visibleConnectedItems = getDataMode() === "api" ? connectedNavItems : [];
 
   return (
     <aside className="hidden md:flex w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
       <SidebarBrand />
-      <SidebarNavList items={visibleNavItems} pathname={pathname} />
+      <SidebarNavList
+        items={visibleNavItems}
+        connectedItems={visibleConnectedItems}
+        pathname={pathname}
+      />
       <SidebarFooterNote />
     </aside>
   );
@@ -144,6 +187,7 @@ export function MobileNav() {
   const { role } = useRole();
   const allowed = roleAllowedPaths[role];
   const visibleNavItems = navItems.filter((item) => allowed.includes(item.href));
+  const visibleConnectedItems = getDataMode() === "api" ? connectedNavItems : [];
   const [navOpen, setNavOpen] = React.useState(false);
 
   return (
@@ -166,7 +210,12 @@ export function MobileNav() {
         </SheetHeader>
         <div className="flex h-full flex-col">
           <SidebarBrand />
-          <SidebarNavList items={visibleNavItems} pathname={pathname} onNavigate={() => setNavOpen(false)} />
+          <SidebarNavList
+            items={visibleNavItems}
+            connectedItems={visibleConnectedItems}
+            pathname={pathname}
+            onNavigate={() => setNavOpen(false)}
+          />
           <SidebarFooterNote onOpenDemoGuide={() => setNavOpen(false)} />
         </div>
       </SheetContent>

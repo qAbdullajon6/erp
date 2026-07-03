@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { AlertTriangle, Loader2, LogOut, RefreshCw, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,97 +26,8 @@ function ConnectedModeBadge() {
   );
 }
 
-/// A deliberately minimal, clearly-labeled local developer sign-in — NOT the
-/// product's real login experience (no register/forgot-password/etc. here).
-/// Only ever rendered when NEXT_PUBLIC_DATA_MODE=api, which the production
-/// Vercel deployment never sets.
-function SignInCard() {
-  const { login, status, errorMessage } = useApiSession();
-  const [email, setEmail] = React.useState("");
-  const [password, setPassword] = React.useState("");
-  const [organizationSlug, setOrganizationSlug] = React.useState("");
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    try {
-      await login(email, password, organizationSlug.trim() || undefined);
-    } catch {
-      // surfaced via useApiSession().errorMessage below
-    }
-  }
-
-  return (
-    <Card className="mx-auto max-w-md">
-      <CardContent className="space-y-4 py-6">
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2">
-            <h2 className="text-base font-semibold">Local Developer Sign-In</h2>
-            <ConnectedModeBadge />
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Temporary local-development sign-in for testing the Customers API directly against
-            apps/api — not the product&apos;s real login experience. Visible only because{" "}
-            <code className="rounded bg-muted px-1">NEXT_PUBLIC_DATA_MODE=api</code> is set; must
-            never be enabled in a production deployment.
-          </p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <div>
-            <label className="mb-1 block text-xs text-muted-foreground" htmlFor="connected-email">
-              Email
-            </label>
-            <Input
-              id="connected-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-muted-foreground" htmlFor="connected-password">
-              Password
-            </label>
-            <Input
-              id="connected-password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-muted-foreground" htmlFor="connected-org-slug">
-              Organization slug (optional)
-            </label>
-            <Input
-              id="connected-org-slug"
-              value={organizationSlug}
-              onChange={(e) => setOrganizationSlug(e.target.value)}
-              placeholder="only needed if this account has multiple organizations"
-            />
-          </div>
-
-          {errorMessage && (
-            <p className="flex items-center gap-1.5 text-sm text-destructive">
-              <AlertTriangle className="size-3.5 shrink-0" />
-              {errorMessage}
-            </p>
-          )}
-
-          <Button type="submit" disabled={status === "loading"} className="w-full gap-1.5">
-            {status === "loading" && <Loader2 className="size-4 animate-spin" />}
-            {status === "loading" ? "Signing in…" : "Sign in"}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
-  );
-}
-
 function NewCustomerForm({ onCreated }: { onCreated: () => void }) {
-  const { session } = useApiSession();
+  const { callApi } = useApiSession();
   const [companyName, setCompanyName] = React.useState("");
   const [contactName, setContactName] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
@@ -123,11 +35,10 @@ function NewCustomerForm({ onCreated }: { onCreated: () => void }) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!session) return;
     setSubmitting(true);
     setError(null);
     try {
-      await apiClient.createCustomer(session.accessToken, { companyName, contactName });
+      await callApi((token) => apiClient.createCustomer(token, { companyName, contactName }));
       setCompanyName("");
       setContactName("");
       onCreated();
@@ -176,7 +87,8 @@ function NewCustomerForm({ onCreated }: { onCreated: () => void }) {
 type LoadState = "loading" | "loaded" | "error" | "session-expired";
 
 export function CustomersConnectedView() {
-  const { session, logout } = useApiSession();
+  const router = useRouter();
+  const { session, logout, callApi } = useApiSession();
   const [customers, setCustomers] = React.useState<ApiCustomer[]>([]);
   const [loadState, setLoadState] = React.useState<LoadState>("loading");
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
@@ -185,6 +97,9 @@ export function CustomersConnectedView() {
   const [reloadToken, setReloadToken] = React.useState(0);
 
   React.useEffect(() => {
+    // ProtectedApiRoute (see (app)/customers/page.tsx) guarantees a session
+    // exists before this component ever mounts — this is just a defensive
+    // guard against a race on the very first render.
     if (!session) return;
     let cancelled = false;
 
@@ -199,39 +114,30 @@ export function CustomersConnectedView() {
       setErrorMessage(null);
     });
 
-    apiClient
-      .listCustomers(session.accessToken, { search: search.trim() || undefined, limit: 50 })
-      .then(
-        (result) => {
-          if (cancelled) return;
-          setCustomers(result.items);
-          setLoadState("loaded");
-        },
-        (error: unknown) => {
-          if (cancelled) return;
-          const message = error instanceof Error ? error.message : "Failed to load customers";
-          setErrorMessage(message);
-          setLoadState(/invalid|expired|unauthorized/i.test(message) ? "session-expired" : "error");
-        },
-      );
+    callApi((token) => apiClient.listCustomers(token, { search: search.trim() || undefined, limit: 50 })).then(
+      (result) => {
+        if (cancelled) return;
+        setCustomers(result.items);
+        setLoadState("loaded");
+      },
+      (error: unknown) => {
+        if (cancelled) return;
+        const message = error instanceof Error ? error.message : "Failed to load customers";
+        setErrorMessage(message);
+        setLoadState(/invalid|expired|unauthorized|not signed in/i.test(message) ? "session-expired" : "error");
+      },
+    );
 
     return () => {
       cancelled = true;
     };
-  }, [session, search, reloadToken]);
+  }, [session, search, reloadToken, callApi]);
 
   const load = React.useCallback(() => setReloadToken((n) => n + 1), []);
 
-  if (!session) {
-    return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <h1 className="text-lg font-semibold">Customers</h1>
-          <ConnectedModeBadge />
-        </div>
-        <SignInCard />
-      </div>
-    );
+  function handleSignInAgain() {
+    logout();
+    router.push("/auth/login?redirect=%2Fcustomers");
   }
 
   if (loadState === "session-expired") {
@@ -248,7 +154,7 @@ export function CustomersConnectedView() {
             <p className="text-sm text-muted-foreground">
               Sign in again to continue viewing customers in Connected Mode.
             </p>
-            <Button onClick={logout} className="gap-1.5">
+            <Button onClick={handleSignInAgain} className="gap-1.5">
               <LogOut className="size-3.5" />
               Sign in again
             </Button>
@@ -265,15 +171,13 @@ export function CustomersConnectedView() {
           <h1 className="text-lg font-semibold">Customers</h1>
           <ConnectedModeBadge />
         </div>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span>
-            Signed in as {session.user.email} · {session.organization.name}
-          </span>
-          <Button variant="ghost" size="sm" onClick={logout} className="gap-1.5">
-            <LogOut className="size-3.5" />
-            Sign out
-          </Button>
-        </div>
+        {session && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <span>
+              Signed in as {session.user.email} · {session.organization.name}
+            </span>
+          </div>
+        )}
       </div>
 
       <Card>

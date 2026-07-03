@@ -28,6 +28,7 @@ erp/
     BACKEND_FOUNDATION.md
     AUTH_ONBOARDING.md
     CUSTOMERS_API.md
+    CONNECTED_MODE_AUTH_UI.md
   docker-compose.yml   # local PostgreSQL only, for apps/api development
   package.json         # workspace root — forwards scripts to apps/web and apps/api
   README.md
@@ -117,10 +118,13 @@ npm run dev:api                # http://localhost:4000
 Real email/password auth (Argon2 hashing, JWT access tokens, rotating refresh tokens) and
 organization/membership management now run on top of that foundation — registration
 creates a User, an Organization, and an ADMIN Membership together; role-based guards
-enforce admin-only actions, cross-organization isolation, and last-admin protection. None
-of this is wired up to the frontend yet — the live demo is untouched. Endpoint contracts,
-the token/refresh strategy, and security notes are in
-[`docs/AUTH_ONBOARDING.md`](docs/AUTH_ONBOARDING.md).
+enforce admin-only actions, cross-organization isolation, and last-admin protection.
+Endpoint contracts, the token/refresh strategy, and security notes are in
+[`docs/AUTH_ONBOARDING.md`](docs/AUTH_ONBOARDING.md). A real `/auth/login` +
+`/auth/register` UI, and `/settings/organization` + `/settings/members` admin pages, are
+described in [`docs/CONNECTED_MODE_AUTH_UI.md`](docs/CONNECTED_MODE_AUTH_UI.md) — like the
+API itself, none of this is reachable from the live demo unless Connected Mode is enabled
+locally (see below).
 
 ### Customers API + Connected Mode
 
@@ -135,9 +139,11 @@ NEXT_PUBLIC_DATA_MODE=api    # Customers page only: uses apps/api instead
 ```
 
 This defaults to `demo` everywhere (including the production Vercel deployment, which never
-sets this variable) and, even when enabled, only ever affects the Customers page — every
-other module and the demo role switcher are unchanged. Full API contracts, data-mode
-behavior, and local testing steps are in
+sets this variable) and, even when enabled, only ever affects Customers and the new
+`/settings/*` admin pages — every other module and the demo role switcher are unchanged.
+Visiting a Connected Mode page while signed out redirects to a real `/auth/login` page (see
+[`docs/CONNECTED_MODE_AUTH_UI.md`](docs/CONNECTED_MODE_AUTH_UI.md)) and back afterward. Full
+API contracts, data-mode behavior, and local testing steps are in
 [`docs/CUSTOMERS_API.md`](docs/CUSTOMERS_API.md).
 
 ### What this demo is not
@@ -145,8 +151,12 @@ behavior, and local testing steps are in
 FlowERP AI's live demo does not use a real external AI API, real GPS tracking, real
 authentication, or production-grade security — these would be part of a production
 deployment, not this portfolio demo. `apps/api` now has real auth, organization management,
-and a Customers API, but the live demo is not connected to any of it by default, and most
-ERP business data (Orders, Dispatch, Finance, ...) has not been migrated.
+a Customers API, and a real sign-in/registration/admin-settings UI, but the live demo is not
+connected to any of it by default, and most ERP business data (Orders, Dispatch, Finance,
+...) has not been migrated. The Connected Mode session storage is also a documented
+local-development tradeoff (in-memory access token, optionally-persisted refresh token) —
+see [`docs/CONNECTED_MODE_AUTH_UI.md`](docs/CONNECTED_MODE_AUTH_UI.md) for why it isn't
+production-grade as-is.
 
 ---
 

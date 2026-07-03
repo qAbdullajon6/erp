@@ -7,6 +7,10 @@ unaffected**: Connected Mode is off by default everywhere, and even when enabled
 ever applies to the Customers page — every other module keeps using the localStorage
 demo, and the demo role switcher is untouched.
 
+See [CONNECTED_MODE_AUTH_UI.md](CONNECTED_MODE_AUTH_UI.md) for the real `/auth/*` sign-in
+UI, session/token strategy, and `/settings/organization` + `/settings/members` admin pages
+that now sit in front of this module.
+
 ## API contracts
 
 All responses use the standard envelope: `{ "data": ... }` on success,
@@ -113,12 +117,12 @@ developer explicitly setting this environment variable.
 
 ### What Connected Mode looks like
 
-- **Not signed in**: a small, clearly-labeled "Local Developer Sign-In" card (email +
-  password + optional organization slug) — explicitly NOT the product's real login UI, just
-  enough to exercise the real `POST /auth/login` endpoint for local testing. Calls the real
-  API; on success, stores the session in `localStorage` under `flowerp:api-session:v1` — a
-  completely separate key from the demo's `flowerp:data:v5` and `flowerp:role:v2`, so nothing
-  ever gets mixed between demo and Connected Mode data.
+- **Not signed in**: redirected to the real `/auth/login` page (see
+  [CONNECTED_MODE_AUTH_UI.md](CONNECTED_MODE_AUTH_UI.md)) and brought back to `/customers`
+  afterward. There is no embedded sign-in form on this page anymore — that lived here only
+  before the real auth UI existed; see CONNECTED_MODE_AUTH_UI.md for the current session
+  storage design (`flowerp:api-session:v1`, isolated from the demo's `flowerp:data:v5` and
+  `flowerp:role:v2` keys).
 - **Signed in, loading**: a loading indicator while the customer list is fetched.
 - **Signed in, loaded, empty**: "No customers yet in this organization. Create one above."
 - **Signed in, loaded, with data**: a simple table (code, company, contact, status, credit
@@ -138,15 +142,11 @@ cp apps/api/.env.example apps/api/.env   # set a real JWT_ACCESS_SECRET
 npm run prisma:migrate
 npm run dev:api
 
-# 2. In a second terminal, register a developer account to sign in with
-curl -X POST http://localhost:4000/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"email":"dev@example.com","password":"a-long-test-password","firstName":"Dev","lastName":"User","organizationName":"My Test Org"}'
-
-# 3. Start the frontend in Connected Mode
+# 2. Start the frontend in Connected Mode
 cd apps/web
 NEXT_PUBLIC_DATA_MODE=api npm run dev
-# open http://localhost:3000/customers and sign in with the account from step 2
+# open http://localhost:3000/customers — you'll be redirected to /auth/register
+# or /auth/login. See CONNECTED_MODE_AUTH_UI.md for the full auth UI.
 ```
 
 ### Switching back to demo mode
@@ -163,14 +163,9 @@ to be manually cleared.
   Finance, Reports, Notifications, AI Assistant) still runs exclusively on the localStorage
   demo, even while Customers is connected — this is an intentional transitional state, not an
   oversight.
-- No silent refresh: if the access token expires mid-session, the user sees the
-  "session expired" state and must sign in again — there's no background refresh-token
-  rotation wired into the frontend yet (the API itself fully supports it, see
-  `POST /auth/refresh` in AUTH_ONBOARDING.md).
-- The "Local Developer Sign-In" is exactly that — a developer tool for exercising this API
-  locally, not a production login flow. It must never be reachable in a real deployment,
-  which is guaranteed by `NEXT_PUBLIC_DATA_MODE` defaulting to `demo` and never being set on
-  Vercel.
+- Silent refresh-on-load and a one-retry-after-401 wrapper are now implemented (see
+  CONNECTED_MODE_AUTH_UI.md) — a session only shows "expired" after a refresh attempt has
+  actually failed, not on every access-token expiry.
 - The Connected Mode Customers view is intentionally minimal (list, search, create) — it does
   not yet have parity with the demo's full CRM feature set (credit limit editing, notes,
   activity timeline, archive/restore UI, etc.). Those exist on the API already (see contracts

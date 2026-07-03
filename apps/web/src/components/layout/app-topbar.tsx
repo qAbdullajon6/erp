@@ -18,6 +18,7 @@ import { NotificationsPanel } from "@/components/layout/notifications-panel";
 import { RoleSwitcher } from "@/components/layout/role-switcher";
 import { DemoGuideDialog } from "@/components/layout/demo-guide-dialog";
 import { MobileNav } from "@/components/layout/app-sidebar";
+import { ConnectedWorkspaceControl } from "@/components/layout/connected-workspace-control";
 import { useRole } from "@/lib/role";
 
 const titles: Record<string, string> = {
@@ -31,6 +32,8 @@ const titles: Record<string, string> = {
   "/reports": "Reports",
   "/notifications": "Notifications",
   "/my-deliveries": "My Deliveries",
+  "/settings/organization": "Organization Settings",
+  "/settings/members": "Members",
 };
 
 export function AppTopbar() {
@@ -52,6 +55,7 @@ export function AppTopbar() {
       </div>
 
       <div className="ml-auto flex items-center gap-2">
+        <ConnectedWorkspaceControl />
         <DemoGuideDialog />
         <RoleSwitcher />
         <NotificationsPanel />

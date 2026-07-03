@@ -23,9 +23,17 @@ export interface ApiOrganization {
   timezone: string;
 }
 
+export type ApiMembershipRole =
+  | "ADMIN"
+  | "OPERATIONS_MANAGER"
+  | "DISPATCHER"
+  | "ACCOUNTANT"
+  | "DRIVER"
+  | "SALES_CRM_MANAGER";
+
 export interface ApiMembership {
   id: string;
-  role: string;
+  role: ApiMembershipRole;
 }
 
 export interface AuthResult {
@@ -117,6 +125,41 @@ export type UpdateCustomerInput = Partial<CreateCustomerInput> & {
   status?: "ACTIVE" | "AT_RISK" | "INACTIVE";
 };
 
+/// Mirrors GET /organizations/current — a superset of the lighter
+/// ApiOrganization embedded in AuthResult/MeResult (adds `status`).
+export interface ApiOrganizationDetail {
+  id: string;
+  name: string;
+  slug: string;
+  status: "ACTIVE" | "SUSPENDED" | "ARCHIVED";
+  defaultCurrency: string;
+  timezone: string;
+}
+
+export interface UpdateOrganizationInput {
+  name?: string;
+  defaultCurrency?: string;
+  timezone?: string;
+}
+
+export interface ApiMember {
+  id: string;
+  role: ApiMembershipRole;
+  status: "ACTIVE" | "INVITED" | "REMOVED";
+  createdAt: string;
+  user: { id: string; email: string; firstName: string; lastName: string };
+}
+
+export interface AddMemberInput {
+  email: string;
+  role: ApiMembershipRole;
+}
+
+export interface UpdateMemberInput {
+  role?: ApiMembershipRole;
+  status?: "ACTIVE" | "INVITED" | "REMOVED";
+}
+
 export function isApiEnabled(): boolean {
   // Either flag is sufficient, so a developer enabling Connected Mode for a
   // module (NEXT_PUBLIC_DATA_MODE=api) doesn't also have to separately flip
@@ -147,22 +190,42 @@ interface ApiErrorEnvelope {
   error: { statusCode: number; message: string; details?: unknown };
 }
 
+/// Carries the HTTP status code so callers (see api-session.ts's callApi)
+/// can tell a 401 (access token expired — worth a silent refresh-and-retry)
+/// apart from any other failure (validation error, 403, network problem).
+export class ApiRequestError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!isApiEnabled()) {
     throw new ApiDisabledError();
   }
 
-  const response = await fetch(`${getApiBaseUrl()}${path}`, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${getApiBaseUrl()}${path}`, {
+      ...init,
+      headers: { "Content-Type": "application/json", ...init?.headers },
+    });
+  } catch {
+    throw new Error(
+      `Could not reach the API at ${getApiBaseUrl()}. Is apps/api running?`,
+    );
+  }
 
   const body = (await response.json()) as ApiSuccessEnvelope<T> | ApiErrorEnvelope;
 
   if (!response.ok || "error" in body) {
     const message =
       "error" in body ? body.error.message : `Request failed with status ${response.status}`;
-    throw new Error(message);
+    throw new ApiRequestError(response.status, message);
   }
 
   return body.data;
@@ -172,8 +235,9 @@ function authHeader(accessToken: string): HeadersInit {
   return { Authorization: `Bearer ${accessToken}` };
 }
 
-/// Inactive by default — see isApiEnabled(). Not imported by any page or
-/// component in this phase.
+/// Inactive by default — see isApiEnabled(). Used by the Connected Mode
+/// Customers view, the /auth/* pages, and /settings/* pages, all gated so
+/// none of them run in demo mode.
 export const apiClient = {
   register: (input: RegisterInput) =>
     request<AuthResult>("/auth/register", { method: "POST", body: JSON.stringify(input) }),
@@ -251,6 +315,39 @@ export const apiClient = {
   restoreCustomer: (accessToken: string, id: string) =>
     request<ApiCustomer>(`/customers/${id}/restore`, {
       method: "POST",
+      headers: authHeader(accessToken),
+    }),
+
+  getCurrentOrganization: (accessToken: string) =>
+    request<ApiOrganizationDetail>("/organizations/current", { headers: authHeader(accessToken) }),
+
+  updateOrganization: (accessToken: string, input: UpdateOrganizationInput) =>
+    request<ApiOrganizationDetail>("/organizations/current", {
+      method: "PATCH",
+      headers: authHeader(accessToken),
+      body: JSON.stringify(input),
+    }),
+
+  listMembers: (accessToken: string) =>
+    request<ApiMember[]>("/organizations/current/members", { headers: authHeader(accessToken) }),
+
+  addMember: (accessToken: string, input: AddMemberInput) =>
+    request<ApiMember>("/organizations/current/members", {
+      method: "POST",
+      headers: authHeader(accessToken),
+      body: JSON.stringify(input),
+    }),
+
+  updateMember: (accessToken: string, membershipId: string, input: UpdateMemberInput) =>
+    request<ApiMember>(`/organizations/current/members/${membershipId}`, {
+      method: "PATCH",
+      headers: authHeader(accessToken),
+      body: JSON.stringify(input),
+    }),
+
+  removeMember: (accessToken: string, membershipId: string) =>
+    request<{ id: string; status: string }>(`/organizations/current/members/${membershipId}`, {
+      method: "DELETE",
       headers: authHeader(accessToken),
     }),
 };
