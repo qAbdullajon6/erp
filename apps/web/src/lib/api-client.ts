@@ -160,6 +160,165 @@ export interface UpdateMemberInput {
   status?: "ACTIVE" | "INVITED" | "REMOVED";
 }
 
+export type ApiOrderStatus =
+  | "DRAFT"
+  | "PENDING"
+  | "ASSIGNED"
+  | "PICKED_UP"
+  | "IN_TRANSIT"
+  | "DELIVERED"
+  | "CANCELLED";
+
+export interface ApiOrderStatusHistoryEntry {
+  id: string;
+  status: ApiOrderStatus;
+  changedByUserId: string | null;
+  note: string | null;
+  createdAt: string;
+}
+
+/// Mirrors apps/api's Order response shape exactly (see
+/// docs/ORDERS_DISPATCH_API.md). `price`/`cargoWeightKg`/`cargoVolumeM3` are
+/// decimal STRINGS (never JS numbers), same rationale as
+/// ApiCustomer.creditLimit. `isDelayed` is computed server-side, never
+/// stored. `statusHistory` is only present on GET /orders/:id, not on list
+/// items.
+export interface ApiOrder {
+  id: string;
+  organizationId: string;
+  orderNumber: string;
+  customerId: string;
+  pickupAddress: string;
+  pickupCity: string;
+  pickupDate: string;
+  deliveryAddress: string;
+  deliveryCity: string;
+  deliveryDate: string;
+  cargoDescription: string;
+  cargoWeightKg: string | null;
+  cargoVolumeM3: string | null;
+  price: string;
+  currency: string;
+  status: ApiOrderStatus;
+  isDelayed: boolean;
+  driverId: string | null;
+  vehicleId: string | null;
+  notes: string | null;
+  deliveryNotes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  cancelledAt: string | null;
+  deliveredAt: string | null;
+  statusHistory?: ApiOrderStatusHistoryEntry[];
+}
+
+export interface ListOrdersParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: ApiOrderStatus;
+  customerId?: string;
+  driverId?: string;
+  vehicleId?: string;
+  sortBy?: "orderNumber" | "pickupDate" | "deliveryDate" | "price" | "status" | "createdAt";
+  sortOrder?: "asc" | "desc";
+}
+
+export interface ListOrdersResult {
+  items: ApiOrder[];
+  meta: { page: number; limit: number; total: number; totalPages: number };
+}
+
+export interface CreateOrderInput {
+  orderNumber?: string;
+  customerId: string;
+  pickupAddress: string;
+  pickupCity: string;
+  pickupDate: string;
+  deliveryAddress: string;
+  deliveryCity: string;
+  deliveryDate: string;
+  cargoDescription: string;
+  cargoWeightKg?: number;
+  cargoVolumeM3?: number;
+  price: number;
+  currency?: string;
+  notes?: string;
+  deliveryNotes?: string;
+}
+
+export type UpdateOrderInput = Partial<CreateOrderInput>;
+
+export interface AssignOrderInput {
+  driverId: string;
+  vehicleId: string;
+}
+
+export interface UpdateOrderStatusInput {
+  status: ApiOrderStatus;
+  note?: string;
+}
+
+export interface CancelOrderInput {
+  note?: string;
+}
+
+/// Lightweight summaries — the shape apps/api's DispatchService actually
+/// returns, distinct from (and lighter than) the full Driver/Vehicle
+/// records apps/api also exposes at GET /drivers and /vehicles. Connected
+/// Mode has no Drivers/Vehicles UI yet (see docs/ORDERS_DISPATCH_API.md),
+/// only this read-only Dispatch Board view.
+export interface DispatchDriverSummary {
+  id: string;
+  employeeCode: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  status: string;
+}
+
+export interface DispatchVehicleSummary {
+  id: string;
+  vehicleCode: string;
+  plateNumber: string;
+  type: string;
+  capacityKg: string | null;
+  capacityM3: string | null;
+  status: string;
+}
+
+export interface DispatchOrderSummary {
+  id: string;
+  orderNumber: string;
+  pickupCity: string;
+  deliveryCity: string;
+  pickupDate: string;
+  deliveryDate: string;
+  status: ApiOrderStatus;
+}
+
+export interface DispatchBoardResult {
+  unassignedOrders: DispatchOrderSummary[];
+  drivers: {
+    available: DispatchDriverSummary[];
+    busy: { driver: DispatchDriverSummary; currentOrder: DispatchOrderSummary }[];
+    onLeave: DispatchDriverSummary[];
+    inactive: DispatchDriverSummary[];
+  };
+  vehicles: {
+    available: DispatchVehicleSummary[];
+    busy: { vehicle: DispatchVehicleSummary; currentOrder: DispatchOrderSummary }[];
+    inUse: DispatchVehicleSummary[];
+    maintenance: DispatchVehicleSummary[];
+    inactive: DispatchVehicleSummary[];
+  };
+}
+
+export interface DispatchAvailabilityResult {
+  drivers: DispatchDriverSummary[];
+  vehicles: DispatchVehicleSummary[];
+}
+
 export function isApiEnabled(): boolean {
   // Either flag is sufficient, so a developer enabling Connected Mode for a
   // module (NEXT_PUBLIC_DATA_MODE=api) doesn't also have to separately flip
@@ -350,4 +509,72 @@ export const apiClient = {
       method: "DELETE",
       headers: authHeader(accessToken),
     }),
+
+  listOrders: (accessToken: string, params: ListOrdersParams = {}) => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.search) query.set("search", params.search);
+    if (params.status) query.set("status", params.status);
+    if (params.customerId) query.set("customerId", params.customerId);
+    if (params.driverId) query.set("driverId", params.driverId);
+    if (params.vehicleId) query.set("vehicleId", params.vehicleId);
+    if (params.sortBy) query.set("sortBy", params.sortBy);
+    if (params.sortOrder) query.set("sortOrder", params.sortOrder);
+    const qs = query.toString();
+    return request<ListOrdersResult>(`/orders${qs ? `?${qs}` : ""}`, {
+      headers: authHeader(accessToken),
+    });
+  },
+
+  getOrder: (accessToken: string, id: string) =>
+    request<ApiOrder>(`/orders/${id}`, { headers: authHeader(accessToken) }),
+
+  createOrder: (accessToken: string, input: CreateOrderInput) =>
+    request<ApiOrder>("/orders", {
+      method: "POST",
+      headers: authHeader(accessToken),
+      body: JSON.stringify(input),
+    }),
+
+  updateOrder: (accessToken: string, id: string, input: UpdateOrderInput) =>
+    request<ApiOrder>(`/orders/${id}`, {
+      method: "PATCH",
+      headers: authHeader(accessToken),
+      body: JSON.stringify(input),
+    }),
+
+  assignOrder: (accessToken: string, id: string, input: AssignOrderInput) =>
+    request<ApiOrder>(`/orders/${id}/assign`, {
+      method: "POST",
+      headers: authHeader(accessToken),
+      body: JSON.stringify(input),
+    }),
+
+  updateOrderStatus: (accessToken: string, id: string, input: UpdateOrderStatusInput) =>
+    request<ApiOrder>(`/orders/${id}/status`, {
+      method: "POST",
+      headers: authHeader(accessToken),
+      body: JSON.stringify(input),
+    }),
+
+  cancelOrder: (accessToken: string, id: string, input: CancelOrderInput = {}) =>
+    request<ApiOrder>(`/orders/${id}/cancel`, {
+      method: "POST",
+      headers: authHeader(accessToken),
+      body: JSON.stringify(input),
+    }),
+
+  dispatchBoard: (accessToken: string) =>
+    request<DispatchBoardResult>("/dispatch/board", { headers: authHeader(accessToken) }),
+
+  dispatchAvailability: (accessToken: string, params: { pickupDate?: string; deliveryDate?: string } = {}) => {
+    const query = new URLSearchParams();
+    if (params.pickupDate) query.set("pickupDate", params.pickupDate);
+    if (params.deliveryDate) query.set("deliveryDate", params.deliveryDate);
+    const qs = query.toString();
+    return request<DispatchAvailabilityResult>(`/dispatch/availability${qs ? `?${qs}` : ""}`, {
+      headers: authHeader(accessToken),
+    });
+  },
 };

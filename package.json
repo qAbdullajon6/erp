@@ -27,6 +27,7 @@
     "prisma:migrate": "npm run prisma:migrate --workspace=apps/api",
     "prisma:migrate:deploy": "npm run prisma:migrate:deploy --workspace=apps/api",
     "prisma:studio": "npm run prisma:studio --workspace=apps/api",
-    "seed": "npm run seed --workspace=apps/api"
+    "seed": "npm run seed --workspace=apps/api",
+    "seed:test-org": "npm run seed:test-org --workspace=apps/api"
   }
 }

@@ -62,6 +62,34 @@ enum CustomerStatus {
   ARCHIVED
 }
 
+enum DriverStatus {
+  ACTIVE
+  INACTIVE
+  ON_LEAVE
+}
+
+enum VehicleStatus {
+  AVAILABLE
+  IN_USE
+  MAINTENANCE
+  INACTIVE
+}
+
+/// Strictly sequential: DRAFT -> PENDING -> ASSIGNED -> PICKED_UP ->
+/// IN_TRANSIT -> DELIVERED, no skipping steps. CANCELLED is reachable from
+/// any non-terminal status (DRAFT/PENDING/ASSIGNED/PICKED_UP/IN_TRANSIT) via
+/// the dedicated /orders/:id/cancel action, never via the status-transition
+/// endpoint. See OrdersService and docs/ORDERS_DISPATCH_API.md.
+enum OrderStatus {
+  DRAFT
+  PENDING
+  ASSIGNED
+  PICKED_UP
+  IN_TRANSIT
+  DELIVERED
+  CANCELLED
+}
+
 /// A tenant. Every other business entity in the system will eventually hang
 /// off an Organization, directly or indirectly.
 model Organization {
@@ -80,6 +108,10 @@ model Organization {
   auditLogs     AuditLog[]
   refreshTokens RefreshToken[]
   customers     Customer[]
+  drivers       Driver[]
+  vehicles      Vehicle[]
+  orders        Order[]
+  orderStatusHistories OrderStatusHistory[]
 
   @@map("organizations")
 }
@@ -105,6 +137,7 @@ model User {
   memberships   Membership[]
   refreshTokens RefreshToken[]
   auditLogEntries AuditLog[] @relation("AuditLogActor")
+  orderStatusChanges OrderStatusHistory[] @relation("OrderStatusChangedBy")
 
   @@map("users")
 }
@@ -218,9 +251,138 @@ model Customer {
   updatedAt      DateTime             @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orders       Order[]
 
   @@unique([organizationId, customerCode])
   @@index([organizationId])
   @@index([organizationId, status])
   @@map("customers")
+}
+
+/// The Orders + Dispatch foundation phase. Like Customer, this is an
+/// independent, initially-unconnected data source behind Connected Mode —
+/// see docs/ORDERS_DISPATCH_API.md. `employeeCode` is unique per
+/// organization (not globally), same pattern as Customer.customerCode.
+model Driver {
+  id             String       @id @default(uuid())
+  organizationId String
+  employeeCode   String
+  firstName      String
+  lastName       String
+  phone          String
+  email          String?
+  status         DriverStatus @default(ACTIVE)
+  licenseNumber  String?
+  licenseExpiry  DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  /// Soft-archive marker — there is no hard-delete endpoint for drivers.
+  archivedAt     DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orders       Order[]
+
+  @@unique([organizationId, employeeCode])
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@map("drivers")
+}
+
+model Vehicle {
+  id               String        @id @default(uuid())
+  organizationId   String
+  vehicleCode      String
+  plateNumber      String
+  type             String
+  /// Nullable — capacity-vs-cargo validation on order assignment is only
+  /// enforced when a value is present (see OrdersService.assign).
+  capacityKg       Decimal?      @db.Decimal(10, 2)
+  capacityM3       Decimal?      @db.Decimal(10, 2)
+  status           VehicleStatus @default(AVAILABLE)
+  make             String?
+  model            String?
+  year             Int?
+  insuranceExpiry  DateTime?
+  inspectionExpiry DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  /// Soft-archive marker — there is no hard-delete endpoint for vehicles.
+  archivedAt       DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orders       Order[]
+
+  @@unique([organizationId, vehicleCode])
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@map("vehicles")
+}
+
+/// `orderNumber` is unique per organization (not globally), same pattern as
+/// Customer.customerCode and Driver.employeeCode. There is no delete route —
+/// cancellation (status CANCELLED, via /orders/:id/cancel) is the only
+/// removal-adjacent action, and it's rejected once an order is DELIVERED.
+model Order {
+  id               String      @id @default(uuid())
+  organizationId   String
+  orderNumber      String
+  customerId       String
+  pickupAddress    String
+  pickupCity       String
+  pickupDate       DateTime
+  deliveryAddress  String
+  deliveryCity     String
+  deliveryDate     DateTime
+  cargoDescription String
+  cargoWeightKg    Decimal?    @db.Decimal(10, 2)
+  cargoVolumeM3    Decimal?    @db.Decimal(10, 2)
+  /// Serialized as a decimal STRING in API responses — see Customer.creditLimit.
+  price            Decimal     @db.Decimal(14, 2)
+  currency         String      @default("USD")
+  status           OrderStatus @default(DRAFT)
+  driverId         String?
+  vehicleId        String?
+  notes            String?
+  deliveryNotes    String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  cancelledAt      DateTime?
+  deliveredAt      DateTime?
+
+  organization  Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer      Customer             @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  driver        Driver?              @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  vehicle       Vehicle?             @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  statusHistory OrderStatusHistory[]
+
+  @@unique([organizationId, orderNumber])
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([driverId])
+  @@index([vehicleId])
+  @@index([customerId])
+  @@map("orders")
+}
+
+/// Append-only per-order status trail, written alongside every status
+/// change (including cancellation) and the initial assign-triggered
+/// PENDING -> ASSIGNED transition. `changedByUserId` is nullable for
+/// consistency with AuditLog.actorUserId (system-initiated changes, or the
+/// acting user later being removed) — see AuditLog's comment in this file.
+model OrderStatusHistory {
+  id              String      @id @default(uuid())
+  organizationId  String
+  orderId         String
+  status          OrderStatus
+  changedByUserId String?
+  note            String?
+  createdAt       DateTime    @default(now())
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order         Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  changedByUser User?        @relation("OrderStatusChangedBy", fields: [changedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([orderId])
+  @@map("order_status_histories")
 }

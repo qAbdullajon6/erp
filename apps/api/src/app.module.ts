@@ -9,6 +9,10 @@ import { HealthModule } from "./health/health.module";
 import { AuthModule } from "./auth/auth.module";
 import { OrganizationsModule } from "./organizations/organizations.module";
 import { CustomersModule } from "./customers/customers.module";
+import { DriversModule } from "./drivers/drivers.module";
+import { VehiclesModule } from "./vehicles/vehicles.module";
+import { OrdersModule } from "./orders/orders.module";
+import { DispatchModule } from "./dispatch/dispatch.module";
 import { LoggingMiddleware } from "./common/middleware/logging.middleware";
 
 @Module({
@@ -27,6 +31,10 @@ import { LoggingMiddleware } from "./common/middleware/logging.middleware";
     AuthModule,
     OrganizationsModule,
     CustomersModule,
+    DriversModule,
+    VehiclesModule,
+    OrdersModule,
+    DispatchModule,
   ],
   providers: [
     // Disabled under NODE_ENV=test: e2e tests deliberately make many rapid

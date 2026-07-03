@@ -15,19 +15,21 @@ import { getDataMode } from "@/lib/data-mode";
 
 /// Only shown when NEXT_PUBLIC_DATA_MODE=api, on every page except the ones
 /// that already have their own Connected Mode UI/badges (/customers,
-/// /settings/*) — a plain-text reminder that everything else is still the
-/// localStorage demo, so a Connected Mode user isn't misled into thinking
-/// Orders/Finance/etc. are live. Renders nothing at all in demo mode, so
-/// demo mode's pages are unaffected pixel-for-pixel.
+/// /orders, /dispatch, /settings/*) — a plain-text reminder that everything
+/// else is still the localStorage demo, so a Connected Mode user isn't
+/// misled into thinking Finance/Reports/etc. are live. Renders nothing at
+/// all in demo mode, so demo mode's pages are unaffected pixel-for-pixel.
+const CONNECTED_MODE_PATHS = ["/customers", "/orders", "/dispatch"];
+
 function ModuleDataModeBanner({ pathname }: { pathname: string }) {
   if (getDataMode() !== "api") return null;
-  if (pathname === "/customers" || pathname.startsWith("/settings")) return null;
+  if (CONNECTED_MODE_PATHS.includes(pathname) || pathname.startsWith("/settings")) return null;
 
   return (
     <div className="mb-4 flex items-center gap-2 rounded-md border border-dashed border-muted-foreground/30 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
       <Info className="size-3.5 shrink-0" />
       This module is running on local demo data (browser localStorage) — Connected Mode currently
-      only covers Customers. It hasn&apos;t moved to the live API yet.
+      covers Customers, Orders, and Dispatch. It hasn&apos;t moved to the live API yet.
     </div>
   );
 }

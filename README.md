@@ -5,10 +5,12 @@ IT Technology Group. It brings order management, dispatch, fleet, customer CRM, 
 and reporting into one workspace, plus a local AI Operations Assistant that answers
 questions about the live data.
 
-The live demo (`apps/web`) is still entirely **frontend-only**: no backend, database, or
-real authentication — all of its data lives in your browser's `localStorage`, exactly as
-before. A production backend foundation (`apps/api`) now exists alongside it, but nothing
-has been migrated to it yet — the demo does not call it.
+The live demo (`apps/web`) still runs entirely on `localStorage` by default — nothing
+changes there unless a developer explicitly opts into **Connected Mode**
+(`NEXT_PUBLIC_DATA_MODE=api`) locally. A real NestJS + PostgreSQL backend (`apps/api`) now
+exists alongside it, with working auth, organizations, and Customers/Drivers/Vehicles/
+Orders/Dispatch APIs — see the sections below and [`docs/`](docs/) for how much of that is
+wired into the frontend so far.
 
 ### Repository structure
 
@@ -29,6 +31,7 @@ erp/
     AUTH_ONBOARDING.md
     CUSTOMERS_API.md
     CONNECTED_MODE_AUTH_UI.md
+    ORDERS_DISPATCH_API.md
   docker-compose.yml   # local PostgreSQL only, for apps/api development
   package.json         # workspace root — forwards scripts to apps/web and apps/api
   README.md
@@ -139,24 +142,39 @@ NEXT_PUBLIC_DATA_MODE=api    # Customers page only: uses apps/api instead
 ```
 
 This defaults to `demo` everywhere (including the production Vercel deployment, which never
-sets this variable) and, even when enabled, only ever affects Customers and the new
-`/settings/*` admin pages — every other module and the demo role switcher are unchanged.
-Visiting a Connected Mode page while signed out redirects to a real `/auth/login` page (see
-[`docs/CONNECTED_MODE_AUTH_UI.md`](docs/CONNECTED_MODE_AUTH_UI.md)) and back afterward. Full
-API contracts, data-mode behavior, and local testing steps are in
+sets this variable) and, even when enabled, only ever affects Customers, Orders, Dispatch,
+and the `/settings/*` admin pages — every other module and the demo role switcher are
+unchanged. Visiting a Connected Mode page while signed out redirects to a real
+`/auth/login` page (see [`docs/CONNECTED_MODE_AUTH_UI.md`](docs/CONNECTED_MODE_AUTH_UI.md))
+and back afterward. Full API contracts, data-mode behavior, and local testing steps are in
 [`docs/CUSTOMERS_API.md`](docs/CUSTOMERS_API.md).
+
+### Orders + Dispatch (apps/api)
+
+Drivers, Vehicles, Orders, and Dispatch now have real, tested, multi-tenant, role-authorized
+APIs too — order status transitions, driver/vehicle assignment (with capacity checks and
+double-booking prevention), and cancellation are all enforced server-side, not just in the
+UI. `/orders` and `/dispatch` gained the same opt-in Connected Mode as Customers; Drivers
+and Vehicles are API-complete but have no Connected Mode UI yet (documented, not an
+oversight). Full business rules, endpoints, role matrix, and a separate `npm run
+seed:test-org` command for creating a clearly-labelled demo organization (as opposed to an
+empty real one, which is just normal registration) are in
+[`docs/ORDERS_DISPATCH_API.md`](docs/ORDERS_DISPATCH_API.md).
 
 ### What this demo is not
 
 FlowERP AI's live demo does not use a real external AI API, real GPS tracking, real
 authentication, or production-grade security — these would be part of a production
 deployment, not this portfolio demo. `apps/api` now has real auth, organization management,
-a Customers API, and a real sign-in/registration/admin-settings UI, but the live demo is not
-connected to any of it by default, and most ERP business data (Orders, Dispatch, Finance,
-...) has not been migrated. The Connected Mode session storage is also a documented
-local-development tradeoff (in-memory access token, optionally-persisted refresh token) —
-see [`docs/CONNECTED_MODE_AUTH_UI.md`](docs/CONNECTED_MODE_AUTH_UI.md) for why it isn't
-production-grade as-is.
+and Customers/Drivers/Vehicles/Orders/Dispatch APIs plus a real sign-in/registration/
+admin-settings UI, but the live demo is not connected to any of it by default, and Finance,
+Reports, Notifications, and the AI Assistant have not been migrated yet. The Connected Mode
+session storage is also a documented local-development tradeoff (in-memory access token,
+optionally-persisted refresh token) — see
+[`docs/CONNECTED_MODE_AUTH_UI.md`](docs/CONNECTED_MODE_AUTH_UI.md) for why it isn't
+production-grade as-is. **Direction note:** the demo/localStorage layer, the demo role
+switcher, and the Demo Guide are intentionally being kept for now — they'll be removed once
+enough core modules have real Connected Mode equivalents, not before.
 
 ---
 
