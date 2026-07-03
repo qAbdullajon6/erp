@@ -15,9 +15,15 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FlowERP AI — Logistics Operations Platform",
+  title: "FlowERP AI — Intelligent Logistics Operations Platform",
   description:
-    "AI-powered logistics ERP: orders, drivers, deliveries, finance and reporting in one platform.",
+    "Order management, smart dispatch, customer CRM, finance control, reporting and an AI operations assistant in one logistics platform. Explore the interactive live demo.",
+  openGraph: {
+    title: "FlowERP AI — Intelligent Logistics Operations Platform",
+    description:
+      "Order management, smart dispatch, customer CRM, finance control, reporting and an AI operations assistant in one logistics platform.",
+    type: "website",
+  },
 };
 
 export default function RootLayout({

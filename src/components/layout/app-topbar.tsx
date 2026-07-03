@@ -16,6 +16,8 @@ import {
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NotificationsPanel } from "@/components/layout/notifications-panel";
 import { RoleSwitcher } from "@/components/layout/role-switcher";
+import { DemoGuideDialog } from "@/components/layout/demo-guide-dialog";
+import { MobileNav } from "@/components/layout/app-sidebar";
 import { useRole } from "@/lib/role";
 
 const titles: Record<string, string> = {
@@ -38,6 +40,7 @@ export function AppTopbar() {
 
   return (
     <header className="flex h-16 shrink-0 items-center gap-4 border-b border-border bg-background px-6">
+      <MobileNav />
       <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
 
       <div className="relative ml-4 hidden flex-1 max-w-md sm:block">
@@ -49,6 +52,7 @@ export function AppTopbar() {
       </div>
 
       <div className="ml-auto flex items-center gap-2">
+        <DemoGuideDialog />
         <RoleSwitcher />
         <NotificationsPanel />
         <ThemeToggle />

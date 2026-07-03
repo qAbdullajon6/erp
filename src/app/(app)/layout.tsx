@@ -9,6 +9,7 @@ import { RoleProvider, roleAllowedPaths, useRole } from "@/lib/role";
 import { NotificationSettingsProvider } from "@/lib/notification-settings";
 import { NotificationStateProvider } from "@/lib/notification-state";
 import { AiConversationProvider } from "@/lib/ai-conversation";
+import { DemoGuideProvider } from "@/lib/demo-guide";
 
 function RouteGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -30,15 +31,17 @@ export default function AppLayout({
         <NotificationSettingsProvider>
           <NotificationStateProvider>
             <AiConversationProvider>
-              <div className="flex min-h-screen w-full">
-                <AppSidebar />
-                <div className="flex flex-1 flex-col min-w-0">
-                  <AppTopbar />
-                  <main className="flex-1 overflow-y-auto bg-muted/30 p-6">
-                    <RouteGuard>{children}</RouteGuard>
-                  </main>
+              <DemoGuideProvider>
+                <div className="flex min-h-screen w-full">
+                  <AppSidebar />
+                  <div className="flex flex-1 flex-col min-w-0">
+                    <AppTopbar />
+                    <main className="flex-1 overflow-y-auto bg-muted/30 p-6">
+                      <RouteGuard>{children}</RouteGuard>
+                    </main>
+                  </div>
                 </div>
-              </div>
+              </DemoGuideProvider>
             </AiConversationProvider>
           </NotificationStateProvider>
         </NotificationSettingsProvider>
