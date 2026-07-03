@@ -22,14 +22,35 @@ frontend and API are not containerized in this phase.
 docker compose up -d
 ```
 
-This starts Postgres on `localhost:5432` with:
+This starts Postgres on `localhost:5433` (host port; the container's internal
+port is still the Postgres default 5432) with:
 
 - user: `erp`
 - password: `erp`
 - database: `erp_dev`
 
-These match the default `DATABASE_URL` in `apps/api/.env.example`. Stop it
-with `docker compose down` (add `-v` to also delete the data volume).
+The host port is 5433, not 5432, because some developer machines already run
+a native PostgreSQL install on the default port — if that happens, Prisma
+silently authenticates against the wrong server instead of failing to
+connect, which is a confusing way to discover the conflict. Check
+`netstat -ano | grep 5432` (or `Get-NetTCPConnection -LocalPort 5432` in
+PowerShell) if you ever suspect this on your own machine.
+
+These match the default `DATABASE_URL` in `apps/api/.env.example`. Useful
+commands:
+
+```bash
+docker compose up -d      # start Postgres in the background
+docker compose down       # stop it (data volume persists)
+docker compose down -v    # stop it and delete the data volume
+docker compose ps         # check container status/health
+```
+
+**Verified working end-to-end** against this Docker Postgres: `prisma migrate
+dev` applied migration `20260704004512_init` cleanly (confirmed via `\dt` and
+the `_prisma_migrations` table inside the container), and with the built API
+running, `GET /health` returned 200 and `GET /health/database` returned 200
+with `"database":{"status":"up"}`.
 
 ## Environment variables
 
