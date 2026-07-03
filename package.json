@@ -8,9 +8,25 @@
   ],
   "scripts": {
     "dev": "npm run dev --workspace=apps/web",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "dev:api": "npm run start:dev --workspace=apps/api",
     "build": "npm run build --workspace=apps/web",
+    "build:web": "npm run build --workspace=apps/web",
+    "build:api": "npm run build --workspace=apps/api",
     "start": "npm run start --workspace=apps/web",
+    "start:web": "npm run start --workspace=apps/web",
+    "start:api": "npm run start:prod --workspace=apps/api",
     "lint": "npm run lint --workspace=apps/web",
-    "typecheck": "npm run typecheck --workspace=apps/web"
+    "lint:web": "npm run lint --workspace=apps/web",
+    "lint:api": "npm run lint --workspace=apps/api",
+    "typecheck": "npm run typecheck --workspace=apps/web",
+    "typecheck:web": "npm run typecheck --workspace=apps/web",
+    "typecheck:api": "npm run typecheck --workspace=apps/api",
+    "test:api": "npm run test --workspace=apps/api",
+    "prisma:generate": "npm run prisma:generate --workspace=apps/api",
+    "prisma:migrate": "npm run prisma:migrate --workspace=apps/api",
+    "prisma:migrate:deploy": "npm run prisma:migrate:deploy --workspace=apps/api",
+    "prisma:studio": "npm run prisma:studio --workspace=apps/api",
+    "seed": "npm run seed --workspace=apps/api"
   }
 }

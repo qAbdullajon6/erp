@@ -5,29 +5,35 @@ IT Technology Group. It brings order management, dispatch, fleet, customer CRM, 
 and reporting into one workspace, plus a local AI Operations Assistant that answers
 questions about the live data.
 
-This is a **frontend-only demo**: there is no backend, database, or real authentication.
-All data lives in your browser's `localStorage`.
+The live demo (`apps/web`) is still entirely **frontend-only**: no backend, database, or
+real authentication — all of its data lives in your browser's `localStorage`, exactly as
+before. A production backend foundation (`apps/api`) now exists alongside it, but nothing
+has been migrated to it yet — the demo does not call it.
 
 ### Repository structure
 
-This repository is a minimal npm-workspaces monorepo:
+This repository is an npm-workspaces monorepo:
 
 ```text
 erp/
   apps/
-    web/          # the Next.js frontend (everything below was previously at repo root)
+    web/          # the Next.js frontend — still fully localStorage-based, unchanged behavior
+    api/          # NestJS + Prisma + PostgreSQL backend foundation (not yet used by apps/web)
   packages/
     ui/           # placeholder — no shared components yet
     types/        # placeholder — no shared types yet
   docs/
     DEMO_SCRIPT.md
     MONOREPO_MIGRATION.md
-  package.json    # workspace root — forwards scripts to apps/web
+    BACKEND_FOUNDATION.md
+  docker-compose.yml   # local PostgreSQL only, for apps/api development
+  package.json         # workspace root — forwards scripts to apps/web and apps/api
   README.md
 ```
 
-See [`docs/MONOREPO_MIGRATION.md`](docs/MONOREPO_MIGRATION.md) for what moved and why.
-There is no backend yet — `apps/api` is a planned future addition, not present today.
+See [`docs/MONOREPO_MIGRATION.md`](docs/MONOREPO_MIGRATION.md) for how the repo was
+restructured, and [`docs/BACKEND_FOUNDATION.md`](docs/BACKEND_FOUNDATION.md) for the
+backend's setup, environment variables, and tenant-isolation rules.
 
 ### Main modules
 
@@ -88,11 +94,28 @@ Deploys cleanly to [Vercel](https://vercel.com) with no environment variables or
 required, since all persistence is client-side `localStorage`. Because the app now lives in
 `apps/web`, the Vercel project's **Root Directory** setting must be `apps/web`, not `.`.
 
+### Backend foundation (apps/api)
+
+A NestJS + PostgreSQL + Prisma backend foundation lives in `apps/api` — organizations,
+users, memberships (with roles mirroring the frontend's demo roles), an audit log
+foundation, and health endpoints. No ERP module or authentication flow has been built on
+top of it yet. Full setup instructions (Docker Compose for local Postgres, environment
+variables, migration/seed commands, tenant-isolation rules, and what's intentionally not
+implemented yet) are in [`docs/BACKEND_FOUNDATION.md`](docs/BACKEND_FOUNDATION.md).
+
+```bash
+docker compose up -d          # start local PostgreSQL
+cp apps/api/.env.example apps/api/.env
+npm run prisma:migrate        # apply migrations
+npm run dev:api                # http://localhost:4000
+```
+
 ### What this demo is not
 
-FlowERP AI's demo does not use a real external AI API, real GPS tracking, real
+FlowERP AI's live demo does not use a real external AI API, real GPS tracking, real
 authentication, or production-grade security — these would be part of a production
-deployment, not this portfolio demo.
+deployment, not this portfolio demo. The `apps/api` foundation above is a step toward that
+production backend, but is not connected to the demo and has no working auth flow yet.
 
 ---
 

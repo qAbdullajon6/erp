@@ -1,0 +1,156 @@
+// FlowERP AI — Backend Foundation schema.
+//
+// TENANT ISOLATION IS A FIRST-CLASS DESIGN PRINCIPLE.
+// Every future ERP entity (Order, Customer, Invoice, Vehicle, Driver,
+// Expense, ...) MUST carry an `organizationId` column, and every single
+// query against those tables MUST be scoped by it (e.g. via a Prisma
+// middleware/extension or a repository layer that always injects
+// `where: { organizationId }`). There is no cross-organization data sharing
+// anywhere in this system. This schema only defines the foundational models
+// needed before any ERP module exists — see docs/BACKEND_FOUNDATION.md.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  DISABLED
+}
+
+/// Mirrors the six demo roles already used by the frontend's role switcher
+/// (src/lib/role.tsx in apps/web), so the eventual real-auth rollout maps
+/// cleanly onto the roles a user already knows from the demo.
+enum MembershipRole {
+  ADMIN
+  OPERATIONS_MANAGER
+  DISPATCHER
+  ACCOUNTANT
+  DRIVER
+  SALES_CRM_MANAGER
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INVITED
+  REMOVED
+}
+
+/// A tenant. Every other business entity in the system will eventually hang
+/// off an Organization, directly or indirectly.
+model Organization {
+  id              String             @id @default(uuid())
+  name            String
+  slug            String             @unique
+  status          OrganizationStatus @default(ACTIVE)
+  defaultCurrency String             @default("USD")
+  timezone        String             @default("UTC")
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  /// Soft-delete marker — an archived organization is never hard-deleted.
+  deletedAt       DateTime?
+
+  memberships Membership[]
+  auditLogs   AuditLog[]
+
+  @@map("organizations")
+}
+
+/// A person who can sign in. A single User may belong to more than one
+/// Organization (e.g. a consultant working with several logistics
+/// companies), each membership carrying its own role.
+model User {
+  id           String     @id @default(uuid())
+  email        String     @unique
+  firstName    String
+  lastName     String
+  /// Placeholder for the hashed password set by the next auth phase.
+  /// Nullable because a User can exist (invited) before ever setting one.
+  passwordHash String?
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  /// Soft-delete marker — see Organization.deletedAt.
+  deletedAt    DateTime?
+
+  memberships   Membership[]
+  refreshTokens RefreshToken[]
+  auditLogEntries AuditLog[] @relation("AuditLogActor")
+
+  @@map("users")
+}
+
+/// The tenant-membership join row: which role a User holds within a given
+/// Organization. Every authorization check ultimately resolves through this
+/// table — "can this user do X in this organization" always means "find
+/// their Membership for that organizationId and check its role".
+model Membership {
+  id             String           @id @default(uuid())
+  organizationId String
+  userId         String
+  role           MembershipRole
+  status         MembershipStatus @default(ACTIVE)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@index([userId])
+  @@map("memberships")
+}
+
+/// Backing store for the planned refresh-token/session strategy described in
+/// docs/BACKEND_FOUNDATION.md. Not wired to any endpoint in this phase — the
+/// token itself is never stored in plain text, only its hash.
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+/// Append-only audit trail, scoped per organization. `actorUserId` is
+/// nullable to allow system-initiated actions with no human actor (e.g. a
+/// scheduled job). Nothing writes to this table yet — it exists so every
+/// future ERP module can log into the same place from day one.
+model AuditLog {
+  id             String   @id @default(uuid())
+  organizationId String
+  actorUserId    String?
+  action         String
+  entityType     String
+  entityId       String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor        User?        @relation("AuditLogActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
