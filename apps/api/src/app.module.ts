@@ -8,6 +8,7 @@ import { AuditModule } from "./audit/audit.module";
 import { HealthModule } from "./health/health.module";
 import { AuthModule } from "./auth/auth.module";
 import { OrganizationsModule } from "./organizations/organizations.module";
+import { CustomersModule } from "./customers/customers.module";
 import { LoggingMiddleware } from "./common/middleware/logging.middleware";
 
 @Module({
@@ -25,6 +26,7 @@ import { LoggingMiddleware } from "./common/middleware/logging.middleware";
     HealthModule,
     AuthModule,
     OrganizationsModule,
+    CustomersModule,
   ],
   providers: [
     // Disabled under NODE_ENV=test: e2e tests deliberately make many rapid

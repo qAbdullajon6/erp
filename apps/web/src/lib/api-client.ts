@@ -3,7 +3,10 @@
 // (see mock-data.ts/store.tsx); this module exists so a future phase can
 // wire up real auth without inventing the request/response types from
 // scratch. Every call is a no-op (throws ApiDisabledError) unless
-// NEXT_PUBLIC_ENABLE_API is explicitly "true" — see apps/web/.env.example.
+// NEXT_PUBLIC_ENABLE_API is "true" OR NEXT_PUBLIC_DATA_MODE is "api" — see
+// apps/web/.env.example and docs/CUSTOMERS_API.md.
+
+import { getDataMode } from "./data-mode";
 
 export interface ApiUser {
   id: string;
@@ -54,8 +57,71 @@ export interface MeResult {
   membership: ApiMembership;
 }
 
+/// Mirrors apps/api's Customer response shape exactly (see
+/// docs/CUSTOMERS_API.md). `creditLimit` is a decimal STRING (e.g.
+/// "15000.00"), never a JS number, to avoid floating-point precision loss.
+export interface ApiCustomer {
+  id: string;
+  organizationId: string;
+  customerCode: string;
+  companyName: string;
+  contactName: string;
+  email: string | null;
+  phone: string | null;
+  country: string | null;
+  city: string | null;
+  address: string | null;
+  taxId: string | null;
+  paymentTerms: "DUE_ON_RECEIPT" | "NET_15" | "NET_30" | "NET_45";
+  creditLimit: string;
+  status: "ACTIVE" | "AT_RISK" | "INACTIVE" | "ARCHIVED";
+  deliveryNotes: string | null;
+  internalNotes: string | null;
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ListCustomersParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: ApiCustomer["status"];
+  includeArchived?: boolean;
+  sortBy?: "customerCode" | "companyName" | "createdAt" | "updatedAt" | "creditLimit" | "status";
+  sortOrder?: "asc" | "desc";
+}
+
+export interface ListCustomersResult {
+  items: ApiCustomer[];
+  meta: { page: number; limit: number; total: number; totalPages: number };
+}
+
+export interface CreateCustomerInput {
+  customerCode?: string;
+  companyName: string;
+  contactName: string;
+  email?: string;
+  phone?: string;
+  country?: string;
+  city?: string;
+  address?: string;
+  taxId?: string;
+  paymentTerms?: ApiCustomer["paymentTerms"];
+  creditLimit?: number;
+  deliveryNotes?: string;
+  internalNotes?: string;
+}
+
+export type UpdateCustomerInput = Partial<CreateCustomerInput> & {
+  status?: "ACTIVE" | "AT_RISK" | "INACTIVE";
+};
+
 export function isApiEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_ENABLE_API === "true";
+  // Either flag is sufficient, so a developer enabling Connected Mode for a
+  // module (NEXT_PUBLIC_DATA_MODE=api) doesn't also have to separately flip
+  // this more generic switch.
+  return process.env.NEXT_PUBLIC_ENABLE_API === "true" || getDataMode() === "api";
 }
 
 function getApiBaseUrl(): string {
@@ -142,5 +208,49 @@ export const apiClient = {
       method: "POST",
       headers: authHeader(accessToken),
       body: JSON.stringify({ currentPassword, newPassword }),
+    }),
+
+  listCustomers: (accessToken: string, params: ListCustomersParams = {}) => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.search) query.set("search", params.search);
+    if (params.status) query.set("status", params.status);
+    if (params.includeArchived) query.set("includeArchived", "true");
+    if (params.sortBy) query.set("sortBy", params.sortBy);
+    if (params.sortOrder) query.set("sortOrder", params.sortOrder);
+    const qs = query.toString();
+    return request<ListCustomersResult>(`/customers${qs ? `?${qs}` : ""}`, {
+      headers: authHeader(accessToken),
+    });
+  },
+
+  getCustomer: (accessToken: string, id: string) =>
+    request<ApiCustomer>(`/customers/${id}`, { headers: authHeader(accessToken) }),
+
+  createCustomer: (accessToken: string, input: CreateCustomerInput) =>
+    request<ApiCustomer>("/customers", {
+      method: "POST",
+      headers: authHeader(accessToken),
+      body: JSON.stringify(input),
+    }),
+
+  updateCustomer: (accessToken: string, id: string, input: UpdateCustomerInput) =>
+    request<ApiCustomer>(`/customers/${id}`, {
+      method: "PATCH",
+      headers: authHeader(accessToken),
+      body: JSON.stringify(input),
+    }),
+
+  archiveCustomer: (accessToken: string, id: string) =>
+    request<ApiCustomer>(`/customers/${id}/archive`, {
+      method: "POST",
+      headers: authHeader(accessToken),
+    }),
+
+  restoreCustomer: (accessToken: string, id: string) =>
+    request<ApiCustomer>(`/customers/${id}/restore`, {
+      method: "POST",
+      headers: authHeader(accessToken),
     }),
 };

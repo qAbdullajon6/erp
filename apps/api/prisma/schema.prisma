@@ -48,6 +48,20 @@ enum MembershipStatus {
   REMOVED
 }
 
+enum CustomerPaymentTerms {
+  DUE_ON_RECEIPT
+  NET_15
+  NET_30
+  NET_45
+}
+
+enum CustomerStatus {
+  ACTIVE
+  AT_RISK
+  INACTIVE
+  ARCHIVED
+}
+
 /// A tenant. Every other business entity in the system will eventually hang
 /// off an Organization, directly or indirectly.
 model Organization {
@@ -65,6 +79,7 @@ model Organization {
   memberships   Membership[]
   auditLogs     AuditLog[]
   refreshTokens RefreshToken[]
+  customers     Customer[]
 
   @@map("organizations")
 }
@@ -167,4 +182,45 @@ model AuditLog {
   @@index([organizationId])
   @@index([entityType, entityId])
   @@map("audit_logs")
+}
+
+/// The first ERP business entity migrated onto the backend (Customers API +
+/// Connected Mode phase). Everything else (Orders, Dispatch, Finance, ...)
+/// still lives only in apps/web's localStorage demo — this model does NOT
+/// replace that; it's an independent, initially-unconnected data source
+/// that a per-module "Connected Mode" flag can opt into (see
+/// docs/CUSTOMERS_API.md). `customerCode` is unique per organization (not
+/// globally) — the same code can be reused across different tenants.
+model Customer {
+  id             String               @id @default(uuid())
+  organizationId String
+  customerCode   String
+  companyName    String
+  contactName    String
+  email          String?
+  phone          String?
+  country        String?
+  city           String?
+  address        String?
+  taxId          String?
+  paymentTerms   CustomerPaymentTerms @default(NET_30)
+  /// Serialized as a decimal STRING in API responses (e.g. "25000.00"), not
+  /// a JS number, to avoid floating-point precision loss on monetary
+  /// values — see docs/CUSTOMERS_API.md.
+  creditLimit    Decimal              @default(0) @db.Decimal(14, 2)
+  status         CustomerStatus       @default(ACTIVE)
+  deliveryNotes  String?
+  internalNotes  String?
+  /// Soft-archive marker, set together with status: ARCHIVED. There is no
+  /// hard-delete endpoint for customers, ever.
+  archivedAt     DateTime?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, customerCode])
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@map("customers")
 }

@@ -27,6 +27,7 @@ erp/
     MONOREPO_MIGRATION.md
     BACKEND_FOUNDATION.md
     AUTH_ONBOARDING.md
+    CUSTOMERS_API.md
   docker-compose.yml   # local PostgreSQL only, for apps/api development
   package.json         # workspace root — forwards scripts to apps/web and apps/api
   README.md
@@ -121,13 +122,31 @@ of this is wired up to the frontend yet — the live demo is untouched. Endpoint
 the token/refresh strategy, and security notes are in
 [`docs/AUTH_ONBOARDING.md`](docs/AUTH_ONBOARDING.md).
 
+### Customers API + Connected Mode
+
+The first ERP business module (Customers) now has a real, multi-tenant, role-authorized API
+in `apps/api`, and the frontend's Customers page can optionally load/mutate data through it
+instead of `localStorage` — an opt-in, per-module **Connected Mode**:
+
+```bash
+# apps/web/.env.local
+NEXT_PUBLIC_DATA_MODE=demo   # default — current localStorage behavior, unchanged
+NEXT_PUBLIC_DATA_MODE=api    # Customers page only: uses apps/api instead
+```
+
+This defaults to `demo` everywhere (including the production Vercel deployment, which never
+sets this variable) and, even when enabled, only ever affects the Customers page — every
+other module and the demo role switcher are unchanged. Full API contracts, data-mode
+behavior, and local testing steps are in
+[`docs/CUSTOMERS_API.md`](docs/CUSTOMERS_API.md).
+
 ### What this demo is not
 
 FlowERP AI's live demo does not use a real external AI API, real GPS tracking, real
 authentication, or production-grade security — these would be part of a production
-deployment, not this portfolio demo. `apps/api` now has a real, tested auth and
-organization API, but it is not connected to the demo, and no ERP business data has been
-migrated to it.
+deployment, not this portfolio demo. `apps/api` now has real auth, organization management,
+and a Customers API, but the live demo is not connected to any of it by default, and most
+ERP business data (Orders, Dispatch, Finance, ...) has not been migrated.
 
 ---
 
