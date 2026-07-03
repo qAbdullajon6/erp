@@ -26,6 +26,7 @@ erp/
     DEMO_SCRIPT.md
     MONOREPO_MIGRATION.md
     BACKEND_FOUNDATION.md
+    AUTH_ONBOARDING.md
   docker-compose.yml   # local PostgreSQL only, for apps/api development
   package.json         # workspace root — forwards scripts to apps/web and apps/api
   README.md
@@ -98,10 +99,10 @@ required, since all persistence is client-side `localStorage`. Because the app n
 
 A NestJS + PostgreSQL + Prisma backend foundation lives in `apps/api` — organizations,
 users, memberships (with roles mirroring the frontend's demo roles), an audit log
-foundation, and health endpoints. No ERP module or authentication flow has been built on
-top of it yet. Full setup instructions (Docker Compose for local Postgres, environment
-variables, migration/seed commands, tenant-isolation rules, and what's intentionally not
-implemented yet) are in [`docs/BACKEND_FOUNDATION.md`](docs/BACKEND_FOUNDATION.md).
+foundation, and health endpoints. Full setup instructions (Docker Compose for local
+Postgres, environment variables, migration/seed commands, tenant-isolation rules, and
+what's intentionally not implemented yet) are in
+[`docs/BACKEND_FOUNDATION.md`](docs/BACKEND_FOUNDATION.md).
 
 ```bash
 docker compose up -d          # start local PostgreSQL
@@ -110,12 +111,23 @@ npm run prisma:migrate        # apply migrations
 npm run dev:api                # http://localhost:4000
 ```
 
+### Auth + organizations (apps/api)
+
+Real email/password auth (Argon2 hashing, JWT access tokens, rotating refresh tokens) and
+organization/membership management now run on top of that foundation — registration
+creates a User, an Organization, and an ADMIN Membership together; role-based guards
+enforce admin-only actions, cross-organization isolation, and last-admin protection. None
+of this is wired up to the frontend yet — the live demo is untouched. Endpoint contracts,
+the token/refresh strategy, and security notes are in
+[`docs/AUTH_ONBOARDING.md`](docs/AUTH_ONBOARDING.md).
+
 ### What this demo is not
 
 FlowERP AI's live demo does not use a real external AI API, real GPS tracking, real
 authentication, or production-grade security — these would be part of a production
-deployment, not this portfolio demo. The `apps/api` foundation above is a step toward that
-production backend, but is not connected to the demo and has no working auth flow yet.
+deployment, not this portfolio demo. `apps/api` now has a real, tested auth and
+organization API, but it is not connected to the demo, and no ERP business data has been
+migrated to it.
 
 ---
 

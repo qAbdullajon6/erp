@@ -1,9 +1,13 @@
 import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
+import { APP_GUARD } from "@nestjs/core";
 import { ConfigModule } from "@nestjs/config";
+import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import configuration from "./config/configuration";
 import { PrismaModule } from "./prisma/prisma.module";
+import { AuditModule } from "./audit/audit.module";
 import { HealthModule } from "./health/health.module";
 import { AuthModule } from "./auth/auth.module";
+import { OrganizationsModule } from "./organizations/organizations.module";
 import { LoggingMiddleware } from "./common/middleware/logging.middleware";
 
 @Module({
@@ -12,9 +16,26 @@ import { LoggingMiddleware } from "./common/middleware/logging.middleware";
       isGlobal: true,
       load: [configuration],
     }),
+    // Global default: 20 requests / 60s per IP. Sensitive auth endpoints
+    // override this with a stricter @Throttle() (see AuthController);
+    // HealthController opts out entirely with @SkipThrottle().
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 20 }]),
     PrismaModule,
+    AuditModule,
     HealthModule,
     AuthModule,
+    OrganizationsModule,
+  ],
+  providers: [
+    // Disabled under NODE_ENV=test: e2e tests deliberately make many rapid
+    // auth requests from the same IP to exercise register/login/refresh
+    // flows, which would otherwise trip the intentionally strict
+    // production rate limits (see AuthController's @Throttle overrides) and
+    // make the test suite flaky/order-dependent. Rate limiting itself isn't
+    // what's under test here.
+    ...(process.env.NODE_ENV === "test"
+      ? []
+      : [{ provide: APP_GUARD, useClass: ThrottlerGuard }]),
   ],
 })
 export class AppModule implements NestModule {

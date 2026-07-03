@@ -62,8 +62,9 @@ model Organization {
   /// Soft-delete marker — an archived organization is never hard-deleted.
   deletedAt       DateTime?
 
-  memberships Membership[]
-  auditLogs   AuditLog[]
+  memberships   Membership[]
+  auditLogs     AuditLog[]
+  refreshTokens RefreshToken[]
 
   @@map("organizations")
 }
@@ -76,8 +77,9 @@ model User {
   email        String     @unique
   firstName    String
   lastName     String
-  /// Placeholder for the hashed password set by the next auth phase.
-  /// Nullable because a User can exist (invited) before ever setting one.
+  /// Argon2id hash — never the plaintext password, never returned by any
+  /// endpoint. Nullable because a User can exist (invited into an
+  /// organization by an admin) before ever setting a password.
   passwordHash String?
   status       UserStatus @default(ACTIVE)
   createdAt    DateTime   @default(now())
@@ -114,31 +116,43 @@ model Membership {
   @@map("memberships")
 }
 
-/// Backing store for the planned refresh-token/session strategy described in
-/// docs/BACKEND_FOUNDATION.md. Not wired to any endpoint in this phase — the
-/// token itself is never stored in plain text, only its hash.
+/// One refresh token = one "session," scoped to exactly one organization at
+/// a time (the one active when the session was created). The raw token is
+/// never stored — only a SHA-256 hash, used purely for fast equality lookup
+/// (not a slow/salted password-style hash, since the token itself is a long
+/// random secret, not a human-memorable password). Refreshing rotates the
+/// token (this row is revoked, a new one created) but keeps the same
+/// organizationId; switching organizations means minting a new session,
+/// which is what makes this design compatible with a future org-switcher.
 model RefreshToken {
-  id        String    @id @default(uuid())
-  userId    String
-  tokenHash String    @unique
-  expiresAt DateTime
-  revokedAt DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id             String    @id @default(uuid())
+  userId         String
+  organizationId String
+  tokenHash      String    @unique
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([organizationId])
   @@map("refresh_tokens")
 }
 
-/// Append-only audit trail, scoped per organization. `actorUserId` is
-/// nullable to allow system-initiated actions with no human actor (e.g. a
-/// scheduled job). Nothing writes to this table yet — it exists so every
-/// future ERP module can log into the same place from day one.
+/// Append-only audit trail. `organizationId` is nullable specifically for
+/// security events that predate knowing an organization at all — e.g. a
+/// failed login against an email that doesn't match any user, which is
+/// still worth recording (repeated attempts can indicate an enumeration
+/// attack) but has no organization to scope to. `actorUserId` is nullable
+/// for the same reason, and for system-initiated actions with no human
+/// actor. Written to by AuthService/OrganizationsService today; every
+/// future ERP module logs into this same table.
 model AuditLog {
   id             String   @id @default(uuid())
-  organizationId String
+  organizationId String?
   actorUserId    String?
   action         String
   entityType     String
@@ -147,8 +161,8 @@ model AuditLog {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  actor        User?        @relation("AuditLogActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor        User?         @relation("AuditLogActor", fields: [actorUserId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([entityType, entityId])
