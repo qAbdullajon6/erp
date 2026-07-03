@@ -11,6 +11,7 @@ import {
   Wallet,
   Sparkles,
   BarChart3,
+  Bell,
   Boxes,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -25,6 +26,7 @@ const navItems = [
   { href: "/finance", label: "Finance", icon: Wallet },
   { href: "/ai-assistant", label: "AI Assistant", icon: Sparkles },
   { href: "/reports", label: "Reports", icon: BarChart3 },
+  { href: "/notifications", label: "Notifications", icon: Bell },
 ];
 
 export function AppSidebar() {

@@ -26,6 +26,7 @@ const titles: Record<string, string> = {
   "/finance": "Finance",
   "/ai-assistant": "AI Assistant",
   "/reports": "Reports",
+  "/notifications": "Notifications",
 };
 
 export function AppTopbar() {

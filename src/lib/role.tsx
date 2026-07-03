@@ -17,9 +17,19 @@ export const roleMeta: Record<Role, { label: string; description: string }> = {
 };
 
 export const roleAllowedPaths: Record<Role, string[]> = {
-  admin: ["/", "/orders", "/dispatch", "/drivers", "/customers", "/finance", "/ai-assistant", "/reports"],
-  dispatcher: ["/", "/orders", "/dispatch", "/drivers"],
-  accountant: ["/", "/finance", "/reports", "/customers"],
+  admin: [
+    "/",
+    "/orders",
+    "/dispatch",
+    "/drivers",
+    "/customers",
+    "/finance",
+    "/ai-assistant",
+    "/reports",
+    "/notifications",
+  ],
+  dispatcher: ["/", "/orders", "/dispatch", "/drivers", "/notifications"],
+  accountant: ["/", "/finance", "/reports", "/customers", "/notifications"],
 };
 
 const STORAGE_KEY = "flowerp:role:v1";

@@ -80,6 +80,20 @@ export function isWithinRange(iso: string, bounds: DateBounds): boolean {
   return t >= bounds.start.getTime() && t <= bounds.end.getTime();
 }
 
+/** The immediately preceding period of the same duration — for period-over-period comparisons. */
+export function getPreviousPeriodBounds(bounds: DateBounds): DateBounds {
+  const durationMs = bounds.end.getTime() - bounds.start.getTime();
+  const end = new Date(bounds.start.getTime() - 1);
+  const start = new Date(end.getTime() - durationMs);
+  return { start, end };
+}
+
+/** Percent change from previous to current; null when there's nothing to compare against. */
+export function percentChange(current: number, previous: number): number | null {
+  if (previous === 0) return current === 0 ? null : null;
+  return ((current - previous) / Math.abs(previous)) * 100;
+}
+
 export interface TimeBucket {
   key: string;
   label: string;

@@ -86,6 +86,7 @@ export interface Customer {
   internalNotes?: string;
   status: CustomerStatus;
   createdAt: string;
+  archivedAt?: string;
 }
 
 export interface CustomerNote {

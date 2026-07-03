@@ -128,3 +128,20 @@
     @apply font-sans;
   }
 }
+
+/* Print-friendly report view: hide everything except the element marked
+   data-print-section, used by the Executive Overview's "Print" action. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  [data-print-section],
+  [data-print-section] * {
+    visibility: visible;
+  }
+  [data-print-section] {
+    position: absolute;
+    inset: 0;
+    padding: 1.5rem;
+  }
+}

@@ -455,7 +455,15 @@ class AppDataStore {
     const prev = this.data;
     this.commit({
       ...prev,
-      customers: prev.customers.map((c) => (c.id === id ? { ...c, status } : c)),
+      customers: prev.customers.map((c) =>
+        c.id === id
+          ? {
+              ...c,
+              status,
+              archivedAt: status === "archived" ? new Date().toISOString() : undefined,
+            }
+          : c,
+      ),
     });
   };
 

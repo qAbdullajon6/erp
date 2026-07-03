@@ -1,3 +1,4 @@
+import type { NotificationCategory, NotificationPriority } from "@/lib/notifications";
 import type {
   CustomerStatus,
   DriverStatus,
@@ -173,3 +174,29 @@ const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
 export function nextStatusOptions(status: OrderStatus): OrderStatus[] {
   return ORDER_STATUS_TRANSITIONS[status];
 }
+
+export const notificationCategoryMeta: Record<NotificationCategory, { label: string }> = {
+  operations: { label: "Operations" },
+  finance: { label: "Finance" },
+  fleet: { label: "Fleet" },
+  customers: { label: "Customers" },
+  system: { label: "System" },
+};
+
+export const notificationCategoryOrder: NotificationCategory[] = [
+  "operations",
+  "finance",
+  "fleet",
+  "customers",
+  "system",
+];
+
+export const notificationPriorityMeta: Record<
+  NotificationPriority,
+  { label: string; badgeClass: string }
+> = {
+  critical: { label: "Critical", badgeClass: "bg-destructive/10 text-destructive border-destructive/20" },
+  high: { label: "High", badgeClass: "bg-chart-4/10 text-chart-4 border-chart-4/20" },
+  medium: { label: "Medium", badgeClass: "bg-chart-3/10 text-chart-3 border-chart-3/20" },
+  low: { label: "Low", badgeClass: "bg-muted text-muted-foreground border-transparent" },
+};
