@@ -8,6 +8,27 @@ questions about the live data.
 This is a **frontend-only demo**: there is no backend, database, or real authentication.
 All data lives in your browser's `localStorage`.
 
+### Repository structure
+
+This repository is a minimal npm-workspaces monorepo:
+
+```text
+erp/
+  apps/
+    web/          # the Next.js frontend (everything below was previously at repo root)
+  packages/
+    ui/           # placeholder — no shared components yet
+    types/        # placeholder — no shared types yet
+  docs/
+    DEMO_SCRIPT.md
+    MONOREPO_MIGRATION.md
+  package.json    # workspace root — forwards scripts to apps/web
+  README.md
+```
+
+See [`docs/MONOREPO_MIGRATION.md`](docs/MONOREPO_MIGRATION.md) for what moved and why.
+There is no backend yet — `apps/api` is a planned future addition, not present today.
+
 ### Main modules
 
 - **Dashboard** — today's orders, active deliveries, revenue trend, fleet status
@@ -44,9 +65,13 @@ useful before starting a fresh live demo.
 
 ### Development
 
+Run all commands from the repository root — npm workspaces forwards them to `apps/web`:
+
 ```bash
 npm install
-npm run dev
+npm run dev          # start the dev server
+npm run typecheck    # tsc --noEmit
+npm run lint         # eslint
 ```
 
 Open [http://localhost:3000](http://localhost:3000) — this is the live ERP app.
@@ -60,7 +85,8 @@ npm run start
 ```
 
 Deploys cleanly to [Vercel](https://vercel.com) with no environment variables or database
-required, since all persistence is client-side `localStorage`.
+required, since all persistence is client-side `localStorage`. Because the app now lives in
+`apps/web`, the Vercel project's **Root Directory** setting must be `apps/web`, not `.`.
 
 ### What this demo is not
 
@@ -70,27 +96,10 @@ deployment, not this portfolio demo.
 
 ---
 
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
-
-## Getting Started
-
-First, run the development server:
-
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The `apps/web` frontend is a [Next.js](https://nextjs.org) project originally bootstrapped
+with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app),
+using [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts)
+to load the Geist font family.
 
 ## Learn More
 

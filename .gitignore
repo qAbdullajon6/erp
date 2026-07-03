@@ -1,8 +1,8 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# dependencies
-/node_modules
-/.pnp
+# dependencies (monorepo: node_modules can appear at root and per-workspace)
+node_modules
+.pnp
 .pnp.*
 .yarn/*
 !.yarn/patches
@@ -11,14 +11,14 @@
 !.yarn/versions
 
 # testing
-/coverage
+coverage
 
-# next.js
-/.next/
-/out/
+# next.js (apps/web build output)
+.next/
+out/
 
 # production
-/build
+build
 
 # misc
 .DS_Store
