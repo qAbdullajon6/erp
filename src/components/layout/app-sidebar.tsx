@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { roleAllowedPaths, useRole } from "@/lib/role";
+import { useDemoGuide } from "@/lib/demo-guide";
 
 interface NavItem {
   href: string;
@@ -97,14 +98,27 @@ function SidebarNavList({
   );
 }
 
-function SidebarFooterNote() {
+function SidebarFooterNote({ onOpenDemoGuide }: { onOpenDemoGuide?: () => void }) {
+  const { setOpen } = useDemoGuide();
+
   return (
     <div className="px-3 py-4 border-t border-sidebar-border">
       <div className="rounded-lg bg-sidebar-accent/60 p-3">
-        <p className="text-xs font-medium text-sidebar-accent-foreground">Upgrade to Pro</p>
+        <p className="text-xs font-medium text-sidebar-accent-foreground">Explore the Demo</p>
         <p className="mt-1 text-[11px] text-sidebar-foreground/50">
-          Unlock advanced AI insights and unlimited fleet tracking.
+          Try role-based workflows, live reports, and local demo intelligence.
         </p>
+        <Button
+          size="sm"
+          variant="secondary"
+          className="mt-2 w-full"
+          onClick={() => {
+            onOpenDemoGuide?.();
+            setOpen(true);
+          }}
+        >
+          Open Demo Guide
+        </Button>
       </div>
     </div>
   );
@@ -130,15 +144,15 @@ export function MobileNav() {
   const { role } = useRole();
   const allowed = roleAllowedPaths[role];
   const visibleNavItems = navItems.filter((item) => allowed.includes(item.href));
-  const [open, setOpen] = React.useState(false);
+  const [navOpen, setNavOpen] = React.useState(false);
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
+    <Sheet open={navOpen} onOpenChange={setNavOpen}>
       <Button
         variant="ghost"
         size="icon"
         className="md:hidden"
-        onClick={() => setOpen(true)}
+        onClick={() => setNavOpen(true)}
         aria-label="Open navigation menu"
       >
         <Menu className="size-5" />
@@ -152,8 +166,8 @@ export function MobileNav() {
         </SheetHeader>
         <div className="flex h-full flex-col">
           <SidebarBrand />
-          <SidebarNavList items={visibleNavItems} pathname={pathname} onNavigate={() => setOpen(false)} />
-          <SidebarFooterNote />
+          <SidebarNavList items={visibleNavItems} pathname={pathname} onNavigate={() => setNavOpen(false)} />
+          <SidebarFooterNote onOpenDemoGuide={() => setNavOpen(false)} />
         </div>
       </SheetContent>
     </Sheet>

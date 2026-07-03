@@ -19,9 +19,8 @@ import { useAppData } from "@/lib/store";
 import { useRole } from "@/lib/role";
 
 export function DemoGuideDialog() {
-  const [open, setOpen] = React.useState(false);
   const [confirmingReset, setConfirmingReset] = React.useState(false);
-  const { completed, toggleStep } = useDemoGuide();
+  const { completed, toggleStep, open, setOpen } = useDemoGuide();
   const { resetDemoData } = useAppData();
   const { setRole } = useRole();
 

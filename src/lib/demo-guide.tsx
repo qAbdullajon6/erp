@@ -66,14 +66,24 @@ type Listener = () => void;
 
 class DemoGuideStore {
   private completed = new Set<string>();
+  /** Ephemeral UI state (not persisted) so any component can open the same dialog instance. */
+  private open = false;
   private listeners = new Set<Listener>();
 
   getSnapshot = (): Set<string> => this.completed;
   getServerSnapshot = (): Set<string> => this.completed;
 
+  getOpenSnapshot = (): boolean => this.open;
+  getOpenServerSnapshot = (): boolean => this.open;
+
   subscribe = (listener: Listener): (() => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  };
+
+  setOpen = (open: boolean) => {
+    this.open = open;
+    this.listeners.forEach((listener) => listener());
   };
 
   private commit(next: Set<string>) {
@@ -137,10 +147,17 @@ export function useDemoGuide() {
     store.getSnapshot,
     store.getServerSnapshot,
   );
+  const open = React.useSyncExternalStore(
+    store.subscribe,
+    store.getOpenSnapshot,
+    store.getOpenServerSnapshot,
+  );
 
   return {
     completed,
     toggleStep: store.toggleStep,
     reset: store.reset,
+    open,
+    setOpen: store.setOpen,
   };
 }
