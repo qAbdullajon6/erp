@@ -9,8 +9,8 @@ The live demo (`apps/web`) still runs entirely on `localStorage` by default — 
 changes there unless a developer explicitly opts into **Connected Mode**
 (`NEXT_PUBLIC_DATA_MODE=api`) locally. A real NestJS + PostgreSQL backend (`apps/api`) now
 exists alongside it, with working auth, organizations, and Customers/Drivers/Vehicles/
-Orders/Dispatch APIs — see the sections below and [`docs/`](docs/) for how much of that is
-wired into the frontend so far.
+Orders/Dispatch/Finance APIs — see the sections below and [`docs/`](docs/) for how much of
+that is wired into the frontend so far.
 
 ### Repository structure
 
@@ -32,6 +32,7 @@ erp/
     CUSTOMERS_API.md
     CONNECTED_MODE_AUTH_UI.md
     ORDERS_DISPATCH_API.md
+    FINANCE_API.md
   docker-compose.yml   # local PostgreSQL only, for apps/api development
   package.json         # workspace root — forwards scripts to apps/web and apps/api
   README.md
@@ -143,8 +144,8 @@ NEXT_PUBLIC_DATA_MODE=api    # Customers page only: uses apps/api instead
 
 This defaults to `demo` everywhere (including the production Vercel deployment, which never
 sets this variable) and, even when enabled, only ever affects Customers, Orders, Dispatch,
-and the `/settings/*` admin pages — every other module and the demo role switcher are
-unchanged. Visiting a Connected Mode page while signed out redirects to a real
+Finance, and the `/settings/*` admin pages — every other module and the demo role switcher
+are unchanged. Visiting a Connected Mode page while signed out redirects to a real
 `/auth/login` page (see [`docs/CONNECTED_MODE_AUTH_UI.md`](docs/CONNECTED_MODE_AUTH_UI.md))
 and back afterward. Full API contracts, data-mode behavior, and local testing steps are in
 [`docs/CUSTOMERS_API.md`](docs/CUSTOMERS_API.md).
@@ -161,15 +162,28 @@ seed:test-org` command for creating a clearly-labelled demo organization (as opp
 empty real one, which is just normal registration) are in
 [`docs/ORDERS_DISPATCH_API.md`](docs/ORDERS_DISPATCH_API.md).
 
+### Finance (apps/api)
+
+Invoices, Payments, and Expenses now have a real, tested, multi-tenant, role-authorized
+API too — totals are always calculated server-side from line items (never trusted from
+the client), payments atomically update an invoice's paid amount/balance/status in one
+transaction, overdue status is recomputed on read, and only approved expenses count
+toward order profitability. `/finance` gained the same opt-in Connected Mode as the other
+migrated modules, keeping its existing 4-tab (Dashboard/Invoices/Payments/Expenses)
+layout but with real numbers — a brand-new organization shows zeroes, not fake demo KPIs.
+Full business rules, endpoints, role matrix, and the extended `npm run seed:test-org`
+(now including invoices/payments/expenses) are in
+[`docs/FINANCE_API.md`](docs/FINANCE_API.md).
+
 ### What this demo is not
 
 FlowERP AI's live demo does not use a real external AI API, real GPS tracking, real
 authentication, or production-grade security — these would be part of a production
 deployment, not this portfolio demo. `apps/api` now has real auth, organization management,
-and Customers/Drivers/Vehicles/Orders/Dispatch APIs plus a real sign-in/registration/
-admin-settings UI, but the live demo is not connected to any of it by default, and Finance,
-Reports, Notifications, and the AI Assistant have not been migrated yet. The Connected Mode
-session storage is also a documented local-development tradeoff (in-memory access token,
+and Customers/Drivers/Vehicles/Orders/Dispatch/Finance APIs plus a real sign-in/
+registration/admin-settings UI, but the live demo is not connected to any of it by
+default, and Reports, Notifications, and the AI Assistant have not been migrated yet. The
+Connected Mode session storage is also a documented local-development tradeoff (in-memory access token,
 optionally-persisted refresh token) — see
 [`docs/CONNECTED_MODE_AUTH_UI.md`](docs/CONNECTED_MODE_AUTH_UI.md) for why it isn't
 production-grade as-is. **Direction note:** the demo/localStorage layer, the demo role

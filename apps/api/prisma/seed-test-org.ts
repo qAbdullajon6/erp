@@ -60,14 +60,17 @@ async function main() {
     { email: "driver@flowerp.test", firstName: "Test", lastName: "Driver", role: "DRIVER" },
   ];
 
+  const usersByRole = new Map<string, { id: string }>();
   for (const roleUser of roleUsers) {
     const user = await prisma.user.create({
       data: { email: roleUser.email, firstName: roleUser.firstName, lastName: roleUser.lastName, passwordHash },
     });
+    usersByRole.set(roleUser.role, user);
     await prisma.membership.create({
       data: { organizationId: organization.id, userId: user.id, role: roleUser.role as never },
     });
   }
+  const adminUser = usersByRole.get("ADMIN")!;
 
   const drivers = await Promise.all(
     [
@@ -262,6 +265,7 @@ async function main() {
     },
   ];
 
+  const orders: { id: string; orderNumber: string }[] = [];
   for (const seedOrder of seedOrders) {
     const order = await prisma.order.create({
       data: {
@@ -284,6 +288,7 @@ async function main() {
         cancelledAt: seedOrder.cancelledAt,
       },
     });
+    orders.push(order);
 
     for (const entry of seedOrder.history) {
       await prisma.orderStatusHistory.create({
@@ -296,6 +301,179 @@ async function main() {
       });
     }
   }
+  const deliveredOrder = orders[4]; // ORD-...-0005, the DELIVERED one
+
+  // --- Finance: invoices, payments, expenses — all clearly labelled test
+  // data, covering every invoice status and both expense decisions. ---
+
+  async function createInvoice(params: {
+    invoiceNumber: string;
+    customerId: string;
+    orderId?: string;
+    dueDate?: Date;
+    status: "DRAFT" | "SENT" | "PARTIALLY_PAID" | "PAID" | "OVERDUE" | "CANCELLED";
+    lineItems: { description: string; quantity: number; unitPrice: number }[];
+    discountAmount?: number;
+    taxAmount?: number;
+    paidAmount?: number;
+    cancelledAt?: Date;
+  }) {
+    const subtotal = params.lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
+    const discountAmount = params.discountAmount ?? 0;
+    const taxAmount = params.taxAmount ?? 0;
+    const totalAmount = subtotal - discountAmount + taxAmount;
+    const paidAmount = params.paidAmount ?? 0;
+    const invoice = await prisma.invoice.create({
+      data: {
+        organizationId: organization.id,
+        invoiceNumber: params.invoiceNumber,
+        customerId: params.customerId,
+        orderId: params.orderId,
+        dueDate: params.dueDate,
+        status: params.status,
+        subtotal,
+        discountAmount,
+        taxAmount,
+        totalAmount,
+        paidAmount,
+        balanceDue: totalAmount - paidAmount,
+        cancelledAt: params.cancelledAt,
+        lineItems: {
+          create: params.lineItems.map((li) => ({
+            organizationId: organization.id,
+            description: li.description,
+            quantity: li.quantity,
+            unitPrice: li.unitPrice,
+            lineTotal: li.quantity * li.unitPrice,
+          })),
+        },
+      },
+    });
+    return invoice;
+  }
+
+  const invoiceYear = new Date().getUTCFullYear();
+
+  const paidInvoice = await createInvoice({
+    invoiceNumber: `INV-${invoiceYear}-0001`,
+    customerId: customers[1].id,
+    orderId: deliveredOrder.id,
+    status: "PAID",
+    lineItems: [{ description: `Order ${deliveredOrder.orderNumber}`, quantity: 1, unitPrice: 1100 }],
+    paidAmount: 1100,
+  });
+  await prisma.payment.create({
+    data: {
+      organizationId: organization.id,
+      invoiceId: paidInvoice.id,
+      amount: 1100,
+      method: "BANK_TRANSFER",
+      reference: "TEST-WIRE-0001",
+      notes: "[TEST DATA] Paid in full (seed)",
+    },
+  });
+
+  const partiallyPaidInvoice = await createInvoice({
+    invoiceNumber: `INV-${invoiceYear}-0002`,
+    customerId: customers[0].id,
+    dueDate: days(10),
+    status: "PARTIALLY_PAID",
+    lineItems: [{ description: "[TEST DATA] Monthly logistics retainer", quantity: 1, unitPrice: 900 }],
+    paidAmount: 400,
+  });
+  await prisma.payment.create({
+    data: {
+      organizationId: organization.id,
+      invoiceId: partiallyPaidInvoice.id,
+      amount: 400,
+      method: "CARD",
+      notes: "[TEST DATA] Partial payment (seed)",
+    },
+  });
+
+  await createInvoice({
+    invoiceNumber: `INV-${invoiceYear}-0003`,
+    customerId: customers[2].id,
+    dueDate: days(-15),
+    status: "OVERDUE",
+    lineItems: [{ description: "[TEST DATA] Overdue invoice — for the overdue-status demo", quantity: 1, unitPrice: 640 }],
+  });
+
+  await createInvoice({
+    invoiceNumber: `INV-${invoiceYear}-0004`,
+    customerId: customers[0].id,
+    status: "DRAFT",
+    lineItems: [{ description: "[TEST DATA] Draft invoice, still editable", quantity: 2, unitPrice: 175 }],
+    discountAmount: 20,
+  });
+
+  await createInvoice({
+    invoiceNumber: `INV-${invoiceYear}-0005`,
+    customerId: customers[1].id,
+    status: "CANCELLED",
+    lineItems: [{ description: "[TEST DATA] Cancelled invoice — for the cancellation-flow demo", quantity: 1, unitPrice: 300 }],
+    cancelledAt: days(-2),
+  });
+
+  const expenseYear = new Date().getUTCFullYear();
+  await prisma.expense.createMany({
+    data: [
+      {
+        organizationId: organization.id,
+        expenseNumber: `EXP-${expenseYear}-0001`,
+        orderId: deliveredOrder.id,
+        vehicleId: vehicles[2].id,
+        driverId: drivers[2].id,
+        category: "FUEL",
+        description: "[TEST DATA] Diesel for delivered order (seed)",
+        amount: 150,
+        status: "APPROVED",
+        approvedByUserId: adminUser.id,
+        approvedAt: new Date(),
+      },
+      {
+        organizationId: organization.id,
+        expenseNumber: `EXP-${expenseYear}-0002`,
+        orderId: deliveredOrder.id,
+        category: "TOLL",
+        description: "[TEST DATA] Toll fees, awaiting approval (seed)",
+        amount: 40,
+        status: "PENDING",
+      },
+      {
+        organizationId: organization.id,
+        expenseNumber: `EXP-${expenseYear}-0003`,
+        vehicleId: vehicles[0].id,
+        category: "MAINTENANCE",
+        description: "[TEST DATA] Scheduled maintenance, not tied to a specific order (seed)",
+        amount: 300,
+        status: "APPROVED",
+        approvedByUserId: adminUser.id,
+        approvedAt: new Date(),
+      },
+      {
+        organizationId: organization.id,
+        expenseNumber: `EXP-${expenseYear}-0004`,
+        driverId: drivers[1].id,
+        category: "DRIVER_ADVANCE",
+        description: "[TEST DATA] Driver cash advance, awaiting approval (seed)",
+        amount: 200,
+        status: "PENDING",
+      },
+      {
+        organizationId: organization.id,
+        expenseNumber: `EXP-${expenseYear}-0005`,
+        vehicleId: vehicles[2].id,
+        category: "INSURANCE",
+        description: "[TEST DATA] Rejected duplicate insurance submission (seed)",
+        amount: 500,
+        status: "REJECTED",
+        approvedByUserId: adminUser.id,
+        approvedAt: new Date(),
+        rejectionReason: "Duplicate submission (seed)",
+      },
+    ],
+  });
 
   console.log(`Created test organization "${TEST_ORG_NAME}" (slug: ${TEST_ORG_SLUG}).`);
   console.log(`All test accounts share the password: ${TEST_PASSWORD}`);

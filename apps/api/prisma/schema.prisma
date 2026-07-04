@@ -90,6 +90,45 @@ enum OrderStatus {
   CANCELLED
 }
 
+/// SENT/PARTIALLY_PAID -> PAID happens automatically when a payment brings
+/// balanceDue to zero (PaymentsService). SENT/PARTIALLY_PAID -> OVERDUE is
+/// computed lazily on read (InvoicesService.refreshOverdueStatus) whenever
+/// dueDate has passed and balanceDue is still positive — there is no cron
+/// job in this phase, so "OVERDUE" only becomes true the next time the
+/// invoice is fetched, not the instant its due date passes. Never
+/// client-settable directly.
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CARD
+  OTHER
+}
+
+enum ExpenseCategory {
+  FUEL
+  TOLL
+  MAINTENANCE
+  DRIVER_ADVANCE
+  PARKING
+  INSURANCE
+  OTHER
+}
+
+enum ExpenseStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 /// A tenant. Every other business entity in the system will eventually hang
 /// off an Organization, directly or indirectly.
 model Organization {
@@ -112,6 +151,9 @@ model Organization {
   vehicles      Vehicle[]
   orders        Order[]
   orderStatusHistories OrderStatusHistory[]
+  invoices      Invoice[]
+  payments      Payment[]
+  expenses      Expense[]
 
   @@map("organizations")
 }
@@ -138,6 +180,7 @@ model User {
   refreshTokens RefreshToken[]
   auditLogEntries AuditLog[] @relation("AuditLogActor")
   orderStatusChanges OrderStatusHistory[] @relation("OrderStatusChangedBy")
+  approvedExpenses   Expense[] @relation("ExpenseApprovedBy")
 
   @@map("users")
 }
@@ -252,6 +295,7 @@ model Customer {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   orders       Order[]
+  invoices     Invoice[]
 
   @@unique([organizationId, customerCode])
   @@index([organizationId])
@@ -281,6 +325,7 @@ model Driver {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   orders       Order[]
+  expenses     Expense[]
 
   @@unique([organizationId, employeeCode])
   @@index([organizationId])
@@ -311,6 +356,7 @@ model Vehicle {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   orders       Order[]
+  expenses     Expense[]
 
   @@unique([organizationId, vehicleCode])
   @@index([organizationId])
@@ -354,6 +400,8 @@ model Order {
   driver        Driver?              @relation(fields: [driverId], references: [id], onDelete: SetNull)
   vehicle       Vehicle?             @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   statusHistory OrderStatusHistory[]
+  invoices      Invoice[]
+  expenses      Expense[]
 
   @@unique([organizationId, orderNumber])
   @@index([organizationId])
@@ -385,4 +433,137 @@ model OrderStatusHistory {
   @@index([organizationId])
   @@index([orderId])
   @@map("order_status_histories")
+}
+
+/// The Finance foundation phase. `invoiceNumber` is unique per organization
+/// (not globally), same auto-generate-with-override pattern as
+/// Order.orderNumber. All monetary totals (subtotal/discountAmount/
+/// taxAmount/totalAmount/paidAmount/balanceDue) are ALWAYS recomputed
+/// server-side from line items — see docs/FINANCE_API.md — never trusted
+/// from client input. There is no delete route — cancellation is the only
+/// removal-adjacent action, and it's rejected once PAID or already
+/// CANCELLED. A partial unique index (added by raw SQL in this model's
+/// migration, not expressible in Prisma's schema DSL) enforces "at most one
+/// non-cancelled invoice per order" at the database level, backing up the
+/// same check in InvoicesService.
+model Invoice {
+  id             String        @id @default(uuid())
+  organizationId String
+  invoiceNumber  String
+  customerId     String
+  orderId        String?
+  issueDate      DateTime      @default(now())
+  dueDate        DateTime?
+  currency       String        @default("USD")
+  status         InvoiceStatus @default(DRAFT)
+  subtotal       Decimal       @default(0) @db.Decimal(14, 2)
+  discountAmount Decimal       @default(0) @db.Decimal(14, 2)
+  taxAmount      Decimal       @default(0) @db.Decimal(14, 2)
+  totalAmount    Decimal       @default(0) @db.Decimal(14, 2)
+  paidAmount     Decimal       @default(0) @db.Decimal(14, 2)
+  balanceDue     Decimal       @default(0) @db.Decimal(14, 2)
+  notes          String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  cancelledAt    DateTime?
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer     Customer          @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  order        Order?            @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  lineItems    InvoiceLineItem[]
+  payments     Payment[]
+
+  @@unique([organizationId, invoiceNumber])
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([customerId])
+  @@index([orderId])
+  @@map("invoices")
+}
+
+/// `lineTotal` is always `quantity * unitPrice`, computed server-side —
+/// never accepted from the client (see InvoicesService).
+model InvoiceLineItem {
+  id             String   @id @default(uuid())
+  organizationId String
+  invoiceId      String
+  description    String
+  quantity       Decimal  @db.Decimal(10, 2)
+  unitPrice      Decimal  @db.Decimal(14, 2)
+  lineTotal      Decimal  @db.Decimal(14, 2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@map("invoice_line_items")
+}
+
+/// Append-only — there is no update/delete route for payments in this
+/// phase (see docs/FINANCE_API.md's "known limitations": correcting a
+/// mis-recorded payment needs a distinct reversal/credit flow, deferred).
+/// Recording one always re-derives Invoice.paidAmount/balanceDue/status
+/// atomically (PaymentsService, a single Prisma transaction).
+model Payment {
+  id             String        @id @default(uuid())
+  organizationId String
+  invoiceId      String
+  paymentDate    DateTime      @default(now())
+  amount         Decimal       @db.Decimal(14, 2)
+  currency       String        @default("USD")
+  method         PaymentMethod
+  reference      String?
+  notes          String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice      Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([invoiceId])
+  @@map("payments")
+}
+
+/// `expenseNumber` is unique per organization, same pattern as
+/// Order.orderNumber/Invoice.invoiceNumber. Starts PENDING; only
+/// ADMIN/ACCOUNTANT can approve/reject (ExpensesService), and only
+/// APPROVED expenses ever count toward order profitability
+/// (FinanceService). There is no delete route — editing is blocked once
+/// the decision is made (APPROVED/REJECTED), matching Invoice's
+/// DRAFT-only-editing pattern.
+model Expense {
+  id               String          @id @default(uuid())
+  organizationId   String
+  orderId          String?
+  vehicleId        String?
+  driverId         String?
+  expenseNumber    String
+  expenseDate      DateTime        @default(now())
+  category         ExpenseCategory
+  description      String
+  amount           Decimal         @db.Decimal(14, 2)
+  currency         String          @default("USD")
+  status           ExpenseStatus   @default(PENDING)
+  approvedByUserId String?
+  approvedAt       DateTime?
+  rejectionReason  String?
+  notes            String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order          Order?       @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  vehicle        Vehicle?     @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  driver         Driver?      @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  approvedByUser User?        @relation("ExpenseApprovedBy", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, expenseNumber])
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([orderId])
+  @@index([vehicleId])
+  @@index([driverId])
+  @@map("expenses")
 }

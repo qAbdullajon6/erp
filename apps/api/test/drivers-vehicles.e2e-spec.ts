@@ -194,9 +194,9 @@ describe("Drivers + Vehicles (e2e)", () => {
     });
 
     it("only ADMIN/OPERATIONS_MANAGER/DISPATCHER can access; SALES_CRM_MANAGER/ACCOUNTANT/DRIVER cannot", async () => {
-      // Longer timeout: this test does four register+add-member+login round
-      // trips back to back, each involving deliberately-slow Argon2id
-      // hashing (see PasswordService) — the default 5000ms is too tight.
+      // This test does four register+add-member+login round trips back to
+      // back, each involving deliberately-slow Argon2id hashing (see
+      // PasswordService) — relies on jest-e2e.json's global testTimeout.
       const admin = await registerAdmin(`Driver Role Org ${randomUUID()}`);
       const dispatcher = await addMemberWithRole(admin, "DISPATCHER");
       const sales = await addMemberWithRole(admin, "SALES_CRM_MANAGER");
@@ -214,7 +214,7 @@ describe("Drivers + Vehicles (e2e)", () => {
           .set("Authorization", `Bearer ${nonAllowed.accessToken}`)
           .expect(403);
       }
-    }, 20000);
+    });
 
     it("there is no permanent delete route", async () => {
       const admin = await registerAdmin(`Driver No Delete Org ${randomUUID()}`);

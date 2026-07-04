@@ -319,6 +319,219 @@ export interface DispatchAvailabilityResult {
   vehicles: DispatchVehicleSummary[];
 }
 
+export type ApiInvoiceStatus = "DRAFT" | "SENT" | "PARTIALLY_PAID" | "PAID" | "OVERDUE" | "CANCELLED";
+export type ApiPaymentMethod = "CASH" | "BANK_TRANSFER" | "CARD" | "OTHER";
+export type ApiExpenseCategory =
+  | "FUEL"
+  | "TOLL"
+  | "MAINTENANCE"
+  | "DRIVER_ADVANCE"
+  | "PARKING"
+  | "INSURANCE"
+  | "OTHER";
+export type ApiExpenseStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export interface ApiInvoiceLineItem {
+  id: string;
+  description: string;
+  quantity: string;
+  unitPrice: string;
+  lineTotal: string;
+}
+
+export interface ApiInvoicePaymentSummary {
+  id: string;
+  paymentDate: string;
+  amount: string;
+  currency: string;
+  method: ApiPaymentMethod;
+  reference: string | null;
+  notes: string | null;
+}
+
+/// Mirrors apps/api's Invoice response shape (see docs/FINANCE_API.md). All
+/// monetary fields are decimal STRINGS, never JS numbers — same rationale
+/// as ApiCustomer.creditLimit/ApiOrder.price. `lineItems`/`payments` are
+/// only present on GET /invoices/:id, not on list items.
+export interface ApiInvoice {
+  id: string;
+  organizationId: string;
+  invoiceNumber: string;
+  customerId: string;
+  orderId: string | null;
+  issueDate: string;
+  dueDate: string | null;
+  currency: string;
+  status: ApiInvoiceStatus;
+  subtotal: string;
+  discountAmount: string;
+  taxAmount: string;
+  totalAmount: string;
+  paidAmount: string;
+  balanceDue: string;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  cancelledAt: string | null;
+  lineItems?: ApiInvoiceLineItem[];
+  payments?: ApiInvoicePaymentSummary[];
+}
+
+export interface ListInvoicesParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: ApiInvoiceStatus;
+  customerId?: string;
+  orderId?: string;
+  sortBy?: "invoiceNumber" | "issueDate" | "dueDate" | "totalAmount" | "balanceDue" | "status" | "createdAt";
+  sortOrder?: "asc" | "desc";
+}
+
+export interface ListInvoicesResult {
+  items: ApiInvoice[];
+  meta: { page: number; limit: number; total: number; totalPages: number };
+}
+
+export interface CreateInvoiceInput {
+  invoiceNumber?: string;
+  customerId: string;
+  orderId?: string;
+  issueDate?: string;
+  dueDate?: string;
+  currency?: string;
+  lineItems: { description: string; quantity: number; unitPrice: number }[];
+  discountAmount?: number;
+  taxAmount?: number;
+  notes?: string;
+}
+
+export type UpdateInvoiceInput = Partial<CreateInvoiceInput>;
+
+export interface ApiPayment {
+  id: string;
+  organizationId: string;
+  invoiceId: string;
+  paymentDate: string;
+  amount: string;
+  currency: string;
+  method: ApiPaymentMethod;
+  reference: string | null;
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface ListPaymentsParams {
+  page?: number;
+  limit?: number;
+  invoiceId?: string;
+  method?: ApiPaymentMethod;
+  dateFrom?: string;
+  dateTo?: string;
+  sortBy?: "paymentDate" | "amount" | "createdAt";
+  sortOrder?: "asc" | "desc";
+}
+
+export interface ListPaymentsResult {
+  items: ApiPayment[];
+  meta: { page: number; limit: number; total: number; totalPages: number };
+}
+
+export interface CreatePaymentInput {
+  paymentDate?: string;
+  amount: number;
+  currency?: string;
+  method: ApiPaymentMethod;
+  reference?: string;
+  notes?: string;
+}
+
+export interface RecordPaymentResult {
+  payment: ApiPayment;
+  invoice: ApiInvoice;
+}
+
+export interface ApiExpense {
+  id: string;
+  organizationId: string;
+  orderId: string | null;
+  vehicleId: string | null;
+  driverId: string | null;
+  expenseNumber: string;
+  expenseDate: string;
+  category: ApiExpenseCategory;
+  description: string;
+  amount: string;
+  currency: string;
+  status: ApiExpenseStatus;
+  approvedByUserId: string | null;
+  approvedAt: string | null;
+  rejectionReason: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ListExpensesParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: ApiExpenseStatus;
+  category?: ApiExpenseCategory;
+  orderId?: string;
+  vehicleId?: string;
+  driverId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  sortBy?: "expenseNumber" | "expenseDate" | "amount" | "status" | "createdAt";
+  sortOrder?: "asc" | "desc";
+}
+
+export interface ListExpensesResult {
+  items: ApiExpense[];
+  meta: { page: number; limit: number; total: number; totalPages: number };
+}
+
+export interface CreateExpenseInput {
+  expenseNumber?: string;
+  orderId?: string;
+  vehicleId?: string;
+  driverId?: string;
+  expenseDate?: string;
+  category: ApiExpenseCategory;
+  description: string;
+  amount: number;
+  currency?: string;
+  notes?: string;
+}
+
+export type UpdateExpenseInput = Partial<CreateExpenseInput>;
+
+export interface FinanceSummaryResult {
+  invoices: {
+    count: number;
+    totalInvoiced: string;
+    totalCollected: string;
+    totalOutstanding: string;
+    overdueCount: number;
+    overdueAmount: string;
+  };
+  expenses: {
+    pendingCount: number;
+    approvedTotal: string;
+  };
+  estimatedGrossProfit: string;
+}
+
+export interface OrderProfitabilityResult {
+  orderId: string;
+  orderNumber: string;
+  currency: string;
+  revenue: string;
+  approvedExpenses: string;
+  estimatedGrossProfit: string;
+}
+
 export function isApiEnabled(): boolean {
   // Either flag is sufficient, so a developer enabling Connected Mode for a
   // module (NEXT_PUBLIC_DATA_MODE=api) doesn't also have to separately flip
@@ -577,4 +790,130 @@ export const apiClient = {
       headers: authHeader(accessToken),
     });
   },
+
+  listInvoices: (accessToken: string, params: ListInvoicesParams = {}) => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.search) query.set("search", params.search);
+    if (params.status) query.set("status", params.status);
+    if (params.customerId) query.set("customerId", params.customerId);
+    if (params.orderId) query.set("orderId", params.orderId);
+    if (params.sortBy) query.set("sortBy", params.sortBy);
+    if (params.sortOrder) query.set("sortOrder", params.sortOrder);
+    const qs = query.toString();
+    return request<ListInvoicesResult>(`/invoices${qs ? `?${qs}` : ""}`, {
+      headers: authHeader(accessToken),
+    });
+  },
+
+  getInvoice: (accessToken: string, id: string) =>
+    request<ApiInvoice>(`/invoices/${id}`, { headers: authHeader(accessToken) }),
+
+  createInvoice: (accessToken: string, input: CreateInvoiceInput) =>
+    request<ApiInvoice>("/invoices", {
+      method: "POST",
+      headers: authHeader(accessToken),
+      body: JSON.stringify(input),
+    }),
+
+  createInvoiceFromOrder: (accessToken: string, orderId: string) =>
+    request<ApiInvoice>(`/invoices/from-order/${orderId}`, {
+      method: "POST",
+      headers: authHeader(accessToken),
+    }),
+
+  updateInvoice: (accessToken: string, id: string, input: UpdateInvoiceInput) =>
+    request<ApiInvoice>(`/invoices/${id}`, {
+      method: "PATCH",
+      headers: authHeader(accessToken),
+      body: JSON.stringify(input),
+    }),
+
+  sendInvoice: (accessToken: string, id: string) =>
+    request<ApiInvoice>(`/invoices/${id}/send`, { method: "POST", headers: authHeader(accessToken) }),
+
+  cancelInvoice: (accessToken: string, id: string) =>
+    request<ApiInvoice>(`/invoices/${id}/cancel`, { method: "POST", headers: authHeader(accessToken) }),
+
+  listPayments: (accessToken: string, params: ListPaymentsParams = {}) => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.invoiceId) query.set("invoiceId", params.invoiceId);
+    if (params.method) query.set("method", params.method);
+    if (params.dateFrom) query.set("dateFrom", params.dateFrom);
+    if (params.dateTo) query.set("dateTo", params.dateTo);
+    if (params.sortBy) query.set("sortBy", params.sortBy);
+    if (params.sortOrder) query.set("sortOrder", params.sortOrder);
+    const qs = query.toString();
+    return request<ListPaymentsResult>(`/payments${qs ? `?${qs}` : ""}`, {
+      headers: authHeader(accessToken),
+    });
+  },
+
+  listPaymentsForInvoice: (accessToken: string, invoiceId: string) =>
+    request<ListPaymentsResult>(`/invoices/${invoiceId}/payments`, { headers: authHeader(accessToken) }),
+
+  recordPayment: (accessToken: string, invoiceId: string, input: CreatePaymentInput) =>
+    request<RecordPaymentResult>(`/invoices/${invoiceId}/payments`, {
+      method: "POST",
+      headers: authHeader(accessToken),
+      body: JSON.stringify(input),
+    }),
+
+  listExpenses: (accessToken: string, params: ListExpensesParams = {}) => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.search) query.set("search", params.search);
+    if (params.status) query.set("status", params.status);
+    if (params.category) query.set("category", params.category);
+    if (params.orderId) query.set("orderId", params.orderId);
+    if (params.vehicleId) query.set("vehicleId", params.vehicleId);
+    if (params.driverId) query.set("driverId", params.driverId);
+    if (params.dateFrom) query.set("dateFrom", params.dateFrom);
+    if (params.dateTo) query.set("dateTo", params.dateTo);
+    if (params.sortBy) query.set("sortBy", params.sortBy);
+    if (params.sortOrder) query.set("sortOrder", params.sortOrder);
+    const qs = query.toString();
+    return request<ListExpensesResult>(`/expenses${qs ? `?${qs}` : ""}`, {
+      headers: authHeader(accessToken),
+    });
+  },
+
+  getExpense: (accessToken: string, id: string) =>
+    request<ApiExpense>(`/expenses/${id}`, { headers: authHeader(accessToken) }),
+
+  createExpense: (accessToken: string, input: CreateExpenseInput) =>
+    request<ApiExpense>("/expenses", {
+      method: "POST",
+      headers: authHeader(accessToken),
+      body: JSON.stringify(input),
+    }),
+
+  updateExpense: (accessToken: string, id: string, input: UpdateExpenseInput) =>
+    request<ApiExpense>(`/expenses/${id}`, {
+      method: "PATCH",
+      headers: authHeader(accessToken),
+      body: JSON.stringify(input),
+    }),
+
+  approveExpense: (accessToken: string, id: string) =>
+    request<ApiExpense>(`/expenses/${id}/approve`, { method: "POST", headers: authHeader(accessToken) }),
+
+  rejectExpense: (accessToken: string, id: string, rejectionReason?: string) =>
+    request<ApiExpense>(`/expenses/${id}/reject`, {
+      method: "POST",
+      headers: authHeader(accessToken),
+      body: JSON.stringify({ rejectionReason }),
+    }),
+
+  financeSummary: (accessToken: string) =>
+    request<FinanceSummaryResult>("/finance/summary", { headers: authHeader(accessToken) }),
+
+  orderProfitability: (accessToken: string, orderId: string) =>
+    request<OrderProfitabilityResult>(`/finance/order-profitability/${orderId}`, {
+      headers: authHeader(accessToken),
+    }),
 };

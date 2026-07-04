@@ -13,6 +13,10 @@ import { DriversModule } from "./drivers/drivers.module";
 import { VehiclesModule } from "./vehicles/vehicles.module";
 import { OrdersModule } from "./orders/orders.module";
 import { DispatchModule } from "./dispatch/dispatch.module";
+import { InvoicesModule } from "./invoices/invoices.module";
+import { PaymentsModule } from "./payments/payments.module";
+import { ExpensesModule } from "./expenses/expenses.module";
+import { FinanceModule } from "./finance/finance.module";
 import { LoggingMiddleware } from "./common/middleware/logging.middleware";
 
 @Module({
@@ -35,6 +39,10 @@ import { LoggingMiddleware } from "./common/middleware/logging.middleware";
     VehiclesModule,
     OrdersModule,
     DispatchModule,
+    InvoicesModule,
+    PaymentsModule,
+    ExpensesModule,
+    FinanceModule,
   ],
   providers: [
     // Disabled under NODE_ENV=test: e2e tests deliberately make many rapid
