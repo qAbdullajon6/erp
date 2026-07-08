@@ -11,7 +11,7 @@ export function Logo({ className, size = 32, showWordmark = true }: LogoProps) {
     <div className={cn("flex items-center gap-2.5", className)}>
       <LogoMark size={size} />
       {showWordmark && (
-        <span className="font-display text-[17px] font-semibold tracking-tight text-foreground">
+        <span className="font-display text-[17px] font-normal tracking-tight text-foreground">
           FlowERP<span className="text-brand"> AI</span>
         </span>
       )}
