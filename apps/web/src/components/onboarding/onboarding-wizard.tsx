@@ -1,7 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronRight, CheckCircle2 } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
+import { CustomerForm } from './customer-form';
+import { DriverForm } from './driver-form';
+import { VehicleForm } from './vehicle-form';
+import { OrderForm } from './order-form';
+import { Button } from '@/components/ui/button';
 
 type OnboardingStep = 'organizationProfile' | 'firstCustomer' | 'firstDriver' | 'firstVehicle' | 'firstOrder';
 
@@ -20,16 +25,13 @@ const STEPS: { id: OnboardingStep; label: string; description: string }[] = [
 export function OnboardingWizard({ onOnboardingComplete }: OnboardingWizardProps) {
   const [currentStep, setCurrentStep] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<Set<OnboardingStep>>(new Set());
-  const [isSkipped, setIsSkipped] = useState(false);
 
-  const handleCompleteStep = async () => {
+  const handleStepComplete = async () => {
     const step = STEPS[currentStep];
     try {
       const res = await fetch(`/api/onboarding/steps/${step.id}/complete`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
       });
 
       if (res.ok) {
@@ -50,17 +52,11 @@ export function OnboardingWizard({ onOnboardingComplete }: OnboardingWizardProps
 
   const handleSkip = async () => {
     try {
-      const res = await fetch('/api/onboarding/skip', {
+      await fetch('/api/onboarding/skip', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
       });
-
-      if (res.ok) {
-        setIsSkipped(true);
-        onOnboardingComplete();
-      }
+      onOnboardingComplete();
     } catch (error) {
       console.error('Failed to skip onboarding:', error);
     }
@@ -106,32 +102,63 @@ export function OnboardingWizard({ onOnboardingComplete }: OnboardingWizardProps
 
         {/* Card */}
         <div className="bg-white rounded-lg shadow-lg p-8">
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">{step.label}</h1>
-          <p className="text-slate-600 mb-8">{step.description}</p>
+          {/* Step Content */}
+          {step.id === 'organizationProfile' && (
+            <div className="space-y-6">
+              <div>
+                <h1 className="text-3xl font-bold text-slate-900 mb-2">{step.label}</h1>
+                <p className="text-slate-600 mb-8">{step.description}</p>
+              </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-sm text-blue-700">
+                  Your organization was created during registration. Profile details are managed in <strong>Settings → Organization</strong>.
+                </p>
+              </div>
+              <div className="flex gap-4 pt-6">
+                <Button
+                  onClick={handleStepComplete}
+                  className="flex-1"
+                >
+                  Continue to Next Step
+                </Button>
+                <Button
+                  onClick={handleSkip}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  Skip Onboarding
+                </Button>
+              </div>
+            </div>
+          )}
 
-          {/* Placeholder Content - will be replaced with actual forms */}
-          <div className="bg-slate-50 border-2 border-dashed border-slate-300 rounded-lg p-12 mb-8 text-center">
-            <p className="text-slate-500 mb-4">Step {currentStep + 1} of {STEPS.length}</p>
-            <p className="text-slate-600 font-medium">{step.label} form will appear here</p>
-            <p className="text-sm text-slate-500 mt-2">For now, click Next to continue</p>
-          </div>
+          {step.id === 'firstCustomer' && (
+            <CustomerForm
+              onSuccess={handleStepComplete}
+              onCancel={handleSkip}
+            />
+          )}
 
-          {/* Actions */}
-          <div className="flex gap-4">
-            <button
-              onClick={handleCompleteStep}
-              className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold transition flex items-center justify-center gap-2"
-            >
-              {currentStep === STEPS.length - 1 ? 'Complete Onboarding' : 'Next'}
-              <ChevronRight className="w-5 h-5" />
-            </button>
-            <button
-              onClick={handleSkip}
-              className="px-6 py-3 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-semibold transition"
-            >
-              Skip for Now
-            </button>
-          </div>
+          {step.id === 'firstDriver' && (
+            <DriverForm
+              onSuccess={handleStepComplete}
+              onCancel={handleSkip}
+            />
+          )}
+
+          {step.id === 'firstVehicle' && (
+            <VehicleForm
+              onSuccess={handleStepComplete}
+              onCancel={handleSkip}
+            />
+          )}
+
+          {step.id === 'firstOrder' && (
+            <OrderForm
+              onSuccess={handleStepComplete}
+              onCancel={handleSkip}
+            />
+          )}
         </div>
 
         {/* Footer */}
