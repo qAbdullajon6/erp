@@ -1,4 +1,4 @@
-import { Mail, Phone, MessageCircle } from "lucide-react";
+import { Mail, Phone, MessageCircle, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { openDemoModal } from "@/components/site/DemoModal";
 
@@ -28,10 +28,10 @@ export function Contact() {
 
             <ul className="space-y-3">
               <ContactRow
-                icon={Mail}
-                label="Email"
-                value="hello@itechnology.uz"
-                href="mailto:hello@itechnology.uz"
+                icon={Globe}
+                label="Website"
+                value="itechnology.uz"
+                href="https://itechnology.uz/"
               />
               <ContactRow
                 icon={Phone}
@@ -44,6 +44,12 @@ export function Contact() {
                 label="WhatsApp"
                 value="+998 50 108 18 24"
                 href="https://wa.me/998501081824"
+              />
+              <ContactRow
+                icon={Mail}
+                label="Email"
+                value="hello@itechnology.uz"
+                href="mailto:hello@itechnology.uz"
               />
             </ul>
           </div>

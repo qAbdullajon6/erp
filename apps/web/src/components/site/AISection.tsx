@@ -63,44 +63,49 @@ export function AISection() {
           </div>
 
           <div className="relative">
-            <div className="absolute -inset-4 rounded-3xl bg-gradient-brand/20 blur-3xl" />
-            <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-surface shadow-elevated">
-              <div className="flex items-center gap-2 border-b border-border/60 bg-background/40 px-4 py-3">
-                <Sparkles className="h-4 w-4 text-brand" />
-                <span className="text-sm font-medium">Operations Assistant</span>
-                <span className="ml-auto text-[10px] text-success">● Live</span>
+            <div className="absolute -inset-4 rounded-3xl bg-gradient-brand/25 blur-3xl" />
+            <div className="relative overflow-hidden rounded-3xl border border-brand/30 bg-surface/80 backdrop-blur-sm shadow-elevated">
+              <div className="flex items-center gap-3 border-b border-brand/20 bg-gradient-to-r from-background/60 to-background/40 px-5 py-4">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-brand">
+                  <Sparkles className="h-4 w-4 text-brand-foreground" />
+                </div>
+                <span className="font-display text-sm font-semibold">Operations Assistant</span>
+                <span className="ml-auto flex items-center gap-1 text-[11px] font-medium text-success">
+                  <span className="inline-block h-2 w-2 rounded-full bg-success animate-pulse" />
+                  Live
+                </span>
               </div>
-              <div className="max-h-[460px] space-y-4 overflow-y-auto p-5">
+              <div className="max-h-[480px] space-y-5 overflow-y-auto px-5 py-6 scrollbar-thin scrollbar-track-surface scrollbar-thumb-brand/40 hover:scrollbar-thumb-brand/60">
                 {conversation.map((m, i) => (
-                  <div key={i} className="space-y-3">
-                    <div className="flex items-start gap-2.5">
-                      <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-muted">
-                        <User className="h-3.5 w-3.5 text-muted-foreground" />
+                  <div key={i} className="space-y-4 animate-in fade-in-50">
+                    <div className="flex items-end gap-3">
+                      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-muted/60">
+                        <User className="h-4 w-4 text-muted-foreground" />
                       </div>
-                      <div className="rounded-2xl rounded-tl-sm bg-surface-elevated px-3.5 py-2 text-sm">
+                      <div className="max-w-xs rounded-2xl rounded-bl-sm bg-muted/40 px-4 py-3 text-sm leading-relaxed text-foreground/90 border border-muted/40">
                         {m.q}
                       </div>
                     </div>
-                    <div className="flex items-start gap-2.5">
-                      <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-gradient-brand">
-                        <Sparkles className="h-3.5 w-3.5 text-brand-foreground" />
-                      </div>
-                      <div className="rounded-2xl rounded-tl-sm border border-brand/25 bg-brand/10 px-3.5 py-2 text-sm text-foreground/95">
+                    <div className="flex items-end gap-3 justify-end">
+                      <div className="max-w-xs rounded-2xl rounded-br-sm border border-brand/30 bg-brand/15 px-4 py-3 text-sm leading-relaxed text-foreground/95 backdrop-blur-sm">
                         {m.a}
+                      </div>
+                      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gradient-brand shadow-sm">
+                        <Sparkles className="h-4 w-4 text-brand-foreground" />
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
-              <div className="border-t border-border/60 bg-background/40 p-3">
-                <div className="flex items-center gap-2 rounded-xl border border-border/60 bg-surface px-3 py-2">
+              <div className="border-t border-brand/20 bg-gradient-to-r from-background/60 to-background/40 p-4">
+                <div className="flex items-center gap-2 rounded-xl border border-brand/25 bg-surface/80 backdrop-blur-sm px-4 py-3 shadow-sm hover:border-brand/40 transition-colors">
                   <input
                     disabled
                     placeholder="Ask about deliveries, invoices, drivers…"
-                    className="flex-1 bg-transparent text-sm text-muted-foreground outline-none placeholder:text-muted-foreground/70"
+                    className="flex-1 bg-transparent text-sm text-muted-foreground outline-none placeholder:text-muted-foreground/60"
                   />
-                  <button className="grid h-7 w-7 place-items-center rounded-lg bg-gradient-brand text-brand-foreground">
-                    <ArrowUp className="h-3.5 w-3.5" />
+                  <button className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-brand text-brand-foreground hover:shadow-sm transition-all">
+                    <ArrowUp className="h-4 w-4" />
                   </button>
                 </div>
               </div>
