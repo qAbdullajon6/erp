@@ -123,9 +123,21 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
   }
   html {
-    @apply font-sans;
+    font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+  }
+
+  /* Heading font: Manrope */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-manrope), system-ui, -apple-system, sans-serif;
+    font-weight: 700;
+  }
+
+  /* Monospace for code/metrics */
+  code, pre, .mono {
+    font-family: var(--font-jetbrains-mono), monospace;
   }
 }
 
