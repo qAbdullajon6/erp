@@ -6,7 +6,7 @@ interface LogoProps {
   showWordmark?: boolean;
 }
 
-export function Logo({ className, size = 24, showWordmark = true }: LogoProps) {
+export function Logo({ className, size = 28, showWordmark = true }: LogoProps) {
   return (
     <div className={cn("flex items-center gap-2.5", className)}>
       <LogoMark size={size} />
@@ -19,7 +19,7 @@ export function Logo({ className, size = 24, showWordmark = true }: LogoProps) {
   );
 }
 
-export function LogoMark({ size = 24, className }: { size?: number; className?: string }) {
+export function LogoMark({ size = 28, className }: { size?: number; className?: string }) {
   return (
     <svg
       width={size}
