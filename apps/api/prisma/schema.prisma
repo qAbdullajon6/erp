@@ -129,6 +129,24 @@ enum ExpenseStatus {
   REJECTED
 }
 
+enum NotificationSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+/// Which role group can see a notification, and which "enabled categories"
+/// toggle in NotificationSettings gates it — see NotificationsService's
+/// rule table (docs/REPORTS_NOTIFICATIONS_API.md) for the full type ->
+/// category mapping.
+enum NotificationCategory {
+  OPERATIONS
+  FINANCE
+  CUSTOMERS
+  FLEET
+}
+
 /// A tenant. Every other business entity in the system will eventually hang
 /// off an Organization, directly or indirectly.
 model Organization {
@@ -154,6 +172,8 @@ model Organization {
   invoices      Invoice[]
   payments      Payment[]
   expenses      Expense[]
+  notifications Notification[]
+  notificationSettings NotificationSettings?
 
   @@map("organizations")
 }
@@ -566,4 +586,64 @@ model Expense {
   @@index([vehicleId])
   @@index([driverId])
   @@map("expenses")
+}
+
+/// The Reports + Notifications foundation phase. Notifications are
+/// generated lazily on read (NotificationsService.refresh), never by a
+/// cron/queue in this phase — see docs/REPORTS_NOTIFICATIONS_API.md for the
+/// full rule table and the resolved-condition auto-archive lifecycle. A
+/// partial unique index (added by raw SQL in this model's migration, same
+/// technique as Invoice's active-order-per-invoice constraint) enforces
+/// "at most one OPEN (non-archived) notification per type+entity," backing
+/// up the same de-duplication check in NotificationsService.
+model Notification {
+  id             String               @id @default(uuid())
+  organizationId String
+  type           String
+  category       NotificationCategory
+  severity       NotificationSeverity
+  title          String
+  message        String
+  entityType     String?
+  entityId       String?
+  isRead         Boolean              @default(false)
+  readAt         DateTime?
+  isArchived     Boolean              @default(false)
+  archivedAt     DateTime?
+  createdAt      DateTime             @default(now())
+  metadata       Json?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, isArchived, isRead])
+  @@index([organizationId, type, entityId])
+  @@map("notifications")
+}
+
+/// One row per organization (lazily created with defaults on first access —
+/// see NotificationsService.getOrCreateSettings — rather than at
+/// organization-creation time, so this stays decoupled from the auth/org
+/// module). `expiryWarningDays` is a single shared threshold applied to
+/// vehicle insurance, vehicle inspection, AND driver license expiry alike —
+/// the phase spec groups these as one "vehicle/driver expiry warning days"
+/// setting, not three independent ones.
+model NotificationSettings {
+  id                        String   @id @default(uuid())
+  organizationId            String   @unique
+  /// Array of NotificationCategory values (stored as Json since Prisma
+  /// doesn't support native array columns portably) — a category absent
+  /// from this list is never generated for the organization at all,
+  /// regardless of any individual role's access to it.
+  enabledCategories         Json
+  invoiceDueSoonDays        Int      @default(3)
+  creditLimitWarningPercent Int      @default(80)
+  expiryWarningDays         Int      @default(30)
+  lowSeverityEnabled        Boolean  @default(true)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("notification_settings")
 }

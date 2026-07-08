@@ -302,6 +302,90 @@ async function main() {
     }
   }
   const deliveredOrder = orders[4]; // ORD-...-0005, the DELIVERED one
+  const invoiceYear = new Date().getUTCFullYear();
+
+  // --- Add a negative-profit delivered order for testing
+  // NEGATIVE_PROFIT notification (order revenue < approved expenses)
+  const negativeProfitOrder = await prisma.order.create({
+    data: {
+      organizationId: organization.id,
+      orderNumber: `ORD-${new Date().getUTCFullYear()}-0008`,
+      customerId: customers[1].id,
+      pickupAddress: "Test pickup address",
+      pickupCity: "Samarkand",
+      pickupDate: days(-8),
+      deliveryAddress: "Test delivery address",
+      deliveryCity: "Bukhara",
+      deliveryDate: days(-7),
+      cargoDescription: "[TEST DATA] Low-margin order for negative profit demo",
+      price: 100, // Very low price
+      currency: "USD",
+      status: "DELIVERED",
+      driverId: drivers[0].id,
+      vehicleId: vehicles[1].id,
+      deliveredAt: days(-7),
+    },
+  });
+  await prisma.orderStatusHistory.create({
+    data: {
+      organizationId: organization.id,
+      orderId: negativeProfitOrder.id,
+      status: "DELIVERED",
+      note: "Negative profit order for demo (seed)",
+    },
+  });
+
+  // --- Add expiry-warning driver and vehicles for FLEET notifications ---
+
+  // Update driver to have expiry warning (license expires in 7 days)
+  await prisma.driver.update({
+    where: { id: drivers[0].id },
+    data: { licenseExpiry: days(7) },
+  });
+
+  // Update vehicle to have insurance expiry warning (expires in 14 days)
+  await prisma.vehicle.update({
+    where: { id: vehicles[0].id },
+    data: { insuranceExpiry: days(14) },
+  });
+
+  // Update another vehicle to have inspection expiry warning (expires in 1 day)
+  await prisma.vehicle.update({
+    where: { id: vehicles[1].id },
+    data: { inspectionExpiry: days(1) },
+  });
+
+  // --- Add customer credit-limit scenarios ---
+
+  // Customer 0: near credit limit (80% utilization triggers NEAR warning)
+  // creditLimit = 20000, create invoice for 16000 (80% of limit)
+  const creditNearInvoice = await createInvoice({
+    invoiceNumber: `INV-${invoiceYear}-0006`,
+    customerId: customers[0].id,
+    dueDate: days(15),
+    status: "SENT",
+    lineItems: [{ description: "[TEST DATA] Large order, near credit limit", quantity: 1, unitPrice: 16000 }],
+  });
+
+  // Customer 2: credit limit exceeded
+  // creditLimit = 8000, create invoice for 10000 (125% of limit)
+  const creditExceededInvoice = await createInvoice({
+    invoiceNumber: `INV-${invoiceYear}-0007`,
+    customerId: customers[2].id,
+    dueDate: days(15),
+    status: "SENT",
+    lineItems: [{ description: "[TEST DATA] Exceeds credit limit", quantity: 1, unitPrice: 10000 }],
+  });
+
+  // --- Add invoice due soon for INVOICE_DUE_SOON notification (due in 2 days, threshold is 3) ---
+
+  const invoiceDueSoon = await createInvoice({
+    invoiceNumber: `INV-${invoiceYear}-0008`,
+    customerId: customers[1].id,
+    dueDate: days(2),
+    status: "SENT",
+    lineItems: [{ description: "[TEST DATA] Invoice due soon", quantity: 1, unitPrice: 500 }],
+  });
 
   // --- Finance: invoices, payments, expenses — all clearly labelled test
   // data, covering every invoice status and both expense decisions. ---
@@ -351,8 +435,6 @@ async function main() {
     });
     return invoice;
   }
-
-  const invoiceYear = new Date().getUTCFullYear();
 
   const paidInvoice = await createInvoice({
     invoiceNumber: `INV-${invoiceYear}-0001`,
@@ -471,6 +553,30 @@ async function main() {
         approvedByUserId: adminUser.id,
         approvedAt: new Date(),
         rejectionReason: "Duplicate submission (seed)",
+      },
+      {
+        organizationId: organization.id,
+        expenseNumber: `EXP-${expenseYear}-0006`,
+        orderId: negativeProfitOrder.id,
+        vehicleId: vehicles[1].id,
+        driverId: drivers[0].id,
+        category: "FUEL",
+        description: "[TEST DATA] High fuel cost for negative-profit order (seed)",
+        amount: 80,
+        status: "APPROVED",
+        approvedByUserId: adminUser.id,
+        approvedAt: new Date(),
+      },
+      {
+        organizationId: organization.id,
+        expenseNumber: `EXP-${expenseYear}-0007`,
+        orderId: negativeProfitOrder.id,
+        category: "TOLL",
+        description: "[TEST DATA] Toll for negative-profit order (seed)",
+        amount: 50,
+        status: "APPROVED",
+        approvedByUserId: adminUser.id,
+        approvedAt: new Date(),
       },
     ],
   });

@@ -17,6 +17,8 @@ import { InvoicesModule } from "./invoices/invoices.module";
 import { PaymentsModule } from "./payments/payments.module";
 import { ExpensesModule } from "./expenses/expenses.module";
 import { FinanceModule } from "./finance/finance.module";
+import { ReportsModule } from "./reports/reports.module";
+import { NotificationsModule } from "./notifications/notifications.module";
 import { LoggingMiddleware } from "./common/middleware/logging.middleware";
 
 @Module({
@@ -43,6 +45,8 @@ import { LoggingMiddleware } from "./common/middleware/logging.middleware";
     PaymentsModule,
     ExpensesModule,
     FinanceModule,
+    ReportsModule,
+    NotificationsModule,
   ],
   providers: [
     // Disabled under NODE_ENV=test: e2e tests deliberately make many rapid

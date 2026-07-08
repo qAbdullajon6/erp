@@ -48,9 +48,6 @@ interface InvoiceBody {
 interface InvoiceResponse {
   data: InvoiceBody;
 }
-interface InvoiceListResponse {
-  data: { items: InvoiceBody[]; meta: { total: number } };
-}
 
 interface ExpenseBody {
   id: string;

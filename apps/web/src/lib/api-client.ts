@@ -532,6 +532,166 @@ export interface OrderProfitabilityResult {
   estimatedGrossProfit: string;
 }
 
+// =====================================================================
+// REPORTS
+// =====================================================================
+
+export interface ReportFilters {
+  dateFrom?: string;
+  dateTo?: string;
+  customerId?: string;
+  driverId?: string;
+  vehicleId?: string;
+  pickupCity?: string;
+  deliveryCity?: string;
+  orderStatus?: string;
+  invoiceStatus?: string;
+  currency?: string;
+  timezone?: string;
+  comparisonPeriod?: "previous_period" | "previous_year" | "none";
+}
+
+export interface ExecutiveOverviewReport {
+  filters: ReportFilters;
+  totals: {
+    totalOrders: number;
+    deliveredOrders: number;
+    activeOrders: number;
+    delayedOrders: number;
+    totalRevenue: string;
+    approvedExpenses: string;
+    estimatedGrossProfit: string;
+    totalInvoiced: string;
+    totalCollected: string;
+    outstandingReceivables: string;
+    deliveryCompletionRate: number;
+    onTimeDeliveryRate: number;
+  };
+  comparison?: {
+    [key: string]: { current: number; previous: number; changePercent: number | null };
+  } | null;
+  revenueVsExpensesTimeSeries: Array<{ bucket: string; revenue: number; expenses: number }>;
+  deliveryPerformanceTimeSeries: Array<{ bucket: string; delivered: number; delayed: number }>;
+  ordersByStatus: Array<{ status: string; count: number }>;
+  topCustomers: Array<{ customerId: string; companyName: string; revenue: string; orderCount: number }>;
+  topRoutes: Array<{ pickupCity: string; deliveryCity: string; revenue: string; orderCount: number }>;
+}
+
+export interface OperationsReport {
+  filters: ReportFilters;
+  driverPerformance: Array<{
+    driverId: string;
+    employeeCode: string;
+    name: string;
+    totalOrders: number;
+    deliveredOrders: number;
+    onTimeRate: number;
+    delayedOrders: number;
+    revenue: string;
+  }>;
+  vehiclePerformance: Array<{
+    vehicleId: string;
+    vehicleCode: string;
+    plateNumber: string;
+    totalOrders: number;
+    deliveredOrders: number;
+    revenue: string;
+    approvedExpenses: string;
+    estimatedGrossProfit: string;
+  }>;
+  routePerformance: Array<{
+    pickupCity: string;
+    deliveryCity: string;
+    totalOrders: number;
+    deliveredOrders: number;
+    completionRate: number;
+    revenue: string;
+  }>;
+  exceptions: {
+    delayedOrders: Array<{ orderId: string; orderNumber: string; customerId: string; status: string; pickupCity: string; deliveryCity: string; deliveryDate: string; price: string; currency: string }>;
+    unassignedActiveOrders: Array<{ orderId: string; orderNumber: string; customerId: string; status: string; pickupCity: string; deliveryCity: string; deliveryDate: string; price: string; currency: string }>;
+    cancelledOrders: Array<{ orderId: string; orderNumber: string; customerId: string; status: string; pickupCity: string; deliveryCity: string; deliveryDate: string; price: string; currency: string }>;
+    negativeProfitOrders: Array<{ orderId: string; orderNumber: string; customerId: string; status: string; pickupCity: string; deliveryCity: string; deliveryDate: string; price: string; currency: string; approvedExpenses: string; estimatedGrossProfit: string }>;
+    deliveredWithoutInvoice: Array<{ orderId: string; orderNumber: string; customerId: string; status: string; pickupCity: string; deliveryCity: string; deliveryDate: string; price: string; currency: string }>;
+  };
+}
+
+export interface FinancialReport {
+  filters: ReportFilters;
+  receivablesAging: Array<{ bucket: string; count: number; amount: string }>;
+  invoiceCollectionPerformance: {
+    totalInvoices: number;
+    paidInvoices: number;
+    overdueInvoices: number;
+    averageDaysToFullPayment: number;
+    collectionRate: number;
+  };
+  expenseBreakdown: Array<{ category: string; count: number; approvedAmount: string; pendingAmount: string }>;
+  profitability: {
+    label: string;
+    byCustomer: Array<{ customerId: string; companyName: string; revenue: string; approvedExpenses: string; estimatedGrossProfit: string; orderCount: number }>;
+    byRoute: Array<{ route: string; revenue: string; approvedExpenses: string; estimatedGrossProfit: string; orderCount: number }>;
+    byDriver: Array<{ driverId: string; name: string; revenue: string; approvedExpenses: string; estimatedGrossProfit: string; orderCount: number }>;
+    byVehicle: Array<{ vehicleId: string; plateNumber: string; revenue: string; approvedExpenses: string; estimatedGrossProfit: string; orderCount: number }>;
+    byOrder: Array<{ orderId: string; orderNumber: string; currency: string; revenue: string; approvedExpenses: string; estimatedGrossProfit: string }>;
+  };
+}
+
+// =====================================================================
+// NOTIFICATIONS
+// =====================================================================
+
+export type NotificationSeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+export type NotificationCategory = "OPERATIONS" | "FINANCE" | "CUSTOMERS" | "FLEET";
+
+export interface ApiNotification {
+  id: string;
+  organizationId: string;
+  type: string;
+  category: NotificationCategory;
+  severity: NotificationSeverity;
+  title: string;
+  message: string;
+  entityType: string | null;
+  entityId: string | null;
+  isRead: boolean;
+  readAt: string | null;
+  isArchived: boolean;
+  archivedAt: string | null;
+  createdAt: string;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface NotificationListParams {
+  page?: number;
+  limit?: number;
+  category?: NotificationCategory;
+  severity?: NotificationSeverity;
+  isRead?: boolean;
+  isArchived?: boolean;
+  sortBy?: "createdAt" | "severity";
+  sortOrder?: "asc" | "desc";
+}
+
+export interface NotificationListResult {
+  items: ApiNotification[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+  unreadCount: number;
+}
+
+export interface NotificationSettings {
+  enabledCategories: NotificationCategory[];
+  invoiceDueSoonDays: number;
+  creditLimitWarningPercent: number;
+  expiryWarningDays: number;
+  lowSeverityEnabled: boolean;
+}
+
 export function isApiEnabled(): boolean {
   // Either flag is sufficient, so a developer enabling Connected Mode for a
   // module (NEXT_PUBLIC_DATA_MODE=api) doesn't also have to separately flip
@@ -914,6 +1074,154 @@ export const apiClient = {
 
   orderProfitability: (accessToken: string, orderId: string) =>
     request<OrderProfitabilityResult>(`/finance/order-profitability/${orderId}`, {
+      headers: authHeader(accessToken),
+    }),
+
+  // Reports
+  getExecutiveOverviewReport: (accessToken: string, filters: ReportFilters = {}) => {
+    const query = new URLSearchParams();
+    if (filters.dateFrom) query.set("dateFrom", filters.dateFrom);
+    if (filters.dateTo) query.set("dateTo", filters.dateTo);
+    if (filters.customerId) query.set("customerId", filters.customerId);
+    if (filters.driverId) query.set("driverId", filters.driverId);
+    if (filters.vehicleId) query.set("vehicleId", filters.vehicleId);
+    if (filters.pickupCity) query.set("pickupCity", filters.pickupCity);
+    if (filters.deliveryCity) query.set("deliveryCity", filters.deliveryCity);
+    if (filters.orderStatus) query.set("orderStatus", filters.orderStatus);
+    if (filters.invoiceStatus) query.set("invoiceStatus", filters.invoiceStatus);
+    if (filters.currency) query.set("currency", filters.currency);
+    if (filters.timezone) query.set("timezone", filters.timezone);
+    if (filters.comparisonPeriod) query.set("comparisonPeriod", filters.comparisonPeriod);
+    const qs = query.toString();
+    return request<ExecutiveOverviewReport>(`/reports/executive-overview${qs ? `?${qs}` : ""}`, {
+      headers: authHeader(accessToken),
+    });
+  },
+
+  getOperationsReport: (accessToken: string, filters: ReportFilters = {}) => {
+    const query = new URLSearchParams();
+    if (filters.dateFrom) query.set("dateFrom", filters.dateFrom);
+    if (filters.dateTo) query.set("dateTo", filters.dateTo);
+    if (filters.customerId) query.set("customerId", filters.customerId);
+    if (filters.driverId) query.set("driverId", filters.driverId);
+    if (filters.vehicleId) query.set("vehicleId", filters.vehicleId);
+    if (filters.pickupCity) query.set("pickupCity", filters.pickupCity);
+    if (filters.deliveryCity) query.set("deliveryCity", filters.deliveryCity);
+    if (filters.orderStatus) query.set("orderStatus", filters.orderStatus);
+    if (filters.invoiceStatus) query.set("invoiceStatus", filters.invoiceStatus);
+    if (filters.currency) query.set("currency", filters.currency);
+    if (filters.timezone) query.set("timezone", filters.timezone);
+    if (filters.comparisonPeriod) query.set("comparisonPeriod", filters.comparisonPeriod);
+    const qs = query.toString();
+    return request<OperationsReport>(`/reports/operations${qs ? `?${qs}` : ""}`, {
+      headers: authHeader(accessToken),
+    });
+  },
+
+  getFinancialReport: (accessToken: string, filters: ReportFilters = {}) => {
+    const query = new URLSearchParams();
+    if (filters.dateFrom) query.set("dateFrom", filters.dateFrom);
+    if (filters.dateTo) query.set("dateTo", filters.dateTo);
+    if (filters.customerId) query.set("customerId", filters.customerId);
+    if (filters.driverId) query.set("driverId", filters.driverId);
+    if (filters.vehicleId) query.set("vehicleId", filters.vehicleId);
+    if (filters.pickupCity) query.set("pickupCity", filters.pickupCity);
+    if (filters.deliveryCity) query.set("deliveryCity", filters.deliveryCity);
+    if (filters.orderStatus) query.set("orderStatus", filters.orderStatus);
+    if (filters.invoiceStatus) query.set("invoiceStatus", filters.invoiceStatus);
+    if (filters.currency) query.set("currency", filters.currency);
+    if (filters.timezone) query.set("timezone", filters.timezone);
+    if (filters.comparisonPeriod) query.set("comparisonPeriod", filters.comparisonPeriod);
+    const qs = query.toString();
+    return request<FinancialReport>(`/reports/financial${qs ? `?${qs}` : ""}`, {
+      headers: authHeader(accessToken),
+    });
+  },
+
+  exportReport: async (accessToken: string, type: "executive-overview" | "operations" | "financial", filters: ReportFilters = {}, filename: string = `report.csv`) => {
+    if (!isApiEnabled()) throw new ApiDisabledError();
+    const query = new URLSearchParams();
+    query.set("type", type);
+    if (filters.dateFrom) query.set("dateFrom", filters.dateFrom);
+    if (filters.dateTo) query.set("dateTo", filters.dateTo);
+    if (filters.customerId) query.set("customerId", filters.customerId);
+    if (filters.driverId) query.set("driverId", filters.driverId);
+    if (filters.vehicleId) query.set("vehicleId", filters.vehicleId);
+    if (filters.pickupCity) query.set("pickupCity", filters.pickupCity);
+    if (filters.deliveryCity) query.set("deliveryCity", filters.deliveryCity);
+    if (filters.orderStatus) query.set("orderStatus", filters.orderStatus);
+    if (filters.invoiceStatus) query.set("invoiceStatus", filters.invoiceStatus);
+    if (filters.currency) query.set("currency", filters.currency);
+    if (filters.timezone) query.set("timezone", filters.timezone);
+    if (filters.comparisonPeriod) query.set("comparisonPeriod", filters.comparisonPeriod);
+    const response = await fetch(`${getApiBaseUrl()}/reports/export?${query.toString()}`, {
+      headers: authHeader(accessToken),
+    });
+    if (!response.ok) throw new ApiRequestError(response.status, "Export failed");
+    return { blob: await response.blob(), filename };
+  },
+
+  // Notifications
+  listNotifications: (accessToken: string, params: NotificationListParams = {}) => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.category) query.set("category", params.category);
+    if (params.severity) query.set("severity", params.severity);
+    if (params.isRead !== undefined) query.set("isRead", String(params.isRead));
+    if (params.isArchived !== undefined) query.set("isArchived", String(params.isArchived));
+    if (params.sortBy) query.set("sortBy", params.sortBy);
+    if (params.sortOrder) query.set("sortOrder", params.sortOrder);
+    const qs = query.toString();
+    return request<NotificationListResult>(`/notifications${qs ? `?${qs}` : ""}`, {
+      headers: authHeader(accessToken),
+    });
+  },
+
+  getUnreadNotificationCount: (accessToken: string) =>
+    request<{ unreadCount: number }>("/notifications/unread-count", {
+      headers: authHeader(accessToken),
+    }),
+
+  getNotificationSettings: (accessToken: string) =>
+    request<NotificationSettings>("/notifications/settings", {
+      headers: authHeader(accessToken),
+    }),
+
+  updateNotificationSettings: (accessToken: string, settings: Partial<NotificationSettings>) =>
+    request<NotificationSettings>("/notifications/settings", {
+      method: "PATCH",
+      headers: authHeader(accessToken),
+      body: JSON.stringify(settings),
+    }),
+
+  markNotificationRead: (accessToken: string, id: string) =>
+    request<ApiNotification>(`/notifications/${id}/read`, {
+      method: "POST",
+      headers: authHeader(accessToken),
+    }),
+
+  markNotificationUnread: (accessToken: string, id: string) =>
+    request<ApiNotification>(`/notifications/${id}/unread`, {
+      method: "POST",
+      headers: authHeader(accessToken),
+    }),
+
+  archiveNotification: (accessToken: string, id: string) =>
+    request<ApiNotification>(`/notifications/${id}/archive`, {
+      method: "POST",
+      headers: authHeader(accessToken),
+    }),
+
+  markAllNotificationsRead: (accessToken: string) =>
+    request<{ updatedCount: number }>("/notifications/read-all", {
+      method: "POST",
+      headers: authHeader(accessToken),
+    }),
+
+  archiveAllNotifications: (accessToken: string) =>
+    request<{ updatedCount: number }>("/notifications/archive-all", {
+      method: "POST",
       headers: authHeader(accessToken),
     }),
 };
