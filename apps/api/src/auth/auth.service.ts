@@ -58,6 +58,21 @@ export class AuthService {
         data: { organizationId: organization.id, userId: user.id, role: "ADMIN" },
         include: { organization: true },
       });
+      // Create onboarding progress row for new organization
+      await tx.onboardingProgress.create({
+        data: {
+          organizationId: organization.id,
+          completed: false,
+          skipped: false,
+          steps: {
+            organizationProfile: false,
+            firstCustomer: false,
+            firstDriver: false,
+            firstVehicle: false,
+            firstOrder: false,
+          },
+        },
+      });
       return { user, membership };
     });
 
