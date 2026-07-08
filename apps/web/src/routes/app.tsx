@@ -50,44 +50,60 @@ function AppShell() {
 
   return (
     <div className="flex min-h-screen bg-background">
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-border/60 bg-sidebar p-4 md:flex">
-        <Link to="/" className="mb-6 flex items-center gap-2 px-1">
-          <LogoMark size={28} />
-          <span className="font-display text-sm font-bold">FlowERP<span className="text-brand"> AI</span></span>
-        </Link>
-        <nav className="space-y-1">
+      {/* Fixed Sidebar */}
+      <aside className="fixed left-0 top-0 z-50 hidden h-screen w-64 flex-col border-r border-brand/10 bg-sidebar md:flex">
+        {/* Logo Section */}
+        <div className="border-b border-brand/10 px-6 py-6">
+          <Link to="/" className="flex items-center gap-3">
+            <LogoMark size={32} />
+            <span className="font-display text-base font-semibold">FlowERP<span className="text-brand"> AI</span></span>
+          </Link>
+        </div>
+
+        {/* Navigation Section */}
+        <nav className="flex-1 space-y-2 overflow-y-auto px-3 py-6">
           {nav.map((n) => (
             <button
               key={n.label}
               onClick={() => navigate({ to: n.path as any })}
-              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+              className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200 text-muted-foreground hover:bg-brand/10 hover:text-brand"
             >
-              <n.icon className="h-4 w-4" />
-              {n.label}
+              <n.icon className="h-5 w-5 transition-transform group-hover:scale-110" />
+              <span>{n.label}</span>
             </button>
           ))}
         </nav>
-        <div className="mt-auto">
+
+        {/* Sign Out Section */}
+        <div className="border-t border-brand/10 px-3 py-4">
           <Button
-            variant="ghost"
             onClick={() => {
               signOutLocal();
               navigate({ to: "/auth/sign-in", replace: true });
             }}
-            className="w-full justify-start text-muted-foreground hover:text-foreground"
+            className="w-full justify-start gap-3 rounded-lg bg-destructive/10 px-4 py-3 font-medium text-destructive hover:bg-destructive/20"
           >
-            <LogOut className="mr-2 h-4 w-4" />
+            <LogOut className="h-5 w-5" />
             Sign out
           </Button>
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto">
-        <div className="min-h-screen p-8">
-          <div className="mb-8 flex items-center justify-between">
+      {/* Main Content */}
+      <main className="ml-64 flex-1 overflow-auto">
+        {/* Top Bar */}
+        <div className="sticky top-0 z-40 border-b border-brand/10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+          <div className="flex h-16 items-center justify-between px-8">
             <Logo showWordmark={false} className="md:hidden" />
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-muted-foreground">Welcome back</span>
+            </div>
           </div>
-          <div className="mx-auto">
+        </div>
+
+        {/* Page Content */}
+        <div className="p-8">
+          <div className="mx-auto max-w-7xl">
             <Outlet />
           </div>
         </div>

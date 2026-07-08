@@ -7,26 +7,40 @@ import { RecentOrdersTable } from "@/components/dashboard/recent-orders-table";
 import { DelayedDeliveries } from "@/components/dashboard/delayed-deliveries";
 
 export const Route = createFileRoute("/app/")({
+  head: () => ({
+    meta: [{ title: "Overview — Command Center" }],
+  }),
   component: DashboardPage,
 });
 
 function DashboardPage() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
+      {/* Page Header */}
+      <div>
+        <h1 className="font-display text-3xl font-bold text-foreground">Command Center</h1>
+        <p className="mt-2 text-muted-foreground">Welcome back. Here's your operations at a glance.</p>
+      </div>
+
+      {/* KPI Cards */}
       <KpiCards />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      {/* Charts Grid */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <RevenueChart />
         </div>
-        <DeliveryStatusChart />
+        <div>
+          <DeliveryStatusChart />
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      {/* Orders and Alerts */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <RecentOrdersTable />
         </div>
-        <div className="space-y-4">
+        <div className="space-y-6">
           <DelayedDeliveries />
           <DriverFleetStatus />
         </div>
