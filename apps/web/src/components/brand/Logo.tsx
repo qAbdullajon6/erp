@@ -29,23 +29,19 @@ export function LogoMark({ size = 32, className }: { size?: number; className?: 
       aria-label="FlowERP AI"
     >
       <defs>
-        <linearGradient id="flowerp-mark" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="oklch(0.72 0.2 255)" />
-          <stop offset="1" stopColor="oklch(0.82 0.18 230)" />
-        </linearGradient>
         <radialGradient id="flowerp-glow" cx="50%" cy="30%">
-          <stop offset="0" stopColor="oklch(0.72 0.2 255)" stopOpacity="0.15" />
-          <stop offset="1" stopColor="oklch(0.72 0.2 255)" stopOpacity="0" />
+          <stop offset="0" stopColor="#000000" stopOpacity="0.08" />
+          <stop offset="1" stopColor="#000000" stopOpacity="0" />
         </radialGradient>
       </defs>
-      {/* Background with subtle glow */}
+      {/* Background */}
       <rect width="64" height="64" rx="14" fill="oklch(0.22 0.035 260)" />
       <rect width="64" height="64" rx="14" fill="url(#flowerp-glow)" />
 
-      {/* F mark with vibrant gradient */}
+      {/* F mark in black */}
       <path
         d="M20 14h26v9H29v9h14v9H29v13h-9z"
-        fill="url(#flowerp-mark)"
+        fill="#000000"
       />
     </svg>
   );
