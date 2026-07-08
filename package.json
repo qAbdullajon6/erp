@@ -29,5 +29,9 @@
     "prisma:studio": "npm run prisma:studio --workspace=apps/api",
     "seed": "npm run seed --workspace=apps/api",
     "seed:test-org": "npm run seed:test-org --workspace=apps/api"
+  },
+  "dependencies": {
+    "react-hook-form": "^7.81.0",
+    "sonner": "^2.0.7"
   }
 }
