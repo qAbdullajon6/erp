@@ -15,7 +15,7 @@ export function Hero() {
       {/* Subtle grid pattern */}
       <div className="pointer-events-none absolute inset-0 [background-image:linear-gradient(oklch(1_0_0_/_0.02)_1px,transparent_1px),linear-gradient(90deg,oklch(1_0_0_/_0.02)_1px,transparent_1px)] [background-size:56px_56px] [mask-image:radial-gradient(ellipse_80%_60%_at_50%_0%,black,transparent)]" />
 
-      <div className="relative mx-auto max-w-7xl px-6 pb-24 pt-20 md:pt-28">
+      <div className="relative mx-auto max-w-7xl px-6 pb-16 pt-20 md:pt-28">
         <div className="mx-auto max-w-3xl text-center">
           {/* Subtle badge with enhanced styling */}
           <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-brand/30 bg-surface/80 px-4 py-1.5 text-xs font-semibold text-muted-foreground backdrop-blur-sm">
@@ -65,7 +65,7 @@ export function Hero() {
 
 function HeroPreview() {
   return (
-    <div className="relative mx-auto mt-20 max-w-6xl px-6 md:px-0">
+    <div className="relative mx-auto mt-16 max-w-7xl px-6 md:px-0">
       {/* Enhanced glow backdrop for the preview */}
       <div className="absolute -inset-x-8 -inset-y-10 rounded-3xl bg-gradient-brand/15 blur-3xl" />
 
@@ -117,7 +117,7 @@ function HeroPreview() {
                     86 vehicles moving
                   </div>
                 </div>
-                <div className="relative h-40 overflow-hidden rounded-md bg-[radial-gradient(circle_at_30%_40%,oklch(0.5_0.2_255/0.7),transparent_50%),radial-gradient(circle_at_70%_60%,oklch(0.4_0.15_200/0.5),transparent_50%)]">
+                <div className="relative h-40 overflow-hidden rounded-md bg-[radial-gradient(circle_at_30%_40%,oklch(0.35_0.12_255/0.3),transparent_50%),radial-gradient(circle_at_70%_60%,oklch(0.3_0.08_200/0.2),transparent_50%)]">
                   <svg className="absolute inset-0 h-full w-full" viewBox="0 0 400 160" fill="none">
                     <path d="M20 130 Q 120 40 200 90 T 380 60" stroke="oklch(0.82 0.18 230)" strokeWidth="2" strokeDasharray="5 3" />
                     <path d="M40 30 Q 140 100 220 60 T 370 130" stroke="oklch(0.72 0.2 255)" strokeWidth="2" strokeDasharray="5 3" />
@@ -131,25 +131,25 @@ function HeroPreview() {
               {/* Enhanced recent orders card */}
               <div className="rounded-lg border border-brand/20 bg-background/50 p-4">
                 <div className="mb-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Recent orders</div>
-                <div className="space-y-2 text-xs">
+                <div className="space-y-2.5 text-xs">
                   {[
                     { id: "ORD-2841", city: "Tashkent", s: "In transit", t: "success" },
                     { id: "ORD-2840", city: "Samarkand", s: "Delayed", t: "warning" },
                     { id: "ORD-2839", city: "Bukhara", s: "Delivered", t: "success" },
                     { id: "ORD-2838", city: "Namangan", s: "Assigned", t: "muted" },
                   ].map((o) => (
-                    <div key={o.id} className="flex items-center justify-between rounded-md bg-surface/50 border border-border/20 px-2.5 py-2 hover:bg-surface/70 transition-colors">
-                      <div>
-                        <div className="font-semibold text-foreground">{o.id}</div>
+                    <div key={o.id} className="flex items-center justify-between py-1.5 px-1">
+                      <div className="flex-1">
+                        <div className="font-medium text-foreground">{o.id}</div>
                         <div className="text-[10px] text-muted-foreground">{o.city}</div>
                       </div>
                       <span
-                        className={`rounded-full px-2.5 py-1 text-[10px] font-medium ${
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-medium whitespace-nowrap ${
                           o.t === "success"
-                            ? "bg-success/20 text-success"
+                            ? "bg-success/15 text-success"
                             : o.t === "warning"
-                            ? "bg-warning/20 text-warning"
-                            : "bg-muted/30 text-muted-foreground"
+                            ? "bg-warning/15 text-warning"
+                            : "bg-muted/20 text-muted-foreground"
                         }`}
                       >
                         {o.s}
