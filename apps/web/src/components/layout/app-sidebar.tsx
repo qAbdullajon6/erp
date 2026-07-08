@@ -34,25 +34,22 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/orders", label: "Orders", icon: Package },
-  { href: "/dispatch", label: "Dispatch Board", icon: Radar },
-  { href: "/drivers", label: "Drivers & Vehicles", icon: Truck },
-  { href: "/customers", label: "Customers / CRM", icon: Users },
-  { href: "/finance", label: "Finance", icon: Wallet },
-  { href: "/my-deliveries", label: "My Deliveries", icon: MapPinned },
-  { href: "/ai-assistant", label: "AI Assistant", icon: Sparkles },
-  { href: "/reports", label: "Reports", icon: BarChart3 },
-  { href: "/notifications", label: "Notifications", icon: Bell },
+  { href: "/app", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/app/orders", label: "Orders", icon: Package },
+  { href: "/app/dispatch", label: "Dispatch Board", icon: Radar },
+  { href: "/app/drivers", label: "Drivers & Vehicles", icon: Truck },
+  { href: "/app/customers", label: "Customers / CRM", icon: Users },
+  { href: "/app/finance", label: "Finance", icon: Wallet },
+  { href: "/app/my-deliveries", label: "My Deliveries", icon: MapPinned },
+  { href: "/app/ai-assistant", label: "AI Assistant", icon: Sparkles },
+  { href: "/app/reports", label: "Reports", icon: BarChart3 },
+  { href: "/app/notifications", label: "Notifications", icon: Bell },
 ];
 
-/// Shown only when NEXT_PUBLIC_DATA_MODE=api, and deliberately NOT filtered
-/// by the demo role switcher's roleAllowedPaths (src/lib/role.tsx) — access
-/// to these pages is governed by the real API session's role instead (see
-/// components/layout/protected-api-route.tsx).
+/// Settings routes (always in connected workspace when API mode is enabled)
 const connectedNavItems: NavItem[] = [
-  { href: "/settings/organization", label: "Organization Settings", icon: Settings },
-  { href: "/settings/members", label: "Members", icon: UserCog },
+  { href: "/app/settings/organization", label: "Organization Settings", icon: Settings },
+  { href: "/app/settings/members", label: "Members", icon: UserCog },
 ];
 
 function SidebarBrand() {
