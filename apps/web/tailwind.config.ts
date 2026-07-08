@@ -2,6 +2,12 @@ import type { Config } from 'tailwindcss';
 
 const config: Config = {
   theme: {
+    colors: {
+      destructive: 'var(--destructive)',
+      'destructive-foreground': 'var(--destructive-foreground)',
+      success: 'var(--success)',
+      warning: 'var(--warning)',
+    },
     extend: {
       colors: {
         background: 'var(--background)',
@@ -18,8 +24,6 @@ const config: Config = {
         'muted-foreground': 'var(--muted-foreground)',
         accent: 'var(--accent)',
         'accent-foreground': 'var(--accent-foreground)',
-        destructive: 'var(--destructive)',
-        'destructive-foreground': 'var(--destructive-foreground)',
         border: 'var(--border)',
         input: 'var(--input)',
         ring: 'var(--ring)',
@@ -29,8 +33,6 @@ const config: Config = {
         brand: 'var(--brand)',
         'brand-foreground': 'var(--brand-foreground)',
         'brand-glow': 'var(--brand-glow)',
-        success: 'var(--success)',
-        warning: 'var(--warning)',
       },
       fontFamily: {
         sans: ['var(--font-inter)', 'system-ui', '-apple-system', 'sans-serif'],
