@@ -1,7 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { OnboardingWizard } from "@/components/onboarding/onboarding-wizard";
-import { useApiSession } from "@/lib/api-session";
 import { KpiCards } from "@/components/dashboard/kpi-cards";
 import { RevenueChart } from "@/components/dashboard/revenue-chart";
 import { DeliveryStatusChart } from "@/components/dashboard/delivery-status-chart";
@@ -9,55 +6,11 @@ import { DriverFleetStatus } from "@/components/dashboard/driver-fleet-status";
 import { RecentOrdersTable } from "@/components/dashboard/recent-orders-table";
 import { DelayedDeliveries } from "@/components/dashboard/delayed-deliveries";
 
-interface OnboardingProgress {
-  completed: boolean;
-  skipped: boolean;
-}
-
 export const Route = createFileRoute("/app/")({
   component: DashboardPage,
 });
 
 function DashboardPage() {
-  const { session } = useApiSession();
-  const [onboarding, setOnboarding] = useState<OnboardingProgress | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchOnboarding = async () => {
-      try {
-        const res = await fetch("/api/onboarding/progress");
-        if (res.ok) {
-          const { data } = await res.json();
-          setOnboarding(data);
-        }
-      } catch (error) {
-        console.error("Failed to fetch onboarding progress:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchOnboarding();
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
-
-  if (onboarding && !onboarding.completed && !onboarding.skipped) {
-    return (
-      <OnboardingWizard
-        onOnboardingComplete={() => setOnboarding({ ...onboarding, completed: true })}
-        userRole={session?.membership.role}
-      />
-    );
-  }
-
   return (
     <div className="space-y-6">
       <KpiCards />
