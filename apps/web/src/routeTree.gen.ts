@@ -11,11 +11,32 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as AuthVerifyEmailRouteImport } from './routes/auth.verify-email'
 import { Route as AuthSignInRouteImport } from './routes/auth.sign-in'
 import { Route as AuthResetPasswordRouteImport } from './routes/auth.reset-password'
 import { Route as AuthForgotPasswordRouteImport } from './routes/auth.forgot-password'
 import { Route as AuthCreateAccountRouteImport } from './routes/auth.create-account'
+import { Route as AppSettingsRouteImport } from './routes/app.settings'
+import { Route as AppReportsRouteImport } from './routes/app.reports'
+import { Route as AppOrdersRouteImport } from './routes/app.orders'
+import { Route as AppNotificationsRouteImport } from './routes/app.notifications'
+import { Route as AppMyDeliveriesRouteImport } from './routes/app.my-deliveries'
+import { Route as AppFinanceRouteImport } from './routes/app.finance'
+import { Route as AppDriversRouteImport } from './routes/app.drivers'
+import { Route as AppDispatchRouteImport } from './routes/app.dispatch'
+import { Route as AppCustomersRouteImport } from './routes/app.customers'
+import { Route as AppAiAssistantRouteImport } from './routes/app.ai-assistant'
+import { Route as AppSettingsPageRouteImport } from './routes/app/settings/page'
+import { Route as AppReportsLayoutRouteImport } from './routes/app/reports/layout'
+import { Route as AppOrdersLayoutRouteImport } from './routes/app/orders/layout'
+import { Route as AppNotificationsLayoutRouteImport } from './routes/app/notifications/layout'
+import { Route as AppMyDeliveriesLayoutRouteImport } from './routes/app/my-deliveries/layout'
+import { Route as AppFinanceLayoutRouteImport } from './routes/app/finance/layout'
+import { Route as AppDriversLayoutRouteImport } from './routes/app/drivers/layout'
+import { Route as AppDispatchLayoutRouteImport } from './routes/app/dispatch/layout'
+import { Route as AppCustomersLayoutRouteImport } from './routes/app/customers/layout'
+import { Route as AppAiAssistantLayoutRouteImport } from './routes/app/ai-assistant/layout'
 
 const AppRoute = AppRouteImport.update({
   id: '/app',
@@ -26,6 +47,11 @@ const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AppIndexRoute = AppIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppRoute,
 } as any)
 const AuthVerifyEmailRoute = AuthVerifyEmailRouteImport.update({
   id: '/auth/verify-email',
@@ -52,68 +78,292 @@ const AuthCreateAccountRoute = AuthCreateAccountRouteImport.update({
   path: '/auth/create-account',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppSettingsRoute = AppSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppReportsRoute = AppReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppOrdersRoute = AppOrdersRouteImport.update({
+  id: '/orders',
+  path: '/orders',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppNotificationsRoute = AppNotificationsRouteImport.update({
+  id: '/notifications',
+  path: '/notifications',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppMyDeliveriesRoute = AppMyDeliveriesRouteImport.update({
+  id: '/my-deliveries',
+  path: '/my-deliveries',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppFinanceRoute = AppFinanceRouteImport.update({
+  id: '/finance',
+  path: '/finance',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDriversRoute = AppDriversRouteImport.update({
+  id: '/drivers',
+  path: '/drivers',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDispatchRoute = AppDispatchRouteImport.update({
+  id: '/dispatch',
+  path: '/dispatch',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCustomersRoute = AppCustomersRouteImport.update({
+  id: '/customers',
+  path: '/customers',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAiAssistantRoute = AppAiAssistantRouteImport.update({
+  id: '/ai-assistant',
+  path: '/ai-assistant',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsPageRoute = AppSettingsPageRouteImport.update({
+  id: '/page',
+  path: '/page',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
+const AppReportsLayoutRoute = AppReportsLayoutRouteImport.update({
+  id: '/layout',
+  path: '/layout',
+  getParentRoute: () => AppReportsRoute,
+} as any)
+const AppOrdersLayoutRoute = AppOrdersLayoutRouteImport.update({
+  id: '/layout',
+  path: '/layout',
+  getParentRoute: () => AppOrdersRoute,
+} as any)
+const AppNotificationsLayoutRoute = AppNotificationsLayoutRouteImport.update({
+  id: '/layout',
+  path: '/layout',
+  getParentRoute: () => AppNotificationsRoute,
+} as any)
+const AppMyDeliveriesLayoutRoute = AppMyDeliveriesLayoutRouteImport.update({
+  id: '/layout',
+  path: '/layout',
+  getParentRoute: () => AppMyDeliveriesRoute,
+} as any)
+const AppFinanceLayoutRoute = AppFinanceLayoutRouteImport.update({
+  id: '/layout',
+  path: '/layout',
+  getParentRoute: () => AppFinanceRoute,
+} as any)
+const AppDriversLayoutRoute = AppDriversLayoutRouteImport.update({
+  id: '/layout',
+  path: '/layout',
+  getParentRoute: () => AppDriversRoute,
+} as any)
+const AppDispatchLayoutRoute = AppDispatchLayoutRouteImport.update({
+  id: '/layout',
+  path: '/layout',
+  getParentRoute: () => AppDispatchRoute,
+} as any)
+const AppCustomersLayoutRoute = AppCustomersLayoutRouteImport.update({
+  id: '/layout',
+  path: '/layout',
+  getParentRoute: () => AppCustomersRoute,
+} as any)
+const AppAiAssistantLayoutRoute = AppAiAssistantLayoutRouteImport.update({
+  id: '/layout',
+  path: '/layout',
+  getParentRoute: () => AppAiAssistantRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/app': typeof AppRoute
+  '/app': typeof AppRouteWithChildren
+  '/app/ai-assistant': typeof AppAiAssistantRouteWithChildren
+  '/app/customers': typeof AppCustomersRouteWithChildren
+  '/app/dispatch': typeof AppDispatchRouteWithChildren
+  '/app/drivers': typeof AppDriversRouteWithChildren
+  '/app/finance': typeof AppFinanceRouteWithChildren
+  '/app/my-deliveries': typeof AppMyDeliveriesRouteWithChildren
+  '/app/notifications': typeof AppNotificationsRouteWithChildren
+  '/app/orders': typeof AppOrdersRouteWithChildren
+  '/app/reports': typeof AppReportsRouteWithChildren
+  '/app/settings': typeof AppSettingsRouteWithChildren
   '/auth/create-account': typeof AuthCreateAccountRoute
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/reset-password': typeof AuthResetPasswordRoute
   '/auth/sign-in': typeof AuthSignInRoute
   '/auth/verify-email': typeof AuthVerifyEmailRoute
+  '/app/': typeof AppIndexRoute
+  '/app/ai-assistant/layout': typeof AppAiAssistantLayoutRoute
+  '/app/customers/layout': typeof AppCustomersLayoutRoute
+  '/app/dispatch/layout': typeof AppDispatchLayoutRoute
+  '/app/drivers/layout': typeof AppDriversLayoutRoute
+  '/app/finance/layout': typeof AppFinanceLayoutRoute
+  '/app/my-deliveries/layout': typeof AppMyDeliveriesLayoutRoute
+  '/app/notifications/layout': typeof AppNotificationsLayoutRoute
+  '/app/orders/layout': typeof AppOrdersLayoutRoute
+  '/app/reports/layout': typeof AppReportsLayoutRoute
+  '/app/settings/page': typeof AppSettingsPageRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/app': typeof AppRoute
+  '/app/ai-assistant': typeof AppAiAssistantRouteWithChildren
+  '/app/customers': typeof AppCustomersRouteWithChildren
+  '/app/dispatch': typeof AppDispatchRouteWithChildren
+  '/app/drivers': typeof AppDriversRouteWithChildren
+  '/app/finance': typeof AppFinanceRouteWithChildren
+  '/app/my-deliveries': typeof AppMyDeliveriesRouteWithChildren
+  '/app/notifications': typeof AppNotificationsRouteWithChildren
+  '/app/orders': typeof AppOrdersRouteWithChildren
+  '/app/reports': typeof AppReportsRouteWithChildren
+  '/app/settings': typeof AppSettingsRouteWithChildren
   '/auth/create-account': typeof AuthCreateAccountRoute
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/reset-password': typeof AuthResetPasswordRoute
   '/auth/sign-in': typeof AuthSignInRoute
   '/auth/verify-email': typeof AuthVerifyEmailRoute
+  '/app': typeof AppIndexRoute
+  '/app/ai-assistant/layout': typeof AppAiAssistantLayoutRoute
+  '/app/customers/layout': typeof AppCustomersLayoutRoute
+  '/app/dispatch/layout': typeof AppDispatchLayoutRoute
+  '/app/drivers/layout': typeof AppDriversLayoutRoute
+  '/app/finance/layout': typeof AppFinanceLayoutRoute
+  '/app/my-deliveries/layout': typeof AppMyDeliveriesLayoutRoute
+  '/app/notifications/layout': typeof AppNotificationsLayoutRoute
+  '/app/orders/layout': typeof AppOrdersLayoutRoute
+  '/app/reports/layout': typeof AppReportsLayoutRoute
+  '/app/settings/page': typeof AppSettingsPageRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/app': typeof AppRoute
+  '/app': typeof AppRouteWithChildren
+  '/app/ai-assistant': typeof AppAiAssistantRouteWithChildren
+  '/app/customers': typeof AppCustomersRouteWithChildren
+  '/app/dispatch': typeof AppDispatchRouteWithChildren
+  '/app/drivers': typeof AppDriversRouteWithChildren
+  '/app/finance': typeof AppFinanceRouteWithChildren
+  '/app/my-deliveries': typeof AppMyDeliveriesRouteWithChildren
+  '/app/notifications': typeof AppNotificationsRouteWithChildren
+  '/app/orders': typeof AppOrdersRouteWithChildren
+  '/app/reports': typeof AppReportsRouteWithChildren
+  '/app/settings': typeof AppSettingsRouteWithChildren
   '/auth/create-account': typeof AuthCreateAccountRoute
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/reset-password': typeof AuthResetPasswordRoute
   '/auth/sign-in': typeof AuthSignInRoute
   '/auth/verify-email': typeof AuthVerifyEmailRoute
+  '/app/': typeof AppIndexRoute
+  '/app/ai-assistant/layout': typeof AppAiAssistantLayoutRoute
+  '/app/customers/layout': typeof AppCustomersLayoutRoute
+  '/app/dispatch/layout': typeof AppDispatchLayoutRoute
+  '/app/drivers/layout': typeof AppDriversLayoutRoute
+  '/app/finance/layout': typeof AppFinanceLayoutRoute
+  '/app/my-deliveries/layout': typeof AppMyDeliveriesLayoutRoute
+  '/app/notifications/layout': typeof AppNotificationsLayoutRoute
+  '/app/orders/layout': typeof AppOrdersLayoutRoute
+  '/app/reports/layout': typeof AppReportsLayoutRoute
+  '/app/settings/page': typeof AppSettingsPageRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/app'
+    | '/app/ai-assistant'
+    | '/app/customers'
+    | '/app/dispatch'
+    | '/app/drivers'
+    | '/app/finance'
+    | '/app/my-deliveries'
+    | '/app/notifications'
+    | '/app/orders'
+    | '/app/reports'
+    | '/app/settings'
     | '/auth/create-account'
     | '/auth/forgot-password'
     | '/auth/reset-password'
     | '/auth/sign-in'
     | '/auth/verify-email'
+    | '/app/'
+    | '/app/ai-assistant/layout'
+    | '/app/customers/layout'
+    | '/app/dispatch/layout'
+    | '/app/drivers/layout'
+    | '/app/finance/layout'
+    | '/app/my-deliveries/layout'
+    | '/app/notifications/layout'
+    | '/app/orders/layout'
+    | '/app/reports/layout'
+    | '/app/settings/page'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/app'
+    | '/app/ai-assistant'
+    | '/app/customers'
+    | '/app/dispatch'
+    | '/app/drivers'
+    | '/app/finance'
+    | '/app/my-deliveries'
+    | '/app/notifications'
+    | '/app/orders'
+    | '/app/reports'
+    | '/app/settings'
     | '/auth/create-account'
     | '/auth/forgot-password'
     | '/auth/reset-password'
     | '/auth/sign-in'
     | '/auth/verify-email'
+    | '/app'
+    | '/app/ai-assistant/layout'
+    | '/app/customers/layout'
+    | '/app/dispatch/layout'
+    | '/app/drivers/layout'
+    | '/app/finance/layout'
+    | '/app/my-deliveries/layout'
+    | '/app/notifications/layout'
+    | '/app/orders/layout'
+    | '/app/reports/layout'
+    | '/app/settings/page'
   id:
     | '__root__'
     | '/'
     | '/app'
+    | '/app/ai-assistant'
+    | '/app/customers'
+    | '/app/dispatch'
+    | '/app/drivers'
+    | '/app/finance'
+    | '/app/my-deliveries'
+    | '/app/notifications'
+    | '/app/orders'
+    | '/app/reports'
+    | '/app/settings'
     | '/auth/create-account'
     | '/auth/forgot-password'
     | '/auth/reset-password'
     | '/auth/sign-in'
     | '/auth/verify-email'
+    | '/app/'
+    | '/app/ai-assistant/layout'
+    | '/app/customers/layout'
+    | '/app/dispatch/layout'
+    | '/app/drivers/layout'
+    | '/app/finance/layout'
+    | '/app/my-deliveries/layout'
+    | '/app/notifications/layout'
+    | '/app/orders/layout'
+    | '/app/reports/layout'
+    | '/app/settings/page'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  AppRoute: typeof AppRoute
+  AppRoute: typeof AppRouteWithChildren
   AuthCreateAccountRoute: typeof AuthCreateAccountRoute
   AuthForgotPasswordRoute: typeof AuthForgotPasswordRoute
   AuthResetPasswordRoute: typeof AuthResetPasswordRoute
@@ -136,6 +386,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/app/': {
+      id: '/app/'
+      path: '/'
+      fullPath: '/app/'
+      preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
     }
     '/auth/verify-email': {
       id: '/auth/verify-email'
@@ -172,12 +429,301 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthCreateAccountRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/app/settings': {
+      id: '/app/settings'
+      path: '/settings'
+      fullPath: '/app/settings'
+      preLoaderRoute: typeof AppSettingsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/reports': {
+      id: '/app/reports'
+      path: '/reports'
+      fullPath: '/app/reports'
+      preLoaderRoute: typeof AppReportsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/orders': {
+      id: '/app/orders'
+      path: '/orders'
+      fullPath: '/app/orders'
+      preLoaderRoute: typeof AppOrdersRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/notifications': {
+      id: '/app/notifications'
+      path: '/notifications'
+      fullPath: '/app/notifications'
+      preLoaderRoute: typeof AppNotificationsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/my-deliveries': {
+      id: '/app/my-deliveries'
+      path: '/my-deliveries'
+      fullPath: '/app/my-deliveries'
+      preLoaderRoute: typeof AppMyDeliveriesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/finance': {
+      id: '/app/finance'
+      path: '/finance'
+      fullPath: '/app/finance'
+      preLoaderRoute: typeof AppFinanceRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/drivers': {
+      id: '/app/drivers'
+      path: '/drivers'
+      fullPath: '/app/drivers'
+      preLoaderRoute: typeof AppDriversRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/dispatch': {
+      id: '/app/dispatch'
+      path: '/dispatch'
+      fullPath: '/app/dispatch'
+      preLoaderRoute: typeof AppDispatchRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/customers': {
+      id: '/app/customers'
+      path: '/customers'
+      fullPath: '/app/customers'
+      preLoaderRoute: typeof AppCustomersRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/ai-assistant': {
+      id: '/app/ai-assistant'
+      path: '/ai-assistant'
+      fullPath: '/app/ai-assistant'
+      preLoaderRoute: typeof AppAiAssistantRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/settings/page': {
+      id: '/app/settings/page'
+      path: '/page'
+      fullPath: '/app/settings/page'
+      preLoaderRoute: typeof AppSettingsPageRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
+    '/app/reports/layout': {
+      id: '/app/reports/layout'
+      path: '/layout'
+      fullPath: '/app/reports/layout'
+      preLoaderRoute: typeof AppReportsLayoutRouteImport
+      parentRoute: typeof AppReportsRoute
+    }
+    '/app/orders/layout': {
+      id: '/app/orders/layout'
+      path: '/layout'
+      fullPath: '/app/orders/layout'
+      preLoaderRoute: typeof AppOrdersLayoutRouteImport
+      parentRoute: typeof AppOrdersRoute
+    }
+    '/app/notifications/layout': {
+      id: '/app/notifications/layout'
+      path: '/layout'
+      fullPath: '/app/notifications/layout'
+      preLoaderRoute: typeof AppNotificationsLayoutRouteImport
+      parentRoute: typeof AppNotificationsRoute
+    }
+    '/app/my-deliveries/layout': {
+      id: '/app/my-deliveries/layout'
+      path: '/layout'
+      fullPath: '/app/my-deliveries/layout'
+      preLoaderRoute: typeof AppMyDeliveriesLayoutRouteImport
+      parentRoute: typeof AppMyDeliveriesRoute
+    }
+    '/app/finance/layout': {
+      id: '/app/finance/layout'
+      path: '/layout'
+      fullPath: '/app/finance/layout'
+      preLoaderRoute: typeof AppFinanceLayoutRouteImport
+      parentRoute: typeof AppFinanceRoute
+    }
+    '/app/drivers/layout': {
+      id: '/app/drivers/layout'
+      path: '/layout'
+      fullPath: '/app/drivers/layout'
+      preLoaderRoute: typeof AppDriversLayoutRouteImport
+      parentRoute: typeof AppDriversRoute
+    }
+    '/app/dispatch/layout': {
+      id: '/app/dispatch/layout'
+      path: '/layout'
+      fullPath: '/app/dispatch/layout'
+      preLoaderRoute: typeof AppDispatchLayoutRouteImport
+      parentRoute: typeof AppDispatchRoute
+    }
+    '/app/customers/layout': {
+      id: '/app/customers/layout'
+      path: '/layout'
+      fullPath: '/app/customers/layout'
+      preLoaderRoute: typeof AppCustomersLayoutRouteImport
+      parentRoute: typeof AppCustomersRoute
+    }
+    '/app/ai-assistant/layout': {
+      id: '/app/ai-assistant/layout'
+      path: '/layout'
+      fullPath: '/app/ai-assistant/layout'
+      preLoaderRoute: typeof AppAiAssistantLayoutRouteImport
+      parentRoute: typeof AppAiAssistantRoute
+    }
   }
 }
 
+interface AppAiAssistantRouteChildren {
+  AppAiAssistantLayoutRoute: typeof AppAiAssistantLayoutRoute
+}
+
+const AppAiAssistantRouteChildren: AppAiAssistantRouteChildren = {
+  AppAiAssistantLayoutRoute: AppAiAssistantLayoutRoute,
+}
+
+const AppAiAssistantRouteWithChildren = AppAiAssistantRoute._addFileChildren(
+  AppAiAssistantRouteChildren,
+)
+
+interface AppCustomersRouteChildren {
+  AppCustomersLayoutRoute: typeof AppCustomersLayoutRoute
+}
+
+const AppCustomersRouteChildren: AppCustomersRouteChildren = {
+  AppCustomersLayoutRoute: AppCustomersLayoutRoute,
+}
+
+const AppCustomersRouteWithChildren = AppCustomersRoute._addFileChildren(
+  AppCustomersRouteChildren,
+)
+
+interface AppDispatchRouteChildren {
+  AppDispatchLayoutRoute: typeof AppDispatchLayoutRoute
+}
+
+const AppDispatchRouteChildren: AppDispatchRouteChildren = {
+  AppDispatchLayoutRoute: AppDispatchLayoutRoute,
+}
+
+const AppDispatchRouteWithChildren = AppDispatchRoute._addFileChildren(
+  AppDispatchRouteChildren,
+)
+
+interface AppDriversRouteChildren {
+  AppDriversLayoutRoute: typeof AppDriversLayoutRoute
+}
+
+const AppDriversRouteChildren: AppDriversRouteChildren = {
+  AppDriversLayoutRoute: AppDriversLayoutRoute,
+}
+
+const AppDriversRouteWithChildren = AppDriversRoute._addFileChildren(
+  AppDriversRouteChildren,
+)
+
+interface AppFinanceRouteChildren {
+  AppFinanceLayoutRoute: typeof AppFinanceLayoutRoute
+}
+
+const AppFinanceRouteChildren: AppFinanceRouteChildren = {
+  AppFinanceLayoutRoute: AppFinanceLayoutRoute,
+}
+
+const AppFinanceRouteWithChildren = AppFinanceRoute._addFileChildren(
+  AppFinanceRouteChildren,
+)
+
+interface AppMyDeliveriesRouteChildren {
+  AppMyDeliveriesLayoutRoute: typeof AppMyDeliveriesLayoutRoute
+}
+
+const AppMyDeliveriesRouteChildren: AppMyDeliveriesRouteChildren = {
+  AppMyDeliveriesLayoutRoute: AppMyDeliveriesLayoutRoute,
+}
+
+const AppMyDeliveriesRouteWithChildren = AppMyDeliveriesRoute._addFileChildren(
+  AppMyDeliveriesRouteChildren,
+)
+
+interface AppNotificationsRouteChildren {
+  AppNotificationsLayoutRoute: typeof AppNotificationsLayoutRoute
+}
+
+const AppNotificationsRouteChildren: AppNotificationsRouteChildren = {
+  AppNotificationsLayoutRoute: AppNotificationsLayoutRoute,
+}
+
+const AppNotificationsRouteWithChildren =
+  AppNotificationsRoute._addFileChildren(AppNotificationsRouteChildren)
+
+interface AppOrdersRouteChildren {
+  AppOrdersLayoutRoute: typeof AppOrdersLayoutRoute
+}
+
+const AppOrdersRouteChildren: AppOrdersRouteChildren = {
+  AppOrdersLayoutRoute: AppOrdersLayoutRoute,
+}
+
+const AppOrdersRouteWithChildren = AppOrdersRoute._addFileChildren(
+  AppOrdersRouteChildren,
+)
+
+interface AppReportsRouteChildren {
+  AppReportsLayoutRoute: typeof AppReportsLayoutRoute
+}
+
+const AppReportsRouteChildren: AppReportsRouteChildren = {
+  AppReportsLayoutRoute: AppReportsLayoutRoute,
+}
+
+const AppReportsRouteWithChildren = AppReportsRoute._addFileChildren(
+  AppReportsRouteChildren,
+)
+
+interface AppSettingsRouteChildren {
+  AppSettingsPageRoute: typeof AppSettingsPageRoute
+}
+
+const AppSettingsRouteChildren: AppSettingsRouteChildren = {
+  AppSettingsPageRoute: AppSettingsPageRoute,
+}
+
+const AppSettingsRouteWithChildren = AppSettingsRoute._addFileChildren(
+  AppSettingsRouteChildren,
+)
+
+interface AppRouteChildren {
+  AppAiAssistantRoute: typeof AppAiAssistantRouteWithChildren
+  AppCustomersRoute: typeof AppCustomersRouteWithChildren
+  AppDispatchRoute: typeof AppDispatchRouteWithChildren
+  AppDriversRoute: typeof AppDriversRouteWithChildren
+  AppFinanceRoute: typeof AppFinanceRouteWithChildren
+  AppMyDeliveriesRoute: typeof AppMyDeliveriesRouteWithChildren
+  AppNotificationsRoute: typeof AppNotificationsRouteWithChildren
+  AppOrdersRoute: typeof AppOrdersRouteWithChildren
+  AppReportsRoute: typeof AppReportsRouteWithChildren
+  AppSettingsRoute: typeof AppSettingsRouteWithChildren
+  AppIndexRoute: typeof AppIndexRoute
+}
+
+const AppRouteChildren: AppRouteChildren = {
+  AppAiAssistantRoute: AppAiAssistantRouteWithChildren,
+  AppCustomersRoute: AppCustomersRouteWithChildren,
+  AppDispatchRoute: AppDispatchRouteWithChildren,
+  AppDriversRoute: AppDriversRouteWithChildren,
+  AppFinanceRoute: AppFinanceRouteWithChildren,
+  AppMyDeliveriesRoute: AppMyDeliveriesRouteWithChildren,
+  AppNotificationsRoute: AppNotificationsRouteWithChildren,
+  AppOrdersRoute: AppOrdersRouteWithChildren,
+  AppReportsRoute: AppReportsRouteWithChildren,
+  AppSettingsRoute: AppSettingsRouteWithChildren,
+  AppIndexRoute: AppIndexRoute,
+}
+
+const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  AppRoute: AppRoute,
+  AppRoute: AppRouteWithChildren,
   AuthCreateAccountRoute: AuthCreateAccountRoute,
   AuthForgotPasswordRoute: AuthForgotPasswordRoute,
   AuthResetPasswordRoute: AuthResetPasswordRoute,
@@ -187,3 +733,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
