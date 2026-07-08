@@ -10,10 +10,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Boxes className="size-4.5" />
           </div>
-          <div className="flex flex-col leading-tight">
-            <span className="text-sm font-semibold tracking-tight">FlowERP AI</span>
-            <span className="text-[11px] text-muted-foreground">Connected Mode</span>
-          </div>
+          <span className="text-sm font-semibold tracking-tight">FlowERP</span>
         </Link>
         <div className="ml-auto flex items-center gap-2">
           <ThemeToggle />

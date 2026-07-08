@@ -22,11 +22,9 @@ function ConnectedModeRequiredNotice() {
   return (
     <CenteredNotice>
       <PlugZap className="mx-auto size-6 text-muted-foreground" />
-      <p className="text-sm font-medium">This page is part of Connected Mode</p>
+      <p className="text-sm font-medium">Configuration Error</p>
       <p className="text-sm text-muted-foreground">
-        Organization and member settings are backed by the live API, not the localStorage demo.
-        Set <code className="rounded bg-muted px-1">NEXT_PUBLIC_DATA_MODE=api</code> locally to use
-        them — see docs/CONNECTED_MODE_AUTH_UI.md.
+        This feature requires API mode to be enabled. Please contact support if you see this message.
       </p>
     </CenteredNotice>
   );

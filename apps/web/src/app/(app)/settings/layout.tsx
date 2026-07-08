@@ -17,7 +17,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
       <div>
         <h1 className="text-lg font-semibold">Settings</h1>
         <p className="text-sm text-muted-foreground">
-          Connected Mode — admin-only settings backed by the live API, not the localStorage demo.
+          Manage your organization and team members.
         </p>
       </div>
       <div className="flex gap-1 border-b border-border">

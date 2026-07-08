@@ -12,9 +12,10 @@ type OnboardingStep = 'organizationProfile' | 'firstCustomer' | 'firstDriver' | 
 
 interface OnboardingWizardProps {
   onOnboardingComplete: () => void;
+  userRole?: string;
 }
 
-const STEPS: { id: OnboardingStep; label: string; description: string }[] = [
+const ALL_STEPS: { id: OnboardingStep; label: string; description: string }[] = [
   { id: 'organizationProfile', label: 'Organization Profile', description: 'Set up your company details' },
   { id: 'firstCustomer', label: 'First Customer', description: 'Add your first customer' },
   { id: 'firstDriver', label: 'First Driver', description: 'Hire your first driver' },
@@ -22,7 +23,9 @@ const STEPS: { id: OnboardingStep; label: string; description: string }[] = [
   { id: 'firstOrder', label: 'First Order', description: 'Create your first order' },
 ];
 
-export function OnboardingWizard({ onOnboardingComplete }: OnboardingWizardProps) {
+export function OnboardingWizard({ onOnboardingComplete, userRole }: OnboardingWizardProps) {
+  const isAdmin = userRole === 'ADMIN';
+  const STEPS = isAdmin ? ALL_STEPS : ALL_STEPS.filter((s) => s.id !== 'organizationProfile');
   const [currentStep, setCurrentStep] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<Set<OnboardingStep>>(new Set());
 

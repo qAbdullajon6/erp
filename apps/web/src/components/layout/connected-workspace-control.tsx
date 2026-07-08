@@ -52,9 +52,6 @@ export function ConnectedWorkspaceControl() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm" className="gap-1.5">
-          <Badge variant="outline" className="border-chart-5/30 bg-chart-5/10 text-chart-5">
-            Connected Workspace
-          </Badge>
           <span className="hidden sm:inline">{session.organization.name}</span>
         </Button>
       </DropdownMenuTrigger>

@@ -56,19 +56,11 @@ function LoginForm() {
     <Card className="w-full max-w-md">
       <CardContent className="space-y-5 py-7">
         <div className="space-y-1">
-          <h1 className="text-lg font-semibold">Sign in to Connected Mode</h1>
+          <h1 className="text-lg font-semibold">Sign in to your workspace</h1>
           <p className="text-sm text-muted-foreground">
-            Sign in with your FlowERP AI account to use API-backed modules.
+            Enter your email and password to access your logistics operations.
           </p>
         </div>
-
-        {apiDisabled && (
-          <p className="rounded-md border border-dashed border-muted-foreground/30 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-            Connected Mode is disabled in this environment (demo mode). Set{" "}
-            <code className="rounded bg-muted px-1">NEXT_PUBLIC_DATA_MODE=api</code> to sign in for
-            real — see docs/CONNECTED_MODE_AUTH_UI.md.
-          </p>
-        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">

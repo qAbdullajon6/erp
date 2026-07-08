@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { OnboardingWizard } from "@/components/onboarding/onboarding-wizard";
+import { useApiSession } from "@/lib/api-session";
 import { KpiCards } from "@/components/dashboard/kpi-cards";
 import { RevenueChart } from "@/components/dashboard/revenue-chart";
 import { DeliveryStatusChart } from "@/components/dashboard/delivery-status-chart";
@@ -16,6 +17,7 @@ interface OnboardingProgress {
 }
 
 export default function DashboardPage() {
+  const { session } = useApiSession();
   const [onboarding, setOnboarding] = useState<OnboardingProgress | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -48,7 +50,7 @@ export default function DashboardPage() {
 
   // Show onboarding wizard for new organizations
   if (onboarding && !onboarding.completed && !onboarding.skipped) {
-    return <OnboardingWizard onOnboardingComplete={() => setOnboarding({ ...onboarding, completed: true })} />;
+    return <OnboardingWizard onOnboardingComplete={() => setOnboarding({ ...onboarding, completed: true })} userRole={session?.membership.role} />;
   }
 
   // Main dashboard

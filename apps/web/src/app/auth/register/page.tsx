@@ -1,188 +1,206 @@
-"use client";
+'use client';
 
-import * as React from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { AlertTriangle, Loader2, WifiOff } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { isApiEnabled } from "@/lib/api-client";
-import { useApiSession } from "@/lib/api-session";
-import {
-  PASSWORD_MAX_LENGTH,
-  PASSWORD_MIN_LENGTH,
-  validateRegisterForm,
-  hasErrors,
-  type RegisterFormErrors,
-} from "@/lib/auth-validation";
+import { useState } from 'react';
+import Link from 'next/link';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { AlertCircle, CheckCircle2 } from 'lucide-react';
 
-function ErrorNotice({ message }: { message: string }) {
-  const isConnectionError = message.startsWith("Could not reach the API");
-  const Icon = isConnectionError ? WifiOff : AlertTriangle;
-  return (
-    <p className="flex items-start gap-1.5 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-      <Icon className="mt-0.5 size-3.5 shrink-0" />
-      <span>{message}</span>
-    </p>
-  );
-}
+export default function RequestAccessPage() {
+  const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    companyName: '',
+    role: 'operations-manager',
+  });
 
-function FieldError({ message }: { message?: string }) {
-  if (!message) return null;
-  return <p className="text-xs text-destructive">{message}</p>;
-}
+  const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-export default function RegisterPage() {
-  const router = useRouter();
-  const { register, status, errorMessage } = useApiSession();
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
 
-  const [firstName, setFirstName] = React.useState("");
-  const [lastName, setLastName] = React.useState("");
-  const [email, setEmail] = React.useState("");
-  const [password, setPassword] = React.useState("");
-  const [confirmPassword, setConfirmPassword] = React.useState("");
-  const [organizationName, setOrganizationName] = React.useState("");
-  const [fieldErrors, setFieldErrors] = React.useState<RegisterFormErrors>({});
-
-  async function handleSubmit(e: React.FormEvent) {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    const errors = validateRegisterForm({
-      firstName,
-      lastName,
-      email,
-      password,
-      confirmPassword,
-      organizationName,
-    });
-    setFieldErrors(errors);
-    if (hasErrors(errors)) return;
+    setLoading(true);
+    setError('');
 
     try {
-      await register(
-        { firstName, lastName, email, password, organizationName },
-        true, // registering implies remember-me: the user just created this session
-      );
-      router.replace("/customers");
-    } catch {
-      // surfaced via errorMessage below
+      // Submit access request to backend
+      const response = await fetch('/api/access-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to submit access request');
+      }
+
+      setSubmitted(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setLoading(false);
     }
+  };
+
+  if (submitted) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 py-8">
+        <Card className="w-full max-w-md">
+          <CardContent className="space-y-6 py-8">
+            <div className="flex justify-center">
+              <CheckCircle2 className="w-12 h-12 text-green-600" />
+            </div>
+            <div className="space-y-2 text-center">
+              <h1 className="text-2xl font-bold text-slate-900">Request Received</h1>
+              <p className="text-slate-600">
+                Thank you for your interest in FlowERP. Our team will review your request and contact you soon to provision your workspace.
+              </p>
+            </div>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <p className="text-sm text-blue-900">
+                We typically respond within 1 business day. Please check your email for updates.
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-sm text-slate-600 mb-4">
+                In the meantime, you can{' '}
+                <Link href="/" className="text-blue-600 hover:underline font-medium">
+                  return to home
+                </Link>
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
-  const apiDisabled = !isApiEnabled();
-
   return (
-    <Card className="w-full max-w-lg">
-      <CardContent className="space-y-5 py-7">
-        <div className="space-y-1">
-          <h1 className="text-lg font-semibold">Create your organization</h1>
-          <p className="text-sm text-muted-foreground">
-            Registration creates one user account, one organization, and makes you its admin.
-          </p>
-        </div>
-
-        {apiDisabled && (
-          <p className="rounded-md border border-dashed border-muted-foreground/30 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-            Connected Mode is disabled in this environment (demo mode). Set{" "}
-            <code className="rounded bg-muted px-1">NEXT_PUBLIC_DATA_MODE=api</code> to register for
-            real — see docs/CONNECTED_MODE_AUTH_UI.md.
-          </p>
-        )}
-
-        <form onSubmit={handleSubmit} noValidate className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="register-first-name">First name</Label>
-              <Input
-                id="register-first-name"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-              />
-              <FieldError message={fieldErrors.firstName} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="register-last-name">Last name</Label>
-              <Input
-                id="register-last-name"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-              />
-              <FieldError message={fieldErrors.lastName} />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="register-email">Email</Label>
-            <Input
-              id="register-email"
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-            <FieldError message={fieldErrors.email} />
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="register-password">Password</Label>
-              <Input
-                id="register-password"
-                type="password"
-                autoComplete="new-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-              <FieldError message={fieldErrors.password} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="register-confirm-password">Confirm password</Label>
-              <Input
-                id="register-confirm-password"
-                type="password"
-                autoComplete="new-password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-              />
-              <FieldError message={fieldErrors.confirmPassword} />
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {PASSWORD_MIN_LENGTH}–{PASSWORD_MAX_LENGTH} characters.
-          </p>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="register-org-name">Organization name</Label>
-            <Input
-              id="register-org-name"
-              value={organizationName}
-              onChange={(e) => setOrganizationName(e.target.value)}
-              placeholder="e.g. Acme Logistics"
-            />
-            <FieldError message={fieldErrors.organizationName} />
-            <p className="text-xs text-muted-foreground">
-              A URL-friendly slug is generated from this automatically. Timezone and default
-              currency can be set afterward in Organization Settings.
+    <div className="min-h-screen flex items-center justify-center px-4 py-8">
+      <Card className="w-full max-w-md">
+        <CardContent className="space-y-6 py-7">
+          <div className="space-y-2">
+            <h1 className="text-2xl font-bold text-slate-900">Request Access to FlowERP</h1>
+            <p className="text-slate-600">
+              Submit your information and our team will contact you to set up your workspace.
             </p>
           </div>
 
-          {errorMessage && <ErrorNotice message={errorMessage} />}
+          {error && (
+            <div className="flex gap-2 rounded-lg bg-red-50 p-3 text-red-700 text-sm">
+              <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+              <div>{error}</div>
+            </div>
+          )}
 
-          <Button type="submit" disabled={status === "loading"} className="w-full gap-1.5">
-            {status === "loading" && <Loader2 className="size-4 animate-spin" />}
-            {status === "loading" ? "Creating your organization…" : "Create organization"}
-          </Button>
-        </form>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="firstName">First Name *</Label>
+                <Input
+                  id="firstName"
+                  name="firstName"
+                  type="text"
+                  value={formData.firstName}
+                  onChange={handleChange}
+                  required
+                  placeholder="John"
+                  disabled={loading}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="lastName">Last Name *</Label>
+                <Input
+                  id="lastName"
+                  name="lastName"
+                  type="text"
+                  value={formData.lastName}
+                  onChange={handleChange}
+                  required
+                  placeholder="Doe"
+                  disabled={loading}
+                />
+              </div>
+            </div>
 
-        <p className="text-center text-sm text-muted-foreground">
-          Already have an account?{" "}
-          <Link href="/auth/login" className="font-medium text-foreground underline underline-offset-2">
-            Sign in
-          </Link>
-        </p>
-      </CardContent>
-    </Card>
+            <div className="space-y-1.5">
+              <Label htmlFor="email">Email Address *</Label>
+              <Input
+                id="email"
+                name="email"
+                type="email"
+                value={formData.email}
+                onChange={handleChange}
+                required
+                placeholder="john@company.com"
+                disabled={loading}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="companyName">Company Name *</Label>
+              <Input
+                id="companyName"
+                name="companyName"
+                type="text"
+                value={formData.companyName}
+                onChange={handleChange}
+                required
+                placeholder="Acme Logistics"
+                disabled={loading}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="role">Your Role *</Label>
+              <select
+                id="role"
+                name="role"
+                value={formData.role}
+                onChange={handleChange}
+                required
+                disabled={loading}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="operations-manager">Operations Manager</option>
+                <option value="dispatch-manager">Dispatch Manager</option>
+                <option value="finance-manager">Finance Manager</option>
+                <option value="executive">Executive / Owner</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+
+            <Button
+              type="submit"
+              disabled={loading}
+              className="w-full"
+            >
+              {loading ? 'Submitting...' : 'Request Access'}
+            </Button>
+          </form>
+
+          <div className="text-center">
+            <p className="text-sm text-slate-600">
+              Already have workspace access?{' '}
+              <Link href="/auth/login" className="text-blue-600 hover:underline font-medium">
+                Sign in
+              </Link>
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
