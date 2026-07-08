@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import Link from "next/link";
 import { Logo } from "@/components/brand/Logo";
 import { Mail, Phone, MessageCircle } from "lucide-react";
 
@@ -20,7 +20,7 @@ export function Footer() {
               <li><a href="#features" className="text-foreground/80 hover:text-foreground">Features</a></li>
               <li><a href="#workflow" className="text-foreground/80 hover:text-foreground">How it works</a></li>
               <li><a href="#ai" className="text-foreground/80 hover:text-foreground">AI Assistant</a></li>
-              <li><Link to="/auth/sign-in" className="text-foreground/80 hover:text-foreground">Sign In</Link></li>
+              <li><Link href="/auth/login" className="text-foreground/80 hover:text-foreground">Sign In</Link></li>
             </ul>
           </div>
 
