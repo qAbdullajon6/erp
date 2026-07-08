@@ -88,10 +88,10 @@ function HeroPreview() {
           {/* Main */}
           <div className="col-span-12 md:col-span-10">
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              <KPI icon={Package} label="Orders today" value="1,284" delta="+12%" />
+              <KPI icon={Package} label="Orders today" value="1,284" delta="+12%" tone="brand" />
               <KPI icon={Truck} label="Active fleet" value="86 / 92" delta="94%" tone="success" />
               <KPI icon={MapPin} label="On-time rate" value="97.4%" delta="+2.1%" tone="success" />
-              <KPI icon={DollarSign} label="Revenue (wk)" value="$482K" delta="+8.6%" />
+              <KPI icon={DollarSign} label="Revenue (wk)" value="$482K" delta="+8.6%" tone="warning" />
             </div>
 
             <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -158,7 +158,7 @@ function KPI({
   label: string;
   value: string;
   delta: string;
-  tone?: "brand" | "success";
+  tone?: "brand" | "success" | "warning";
 }) {
   return (
     <div className="rounded-lg border border-border/60 bg-background/40 p-3">
@@ -167,7 +167,7 @@ function KPI({
         <Icon className="h-3.5 w-3.5 text-muted-foreground" />
       </div>
       <div className="mt-2 font-display text-xl font-bold text-foreground">{value}</div>
-      <div className={`text-[11px] ${tone === "success" ? "text-success" : "text-brand"}`}>{delta}</div>
+      <div className={`text-[11px] ${tone === "success" ? "text-success" : tone === "warning" ? "text-warning" : "text-brand"}`}>{delta}</div>
     </div>
   );
 }

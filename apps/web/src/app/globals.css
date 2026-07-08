@@ -103,41 +103,102 @@
   --shadow-glow: 0 0 60px -10px oklch(0.68 0.17 250 / 0.5);
 }
 
-@layer base {
-  * {
-    border-color: var(--color-border);
-  }
-  html {
-    font-family: var(--font-sans);
-    -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
-  }
-  body {
-    background-color: var(--color-background);
-    color: var(--color-foreground);
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
-  }
-  h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-display);
-    letter-spacing: -0.02em;
-  }
+.dark {
+  --background: oklch(0.19 0.035 260);
+  --foreground: oklch(0.98 0.005 240);
+
+  --surface: oklch(0.23 0.038 260);
+  --surface-elevated: oklch(0.27 0.04 260);
+
+  --card: oklch(0.23 0.038 260);
+  --card-foreground: oklch(0.98 0.005 240);
+  --popover: oklch(0.23 0.04 260);
+  --popover-foreground: oklch(0.98 0.005 240);
+
+  --primary: oklch(0.68 0.17 250);
+  --primary-foreground: oklch(0.15 0.03 260);
+  --brand: oklch(0.68 0.17 250);
+  --brand-foreground: oklch(0.15 0.03 260);
+  --brand-glow: oklch(0.78 0.14 240);
+
+  --secondary: oklch(0.28 0.04 260);
+  --secondary-foreground: oklch(0.98 0.005 240);
+  --muted: oklch(0.27 0.035 260);
+  --muted-foreground: oklch(0.72 0.02 250);
+  --accent: oklch(0.3 0.05 255);
+  --accent-foreground: oklch(0.98 0.005 240);
+
+  --destructive: oklch(0.62 0.22 25);
+  --destructive-foreground: oklch(0.98 0.005 240);
+  --success: oklch(0.72 0.16 155);
+  --warning: oklch(0.78 0.16 75);
+
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 10%);
+  --ring: oklch(0.68 0.17 250);
 }
 
-@utility text-gradient-brand {
+/* Custom Lovable styles and effects */
+.text-gradient-brand {
   background: var(--gradient-brand);
   -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
   background-clip: text;
-  color: transparent;
 }
 
-@utility bg-gradient-brand {
+.bg-gradient-brand {
   background: var(--gradient-brand);
 }
 
-@utility bg-hero-glow {
+.bg-hero-glow {
   background: var(--gradient-hero);
 }
 
-@utility shadow-brand {
+.shadow-brand {
   box-shadow: var(--shadow-glow);
+}
+
+.shadow-elevated {
+  box-shadow: var(--shadow-elevated);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+  }
+  html {
+    font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+  }
+
+  /* Heading font: Manrope */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-manrope), system-ui, -apple-system, sans-serif;
+    font-weight: 700;
+  }
+
+  /* Monospace for code/metrics */
+  code, pre, .mono {
+    font-family: var(--font-jetbrains-mono), monospace;
+  }
+}
+
+/* Print-friendly report view: hide everything except the element marked
+   data-print-section, used by the Executive Overview's "Print" action. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  [data-print-section],
+  [data-print-section] * {
+    visibility: visible;
+  }
+  [data-print-section] {
+    position: absolute;
+    inset: 0;
+    padding: 1.5rem;
+  }
 }
