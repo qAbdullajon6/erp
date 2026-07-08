@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link, Outlet } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Logo, LogoMark } from "@/components/brand/Logo";
 import { Button } from "@/components/ui/button";
@@ -39,13 +39,13 @@ function AppShell() {
   if (!ready) return null;
 
   const nav = [
-    { icon: LayoutDashboard, label: "Overview", active: true },
-    { icon: Package, label: "Orders" },
-    { icon: RouteIcon, label: "Dispatch" },
-    { icon: MapPin, label: "Tracking" },
-    { icon: Truck, label: "Fleet" },
-    { icon: Wallet, label: "Finance" },
-    { icon: Sparkles, label: "AI Assistant" },
+    { icon: LayoutDashboard, label: "Overview", path: "/app" },
+    { icon: Package, label: "Orders", path: "/app/orders" },
+    { icon: RouteIcon, label: "Dispatch", path: "/app/dispatch" },
+    { icon: MapPin, label: "Customers", path: "/app/customers" },
+    { icon: Truck, label: "Drivers", path: "/app/drivers" },
+    { icon: Wallet, label: "Finance", path: "/app/finance" },
+    { icon: Sparkles, label: "AI Assistant", path: "/app/ai-assistant" },
   ];
 
   return (
@@ -59,11 +59,8 @@ function AppShell() {
           {nav.map((n) => (
             <button
               key={n.label}
-              className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${
-                n.active
-                  ? "bg-brand/15 text-foreground"
-                  : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
-              }`}
+              onClick={() => navigate({ to: n.path as any })}
+              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
             >
               <n.icon className="h-4 w-4" />
               {n.label}
@@ -85,33 +82,13 @@ function AppShell() {
         </div>
       </aside>
 
-      <main className="flex-1 p-8">
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="font-display text-2xl font-bold tracking-tight">Command Center</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Welcome back — here's your operations at a glance.</p>
+      <main className="flex-1 overflow-auto">
+        <div className="min-h-screen p-8">
+          <div className="mb-8 flex items-center justify-between">
+            <Logo showWordmark={false} className="md:hidden" />
           </div>
-          <Logo showWordmark={false} className="md:hidden" />
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            { l: "Orders today", v: "1,284", d: "+12%" },
-            { l: "Active fleet", v: "86 / 92", d: "94%" },
-            { l: "On-time rate", v: "97.4%", d: "+2.1%" },
-            { l: "Revenue (wk)", v: "$482K", d: "+8.6%" },
-          ].map((k) => (
-            <div key={k.l} className="rounded-xl border border-border/60 bg-surface/60 p-5">
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">{k.l}</div>
-              <div className="mt-2 font-display text-2xl font-bold">{k.v}</div>
-              <div className="text-xs text-success">{k.d}</div>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-6 rounded-xl border border-border/60 bg-surface/60 p-6">
-          <div className="text-sm text-muted-foreground">
-            Your workspace is ready. Connect Lovable Cloud to enable real accounts, data, and the AI assistant.
+          <div className="mx-auto">
+            <Outlet />
           </div>
         </div>
       </main>
