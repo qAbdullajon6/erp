@@ -294,16 +294,19 @@ export default function RootPage() {
                   onClick={() => setDemoModalOpen(true)}
                   className="px-8 py-3.5 rounded-lg bg-gradient-to-r from-blue-500 via-blue-500 to-blue-600 hover:from-blue-600 hover:via-blue-600 hover:to-blue-700 text-white font-semibold transition-all hover:shadow-lg hover:shadow-blue-500/30 transform hover:translate-y-px flex items-center justify-center gap-2"
                 >
-                  Book a Free Demo
+                  Request a Demo
                   <ArrowRight className="w-4 h-4" />
                 </button>
-                <Link
-                  href="/app"
+                <button
+                  onClick={() => {
+                    const element = document.getElementById('how-it-works');
+                    element?.scrollIntoView({ behavior: 'smooth' });
+                  }}
                   className="px-8 py-3.5 rounded-lg border border-slate-700/60 hover:border-slate-600/80 hover:bg-slate-800/40 text-slate-200 hover:text-white font-semibold transition-colors flex items-center justify-center gap-2"
                 >
-                  Explore Live Demo
+                  See How It Works
                   <ChevronRight className="w-4 h-4" />
-                </Link>
+                </button>
               </div>
 
               <p className="text-sm text-slate-500 font-medium" style={{ fontFamily: 'var(--font-inter)' }}>
@@ -577,7 +580,7 @@ export default function RootPage() {
               <div className="mt-4 pt-4 border-t border-slate-700/30">
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-green-500" />
-                  <span className="text-xs font-medium text-slate-400">Real-time GPS</span>
+                  <span className="text-xs font-medium text-slate-400">Delivery status visibility</span>
                 </div>
               </div>
             </div>
@@ -890,7 +893,7 @@ export default function RootPage() {
                 className="px-6 py-3 rounded-lg border border-blue-500/50 hover:border-blue-500 hover:bg-blue-500/10 text-blue-400 hover:text-blue-300 font-semibold transition flex items-center gap-2"
                 style={{ fontFamily: 'var(--font-inter)' }}
               >
-                See AI in Action
+                Request an AI Walkthrough
                 <ChevronRight className="w-4 h-4" />
               </button>
             </div>
@@ -984,7 +987,7 @@ export default function RootPage() {
               className="px-8 py-3.5 rounded-lg bg-gradient-to-r from-blue-500 via-blue-500 to-blue-600 hover:from-blue-600 hover:via-blue-600 hover:to-blue-700 text-white font-semibold transition-all hover:shadow-lg hover:shadow-blue-500/30 transform hover:translate-y-px flex items-center justify-center gap-2"
               style={{ fontFamily: 'var(--font-inter)' }}
             >
-              Book a Free Demo
+              Request a Demo
               <Calendar className="w-4 h-4" />
             </button>
             <a
@@ -1049,7 +1052,7 @@ export default function RootPage() {
               },
               {
                 q: 'How do I request a demo?',
-                a: 'Click "Book a Demo" on this page, fill in your details, and our team will contact you within 24 hours. You can also email sales@flowerpai.com.',
+                a: 'Click "Request a Demo" on this page, fill in your details, and our team will contact you within one business day. You can also email sales@flowerpai.com.',
               },
             ].map((faq, idx) => (
               <div
@@ -1217,10 +1220,10 @@ export default function RootPage() {
                   className="text-2xl font-bold mb-2 text-white"
                   style={{ fontFamily: 'var(--font-manrope)' }}
                 >
-                  Request a Demo
+                  Request a Personalized Demo
                 </h3>
                 <p className="text-slate-400 mb-6" style={{ fontFamily: 'var(--font-inter)' }}>
-                  Our team will walk you through FlowERP. No credit card required.
+                  Tell us about your logistics operation and our team will show you how FlowERP AI can fit your workflow.
                 </p>
 
                 <form onSubmit={handleFormSubmit} className="space-y-4" style={{ fontFamily: 'var(--font-inter)' }}>
@@ -1298,14 +1301,14 @@ export default function RootPage() {
 
                   <div>
                     <label className="block text-sm font-medium text-slate-300 mb-2">
-                      Number of Vehicles (optional)
+                      Fleet Size (optional)
                     </label>
                     <input
                       type="text"
                       name="vehicles"
                       value={formData.vehicles}
                       onChange={handleFormChange}
-                      placeholder="e.g., 15"
+                      placeholder="e.g., 15 vehicles"
                       className="w-full px-4 py-2.5 rounded-lg bg-slate-800/50 border border-slate-700/50 text-white placeholder-slate-500 focus:border-blue-500/60 focus:bg-slate-800 focus:outline-none transition"
                       disabled={formSubmitting}
                     />
@@ -1313,13 +1316,13 @@ export default function RootPage() {
 
                   <div>
                     <label className="block text-sm font-medium text-slate-300 mb-2">
-                      Tell us about your challenge (optional)
+                      What would you like to improve? (optional)
                     </label>
                     <textarea
                       name="message"
                       value={formData.message}
                       onChange={handleFormChange}
-                      placeholder="What logistics challenges are you facing?"
+                      placeholder="e.g., dispatch efficiency, payment tracking, real-time visibility..."
                       rows={3}
                       className="w-full px-4 py-2.5 rounded-lg bg-slate-800/50 border border-slate-700/50 text-white placeholder-slate-500 focus:border-blue-500/60 focus:bg-slate-800 focus:outline-none transition resize-none"
                       disabled={formSubmitting}
@@ -1336,7 +1339,7 @@ export default function RootPage() {
                 </form>
 
                 <p className="text-xs text-slate-500 text-center mt-4" style={{ fontFamily: 'var(--font-inter)' }}>
-                  We'll respond within 24 hours. Your data is secure with us.
+                  We'll only use your details to respond to your request.
                 </p>
               </>
             ) : (
@@ -1351,7 +1354,7 @@ export default function RootPage() {
                   Thank You!
                 </h3>
                 <p className="text-slate-400 text-sm mb-6" style={{ fontFamily: 'var(--font-inter)' }}>
-                  Your demo request has been submitted. Our team will contact you within 24 hours.
+                  Thanks — we received your request. Our team will contact you within one business day.
                 </p>
                 <button
                   onClick={() => setDemoModalOpen(false)}

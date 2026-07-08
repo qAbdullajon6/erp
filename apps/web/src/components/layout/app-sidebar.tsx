@@ -66,7 +66,7 @@ function SidebarBrand() {
         variant="outline"
         className="ml-auto border-sidebar-border text-[10px] text-sidebar-foreground/60"
       >
-        Demo Data
+        Sample Data
       </Badge>
     </div>
   );
@@ -152,7 +152,7 @@ function SidebarFooterNote({ onOpenDemoGuide }: { onOpenDemoGuide?: () => void }
             setOpen(true);
           }}
         >
-          Open Demo Guide
+          View Sample Guide
         </Button>
       </div>
     </div>

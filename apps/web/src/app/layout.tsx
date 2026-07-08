@@ -33,13 +33,13 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FlowERP AI — Intelligent Logistics Operations Platform",
+  title: "FlowERP AI | Logistics Operations Platform",
   description:
-    "Order management, smart dispatch, customer CRM, finance control, reporting and an AI operations assistant in one logistics platform. Explore the interactive live demo.",
+    "Manage orders, dispatch, fleet operations, finance, and logistics insights from one connected workspace.",
   openGraph: {
-    title: "FlowERP AI — Intelligent Logistics Operations Platform",
+    title: "FlowERP AI | Logistics Operations Platform",
     description:
-      "Order management, smart dispatch, customer CRM, finance control, reporting and an AI operations assistant in one logistics platform.",
+      "Manage orders, dispatch, fleet operations, finance, and logistics insights from one connected workspace.",
     type: "website",
   },
 };
