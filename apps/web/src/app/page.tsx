@@ -20,10 +20,16 @@ export default function RootPage() {
     // Check if user is authenticated by attempting to fetch protected endpoint
     const checkAuth = async () => {
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+
         const res = await fetch('/api/onboarding/progress', {
           method: 'GET',
           credentials: 'include',
+          signal: controller.signal,
         });
+
+        clearTimeout(timeoutId);
 
         if (res.status === 200) {
           // User is authenticated - redirect to app
@@ -31,7 +37,7 @@ export default function RootPage() {
           return;
         }
       } catch (error) {
-        // Network error or endpoint doesn't exist - show landing page
+        // Network error, timeout, or endpoint doesn't exist - show landing page
       }
 
       setShowLanding(true);
