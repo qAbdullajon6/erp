@@ -29,14 +29,7 @@ function SignInPage() {
     <AuthShell
       title="Sign in to FlowERP AI"
       subtitle="Welcome back. Enter your details to continue."
-      footer={
-        <>
-          New to FlowERP AI?{" "}
-          <Link to="/auth/create-account" className="font-medium text-brand hover:underline">
-            Create an account
-          </Link>
-        </>
-      }
+      footer={null}
     >
       <form onSubmit={onSubmit} className="space-y-4">
         <div className="grid gap-2">
