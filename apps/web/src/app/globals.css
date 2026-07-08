@@ -1,54 +1,12 @@
-@import "tailwindcss" source(none);
-@source "../src";
+@import "tailwindcss";
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
 
-@theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
-  --radius-3xl: calc(var(--radius) + 12px);
-
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --color-ring-offset-background: var(--background);
-
-  --color-surface: var(--surface);
-  --color-surface-elevated: var(--surface-elevated);
-  --color-brand: var(--brand);
-  --color-brand-foreground: var(--brand-foreground);
-  --color-brand-glow: var(--brand-glow);
-  --color-success: var(--success);
-  --color-warning: var(--warning);
-
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Manrope", "Inter", ui-sans-serif, system-ui, sans-serif;
-}
-
 :root {
   --radius: 0.75rem;
 
-  /* Dark navy identity as default */
+  /* Dark navy identity as default - Lovable premium theme */
   --background: oklch(0.19 0.035 260);
   --foreground: oklch(0.98 0.005 240);
 
@@ -101,6 +59,10 @@
   --gradient-hero: radial-gradient(ellipse 80% 60% at 50% 0%, oklch(0.35 0.12 255 / 0.5), transparent 70%);
   --shadow-elevated: 0 20px 60px -20px oklch(0 0 0 / 0.6);
   --shadow-glow: 0 0 60px -10px oklch(0.68 0.17 250 / 0.5);
+
+  --font-inter: "Inter";
+  --font-manrope: "Manrope";
+  --font-jetbrains-mono: "JetBrains Mono";
 }
 
 .dark {
@@ -138,12 +100,13 @@
   --ring: oklch(0.68 0.17 250);
 }
 
-/* Custom Lovable styles and effects */
+/* Lovable custom utilities */
 .text-gradient-brand {
   background: var(--gradient-brand);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  color: transparent;
 }
 
 .bg-gradient-brand {
@@ -164,30 +127,24 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
-  }
-  body {
-    @apply bg-background text-foreground;
-    font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+    border-color: var(--border);
   }
   html {
     font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
-
-  /* Heading font: Manrope */
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-manrope), system-ui, -apple-system, sans-serif;
-    font-weight: 700;
-  }
-
-  /* Monospace for code/metrics */
-  code, pre, .mono {
-    font-family: var(--font-jetbrains-mono), monospace;
+    letter-spacing: -0.02em;
   }
 }
 
-/* Print-friendly report view: hide everything except the element marked
-   data-print-section, used by the Executive Overview's "Print" action. */
 @media print {
   body * {
     visibility: hidden;
