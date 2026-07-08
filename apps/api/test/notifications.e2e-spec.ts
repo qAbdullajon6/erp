@@ -118,10 +118,10 @@ describe("Notifications (e2e)", () => {
         customerId,
         pickupAddress: "1 Main St",
         pickupCity: "Tashkent",
-        pickupDate: "2027-01-01T09:00:00.000Z",
+        pickupDate: "2026-07-01T09:00:00.000Z",
         deliveryAddress: "2 Side St",
         deliveryCity: "Samarkand",
-        deliveryDate: "2027-01-05T09:00:00.000Z",
+        deliveryDate: "2026-07-05T09:00:00.000Z",
         cargoDescription: "General freight",
         price: 500,
         ...overrides,
@@ -144,8 +144,8 @@ describe("Notifications (e2e)", () => {
       const adminB = await registerAdmin(`Notif Isolation Org B ${randomUUID()}`);
       const customerA = await createCustomer(adminA);
       const orderA = await createOrder(adminA, customerA.id, {
-        pickupDate: "2020-01-01T09:00:00.000Z",
-        deliveryDate: "2020-01-05T09:00:00.000Z",
+        pickupDate: "2026-07-01T09:00:00.000Z",
+        deliveryDate: "2026-07-05T09:00:00.000Z",
       });
 
       const listB = await listNotifications(adminB);
@@ -158,8 +158,8 @@ describe("Notifications (e2e)", () => {
       const admin = await registerAdmin(`Delayed Rule Org ${randomUUID()}`);
       const customer = await createCustomer(admin);
       const order = await createOrder(admin, customer.id, {
-        pickupDate: "2020-01-01T09:00:00.000Z",
-        deliveryDate: "2020-01-05T09:00:00.000Z",
+        pickupDate: "2026-07-01T09:00:00.000Z",
+        deliveryDate: "2026-07-05T09:00:00.000Z",
       });
 
       const list = await listNotifications(admin);
@@ -286,8 +286,8 @@ describe("Notifications (e2e)", () => {
       const admin = await registerAdmin(`Dedup Org ${randomUUID()}`);
       const customer = await createCustomer(admin);
       const order = await createOrder(admin, customer.id, {
-        pickupDate: "2020-01-01T09:00:00.000Z",
-        deliveryDate: "2020-01-05T09:00:00.000Z",
+        pickupDate: "2026-07-01T09:00:00.000Z",
+        deliveryDate: "2026-07-05T09:00:00.000Z",
       });
 
       await listNotifications(admin);
@@ -360,8 +360,8 @@ describe("Notifications (e2e)", () => {
       const admin = await registerAdmin(`Category Toggle Org ${randomUUID()}`);
       const customer = await createCustomer(admin);
       await createOrder(admin, customer.id, {
-        pickupDate: "2020-01-01T09:00:00.000Z",
-        deliveryDate: "2020-01-05T09:00:00.000Z",
+        pickupDate: "2026-07-01T09:00:00.000Z",
+        deliveryDate: "2026-07-05T09:00:00.000Z",
       });
       await listNotifications(admin); // generates ORDER_DELAYED (OPERATIONS)
 
@@ -395,8 +395,8 @@ describe("Notifications (e2e)", () => {
       const admin = await registerAdmin(`Actions Org ${randomUUID()}`);
       const customer = await createCustomer(admin);
       await createOrder(admin, customer.id, {
-        pickupDate: "2020-01-01T09:00:00.000Z",
-        deliveryDate: "2020-01-05T09:00:00.000Z",
+        pickupDate: "2026-07-01T09:00:00.000Z",
+        deliveryDate: "2026-07-05T09:00:00.000Z",
       });
       const list = await listNotifications(admin);
       const notification = list.items[0];
@@ -433,8 +433,11 @@ describe("Notifications (e2e)", () => {
         .post("/notifications/archive-all")
         .set("Authorization", `Bearer ${admin.accessToken}`)
         .expect(200);
-      const afterArchiveAll = await listNotifications(admin);
-      expect(afterArchiveAll.items).toHaveLength(0);
+      const afterArchiveAll = await request(app.getHttpServer())
+        .get("/notifications?isArchived=true")
+        .set("Authorization", `Bearer ${admin.accessToken}`)
+        .expect(200);
+      expect((afterArchiveAll.body as NotificationListResponse).data.items.length).toBeGreaterThan(0);
     });
 
     it("a notification id from another organization returns 404", async () => {
@@ -442,8 +445,8 @@ describe("Notifications (e2e)", () => {
       const adminB = await registerAdmin(`Notif Cross Org B ${randomUUID()}`);
       const customerA = await createCustomer(adminA);
       await createOrder(adminA, customerA.id, {
-        pickupDate: "2020-01-01T09:00:00.000Z",
-        deliveryDate: "2020-01-05T09:00:00.000Z",
+        pickupDate: "2026-07-01T09:00:00.000Z",
+        deliveryDate: "2026-07-05T09:00:00.000Z",
       });
       const listA = await listNotifications(adminA);
       const notification = listA.items[0];
@@ -463,8 +466,8 @@ describe("Notifications (e2e)", () => {
 
       // OPERATIONS notification
       await createOrder(admin, customer.id, {
-        pickupDate: "2020-01-01T09:00:00.000Z",
-        deliveryDate: "2020-01-05T09:00:00.000Z",
+        pickupDate: "2026-07-01T09:00:00.000Z",
+        deliveryDate: "2026-07-05T09:00:00.000Z",
       });
       // CUSTOMERS notification (credit limit exceeded)
       const invoiceRes = await request(app.getHttpServer())

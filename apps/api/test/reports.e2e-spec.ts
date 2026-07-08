@@ -281,8 +281,8 @@ describe("Reports (e2e)", () => {
       const admin = await registerAdmin(`Operations Exceptions Org ${randomUUID()}`);
       const customer = await createCustomer(admin);
       const overdueOrder = await createOrder(admin, customer.id, {
-        pickupDate: "2020-01-01T09:00:00.000Z",
-        deliveryDate: "2020-01-05T09:00:00.000Z",
+        pickupDate: "2026-07-01T09:00:00.000Z",
+        deliveryDate: "2026-07-05T09:00:00.000Z",
       });
       const pendingOrder = await createOrder(admin, customer.id);
       await request(app.getHttpServer())
@@ -378,7 +378,8 @@ describe("Reports (e2e)", () => {
       const customer = await createCustomer(admin);
       await createOrder(admin, customer.id, {
         pickupCity: "Tashkent, Uzbekistan",
-        deliveryDate: "2020-01-05T09:00:00.000Z",
+        pickupDate: "2026-07-01T09:00:00.000Z",
+        deliveryDate: "2026-07-05T09:00:00.000Z",
       });
 
       const res = await request(app.getHttpServer())

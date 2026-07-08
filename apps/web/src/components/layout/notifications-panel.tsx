@@ -120,7 +120,7 @@ function NotificationsPanelConnected() {
 
     Promise.resolve().then(() => { if (!cancelled) fetch(); });
     return () => { cancelled = true; };
-  }, [session, reloadToken, callApi]);
+  }, [session, callApi]);
 
   return (
     <DropdownMenu>
