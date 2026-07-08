@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/brand/Logo";
 import { openDemoModal } from "@/components/site/DemoModal";
@@ -20,7 +20,7 @@ export function Navbar() {
       }`}
     >
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
-        <Link href="/">
+        <Link to="/">
           <Logo />
         </Link>
         <nav className="hidden items-center gap-8 text-sm text-muted-foreground md:flex">
@@ -30,7 +30,7 @@ export function Navbar() {
           <a href="#contact" className="transition-colors hover:text-foreground">Contact</a>
         </nav>
         <div className="flex items-center gap-2">
-          <Link href="/auth/login" className="hidden text-sm font-medium text-muted-foreground transition-colors hover:text-foreground sm:inline-block">
+          <Link to="/auth/sign-in" className="hidden text-sm font-medium text-muted-foreground transition-colors hover:text-foreground sm:inline-block">
             Sign In
           </Link>
           <Button onClick={openDemoModal} className="h-9 bg-gradient-brand text-brand-foreground hover:opacity-90">
