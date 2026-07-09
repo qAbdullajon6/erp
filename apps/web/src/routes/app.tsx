@@ -1,10 +1,12 @@
 import { createFileRoute, useNavigate, Link, Outlet, useLocation } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import type { LucideIcon } from "lucide-react";
 import { Logo, LogoMark, Wordmark } from "@/components/brand/Logo";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { UserMenu } from "@/components/layout/user-menu";
 import { sessionManager, useLogout, useCurrentUser } from "@/lib/api/auth";
+import type { MembershipRole } from "@/lib/api/organizations";
 import {
   LayoutDashboard,
   Package,
@@ -17,6 +19,7 @@ import {
   Settings,
   BarChart3,
   PackageCheck,
+  Users,
 } from "lucide-react";
 
 export const Route = createFileRoute("/app")({
@@ -29,18 +32,46 @@ export const Route = createFileRoute("/app")({
   component: AppShell,
 });
 
-const DRIVER_NAV = [
+type NavItem = {
+  icon: LucideIcon;
+  label: string;
+  path: string;
+  /// Roles whose API can actually serve this screen. Omitted means every role
+  /// in DEFAULT_NAV. Kept in step with each controller's read-role list — a
+  /// link a role cannot use is worse than no link, because it 403s on click.
+  roles?: MembershipRole[];
+};
+
+const DRIVER_NAV: NavItem[] = [
   { icon: LayoutDashboard, label: "Overview", path: "/app" },
   { icon: PackageCheck, label: "My Deliveries", path: "/app/my-deliveries" },
   { icon: Settings, label: "Settings", path: "/app/settings" },
 ];
 
-const DEFAULT_NAV = [
+/// Read-role sources, for whoever has to keep these honest:
+///   Orders      OrdersController.READ_ROLES        — all five
+///   Dispatches  DispatchesController.ROLES_READ    — no SALES_CRM_MANAGER
+///   Customers   CustomersController.READ_ROLES     — all five
+///   Drivers     DriversController.ROLES            — ADMIN/OPS/DISPATCHER
+///   Vehicles    VehiclesController.ROLES           — ADMIN/OPS/DISPATCHER
+///   Finance     FinanceController.ROLES            — all five
+///   Reports     ReportsController.ROLES            — all five
+const FLEET_ROLES: MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER"];
+
+const DEFAULT_NAV: NavItem[] = [
   { icon: LayoutDashboard, label: "Overview", path: "/app" },
   { icon: Package, label: "Orders", path: "/app/orders" },
-  { icon: RouteIcon, label: "Dispatches", path: "/app/dispatches" },
+  {
+    icon: RouteIcon,
+    label: "Dispatches",
+    path: "/app/dispatches",
+    roles: ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER", "ACCOUNTANT"],
+  },
   { icon: MapPin, label: "Customers", path: "/app/customers" },
-  { icon: Truck, label: "Drivers", path: "/app/drivers" },
+  { icon: Users, label: "Drivers", path: "/app/drivers", roles: FLEET_ROLES },
+  // Vehicles had routes, a list, a detail page and a create form, and no way
+  // in: nothing anywhere linked to /app/vehicles.
+  { icon: Truck, label: "Vehicles", path: "/app/vehicles", roles: FLEET_ROLES },
   { icon: Wallet, label: "Finance", path: "/app/finance" },
   { icon: BarChart3, label: "Reports", path: "/app/reports" },
   { icon: Sparkles, label: "AI Assistant", path: "/app/ai-assistant" },
@@ -86,7 +117,15 @@ function AppShell() {
   // Finance/Reports/AI Assistant at all (see OrdersController etc.) — its
   // nav is deliberately just Overview + My Deliveries + Settings, not the
   // full admin nav with links that would all 403.
-  const nav = currentUser?.membership.role === "DRIVER" ? DRIVER_NAV : DEFAULT_NAV;
+  //
+  // The same reasoning applies within the admin nav: an ACCOUNTANT clicking
+  // "Drivers", or a SALES_CRM_MANAGER clicking "Dispatches", used to land on a
+  // screen the API refuses to serve them.
+  const role = (currentUser?.membership.role ?? "") as MembershipRole;
+  const nav =
+    role === "DRIVER"
+      ? DRIVER_NAV
+      : DEFAULT_NAV.filter((item) => !item.roles || item.roles.includes(role));
 
   const isActive = (path: string) => {
     if (path === "/app") {
@@ -109,26 +148,35 @@ function AppShell() {
   const navContent = (onNavigate?: () => void) => (
     <>
       <nav className="flex-1 space-y-2 overflow-y-auto px-3 py-6">
-        {nav.map((n) => {
-          const active = isActive(n.path);
-          return (
-            <button
-              key={n.label}
-              onClick={() => {
-                navigate({ to: n.path as any });
-                onNavigate?.();
-              }}
-              className={`group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200 ${
-                active
-                  ? "bg-brand/20 text-brand"
-                  : "text-muted-foreground hover:bg-brand/10 hover:text-brand"
-              }`}
-            >
-              <n.icon className="h-5 w-5 transition-transform group-hover:scale-110" />
-              <span>{n.label}</span>
-            </button>
-          );
-        })}
+        {/* The nav depends on the role, so hold a skeleton until /auth/me lands
+            rather than painting the role-agnostic links and having the rest
+            pop in a moment later. */}
+        {!currentUser &&
+          Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="h-11 animate-pulse rounded-lg bg-brand/5" />
+          ))}
+
+        {currentUser &&
+          nav.map((n) => {
+            const active = isActive(n.path);
+            return (
+              <button
+                key={n.label}
+                onClick={() => {
+                  navigate({ to: n.path as any });
+                  onNavigate?.();
+                }}
+                className={`group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200 ${
+                  active
+                    ? "bg-brand/20 text-brand"
+                    : "text-muted-foreground hover:bg-brand/10 hover:text-brand"
+                }`}
+              >
+                <n.icon className="h-5 w-5 transition-transform group-hover:scale-110" />
+                <span>{n.label}</span>
+              </button>
+            );
+          })}
       </nav>
     </>
   );
