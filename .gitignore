@@ -61,6 +61,8 @@ apps/web/.wrangler/
 # playwright testing
 .playwright/
 apps/web/playwright-report/
+# Screenshots written by e2e/shots.spec.ts when reviewing a change by eye.
+apps/web/shots/
 apps/web/test-results/
 apps/web/e2e/auth-state.json
 
