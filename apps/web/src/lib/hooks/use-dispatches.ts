@@ -9,18 +9,23 @@ export function useDispatches(page = 1, limit = 10, params?: { search?: string; 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // `params` arrives as an inline object literal from dispatches-list, so it
+  // is a new reference every render. Depend on its serialized value, not its
+  // identity, or the effect below re-runs forever.
+  const paramsKey = JSON.stringify(params ?? {});
+
   const fetch = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const result = await dispatchesAPI.list(page, limit, params);
+      const result = await dispatchesAPI.list(page, limit, JSON.parse(paramsKey));
       setData(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch dispatches');
     } finally {
       setLoading(false);
     }
-  }, [page, limit, params]);
+  }, [page, limit, paramsKey]);
 
   const refetch = useCallback(async () => {
     await fetch();

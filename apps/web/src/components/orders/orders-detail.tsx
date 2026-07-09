@@ -4,6 +4,16 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import {
   useOrder,
   useUpdateOrder,
@@ -674,49 +684,55 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
           </div>
         )}
 
-        {/* Cancel Order */}
+        {/* Cancel Order — a modal rather than an inline expander, so the
+            irreversible action always gets an explicit, focused confirmation.
+            It carries a reason field, so it is a Dialog and not the plain
+            ConfirmDialog. */}
         {canCancel && (
           <div className="border-t border-brand/10 pt-4">
-            <Button
-              size="sm"
-              variant={showCancel ? 'destructive' : 'outline'}
-              onClick={() => setShowCancel(!showCancel)}
-              disabled={cancelLoading}
-            >
-              Cancel Order
-            </Button>
+            <Dialog open={showCancel} onOpenChange={setShowCancel}>
+              <DialogTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-destructive/30 text-destructive hover:bg-destructive/10"
+                  disabled={cancelLoading}
+                >
+                  Cancel Order
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Cancel order {order.orderNumber}?</DialogTitle>
+                  <DialogDescription>
+                    This cannot be undone. The order will be marked as CANCELLED and can no longer be dispatched.
+                  </DialogDescription>
+                </DialogHeader>
 
-            {showCancel && (
-              <div className="mt-4 space-y-3 p-4 bg-background rounded-lg">
-                <p className="text-sm text-muted-foreground">
-                  This action cannot be undone. The order will be marked as CANCELLED.
-                </p>
-                <div>
-                  <label className="text-sm font-medium text-foreground">Reason (optional)</label>
-                  <textarea
+                <div className="space-y-2">
+                  <label htmlFor="cancelNote" className="text-sm font-medium text-foreground">
+                    Reason (optional)
+                  </label>
+                  <Textarea
+                    id="cancelNote"
                     placeholder="Why is this order being cancelled?"
                     value={cancelNote}
                     onChange={(e) => setCancelNote(e.target.value)}
-                    rows={2}
+                    rows={3}
                     maxLength={2000}
-                    className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   />
                 </div>
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={handleCancel}
-                    disabled={cancelLoading}
-                  >
-                    {cancelLoading ? 'Cancelling...' : 'Confirm Cancellation'}
+
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setShowCancel(false)} disabled={cancelLoading}>
+                    Keep order
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => setShowCancel(false)}>
-                    Back
+                  <Button variant="destructive" onClick={handleCancel} disabled={cancelLoading}>
+                    {cancelLoading ? 'Cancelling...' : 'Cancel order'}
                   </Button>
-                </div>
-              </div>
-            )}
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
         )}
       </div>

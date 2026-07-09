@@ -2,7 +2,18 @@
 
 import { useState } from 'react';
 import { useRouter } from '@tanstack/react-router';
-import { useDriver, useUpdateDriver, useArchiveDriver, useRestoreDriver } from '@/lib/api/drivers';
+import { useDriver, useUpdateDriver, useArchiveDriver, useRestoreDriver, type DriverStatus } from '@/lib/api/drivers';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { PageHeader } from '@/components/shared/page-header';
+import { DetailField } from '@/components/shared/detail-field';
+import { StatusBadge } from '@/components/shared/status-badge';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
+import { LoadingState, ErrorState } from '@/components/shared/list-states';
+import { ArrowLeft, Archive, Pencil } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface DriversDetailProps {
   driverId: string;
@@ -15,28 +26,19 @@ export function DriversDetail({ driverId }: DriversDetailProps) {
   const { mutate: archiveDriver } = useArchiveDriver(driverId);
   const { mutate: restoreDriver } = useRestoreDriver(driverId);
   const [isEditing, setIsEditing] = useState(false);
-  const [editErrors, setEditErrors] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
   const [editData, setEditData] = useState({
     firstName: '',
     lastName: '',
     phone: '',
     email: '',
-    status: 'ACTIVE' as const,
+    status: 'ACTIVE' as DriverStatus,
   });
 
-  if (loading) {
-    return <div className="animate-pulse h-96 bg-gray-200 rounded-lg" />;
-  }
+  if (loading) return <LoadingState label="Loading driver..." />;
 
   if (error || !driver) {
-    return (
-      <div className="p-4 bg-red-100 text-red-800 rounded-lg">
-        <p>{error || 'Driver not found'}</p>
-        <button onClick={refetch} className="underline mt-2">
-          Retry
-        </button>
-      </div>
-    );
+    return <ErrorState message={error || 'Driver not found'} onRetry={refetch} />;
   }
 
   const initializeEdit = () => {
@@ -51,6 +53,7 @@ export function DriversDetail({ driverId }: DriversDetailProps) {
   };
 
   const handleSaveEdit = async () => {
+    setSaving(true);
     try {
       await updateDriver({
         firstName: editData.firstName,
@@ -61,19 +64,21 @@ export function DriversDetail({ driverId }: DriversDetailProps) {
       });
       setIsEditing(false);
       refetch();
+      toast.success('Driver updated');
     } catch (err) {
-      setEditErrors({ submit: err instanceof Error ? err.message : 'Failed to update' });
+      toast.error(err instanceof Error ? err.message : 'Failed to update driver');
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleArchive = async () => {
-    if (confirm('Archive this driver?')) {
-      try {
-        await archiveDriver();
-        refetch();
-      } catch (err) {
-        alert(err instanceof Error ? err.message : 'Failed to archive');
-      }
+    try {
+      await archiveDriver();
+      refetch();
+      toast.success('Driver archived');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to archive driver');
     }
   };
 
@@ -81,150 +86,144 @@ export function DriversDetail({ driverId }: DriversDetailProps) {
     try {
       await restoreDriver();
       refetch();
+      toast.success('Driver restored');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to restore');
+      toast.error(err instanceof Error ? err.message : 'Failed to restore driver');
     }
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">
-          {driver.firstName} {driver.lastName}
-        </h1>
-        <button
-          onClick={() => router.navigate({ to: '/app/drivers' })}
-          className="text-gray-600 hover:underline"
-        >
-          ← Back
-        </button>
-      </div>
+    <div className="mx-auto max-w-3xl space-y-6">
+      <PageHeader
+        title={`${driver.firstName} ${driver.lastName}`}
+        subtitle={
+          <span className="flex items-center gap-2">
+            <span className="font-mono">{driver.employeeCode}</span>
+            <StatusBadge status={driver.status} />
+          </span>
+        }
+        action={
+          <Button onClick={() => router.navigate({ to: '/app/drivers' })} variant="ghost" className="gap-2">
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </Button>
+        }
+      />
 
       {driver.archivedAt && (
-        <div className="p-4 bg-yellow-100 text-yellow-800 rounded-lg">
-          This driver is archived
-          <button
-            onClick={handleRestore}
-            className="ml-4 underline font-medium"
-          >
+        <div className="flex items-center justify-between rounded-lg border border-warning/20 bg-warning/10 p-4 text-sm text-warning">
+          <span>This driver is archived.</span>
+          <Button onClick={handleRestore} variant="outline" size="sm">
             Restore
-          </button>
+          </Button>
         </div>
       )}
 
-      {isEditing ? (
-        <div className="bg-white p-6 rounded-lg border space-y-4">
-          <h2 className="font-bold text-lg">Edit Driver</h2>
+      <Card>
+        <CardHeader>
+          <CardTitle>{isEditing ? 'Edit Driver' : 'Driver Details'}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isEditing ? (
+            <div className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="firstName">First Name</Label>
+                  <Input
+                    id="firstName"
+                    value={editData.firstName}
+                    onChange={(e) => setEditData({ ...editData, firstName: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="lastName">Last Name</Label>
+                  <Input
+                    id="lastName"
+                    value={editData.lastName}
+                    onChange={(e) => setEditData({ ...editData, lastName: e.target.value })}
+                  />
+                </div>
+              </div>
 
-          {editErrors.submit && <p className="text-red-600 text-sm">{editErrors.submit}</p>}
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone</Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  value={editData.phone}
+                  onChange={(e) => setEditData({ ...editData, phone: e.target.value })}
+                />
+              </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <input
-              type="text"
-              value={editData.firstName}
-              onChange={(e) => setEditData({ ...editData, firstName: e.target.value })}
-              placeholder="First Name"
-              className="px-3 py-2 border rounded-lg"
-            />
-            <input
-              type="text"
-              value={editData.lastName}
-              onChange={(e) => setEditData({ ...editData, lastName: e.target.value })}
-              placeholder="Last Name"
-              className="px-3 py-2 border rounded-lg"
-            />
-          </div>
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={editData.email}
+                  onChange={(e) => setEditData({ ...editData, email: e.target.value })}
+                />
+              </div>
 
-          <input
-            type="tel"
-            value={editData.phone}
-            onChange={(e) => setEditData({ ...editData, phone: e.target.value })}
-            placeholder="Phone"
-            className="w-full px-3 py-2 border rounded-lg"
-          />
-
-          <input
-            type="email"
-            value={editData.email}
-            onChange={(e) => setEditData({ ...editData, email: e.target.value })}
-            placeholder="Email"
-            className="w-full px-3 py-2 border rounded-lg"
-          />
-
-          <select
-            value={editData.status}
-            onChange={(e) => setEditData({ ...editData, status: e.target.value as any })}
-            className="w-full px-3 py-2 border rounded-lg"
-          >
-            <option value="ACTIVE">Active</option>
-            <option value="INACTIVE">Inactive</option>
-            <option value="ON_LEAVE">On Leave</option>
-          </select>
-
-          <div className="flex gap-4">
-            <button
-              onClick={handleSaveEdit}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              Save
-            </button>
-            <button
-              onClick={() => setIsEditing(false)}
-              className="px-4 py-2 border rounded-lg hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="bg-white p-6 rounded-lg border space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-gray-600">Employee Code</p>
-              <p className="font-mono">{driver.employeeCode}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Status</p>
-              <p className="font-medium">{driver.status}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Phone</p>
-              <p>{driver.phone}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Email</p>
-              <p>{driver.email || '—'}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">License Number</p>
-              <p>{driver.licenseNumber || '—'}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">License Expiry</p>
-              <p>{driver.licenseExpiry || '—'}</p>
-            </div>
-          </div>
-
-          <div className="flex gap-4 pt-4 border-t">
-            {!driver.archivedAt && (
-              <>
-                <button
-                  onClick={initializeEdit}
-                  className="px-4 py-2 border rounded-lg hover:bg-gray-50"
+              <div className="space-y-2">
+                <Label htmlFor="status">Status</Label>
+                <select
+                  id="status"
+                  value={editData.status}
+                  onChange={(e) => setEditData({ ...editData, status: e.target.value as DriverStatus })}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 >
-                  Edit
-                </button>
-                <button
-                  onClick={handleArchive}
-                  className="px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50"
-                >
-                  Archive
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+                  <option value="ACTIVE">Active</option>
+                  <option value="INACTIVE">Inactive</option>
+                  <option value="ON_LEAVE">On Leave</option>
+                </select>
+              </div>
+
+              <div className="flex gap-3 border-t border-brand/10 pt-4">
+                <Button onClick={handleSaveEdit} disabled={saving}>
+                  {saving ? 'Saving...' : 'Save'}
+                </Button>
+                <Button onClick={() => setIsEditing(false)} variant="outline" disabled={saving}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <div className="grid gap-6 sm:grid-cols-2">
+                <DetailField label="Employee Code" value={driver.employeeCode} mono />
+                <DetailField label="Status" value={<StatusBadge status={driver.status} />} />
+                <DetailField label="Phone" value={driver.phone} />
+                <DetailField label="Email" value={driver.email} />
+                <DetailField label="License Number" value={driver.licenseNumber} mono />
+                <DetailField label="License Expiry" value={driver.licenseExpiry} />
+              </div>
+
+              {!driver.archivedAt && (
+                <div className="flex gap-3 border-t border-brand/10 pt-4">
+                  <Button onClick={initializeEdit} variant="outline" className="gap-2">
+                    <Pencil className="h-4 w-4" />
+                    Edit
+                  </Button>
+                  <ConfirmDialog
+                    trigger={
+                      <Button variant="outline" className="gap-2 border-destructive/30 text-destructive hover:bg-destructive/10">
+                        <Archive className="h-4 w-4" />
+                        Archive
+                      </Button>
+                    }
+                    title="Archive this driver?"
+                    description="Archived drivers can no longer be assigned to dispatches. You can restore them later."
+                    confirmLabel="Archive"
+                    onConfirm={handleArchive}
+                    destructive
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useCustomerDetail, useUpdateCustomer, useArchiveCustomer, useRestoreCustomer, CustomerPaymentTerms, UpdateCustomerInput } from '@/lib/api/customers';
 import { toast } from 'sonner';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { ArrowLeft, Edit2, Archive, RotateCcw } from 'lucide-react';
 
 const PAYMENT_TERMS: CustomerPaymentTerms[] = ['DUE_ON_RECEIPT', 'NET_15', 'NET_30', 'NET_45'];
@@ -63,14 +64,12 @@ export function CustomerDetail({ customerId }: { customerId: string }) {
   };
 
   const handleArchive = async () => {
-    if (window.confirm('Archive this customer? They can be restored later.')) {
-      try {
-        await archive(customerId);
-        toast.success('Customer archived');
-        refetch();
-      } catch (err) {
-        toast.error('Failed to archive customer');
-      }
+    try {
+      await archive(customerId);
+      toast.success('Customer archived');
+      refetch();
+    } catch {
+      toast.error('Failed to archive customer');
     }
   };
 
@@ -158,15 +157,23 @@ export function CustomerDetail({ customerId }: { customerId: string }) {
                 <Edit2 className="h-4 w-4" />
                 Edit
               </Button>
-              <Button
-                onClick={handleArchive}
-                disabled={archiving}
-                variant="outline"
-                className="gap-2 text-destructive"
-              >
-                <Archive className="h-4 w-4" />
-                Archive
-              </Button>
+              <ConfirmDialog
+                trigger={
+                  <Button
+                    disabled={archiving}
+                    variant="outline"
+                    className="gap-2 border-destructive/30 text-destructive hover:bg-destructive/10"
+                  >
+                    <Archive className="h-4 w-4" />
+                    Archive
+                  </Button>
+                }
+                title="Archive this customer?"
+                description="Archived customers are hidden from pickers and cannot receive new orders. You can restore them later."
+                confirmLabel="Archive"
+                onConfirm={handleArchive}
+                destructive
+              />
             </>
           )}
         </div>

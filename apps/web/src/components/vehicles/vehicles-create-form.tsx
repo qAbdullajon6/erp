@@ -3,6 +3,17 @@
 import { useState } from 'react';
 import { useRouter } from '@tanstack/react-router';
 import { useCreateVehicle, type CreateVehicleInput } from '@/lib/api/vehicles';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent } from '@/components/ui/card';
+import { PageHeader } from '@/components/shared/page-header';
+import { FormField, FormError } from '@/components/shared/form-field';
+import { toast } from 'sonner';
+
+/** Number inputs come back as '' when cleared; the API wants the key absent. */
+function toOptionalNumber(value: string): number | undefined {
+  return value === '' ? undefined : parseFloat(value);
+}
 
 export function VehiclesCreateForm() {
   const router = useRouter();
@@ -48,174 +59,135 @@ export function VehiclesCreateForm() {
 
     try {
       const result = await mutate(formData);
+      toast.success(`Vehicle "${result.plateNumber}" created`);
       router.navigate({ to: `/app/vehicles/${result.id}` });
     } catch {
-      // Error already in submitError state
+      // Surfaced through submitError below.
     }
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <h1 className="text-3xl font-bold">Create Vehicle</h1>
+    <div className="mx-auto max-w-3xl space-y-6">
+      <PageHeader title="Create Vehicle" subtitle="Add a vehicle to your fleet" />
 
-      {submitError && (
-        <div className="p-4 bg-red-100 text-red-800 rounded-lg">
-          {submitError}
-        </div>
-      )}
+      {submitError && <FormError message={submitError} />}
 
-      <form onSubmit={handleSubmit} className="space-y-6 bg-white p-6 rounded-lg border">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Plate Number *</label>
-            <input
-              type="text"
-              value={formData.plateNumber}
-              onChange={(e) => setFormData({ ...formData, plateNumber: e.target.value })}
-              data-testid="vehicles-plate-number"
-              className="w-full px-3 py-2 border rounded-lg"
-            />
-            {errors.plateNumber && <p className="text-red-600 text-sm mt-1">{errors.plateNumber}</p>}
-          </div>
+      <Card>
+        <CardContent className="pt-6">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField id="plateNumber" label="Plate Number" required error={errors.plateNumber}>
+                <Input
+                  id="plateNumber"
+                  value={formData.plateNumber}
+                  onChange={(e) => setFormData({ ...formData, plateNumber: e.target.value })}
+                  data-testid="vehicles-plate-number"
+                />
+              </FormField>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Type *</label>
-            <input
-              type="text"
-              placeholder="e.g., Box Truck, Van"
-              value={formData.type}
-              onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-              data-testid="vehicles-type"
-              className="w-full px-3 py-2 border rounded-lg"
-            />
-            {errors.type && <p className="text-red-600 text-sm mt-1">{errors.type}</p>}
-          </div>
-        </div>
+              <FormField id="type" label="Type" required error={errors.type} hint="e.g. box truck, refrigerated truck">
+                <Input
+                  id="type"
+                  value={formData.type}
+                  onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                  data-testid="vehicles-type"
+                />
+              </FormField>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Capacity (kg)</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={formData.capacityKg || ''}
-              onChange={(e) => setFormData({ ...formData, capacityKg: e.target.value ? parseFloat(e.target.value) : undefined })}
-              data-testid="vehicles-capacity-kg"
-              className="w-full px-3 py-2 border rounded-lg"
-            />
-            {errors.capacityKg && <p className="text-red-600 text-sm mt-1">{errors.capacityKg}</p>}
-          </div>
+              <FormField id="capacityKg" label="Capacity (kg)" error={errors.capacityKg}>
+                <Input
+                  id="capacityKg"
+                  type="number"
+                  value={formData.capacityKg ?? ''}
+                  onChange={(e) => setFormData({ ...formData, capacityKg: toOptionalNumber(e.target.value) })}
+                  data-testid="vehicles-capacity-kg"
+                />
+              </FormField>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Capacity (m³)</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={formData.capacityM3 || ''}
-              onChange={(e) => setFormData({ ...formData, capacityM3: e.target.value ? parseFloat(e.target.value) : undefined })}
-              data-testid="vehicles-capacity-m3"
-              className="w-full px-3 py-2 border rounded-lg"
-            />
-            {errors.capacityM3 && <p className="text-red-600 text-sm mt-1">{errors.capacityM3}</p>}
-          </div>
-        </div>
+              <FormField id="capacityM3" label="Capacity (m³)" error={errors.capacityM3}>
+                <Input
+                  id="capacityM3"
+                  type="number"
+                  value={formData.capacityM3 ?? ''}
+                  onChange={(e) => setFormData({ ...formData, capacityM3: toOptionalNumber(e.target.value) })}
+                  data-testid="vehicles-capacity-m3"
+                />
+              </FormField>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Make</label>
-            <input
-              type="text"
-              value={formData.make || ''}
-              onChange={(e) => setFormData({ ...formData, make: e.target.value || undefined })}
-              data-testid="vehicles-make"
-              className="w-full px-3 py-2 border rounded-lg"
-            />
-          </div>
+              <FormField id="make" label="Make">
+                <Input
+                  id="make"
+                  value={formData.make || ''}
+                  onChange={(e) => setFormData({ ...formData, make: e.target.value || undefined })}
+                  data-testid="vehicles-make"
+                />
+              </FormField>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Model</label>
-            <input
-              type="text"
-              value={formData.model || ''}
-              onChange={(e) => setFormData({ ...formData, model: e.target.value || undefined })}
-              data-testid="vehicles-model"
-              className="w-full px-3 py-2 border rounded-lg"
-            />
-          </div>
-        </div>
+              <FormField id="model" label="Model">
+                <Input
+                  id="model"
+                  value={formData.model || ''}
+                  onChange={(e) => setFormData({ ...formData, model: e.target.value || undefined })}
+                  data-testid="vehicles-model"
+                />
+              </FormField>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Year</label>
-            <input
-              type="number"
-              min="1980"
-              max={new Date().getUTCFullYear() + 1}
-              value={formData.year || ''}
-              onChange={(e) => setFormData({ ...formData, year: e.target.value ? parseInt(e.target.value) : undefined })}
-              data-testid="vehicles-year"
-              className="w-full px-3 py-2 border rounded-lg"
-            />
-            {errors.year && <p className="text-red-600 text-sm mt-1">{errors.year}</p>}
-          </div>
+              <FormField id="year" label="Year" error={errors.year}>
+                <Input
+                  id="year"
+                  type="number"
+                  value={formData.year ?? ''}
+                  onChange={(e) => setFormData({ ...formData, year: toOptionalNumber(e.target.value) })}
+                  data-testid="vehicles-year"
+                />
+              </FormField>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Vehicle Code (Optional)</label>
-            <input
-              type="text"
-              placeholder="Leave empty to auto-generate"
-              value={formData.vehicleCode || ''}
-              onChange={(e) => setFormData({ ...formData, vehicleCode: e.target.value || undefined })}
-              data-testid="vehicles-code"
-              className="w-full px-3 py-2 border rounded-lg"
-            />
-          </div>
-        </div>
+              <FormField id="vehicleCode" label="Vehicle Code" hint="Leave empty to auto-generate">
+                <Input
+                  id="vehicleCode"
+                  value={formData.vehicleCode || ''}
+                  onChange={(e) => setFormData({ ...formData, vehicleCode: e.target.value || undefined })}
+                  data-testid="vehicles-code"
+                />
+              </FormField>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Insurance Expiry</label>
-            <input
-              type="date"
-              value={formData.insuranceExpiry || ''}
-              onChange={(e) => setFormData({ ...formData, insuranceExpiry: e.target.value || undefined })}
-              data-testid="vehicles-insurance-expiry"
-              className="w-full px-3 py-2 border rounded-lg"
-            />
-          </div>
+              <FormField id="insuranceExpiry" label="Insurance Expiry">
+                <Input
+                  id="insuranceExpiry"
+                  type="date"
+                  value={formData.insuranceExpiry || ''}
+                  onChange={(e) => setFormData({ ...formData, insuranceExpiry: e.target.value || undefined })}
+                  data-testid="vehicles-insurance-expiry"
+                />
+              </FormField>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Inspection Expiry</label>
-            <input
-              type="date"
-              value={formData.inspectionExpiry || ''}
-              onChange={(e) => setFormData({ ...formData, inspectionExpiry: e.target.value || undefined })}
-              data-testid="vehicles-inspection-expiry"
-              className="w-full px-3 py-2 border rounded-lg"
-            />
-          </div>
-        </div>
+              <FormField id="inspectionExpiry" label="Inspection Expiry">
+                <Input
+                  id="inspectionExpiry"
+                  type="date"
+                  value={formData.inspectionExpiry || ''}
+                  onChange={(e) => setFormData({ ...formData, inspectionExpiry: e.target.value || undefined })}
+                  data-testid="vehicles-inspection-expiry"
+                />
+              </FormField>
+            </div>
 
-        <div className="flex gap-4">
-          <button
-            type="submit"
-            disabled={loading}
-            data-testid="vehicles-submit-button"
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading ? 'Creating...' : 'Create Vehicle'}
-          </button>
-          <button
-            type="button"
-            onClick={() => router.navigate({ to: '/app/vehicles' })}
-            className="px-6 py-2 border rounded-lg hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-        </div>
-      </form>
+            <div className="flex gap-3 border-t border-brand/10 pt-4">
+              <Button
+                type="submit"
+                disabled={loading}
+                data-testid="vehicles-submit-button"
+                className="bg-gradient-brand text-brand-foreground hover:opacity-90"
+              >
+                {loading ? 'Creating...' : 'Create Vehicle'}
+              </Button>
+              <Button type="button" onClick={() => router.navigate({ to: '/app/vehicles' })} variant="outline">
+                Cancel
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }

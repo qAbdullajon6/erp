@@ -1,15 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { DriversList } from "@/components/drivers/drivers-list";
+import { VehiclesList } from "@/components/vehicles/vehicles-list";
 import { ProtectedApiRoute } from "@/components/layout/protected-api-route";
 
-export const Route = createFileRoute("/app/drivers")({
-  component: DriversPage,
+export const Route = createFileRoute("/app/vehicles/")({
+  component: VehiclesPage,
 });
 
-function DriversPage() {
+function VehiclesPage() {
   return (
     <ProtectedApiRoute>
-      <DriversList />
+      <VehiclesList />
     </ProtectedApiRoute>
   );
 }
