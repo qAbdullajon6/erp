@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { OrdersConnectedView } from "@/components/orders/orders-connected-view";
+import { OrdersList } from "@/components/orders/orders-list";
 import { ProtectedApiRoute } from "@/components/layout/protected-api-route";
 
 export const Route = createFileRoute("/app/orders")({
@@ -9,7 +9,7 @@ export const Route = createFileRoute("/app/orders")({
 function OrdersPage() {
   return (
     <ProtectedApiRoute>
-      <OrdersConnectedView />
+      <OrdersList />
     </ProtectedApiRoute>
   );
 }

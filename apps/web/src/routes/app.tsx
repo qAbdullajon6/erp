@@ -1,8 +1,8 @@
-import { createFileRoute, useNavigate, Link, Outlet } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link, Outlet, useLocation } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Logo, LogoMark } from "@/components/brand/Logo";
 import { Button } from "@/components/ui/button";
-import { isAuthenticated, signOutLocal } from "@/lib/auth";
+import { sessionManager, useLogout } from "@/lib/api/auth";
 import {
   LayoutDashboard,
   Package,
@@ -26,27 +26,41 @@ export const Route = createFileRoute("/app")({
 
 function AppShell() {
   const navigate = useNavigate();
+  const { logout } = useLogout();
   const [ready, setReady] = useState(false);
+  const location = useLocation();
 
   useEffect(() => {
-    if (!isAuthenticated()) {
+    if (!sessionManager.hasValidSession()) {
       navigate({ to: "/auth/sign-in", replace: true });
     } else {
       setReady(true);
     }
   }, [navigate]);
 
+  const handleLogout = async () => {
+    await logout();
+    navigate({ to: "/auth/sign-in", replace: true });
+  };
+
   if (!ready) return null;
 
   const nav = [
     { icon: LayoutDashboard, label: "Overview", path: "/app" },
     { icon: Package, label: "Orders", path: "/app/orders" },
-    { icon: RouteIcon, label: "Dispatch", path: "/app/dispatch" },
+    { icon: RouteIcon, label: "Dispatches", path: "/app/dispatches" },
     { icon: MapPin, label: "Customers", path: "/app/customers" },
     { icon: Truck, label: "Drivers", path: "/app/drivers" },
     { icon: Wallet, label: "Finance", path: "/app/finance" },
     { icon: Sparkles, label: "AI Assistant", path: "/app/ai-assistant" },
   ];
+
+  const isActive = (path: string) => {
+    if (path === "/app") {
+      return location.pathname === "/app" || location.pathname === "/app/";
+    }
+    return location.pathname.startsWith(path);
+  };
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -62,25 +76,29 @@ function AppShell() {
 
         {/* Navigation Section */}
         <nav className="flex-1 space-y-2 overflow-y-auto px-3 py-6">
-          {nav.map((n) => (
-            <button
-              key={n.label}
-              onClick={() => navigate({ to: n.path as any })}
-              className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200 text-muted-foreground hover:bg-brand/10 hover:text-brand"
-            >
-              <n.icon className="h-5 w-5 transition-transform group-hover:scale-110" />
-              <span>{n.label}</span>
-            </button>
-          ))}
+          {nav.map((n) => {
+            const active = isActive(n.path);
+            return (
+              <button
+                key={n.label}
+                onClick={() => navigate({ to: n.path as any })}
+                className={`group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200 ${
+                  active
+                    ? "bg-brand/20 text-brand"
+                    : "text-muted-foreground hover:bg-brand/10 hover:text-brand"
+                }`}
+              >
+                <n.icon className="h-5 w-5 transition-transform group-hover:scale-110" />
+                <span>{n.label}</span>
+              </button>
+            );
+          })}
         </nav>
 
         {/* Sign Out Section */}
         <div className="border-t border-brand/10 px-3 py-4">
           <Button
-            onClick={() => {
-              signOutLocal();
-              navigate({ to: "/auth/sign-in", replace: true });
-            }}
+            onClick={handleLogout}
             className="w-full justify-start gap-3 rounded-lg bg-destructive/10 px-4 py-3 font-medium text-destructive hover:bg-destructive/20"
           >
             <LogOut className="h-5 w-5" />

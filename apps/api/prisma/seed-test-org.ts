@@ -265,7 +265,7 @@ async function main() {
     },
   ];
 
-  const orders: { id: string; orderNumber: string }[] = [];
+  const orders: { id: string; orderNumber: string; pickupDate: Date; deliveryDate: Date }[] = [];
   for (const seedOrder of seedOrders) {
     const order = await prisma.order.create({
       data: {
@@ -580,6 +580,104 @@ async function main() {
       },
     ],
   });
+
+  // --- Add dispatches for operational workflow demos
+  const dispatcherUser = usersByRole.get("DISPATCHER")!;
+
+  // Dispatch for ASSIGNED order (ORD-...-0003)
+  await prisma.dispatch.create({
+    data: {
+      organizationId: organization.id,
+      dispatchNumber: "DSP-000001",
+      orderId: orders[2].id,
+      driverId: drivers[0].id,
+      vehicleId: vehicles[0].id,
+      createdByUserId: dispatcherUser.id,
+      pickupDateScheduled: orders[2].pickupDate,
+      deliveryDateScheduled: orders[2].deliveryDate,
+      status: "ASSIGNED",
+      notes: "[TEST DATA] Dispatch created for demo (seed)",
+    },
+  });
+
+  // Dispatch for IN_TRANSIT order (ORD-...-0004)
+  const transitDispatch = await prisma.dispatch.create({
+    data: {
+      organizationId: organization.id,
+      dispatchNumber: "DSP-000002",
+      orderId: orders[3].id,
+      driverId: drivers[1].id,
+      vehicleId: vehicles[1].id,
+      createdByUserId: dispatcherUser.id,
+      pickupDateScheduled: orders[3].pickupDate,
+      deliveryDateScheduled: orders[3].deliveryDate,
+      status: "IN_TRANSIT",
+      pickupDateActual: days(-1),
+      notes: "[TEST DATA] Currently en route (seed)",
+    },
+  });
+
+  // Dispatch for DELIVERED order (ORD-...-0005)
+  await prisma.dispatch.create({
+    data: {
+      organizationId: organization.id,
+      dispatchNumber: "DSP-000003",
+      orderId: orders[4].id,
+      driverId: drivers[2].id,
+      vehicleId: vehicles[2].id,
+      createdByUserId: dispatcherUser.id,
+      pickupDateScheduled: orders[4].pickupDate,
+      deliveryDateScheduled: orders[4].deliveryDate,
+      status: "DELIVERED",
+      pickupDateActual: days(-10),
+      deliveryDateActual: days(-8),
+      notes: "[TEST DATA] Delivered on time (seed)",
+    },
+  });
+
+  // Add status history for the IN_TRANSIT dispatch
+  await Promise.all([
+    prisma.dispatchStatusHistory.create({
+      data: {
+        organizationId: organization.id,
+        dispatchId: transitDispatch.id,
+        status: "DRAFT",
+        note: "Dispatch created (seed)",
+      },
+    }),
+    prisma.dispatchStatusHistory.create({
+      data: {
+        organizationId: organization.id,
+        dispatchId: transitDispatch.id,
+        status: "ASSIGNED",
+        note: "Driver and vehicle assigned (seed)",
+      },
+    }),
+    prisma.dispatchStatusHistory.create({
+      data: {
+        organizationId: organization.id,
+        dispatchId: transitDispatch.id,
+        status: "EN_ROUTE_TO_PICKUP",
+        note: "En route to pickup location (seed)",
+      },
+    }),
+    prisma.dispatchStatusHistory.create({
+      data: {
+        organizationId: organization.id,
+        dispatchId: transitDispatch.id,
+        status: "AT_PICKUP",
+        note: "Arrived at pickup location (seed)",
+      },
+    }),
+    prisma.dispatchStatusHistory.create({
+      data: {
+        organizationId: organization.id,
+        dispatchId: transitDispatch.id,
+        status: "IN_TRANSIT",
+        note: "Cargo picked up, now in transit (seed)",
+      },
+    }),
+  ]);
 
   console.log(`Created test organization "${TEST_ORG_NAME}" (slug: ${TEST_ORG_SLUG}).`);
   console.log(`All test accounts share the password: ${TEST_PASSWORD}`);
