@@ -60,6 +60,20 @@ export class DriversService {
     return this.toResponse(driver);
   }
 
+  /// Resolves the Driver profile linked to the calling DRIVER-role user
+  /// (Driver.userId), never a client-supplied id. 404 (not a bare empty
+  /// response) when no Driver row is linked yet — a DRIVER login account
+  /// with no linked fleet profile is a real, expected state (e.g. a newly
+  /// added user who hasn't been linked by an admin yet), and the frontend
+  /// needs to tell that apart from a transient error.
+  async getMe(organizationId: string, userId: string) {
+    const driver = await this.prisma.driver.findFirst({ where: { organizationId, userId } });
+    if (!driver) {
+      throw new NotFoundException("No driver profile is linked to your account yet");
+    }
+    return this.toResponse(driver);
+  }
+
   async create(organizationId: string, dto: CreateDriverDto, actor: CurrentUserPayload) {
     const employeeCode = await this.resolveCodeForCreate(organizationId, dto.employeeCode);
 

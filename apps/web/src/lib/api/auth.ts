@@ -150,6 +150,19 @@ class AuthAPI {
       sessionManager.clearTokens();
     }
   }
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/auth/change-password`, {
+      method: 'POST',
+      headers: this.getAuthHeader(),
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || 'Failed to change password');
+    }
+  }
 }
 
 export const authAPI = new AuthAPI();
@@ -204,4 +217,25 @@ export function useLogout() {
   }, []);
 
   return { logout };
+}
+
+export function useChangePassword() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      await authAPI.changePassword(currentPassword, newPassword);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to change password';
+      setError(message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return { changePassword, loading, error };
 }

@@ -5,7 +5,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useCreateOrder, type CreateOrderInput } from '@/lib/api/orders';
-import { customersAPI } from '@/lib/api/customers';
+import { customersAPI, type Customer } from '@/lib/api/customers';
 import { toast } from 'sonner';
 
 interface FormErrors {
@@ -16,7 +16,7 @@ export function OrdersCreateForm() {
   const navigate = useNavigate();
   const { create, loading, error: createError } = useCreateOrder();
 
-  const [customers, setCustomers] = useState<any[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [customersLoading, setCustomersLoading] = useState(true);
   const [formData, setFormData] = useState<CreateOrderInput>({
     customerId: '',
@@ -123,7 +123,7 @@ export function OrdersCreateForm() {
       errors.cargoVolumeM3 = 'Volume must be greater than or equal to 0';
     }
 
-    if (formData.price === undefined || formData.price === '' || formData.price < 0) {
+    if (formData.price === undefined || Number.isNaN(formData.price) || formData.price < 0) {
       errors.price = 'Price is required and must be greater than or equal to 0';
     }
 

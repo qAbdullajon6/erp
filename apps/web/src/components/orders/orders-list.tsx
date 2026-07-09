@@ -5,6 +5,7 @@ import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useOrdersList, type OrderStatus } from '@/lib/api/orders';
+import { useCustomersList } from '@/lib/api/customers';
 import { Plus, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface ListSearchState {
@@ -40,6 +41,14 @@ export function OrdersList() {
   useEffect(() => {
     refetch();
   }, [page, search, status, sortBy, sortOrder, refetch]);
+
+  // Resolve customerId -> company name for display; fetched once, not paginated
+  // alongside orders since the two lists are independent in size.
+  const { data: customers } = useCustomersList({ limit: 200, includeArchived: true });
+  const customerNameById = useMemo(
+    () => new Map(customers.map((c) => [c.id, c.companyName])),
+    [customers],
+  );
 
   const handleSearch = (value: string) => {
     setLocalSearch(value);
@@ -231,7 +240,9 @@ export function OrdersList() {
                 {data.map((order) => (
                   <tr key={order.id} className="transition-colors hover:bg-background/40" data-testid="order-row">
                     <td className="px-6 py-4 text-sm font-medium text-foreground">{order.orderNumber}</td>
-                    <td className="px-6 py-4 text-sm text-muted-foreground">{order.customerId}</td>
+                    <td className="px-6 py-4 text-sm text-muted-foreground">
+                      {customerNameById.get(order.customerId) ?? order.customerId}
+                    </td>
                     <td className="px-6 py-4 text-sm text-muted-foreground">
                       {new Date(order.pickupDate).toLocaleDateString()}
                     </td>

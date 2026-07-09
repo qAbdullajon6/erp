@@ -1,19 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { SettingsView } from "@/components/settings/settings-view";
 
 export const Route = createFileRoute("/app/settings")({
-  component: SettingsPage,
+  head: () => ({
+    meta: [{ title: "Settings — FlowERP AI" }],
+  }),
+  component: SettingsView,
 });
-
-function SettingsPage() {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-2xl font-bold">Settings</h1>
-        <p className="text-muted-foreground">Manage your account and workspace settings</p>
-      </div>
-      <div className="rounded-lg border border-border/60 bg-surface/60 p-6">
-        <p className="text-muted-foreground">Settings page coming soon...</p>
-      </div>
-    </div>
-  );
-}

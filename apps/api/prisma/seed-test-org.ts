@@ -72,9 +72,21 @@ async function main() {
   }
   const adminUser = usersByRole.get("ADMIN")!;
 
+  // drivers[0] (Bekzod) is deliberately linked to the driver@flowerp.test
+  // login account (Driver.userId) so the My Deliveries phase has a real,
+  // non-empty demo: it's the driver with the most seed orders assigned
+  // below. The other two seed drivers intentionally have no linked login —
+  // most Driver rows never do, only ones an admin has explicitly linked.
   const drivers = await Promise.all(
     [
-      { employeeCode: "EMP-0001", firstName: "Bekzod", lastName: "Yusupov", phone: "+998901110001", licenseNumber: "AA1234567" },
+      {
+        employeeCode: "EMP-0001",
+        firstName: "Bekzod",
+        lastName: "Yusupov",
+        phone: "+998901110001",
+        licenseNumber: "AA1234567",
+        userId: usersByRole.get("DRIVER")!.id,
+      },
       { employeeCode: "EMP-0002", firstName: "Shohruh", lastName: "Toshmatov", phone: "+998901110002", licenseNumber: "AA2345678" },
       { employeeCode: "EMP-0003", firstName: "Dilnoza", lastName: "Ergasheva", phone: "+998901110003", licenseNumber: "AA3456789" },
     ].map((d) => prisma.driver.create({ data: { organizationId: organization.id, ...d } })),

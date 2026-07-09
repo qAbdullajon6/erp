@@ -1,15 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ProtectedApiRoute } from "@/components/layout/protected-api-route";
-import { ReportsConnectedView } from "@/components/reports/reports-connected-view";
+import { ReportsView } from "@/components/reports/reports-view";
 
 export const Route = createFileRoute("/app/reports")({
-  component: ReportsPage,
+  head: () => ({
+    meta: [{ title: "Reports — FlowERP AI" }],
+  }),
+  component: ReportsView,
 });
-
-function ReportsPage() {
-  return (
-    <ProtectedApiRoute>
-      <ReportsConnectedView />
-    </ProtectedApiRoute>
-  );
-}

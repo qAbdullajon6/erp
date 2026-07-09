@@ -220,6 +220,11 @@ model User {
   dispatchStatusChanges DispatchStatusHistory[] @relation("DispatchStatusChangedBy")
   approvedExpenses      Expense[]               @relation("ExpenseApprovedBy")
   createdDispatches     Dispatch[]              @relation("CreatedDispatches")
+  /// Set when this login account belongs to a fleet driver, letting a
+  /// DRIVER-role membership resolve "my deliveries" without ever accepting
+  /// a client-supplied driverId. Most Users have no linked Driver at all
+  /// (dispatchers/admins/etc. never get one) — see Driver.userId.
+  driverProfile         Driver?
 
   @@map("users")
 }
@@ -361,8 +366,14 @@ model Driver {
   updatedAt      DateTime     @updatedAt
   /// Soft-archive marker — there is no hard-delete endpoint for drivers.
   archivedAt     DateTime?
+  /// Optional link to the login account (User) this driver signs in as, so
+  /// a DRIVER-role membership can resolve "my deliveries" server-side —
+  /// never set by drivers themselves, only by ADMIN/OPS/DISPATCHER when
+  /// managing the driver record. Most Driver rows have no linked User.
+  userId         String?      @unique
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id])
   orders       Order[]
   dispatches   Dispatch[]
   expenses     Expense[]

@@ -8,6 +8,7 @@ import type { CurrentUserPayload } from "../auth/interfaces/current-user.interfa
 import { AssignOrderDto } from "./dto/assign-order.dto";
 import { CancelOrderDto } from "./dto/cancel-order.dto";
 import { CreateOrderDto } from "./dto/create-order.dto";
+import { ListMyOrdersQueryDto } from "./dto/list-my-orders-query.dto";
 import { ListOrdersQueryDto } from "./dto/list-orders-query.dto";
 import { UpdateOrderDto } from "./dto/update-order.dto";
 import { UpdateOrderStatusDto } from "./dto/update-order-status.dto";
@@ -22,8 +23,10 @@ import { OrdersService } from "./orders.service";
 ///   record edits).
 /// - ACCOUNTANT: "read-only orders and dispatch" — read only, no write
 ///   routes at all.
-/// - DRIVER: "no general list access yet" — no @Roles entry anywhere here,
-///   so RolesGuard 403s every route.
+/// - DRIVER: no access to the general list/detail/write routes below — see
+///   the dedicated /orders/my* routes instead (added for the My Deliveries
+///   phase), which are hard-scoped server-side to the caller's own linked
+///   Driver profile and never expose any other customer's data.
 const READ_ROLES: MembershipRole[] = [
   "ADMIN",
   "OPERATIONS_MANAGER",
@@ -38,6 +41,32 @@ const OPERATIONAL_ROLES: MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER", "DIS
 @Controller("orders")
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
+
+  /// The three /orders/my* routes must stay declared before the `:id`
+  /// routes below — Nest matches path segments in declaration order, so
+  /// `:id` would otherwise swallow `/my`, `/my/:id`, `/my/:id/status`.
+  @Roles("DRIVER")
+  @Get("my")
+  listMine(@Query() query: ListMyOrdersQueryDto, @CurrentUser() user: CurrentUserPayload) {
+    return this.ordersService.listMine(user.organizationId, user.userId, query);
+  }
+
+  @Roles("DRIVER")
+  @Get("my/:id")
+  getMyOrderById(@Param("id") id: string, @CurrentUser() user: CurrentUserPayload) {
+    return this.ordersService.getMyOrderById(user.organizationId, user.userId, id);
+  }
+
+  @Roles("DRIVER")
+  @Post("my/:id/status")
+  @HttpCode(200)
+  updateMyStatus(
+    @Param("id") id: string,
+    @Body() dto: UpdateOrderStatusDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.ordersService.updateStatusAsDriver(user.organizationId, user.userId, id, dto, user);
+  }
 
   @Roles(...READ_ROLES)
   @Get()

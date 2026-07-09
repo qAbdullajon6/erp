@@ -1,5 +1,5 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { Order, OrderStatus, Prisma, Vehicle } from "@prisma/client";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { Customer, Order, OrderStatus, Prisma, Vehicle } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { isValidEntityCode } from "../common/sequential-code.util";
@@ -7,10 +7,17 @@ import { PrismaService } from "../prisma/prisma.service";
 import { AssignOrderDto } from "./dto/assign-order.dto";
 import { CancelOrderDto } from "./dto/cancel-order.dto";
 import { CreateOrderDto } from "./dto/create-order.dto";
+import { ListMyOrdersQueryDto } from "./dto/list-my-orders-query.dto";
 import { ListOrdersQueryDto } from "./dto/list-orders-query.dto";
 import { UpdateOrderDto } from "./dto/update-order.dto";
 import { UpdateOrderStatusDto } from "./dto/update-order-status.dto";
 import { generateUniqueOrderNumber } from "./order-number.util";
+
+/// The only statuses a DRIVER can move an order to via /orders/my/:id/status
+/// — always a forward step from ASSIGNED/PICKED_UP/IN_TRANSIT, matching
+/// ALLOWED_TRANSITIONS exactly. Never ASSIGNED (that requires the /assign
+/// action) and never CANCELLED (a dispatch decision, not the driver's).
+const DRIVER_ALLOWED_STATUSES: OrderStatus[] = ["PICKED_UP", "IN_TRANSIT", "DELIVERED"];
 
 /// Forward-only, one-step-at-a-time — see the OrderStatus enum's comment in
 /// schema.prisma. ASSIGNED is reachable from here in principle, but
@@ -261,7 +268,41 @@ export class OrdersService {
 
   async updateStatus(organizationId: string, id: string, dto: UpdateOrderStatusDto, actor: CurrentUserPayload) {
     const order = await this.findOrThrow(organizationId, id);
+    return this.applyStatusTransition(organizationId, order, dto, actor);
+  }
 
+  /// Driver-scoped variant of updateStatus: only reachable for an order
+  /// actually assigned to the caller's own linked Driver profile (driverId
+  /// is always resolved server-side from the caller's userId — see
+  /// resolveOwnDriverId — never accepted as client input), and only to the
+  /// driver-safe subset of statuses. Everything else (the transition-graph
+  /// check, deliveredAt, status-history recording, audit log) is identical
+  /// to the dispatcher path via the shared applyStatusTransition — one
+  /// source of truth for what a valid transition is.
+  async updateStatusAsDriver(
+    organizationId: string,
+    userId: string,
+    id: string,
+    dto: UpdateOrderStatusDto,
+    actor: CurrentUserPayload,
+  ) {
+    if (!DRIVER_ALLOWED_STATUSES.includes(dto.status)) {
+      throw new ForbiddenException("Drivers can only move an order to PICKED_UP, IN_TRANSIT, or DELIVERED");
+    }
+    const driverId = await this.resolveOwnDriverId(organizationId, userId);
+    const order = await this.prisma.order.findFirst({ where: { id, organizationId, driverId } });
+    if (!order) {
+      throw new NotFoundException("Order not found");
+    }
+    return this.applyStatusTransition(organizationId, order, dto, actor);
+  }
+
+  private async applyStatusTransition(
+    organizationId: string,
+    order: Order,
+    dto: UpdateOrderStatusDto,
+    actor: CurrentUserPayload,
+  ) {
     const allowed = ALLOWED_TRANSITIONS[order.status];
     if (!allowed.includes(dto.status)) {
       throw new ConflictException(`Cannot transition an order from ${order.status} to ${dto.status}`);
@@ -276,19 +317,65 @@ export class OrdersService {
       data.deliveredAt = new Date();
     }
 
-    const updated = await this.prisma.order.update({ where: { id }, data });
+    const updated = await this.prisma.order.update({ where: { id: order.id }, data });
 
-    await this.recordStatusChange(organizationId, id, dto.status, actor, dto.note);
+    await this.recordStatusChange(organizationId, order.id, dto.status, actor, dto.note);
     await this.auditService.log({
       organizationId,
       actorUserId: actor.userId,
       action: "order.status_change",
       entityType: "Order",
-      entityId: id,
+      entityId: order.id,
       metadata: { from: order.status, to: dto.status, note: dto.note },
     });
 
     return this.toResponse(updated);
+  }
+
+  /// The caller's own assigned orders, hard-scoped by driverId server-side
+  /// — driverId is resolved from the caller's own userId via
+  /// resolveOwnDriverId, never accepted as a query param. Embeds a minimal
+  /// customer/vehicle summary directly (rather than opening up
+  /// CustomersController/VehiclesController to DRIVER, which has no access
+  /// to either) so the frontend needs no extra calls.
+  async listMine(organizationId: string, userId: string, query: ListMyOrdersQueryDto) {
+    const driverId = await this.resolveOwnDriverId(organizationId, userId);
+    const where: Prisma.OrderWhereInput = {
+      organizationId,
+      driverId,
+      ...(query.status ? { status: query.status } : {}),
+    };
+    const rows = await this.prisma.order.findMany({
+      where,
+      orderBy: { deliveryDate: "asc" },
+      include: { customer: true, vehicle: true },
+    });
+    return rows.map((row) => this.toDriverResponse(row));
+  }
+
+  async getMyOrderById(organizationId: string, userId: string, id: string) {
+    const driverId = await this.resolveOwnDriverId(organizationId, userId);
+    const order = await this.prisma.order.findFirst({
+      where: { id, organizationId, driverId },
+      include: { customer: true, vehicle: true, statusHistory: { orderBy: { createdAt: "asc" } } },
+    });
+    if (!order) {
+      throw new NotFoundException("Order not found");
+    }
+    return this.toDriverResponse(order);
+  }
+
+  /// Shared by every /orders/my* method — resolves the caller's own linked
+  /// Driver row (Driver.userId) within THIS organization. 404s (not a
+  /// silent empty result) when the DRIVER-role user has no linked driver
+  /// profile yet, so the frontend can show a clear "not linked" state
+  /// rather than an empty list that looks like "no deliveries."
+  private async resolveOwnDriverId(organizationId: string, userId: string): Promise<string> {
+    const driver = await this.prisma.driver.findFirst({ where: { organizationId, userId } });
+    if (!driver) {
+      throw new NotFoundException("No driver profile is linked to your account yet");
+    }
+    return driver.id;
   }
 
   async cancel(organizationId: string, id: string, dto: CancelOrderDto, actor: CurrentUserPayload) {
@@ -483,6 +570,37 @@ export class OrdersService {
             })),
           }
         : {}),
+    };
+  }
+
+  /// Used only by the /orders/my* driver-scoped endpoints — embeds a
+  /// minimal customer/vehicle summary (never the full records) directly
+  /// into the order response, since DRIVER has no access to
+  /// CustomersController/VehiclesController at all.
+  private toDriverResponse(
+    order: Order & {
+      customer: Customer;
+      vehicle: Vehicle | null;
+      statusHistory?: { id: string; status: OrderStatus; changedByUserId: string | null; note: string | null; createdAt: Date }[];
+    },
+  ) {
+    return {
+      ...this.toResponse(order),
+      customer: {
+        id: order.customer.id,
+        companyName: order.customer.companyName,
+        contactName: order.customer.contactName,
+        phone: order.customer.phone,
+        deliveryNotes: order.customer.deliveryNotes,
+      },
+      vehicle: order.vehicle
+        ? {
+            id: order.vehicle.id,
+            vehicleCode: order.vehicle.vehicleCode,
+            plateNumber: order.vehicle.plateNumber,
+            type: order.vehicle.type,
+          }
+        : null,
     };
   }
 }

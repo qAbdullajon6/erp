@@ -102,12 +102,22 @@ class DispatchesAPI {
       `/api/dispatches${query.size > 0 ? `?${query.toString()}` : ''}`,
       { method: 'GET' }
     );
-    return response.json();
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || `Failed to fetch dispatches: ${response.statusText}`);
+    }
+    const result = await response.json();
+    return result.data || result;
   }
 
   async getById(id: string): Promise<ApiDispatch> {
     const response = await apiFetch(`/api/dispatches/${id}`, { method: 'GET' });
-    return response.json();
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || `Failed to fetch dispatch: ${response.statusText}`);
+    }
+    const result = await response.json();
+    return result.data || result;
   }
 
   async create(data: CreateDispatchRequest): Promise<ApiDispatch> {
@@ -116,7 +126,12 @@ class DispatchesAPI {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return response.json();
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || 'Failed to create dispatch');
+    }
+    const result = await response.json();
+    return result.data || result;
   }
 
   async update(id: string, data: UpdateDispatchRequest): Promise<ApiDispatch> {
@@ -125,7 +140,12 @@ class DispatchesAPI {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return response.json();
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || 'Failed to update dispatch');
+    }
+    const result = await response.json();
+    return result.data || result;
   }
 
   async updateStatus(id: string, data: UpdateDispatchStatusRequest): Promise<ApiDispatch> {
@@ -134,7 +154,12 @@ class DispatchesAPI {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return response.json();
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || 'Failed to update dispatch status');
+    }
+    const result = await response.json();
+    return result.data || result;
   }
 
   async cancel(id: string): Promise<ApiDispatch> {
@@ -143,7 +168,12 @@ class DispatchesAPI {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
     });
-    return response.json();
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || 'Failed to cancel dispatch');
+    }
+    const result = await response.json();
+    return result.data || result;
   }
 }
 

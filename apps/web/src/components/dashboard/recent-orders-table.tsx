@@ -1,46 +1,80 @@
-export function RecentOrdersTable() {
-  const orders = [
-    { id: "ORD-2024-001", customer: "Alfa Trade", amount: "$2,450", status: "Delivered", time: "2 hours ago" },
-    { id: "ORD-2024-002", customer: "Nexo Retail", amount: "$1,890", status: "In Transit", time: "4 hours ago" },
-    { id: "ORD-2024-003", customer: "Silk Freight", amount: "$3,200", status: "Processing", time: "6 hours ago" },
-    { id: "ORD-2024-004", customer: "BM Wholesale", amount: "$1,650", status: "Delivered", time: "1 day ago" },
-  ];
+import { Link } from "@tanstack/react-router";
+import { formatMoney, formatRelativeTime } from "@/lib/format";
+import type { RecentOrderRow } from "@/lib/api/dashboard";
+import { Skeleton } from "@/components/ui/skeleton";
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "Delivered":
-        return "bg-success/10 text-success";
-      case "In Transit":
-        return "bg-brand/10 text-brand";
-      case "Processing":
-        return "bg-warning/10 text-warning";
-      default:
-        return "bg-muted text-muted-foreground";
-    }
-  };
+interface RecentOrdersTableProps {
+  orders: RecentOrderRow[];
+  loading: boolean;
+}
 
+const STATUS_LABELS: Record<string, string> = {
+  DRAFT: "Draft",
+  PENDING: "Pending",
+  ASSIGNED: "Assigned",
+  PICKED_UP: "Picked Up",
+  IN_TRANSIT: "In Transit",
+  DELIVERED: "Delivered",
+  CANCELLED: "Cancelled",
+};
+
+function getStatusColor(status: string) {
+  switch (status) {
+    case "DELIVERED":
+      return "bg-success/10 text-success";
+    case "IN_TRANSIT":
+    case "PICKED_UP":
+    case "ASSIGNED":
+      return "bg-brand/10 text-brand";
+    case "PENDING":
+      return "bg-warning/10 text-warning";
+    case "CANCELLED":
+      return "bg-destructive/10 text-destructive";
+    default:
+      return "bg-muted text-muted-foreground";
+  }
+}
+
+export function RecentOrdersTable({ orders, loading }: RecentOrdersTableProps) {
   return (
     <div className="overflow-hidden rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50">
       <div className="border-b border-brand/10 px-8 py-6">
         <h3 className="font-display text-2xl font-bold text-foreground">Recent Orders</h3>
-        <p className="mt-1 text-sm text-muted-foreground">Latest deliveries and shipments</p>
+        <p className="mt-1 text-sm text-muted-foreground">Latest orders across the organization</p>
       </div>
       <div className="divide-y divide-brand/10">
-        {orders.map((order) => (
-          <div key={order.id} className="flex items-center justify-between border-b border-brand/5 px-8 py-4 transition-colors hover:bg-background/40">
-            <div className="flex-1">
-              <div className="font-medium text-foreground">{order.customer}</div>
-              <div className="mt-1 text-sm text-muted-foreground">{order.id}</div>
+        {loading &&
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="px-8 py-4">
+              <Skeleton className="h-10 w-full rounded-lg" />
             </div>
-            <div className="text-right">
-              <div className="font-semibold text-foreground">{order.amount}</div>
-              <div className={`mt-1 inline-block rounded-full px-3 py-1 text-xs font-medium ${getStatusColor(order.status)}`}>
-                {order.status}
+          ))}
+        {!loading && orders.length === 0 && (
+          <div className="px-8 py-12 text-center text-sm text-muted-foreground">No orders yet</div>
+        )}
+        {!loading &&
+          orders.map((order) => (
+            <Link
+              key={order.id}
+              to="/app/orders/$orderId"
+              params={{ orderId: order.id }}
+              className="flex items-center justify-between border-b border-brand/5 px-8 py-4 transition-colors hover:bg-background/40"
+            >
+              <div className="flex-1">
+                <div className="font-medium text-foreground">
+                  {order.pickupCity} → {order.deliveryCity}
+                </div>
+                <div className="mt-1 text-sm text-muted-foreground">{order.orderNumber}</div>
               </div>
-            </div>
-            <div className="ml-6 text-right text-sm text-muted-foreground">{order.time}</div>
-          </div>
-        ))}
+              <div className="text-right">
+                <div className="font-semibold text-foreground">{formatMoney(order.price, order.currency)}</div>
+                <div className={`mt-1 inline-block rounded-full px-3 py-1 text-xs font-medium ${getStatusColor(order.status)}`}>
+                  {STATUS_LABELS[order.status] ?? order.status}
+                </div>
+              </div>
+              <div className="ml-6 text-right text-sm text-muted-foreground">{formatRelativeTime(order.createdAt)}</div>
+            </Link>
+          ))}
       </div>
     </div>
   );
