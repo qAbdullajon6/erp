@@ -1,7 +1,8 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { apiFetch } from './fetch';
+import { sessionManager } from './session';
 
-const TOKEN_STORAGE_KEY = 'flowerp_access_token';
-const REFRESH_TOKEN_STORAGE_KEY = 'flowerp_refresh_token';
+export { sessionManager };
 
 export interface LoginCredentials {
   email: string;
@@ -47,46 +48,8 @@ export interface CurrentUser {
   };
 }
 
-// Session management - uses sessionStorage exclusively
-// Tokens must be set via setTokens() after successful login or via addInitScript in tests
-export const sessionManager = {
-  setTokens(accessToken: string, refreshToken: string) {
-    if (typeof window === 'undefined') return;
-    sessionStorage.setItem(TOKEN_STORAGE_KEY, accessToken);
-    sessionStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, refreshToken);
-  },
-
-  getAccessToken(): string | null {
-    if (typeof window === 'undefined') return null;
-    return sessionStorage.getItem(TOKEN_STORAGE_KEY);
-  },
-
-  getRefreshToken(): string | null {
-    if (typeof window === 'undefined') return null;
-    return sessionStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
-  },
-
-  clearTokens() {
-    if (typeof window === 'undefined') return;
-    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
-    sessionStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
-  },
-
-  hasValidSession(): boolean {
-    return this.getAccessToken() !== null;
-  },
-};
-
 class AuthAPI {
   private baseUrl = '/api';
-
-  private getAuthHeader(): HeadersInit {
-    const token = sessionManager.getAccessToken();
-    return {
-      'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` }),
-    };
-  }
 
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
     try {
@@ -99,8 +62,15 @@ class AuthAPI {
       });
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.message || 'Login failed');
+        // The API wraps failures as { error: { statusCode, message } } — reading
+        // `body.message` always came back undefined, so every failed sign-in
+        // showed the same generic "Login failed" instead of the real reason.
+        const body = await response.json().catch(() => ({}));
+        const message = body?.error?.message ?? body?.message;
+        if (response.status === 429) {
+          throw new Error('Too many sign-in attempts. Please wait a minute and try again.');
+        }
+        throw new Error(Array.isArray(message) ? message[0] : message || 'Login failed');
       }
 
       const result = await response.json();
@@ -116,34 +86,31 @@ class AuthAPI {
     }
   }
 
+  /// Goes through apiFetch so an expired access token is transparently
+  /// refreshed. This is the request the dashboard fires on every navigation,
+  /// so when it used to wipe the session on 401 it was what logged people out.
   async getCurrentUser(): Promise<CurrentUser> {
-    try {
-      const response = await fetch(`${this.baseUrl}/auth/me`, {
-        method: 'GET',
-        headers: this.getAuthHeader(),
-      });
+    const response = await apiFetch(`${this.baseUrl}/auth/me`, { method: 'GET' });
 
-      if (!response.ok) {
-        if (response.status === 401) {
-          sessionManager.clearTokens();
-        }
-        throw new Error(`Failed to fetch current user: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      return result.data;
-    } catch (error) {
-      console.error('Error fetching current user:', error);
-      throw error;
+    if (!response.ok) {
+      throw new Error(`Failed to fetch current user: ${response.statusText}`);
     }
+
+    const result = await response.json();
+    return result.data;
   }
 
   async logout(): Promise<void> {
+    const refreshToken = sessionManager.getRefreshToken();
     try {
-      await fetch(`${this.baseUrl}/auth/logout`, {
-        method: 'POST',
-        headers: this.getAuthHeader(),
-      });
+      // The API's logout DTO requires the refresh token so it can revoke it —
+      // posting an empty body just 400'd and left the session live server-side.
+      if (refreshToken) {
+        await apiFetch(`${this.baseUrl}/auth/logout`, {
+          method: 'POST',
+          body: JSON.stringify({ refreshToken }),
+        });
+      }
     } catch (error) {
       console.error('Error logging out:', error);
     } finally {
@@ -152,9 +119,8 @@ class AuthAPI {
   }
 
   async changePassword(currentPassword: string, newPassword: string): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/auth/change-password`, {
+    const response = await apiFetch(`${this.baseUrl}/auth/change-password`, {
       method: 'POST',
-      headers: this.getAuthHeader(),
       body: JSON.stringify({ currentPassword, newPassword }),
     });
 
@@ -207,6 +173,13 @@ export function useCurrentUser() {
       setLoading(false);
     }
   }, []);
+
+  // `loading` starts true, so a consumer that forgets to call fetch() renders
+  // its skeleton forever — which is exactly what Settings → Profile did. The
+  // callback has no dependencies, so this runs once per mount.
+  useEffect(() => {
+    fetch();
+  }, [fetch]);
 
   return { data, loading, error, refetch: fetch, fetch };
 }

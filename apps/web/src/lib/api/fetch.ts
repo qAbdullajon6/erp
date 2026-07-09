@@ -1,43 +1,96 @@
-import { sessionManager } from './auth';
+import { sessionManager } from './session';
 
 export interface FetchOptions extends RequestInit {
   skipAuth?: boolean;
 }
 
-export async function apiFetch(
-  url: string,
-  options: FetchOptions = {}
-): Promise<Response> {
-  const { skipAuth = false, headers: customHeaders, ...restOptions } = options;
+/// Access tokens live for 15 minutes (JWT_ACCESS_EXPIRES_IN_SECONDS). Without
+/// this, sitting on a screen past that window meant the next request 401'd, the
+/// session was wiped, and the user was bounced to sign-in — even though a
+/// perfectly good refresh token was sitting in sessionStorage. On a 401 we
+/// spend the refresh token once and replay the original request.
+///
+/// The in-flight promise is shared: a dashboard paints half a dozen requests at
+/// once, and each one refreshing independently would burn through the rotating
+/// refresh token (the API invalidates the presented token on use) and log the
+/// user out anyway.
+let inFlightRefresh: Promise<boolean> | null = null;
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
+async function refreshSession(): Promise<boolean> {
+  const refreshToken = sessionManager.getRefreshToken();
+  if (!refreshToken) return false;
 
-  // Merge custom headers
-  if (customHeaders) {
-    if (typeof customHeaders === 'object' && !Array.isArray(customHeaders)) {
-      Object.assign(headers, customHeaders as Record<string, string>);
-    }
+  try {
+    const response = await fetch('/api/auth/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    });
+
+    if (!response.ok) return false;
+
+    const result = await response.json();
+    const data = result.data ?? result;
+    if (!data?.accessToken || !data?.refreshToken) return false;
+
+    sessionManager.setTokens(data.accessToken, data.refreshToken);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function refreshSessionOnce(): Promise<boolean> {
+  if (!inFlightRefresh) {
+    inFlightRefresh = refreshSession().finally(() => {
+      inFlightRefresh = null;
+    });
+  }
+  return inFlightRefresh;
+}
+
+function buildHeaders(customHeaders: HeadersInit | undefined, skipAuth: boolean): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+
+  if (customHeaders && typeof customHeaders === 'object' && !Array.isArray(customHeaders)) {
+    Object.assign(headers, customHeaders as Record<string, string>);
   }
 
-  // Add authorization header if token exists and not skipped
   if (!skipAuth) {
     const token = sessionManager.getAccessToken();
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
+    if (token) headers['Authorization'] = `Bearer ${token}`;
   }
+
+  return headers;
+}
+
+export async function apiFetch(url: string, options: FetchOptions = {}): Promise<Response> {
+  const { skipAuth = false, headers: customHeaders, ...restOptions } = options;
 
   const response = await fetch(url, {
     ...restOptions,
-    headers,
+    headers: buildHeaders(customHeaders, skipAuth),
   });
 
-  // If 401, clear session and let the app redirect to login
-  if (response.status === 401) {
-    sessionManager.clearTokens();
+  if (response.status !== 401 || skipAuth) {
+    return response;
   }
 
-  return response;
+  // Refreshing a refresh would recurse.
+  if (url.includes('/auth/refresh')) {
+    sessionManager.clearTokens();
+    return response;
+  }
+
+  const refreshed = await refreshSessionOnce();
+  if (!refreshed) {
+    sessionManager.clearTokens();
+    return response;
+  }
+
+  // Replay the original request with the newly minted access token.
+  return fetch(url, {
+    ...restOptions,
+    headers: buildHeaders(customHeaders, skipAuth),
+  });
 }
