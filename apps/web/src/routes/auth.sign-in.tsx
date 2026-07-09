@@ -1,9 +1,11 @@
+'use client';
+
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { signInLocal } from "@/lib/auth";
+import { useLogin, sessionManager } from "@/lib/api/auth";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -14,15 +16,19 @@ export const Route = createFileRoute("/auth/sign-in")({
 
 function SignInPage() {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
+  const { login, loading, error } = useLogin();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    await new Promise((r) => setTimeout(r, 500));
-    signInLocal();
-    toast.success("Signed in");
-    navigate({ to: "/app", replace: true });
+    try {
+      await login({ email, password });
+      toast.success("Signed in successfully");
+      navigate({ to: "/app", replace: true });
+    } catch (err) {
+      toast.error(error || "Failed to sign in");
+    }
   };
 
   return (
@@ -34,7 +40,16 @@ function SignInPage() {
       <form onSubmit={onSubmit} className="space-y-4">
         <div className="grid gap-2">
           <Label htmlFor="email">Work Email</Label>
-          <Input id="email" type="email" required placeholder="you@company.com" className="h-11 bg-background/40" />
+          <Input
+            id="email"
+            type="email"
+            required
+            placeholder="you@company.com"
+            className="h-11 bg-background/40"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={loading}
+          />
         </div>
         <div className="grid gap-2">
           <div className="flex items-center justify-between">
@@ -43,8 +58,22 @@ function SignInPage() {
               Forgot password?
             </Link>
           </div>
-          <Input id="password" type="password" required placeholder="••••••••" className="h-11 bg-background/40" />
+          <Input
+            id="password"
+            type="password"
+            required
+            placeholder="••••••••"
+            className="h-11 bg-background/40"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={loading}
+          />
         </div>
+        {error && (
+          <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
         <Button type="submit" disabled={loading} className="h-11 w-full bg-gradient-brand text-brand-foreground hover:opacity-90">
           {loading ? "Signing in…" : "Sign In"}
         </Button>

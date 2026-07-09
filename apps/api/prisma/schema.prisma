@@ -129,6 +129,20 @@ enum ExpenseStatus {
   REJECTED
 }
 
+/// Dispatch status lifecycle — represents the operational execution of an order.
+/// Forward-only progression: DRAFT -> ASSIGNED -> EN_ROUTE_TO_PICKUP -> AT_PICKUP ->
+/// IN_TRANSIT -> DELIVERED. CANCELLED is reachable from any non-terminal state.
+/// Actual pickup/delivery times are captured when transitioning to IN_TRANSIT/DELIVERED.
+enum DispatchStatus {
+  DRAFT
+  ASSIGNED
+  EN_ROUTE_TO_PICKUP
+  AT_PICKUP
+  IN_TRANSIT
+  DELIVERED
+  CANCELLED
+}
+
 enum NotificationSeverity {
   CRITICAL
   HIGH
@@ -161,20 +175,22 @@ model Organization {
   /// Soft-delete marker — an archived organization is never hard-deleted.
   deletedAt       DateTime?
 
-  memberships   Membership[]
-  auditLogs     AuditLog[]
-  refreshTokens RefreshToken[]
-  customers     Customer[]
-  drivers       Driver[]
-  vehicles      Vehicle[]
-  orders        Order[]
-  orderStatusHistories OrderStatusHistory[]
-  invoices      Invoice[]
-  payments      Payment[]
-  expenses      Expense[]
-  notifications Notification[]
-  notificationSettings NotificationSettings?
-  onboardingProgress OnboardingProgress?
+  memberships             Membership[]
+  auditLogs               AuditLog[]
+  refreshTokens           RefreshToken[]
+  customers               Customer[]
+  drivers                 Driver[]
+  vehicles                Vehicle[]
+  orders                  Order[]
+  orderStatusHistories    OrderStatusHistory[]
+  invoices                Invoice[]
+  payments                Payment[]
+  expenses                Expense[]
+  dispatches              Dispatch[]
+  dispatchStatusHistories DispatchStatusHistory[]
+  notifications           Notification[]
+  notificationSettings    NotificationSettings?
+  onboardingProgress      OnboardingProgress?
 
   @@map("organizations")
 }
@@ -197,11 +213,13 @@ model User {
   /// Soft-delete marker — see Organization.deletedAt.
   deletedAt    DateTime?
 
-  memberships   Membership[]
-  refreshTokens RefreshToken[]
-  auditLogEntries AuditLog[] @relation("AuditLogActor")
-  orderStatusChanges OrderStatusHistory[] @relation("OrderStatusChangedBy")
-  approvedExpenses   Expense[] @relation("ExpenseApprovedBy")
+  memberships           Membership[]
+  refreshTokens         RefreshToken[]
+  auditLogEntries       AuditLog[]              @relation("AuditLogActor")
+  orderStatusChanges    OrderStatusHistory[]    @relation("OrderStatusChangedBy")
+  dispatchStatusChanges DispatchStatusHistory[] @relation("DispatchStatusChangedBy")
+  approvedExpenses      Expense[]               @relation("ExpenseApprovedBy")
+  createdDispatches     Dispatch[]              @relation("CreatedDispatches")
 
   @@map("users")
 }
@@ -346,6 +364,7 @@ model Driver {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   orders       Order[]
+  dispatches   Dispatch[]
   expenses     Expense[]
 
   @@unique([organizationId, employeeCode])
@@ -377,6 +396,7 @@ model Vehicle {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   orders       Order[]
+  dispatches   Dispatch[]
   expenses     Expense[]
 
   @@unique([organizationId, vehicleCode])
@@ -421,6 +441,7 @@ model Order {
   driver        Driver?              @relation(fields: [driverId], references: [id], onDelete: SetNull)
   vehicle       Vehicle?             @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   statusHistory OrderStatusHistory[]
+  dispatches    Dispatch[]
   invoices      Invoice[]
   expenses      Expense[]
 
@@ -454,6 +475,68 @@ model OrderStatusHistory {
   @@index([organizationId])
   @@index([orderId])
   @@map("order_status_histories")
+}
+
+/// Dispatch represents a single operational trip/shipment execution, linked to
+/// an Order. Each dispatch has its own reference number (DSP-XXXXXX), and tracks
+/// the actual execution status (DRAFT -> ASSIGNED -> EN_ROUTE_TO_PICKUP -> AT_PICKUP ->
+/// IN_TRANSIT -> DELIVERED), with actual pickup/delivery timestamps captured
+/// automatically when transitioning to IN_TRANSIT/DELIVERED. One active dispatch
+/// per order is enforced to prevent duplicate/overlapping executions of the same order.
+/// `dispatchNumber` is unique per organization (not globally), following the
+/// Customer.customerCode / Order.orderNumber pattern.
+model Dispatch {
+  id                    String         @id @default(uuid())
+  organizationId        String
+  dispatchNumber        String
+  orderId               String
+  driverId              String
+  vehicleId             String
+  createdByUserId       String?
+  status                DispatchStatus @default(DRAFT)
+  pickupDateScheduled   DateTime
+  pickupDateActual      DateTime?
+  deliveryDateScheduled DateTime
+  deliveryDateActual    DateTime?
+  notes                 String?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  organization  Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order         Order                   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  driver        Driver                  @relation(fields: [driverId], references: [id], onDelete: Restrict)
+  vehicle       Vehicle                 @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  createdByUser User?                   @relation("CreatedDispatches", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  statusHistory DispatchStatusHistory[]
+
+  @@unique([organizationId, dispatchNumber])
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([orderId])
+  @@index([driverId])
+  @@index([vehicleId])
+  @@map("dispatches")
+}
+
+/// Append-only dispatch status history, similar to OrderStatusHistory.
+/// Records every transition (DRAFT -> ASSIGNED -> ...) with the user who made it
+/// and any notes provided.
+model DispatchStatusHistory {
+  id              String         @id @default(uuid())
+  organizationId  String
+  dispatchId      String
+  status          DispatchStatus
+  changedByUserId String?
+  note            String?
+  createdAt       DateTime       @default(now())
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  dispatch      Dispatch     @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+  changedByUser User?        @relation("DispatchStatusChangedBy", fields: [changedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([dispatchId])
+  @@map("dispatch_status_histories")
 }
 
 /// The Finance foundation phase. `invoiceNumber` is unique per organization

@@ -12,6 +12,13 @@ export default defineConfig({
       port: 3000,
       host: true,
       strictPort: false,
+      proxy: {
+        '/api': {
+          target: 'http://localhost:4000',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api/, ''),
+        },
+      },
     },
   },
   tanstackStart: {

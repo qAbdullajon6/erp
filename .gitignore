@@ -32,6 +32,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+*.log
 
 # env files (can opt-in for committing if needed)
 .env*
@@ -43,6 +44,25 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ts-node/tsc compiled output committed alongside source by mistake
+apps/api/prisma/*.js
+apps/api/prisma/*.js.map
+apps/api/prisma/*.d.ts
+apps/api/test/*.js
+apps/api/test/*.js.map
+apps/api/test/*.d.ts
+
+# tanstack start / nitro build output
+apps/web/.output/
+apps/web/.tanstack/
+apps/web/.wrangler/
+
+# playwright testing
+.playwright/
+apps/web/playwright-report/
+apps/web/test-results/
+apps/web/e2e/auth-state.json
 
 # claude code local session state
 /.claude/
