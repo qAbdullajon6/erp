@@ -47,6 +47,14 @@ const DEFAULT_NAV = [
   { icon: Settings, label: "Settings", path: "/app/settings" },
 ];
 
+/// Every screen the shell can render, including the ones reachable from the
+/// bell or the user menu rather than from the sidebar.
+const TITLED_ROUTES = [
+  ...DEFAULT_NAV,
+  { label: "My Deliveries", path: "/app/my-deliveries" },
+  { label: "Notifications", path: "/app/notifications" },
+];
+
 function AppShell() {
   const navigate = useNavigate();
   const { logout } = useLogout();
@@ -87,9 +95,14 @@ function AppShell() {
     return location.pathname.startsWith(path);
   };
 
-  // Longest match wins, so /app/orders/create still resolves to "Orders"
-  // rather than to the "/app" Overview entry.
-  const currentPage = [...nav].sort((a, b) => b.path.length - a.path.length).find((n) => isActive(n.path));
+  // Longest match wins, so /app/orders/create resolves to "Orders" rather than
+  // to the "/app" Overview entry. Notifications and My Deliveries are reachable
+  // without a sidebar entry for every role, so the title comes from a list that
+  // includes them — searching `nav` alone had every one of those screens
+  // labelled "Overview".
+  const currentPage = [...TITLED_ROUTES]
+    .sort((a, b) => b.path.length - a.path.length)
+    .find((n) => isActive(n.path));
 
   // Sign out lives in the header's user menu, next to the account it signs out
   // of — not duplicated at the foot of the sidebar.
