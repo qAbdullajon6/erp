@@ -759,3 +759,32 @@ model OnboardingProgress {
   @@index([organizationId])
   @@map("onboarding_progress")
 }
+
+/// A demo request captured from the public marketing site. Deliberately has no
+/// `organizationId`: it is submitted by anonymous visitors before any
+/// organization exists, so it sits outside the multi-tenant graph. Reviewed by
+/// the FlowERP team, not by customers.
+model Lead {
+  id        String     @id @default(uuid())
+  name      String
+  email     String
+  company   String
+  phone     String
+  message   String?
+  /// Where on the site the request came from, for attribution.
+  source    String     @default("landing_demo_modal")
+  status    LeadStatus @default(NEW)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("leads")
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  CLOSED
+}

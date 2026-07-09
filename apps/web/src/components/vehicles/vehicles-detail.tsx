@@ -2,7 +2,24 @@
 
 import { useState } from 'react';
 import { useRouter } from '@tanstack/react-router';
-import { useVehicle, useUpdateVehicle, useArchiveVehicle, useRestoreVehicle } from '@/lib/api/vehicles';
+import {
+  useVehicle,
+  useUpdateVehicle,
+  useArchiveVehicle,
+  useRestoreVehicle,
+  type VehicleStatus,
+} from '@/lib/api/vehicles';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { PageHeader } from '@/components/shared/page-header';
+import { DetailField } from '@/components/shared/detail-field';
+import { StatusBadge } from '@/components/shared/status-badge';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
+import { LoadingState, ErrorState } from '@/components/shared/list-states';
+import { ArrowLeft, Archive, Pencil } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface VehiclesDetailProps {
   vehicleId: string;
@@ -15,28 +32,19 @@ export function VehiclesDetail({ vehicleId }: VehiclesDetailProps) {
   const { mutate: archiveVehicle } = useArchiveVehicle(vehicleId);
   const { mutate: restoreVehicle } = useRestoreVehicle(vehicleId);
   const [isEditing, setIsEditing] = useState(false);
-  const [editErrors, setEditErrors] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
   const [editData, setEditData] = useState({
     plateNumber: '',
     type: '',
     capacityKg: '',
     capacityM3: '',
-    status: 'AVAILABLE' as const,
+    status: 'AVAILABLE' as VehicleStatus,
   });
 
-  if (loading) {
-    return <div className="animate-pulse h-96 bg-gray-200 rounded-lg" />;
-  }
+  if (loading) return <LoadingState label="Loading vehicle..." />;
 
   if (error || !vehicle) {
-    return (
-      <div className="p-4 bg-red-100 text-red-800 rounded-lg">
-        <p>{error || 'Vehicle not found'}</p>
-        <button onClick={refetch} className="underline mt-2">
-          Retry
-        </button>
-      </div>
-    );
+    return <ErrorState message={error || 'Vehicle not found'} onRetry={refetch} />;
   }
 
   const initializeEdit = () => {
@@ -51,6 +59,7 @@ export function VehiclesDetail({ vehicleId }: VehiclesDetailProps) {
   };
 
   const handleSaveEdit = async () => {
+    setSaving(true);
     try {
       await updateVehicle({
         plateNumber: editData.plateNumber,
@@ -61,19 +70,21 @@ export function VehiclesDetail({ vehicleId }: VehiclesDetailProps) {
       });
       setIsEditing(false);
       refetch();
+      toast.success('Vehicle updated');
     } catch (err) {
-      setEditErrors({ submit: err instanceof Error ? err.message : 'Failed to update' });
+      toast.error(err instanceof Error ? err.message : 'Failed to update vehicle');
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleArchive = async () => {
-    if (confirm('Archive this vehicle?')) {
-      try {
-        await archiveVehicle();
-        refetch();
-      } catch (err) {
-        alert(err instanceof Error ? err.message : 'Failed to archive');
-      }
+    try {
+      await archiveVehicle();
+      refetch();
+      toast.success('Vehicle archived');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to archive vehicle');
     }
   };
 
@@ -81,172 +92,148 @@ export function VehiclesDetail({ vehicleId }: VehiclesDetailProps) {
     try {
       await restoreVehicle();
       refetch();
+      toast.success('Vehicle restored');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to restore');
+      toast.error(err instanceof Error ? err.message : 'Failed to restore vehicle');
     }
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">
-          {vehicle.plateNumber} ({vehicle.type})
-        </h1>
-        <button
-          onClick={() => router.navigate({ to: '/app/vehicles' })}
-          className="text-gray-600 hover:underline"
-        >
-          ← Back
-        </button>
-      </div>
+    <div className="mx-auto max-w-3xl space-y-6">
+      <PageHeader
+        title={vehicle.plateNumber}
+        subtitle={
+          <span className="flex items-center gap-2">
+            <span className="font-mono">{vehicle.vehicleCode}</span>
+            <span className="capitalize">{vehicle.type}</span>
+            <StatusBadge status={vehicle.status} />
+          </span>
+        }
+        action={
+          <Button onClick={() => router.navigate({ to: '/app/vehicles' })} variant="ghost" className="gap-2">
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </Button>
+        }
+      />
 
       {vehicle.archivedAt && (
-        <div className="p-4 bg-yellow-100 text-yellow-800 rounded-lg">
-          This vehicle is archived
-          <button
-            onClick={handleRestore}
-            className="ml-4 underline font-medium"
-          >
+        <div className="flex items-center justify-between rounded-lg border border-warning/20 bg-warning/10 p-4 text-sm text-warning">
+          <span>This vehicle is archived.</span>
+          <Button onClick={handleRestore} variant="outline" size="sm">
             Restore
-          </button>
+          </Button>
         </div>
       )}
 
-      {isEditing ? (
-        <div className="bg-white p-6 rounded-lg border space-y-4">
-          <h2 className="font-bold text-lg">Edit Vehicle</h2>
+      <Card>
+        <CardHeader>
+          <CardTitle>{isEditing ? 'Edit Vehicle' : 'Vehicle Details'}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isEditing ? (
+            <div className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="plateNumber">Plate Number</Label>
+                  <Input
+                    id="plateNumber"
+                    value={editData.plateNumber}
+                    onChange={(e) => setEditData({ ...editData, plateNumber: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="type">Type</Label>
+                  <Input
+                    id="type"
+                    value={editData.type}
+                    onChange={(e) => setEditData({ ...editData, type: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="capacityKg">Capacity (kg)</Label>
+                  <Input
+                    id="capacityKg"
+                    type="number"
+                    value={editData.capacityKg}
+                    onChange={(e) => setEditData({ ...editData, capacityKg: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="capacityM3">Capacity (m³)</Label>
+                  <Input
+                    id="capacityM3"
+                    type="number"
+                    value={editData.capacityM3}
+                    onChange={(e) => setEditData({ ...editData, capacityM3: e.target.value })}
+                  />
+                </div>
+              </div>
 
-          {editErrors.submit && <p className="text-red-600 text-sm">{editErrors.submit}</p>}
-
-          <div className="grid grid-cols-2 gap-4">
-            <input
-              type="text"
-              value={editData.plateNumber}
-              onChange={(e) => setEditData({ ...editData, plateNumber: e.target.value })}
-              placeholder="Plate Number"
-              className="px-3 py-2 border rounded-lg"
-            />
-            <input
-              type="text"
-              value={editData.type}
-              onChange={(e) => setEditData({ ...editData, type: e.target.value })}
-              placeholder="Type"
-              className="px-3 py-2 border rounded-lg"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={editData.capacityKg}
-              onChange={(e) => setEditData({ ...editData, capacityKg: e.target.value })}
-              placeholder="Capacity Kg"
-              className="px-3 py-2 border rounded-lg"
-            />
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={editData.capacityM3}
-              onChange={(e) => setEditData({ ...editData, capacityM3: e.target.value })}
-              placeholder="Capacity M3"
-              className="px-3 py-2 border rounded-lg"
-            />
-          </div>
-
-          <select
-            value={editData.status}
-            onChange={(e) => setEditData({ ...editData, status: e.target.value as any })}
-            className="w-full px-3 py-2 border rounded-lg"
-          >
-            <option value="AVAILABLE">Available</option>
-            <option value="IN_USE">In Use</option>
-            <option value="MAINTENANCE">Maintenance</option>
-            <option value="INACTIVE">Inactive</option>
-          </select>
-
-          <div className="flex gap-4">
-            <button
-              onClick={handleSaveEdit}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              Save
-            </button>
-            <button
-              onClick={() => setIsEditing(false)}
-              className="px-4 py-2 border rounded-lg hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="bg-white p-6 rounded-lg border space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-gray-600">Vehicle Code</p>
-              <p className="font-mono">{vehicle.vehicleCode}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Plate Number</p>
-              <p>{vehicle.plateNumber}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Type</p>
-              <p>{vehicle.type}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Status</p>
-              <p className="font-medium">{vehicle.status}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Capacity (kg)</p>
-              <p>{vehicle.capacityKg || '—'}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Capacity (m³)</p>
-              <p>{vehicle.capacityM3 || '—'}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Make</p>
-              <p>{vehicle.make || '—'}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Model</p>
-              <p>{vehicle.model || '—'}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Year</p>
-              <p>{vehicle.year || '—'}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Insurance Expiry</p>
-              <p>{vehicle.insuranceExpiry || '—'}</p>
-            </div>
-          </div>
-
-          <div className="flex gap-4 pt-4 border-t">
-            {!vehicle.archivedAt && (
-              <>
-                <button
-                  onClick={initializeEdit}
-                  className="px-4 py-2 border rounded-lg hover:bg-gray-50"
+              <div className="space-y-2">
+                <Label htmlFor="status">Status</Label>
+                <select
+                  id="status"
+                  value={editData.status}
+                  onChange={(e) => setEditData({ ...editData, status: e.target.value as VehicleStatus })}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 >
-                  Edit
-                </button>
-                <button
-                  onClick={handleArchive}
-                  className="px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50"
-                >
-                  Archive
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+                  <option value="AVAILABLE">Available</option>
+                  <option value="IN_USE">In Use</option>
+                  <option value="MAINTENANCE">Maintenance</option>
+                  <option value="INACTIVE">Inactive</option>
+                </select>
+              </div>
+
+              <div className="flex gap-3 border-t border-brand/10 pt-4">
+                <Button onClick={handleSaveEdit} disabled={saving}>
+                  {saving ? 'Saving...' : 'Save'}
+                </Button>
+                <Button onClick={() => setIsEditing(false)} variant="outline" disabled={saving}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <div className="grid gap-6 sm:grid-cols-2">
+                <DetailField label="Vehicle Code" value={vehicle.vehicleCode} mono />
+                <DetailField label="Plate Number" value={vehicle.plateNumber} mono />
+                <DetailField label="Type" value={<span className="capitalize">{vehicle.type}</span>} />
+                <DetailField label="Status" value={<StatusBadge status={vehicle.status} />} />
+                <DetailField label="Capacity (kg)" value={vehicle.capacityKg} />
+                <DetailField label="Capacity (m³)" value={vehicle.capacityM3} />
+                <DetailField label="Make" value={vehicle.make} />
+                <DetailField label="Model" value={vehicle.model} />
+                <DetailField label="Year" value={vehicle.year} />
+                <DetailField label="Insurance Expiry" value={vehicle.insuranceExpiry} />
+              </div>
+
+              {!vehicle.archivedAt && (
+                <div className="flex gap-3 border-t border-brand/10 pt-4">
+                  <Button onClick={initializeEdit} variant="outline" className="gap-2">
+                    <Pencil className="h-4 w-4" />
+                    Edit
+                  </Button>
+                  <ConfirmDialog
+                    trigger={
+                      <Button variant="outline" className="gap-2 border-destructive/30 text-destructive hover:bg-destructive/10">
+                        <Archive className="h-4 w-4" />
+                        Archive
+                      </Button>
+                    }
+                    title="Archive this vehicle?"
+                    description="Archived vehicles can no longer be assigned to dispatches. You can restore them later."
+                    confirmLabel="Archive"
+                    onConfirm={handleArchive}
+                    destructive
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -395,6 +395,14 @@ export class DispatchesService {
                 }
               : null,
             status: dispatch.order.status,
+            // The dispatch detail screen shows where the trip starts and ends;
+            // the order relation is already loaded, so this costs no extra query.
+            pickupAddress: dispatch.order.pickupAddress,
+            pickupCity: dispatch.order.pickupCity,
+            pickupDate: dispatch.order.pickupDate,
+            deliveryAddress: dispatch.order.deliveryAddress,
+            deliveryCity: dispatch.order.deliveryCity,
+            deliveryDate: dispatch.order.deliveryDate,
           }
         : null,
       driverId: dispatch.driverId,

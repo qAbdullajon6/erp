@@ -19,6 +19,7 @@ import { ExpensesModule } from "./expenses/expenses.module";
 import { FinanceModule } from "./finance/finance.module";
 import { ReportsModule } from "./reports/reports.module";
 import { NotificationsModule } from "./notifications/notifications.module";
+import { LeadsModule } from "./leads/leads.module";
 import { OnboardingModule } from "./onboarding/onboarding.module";
 import { LoggingMiddleware } from "./common/middleware/logging.middleware";
 
@@ -28,10 +29,13 @@ import { LoggingMiddleware } from "./common/middleware/logging.middleware";
       isGlobal: true,
       load: [configuration],
     }),
-    // Global default: 20 requests / 60s per IP. Sensitive auth endpoints
-    // override this with a stricter @Throttle() (see AuthController);
-    // HealthController opts out entirely with @SkipThrottle().
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 20 }]),
+    // Global default: 300 requests / 60s per IP. A single SPA page load fans
+    // out into many parallel reads (/auth/me plus every list endpoint the
+    // view needs), so a low global ceiling trips on ordinary navigation
+    // rather than on abuse. Sensitive auth endpoints override this with a
+    // stricter @Throttle() (see AuthController); HealthController opts out
+    // entirely with @SkipThrottle().
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 300 }]),
     PrismaModule,
     AuditModule,
     HealthModule,
@@ -49,6 +53,7 @@ import { LoggingMiddleware } from "./common/middleware/logging.middleware";
     ReportsModule,
     NotificationsModule,
     OnboardingModule,
+    LeadsModule,
   ],
   providers: [
     // Disabled under NODE_ENV=test: e2e tests deliberately make many rapid

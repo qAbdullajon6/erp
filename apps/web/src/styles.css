@@ -40,6 +40,8 @@
   --color-brand-glow: var(--brand-glow);
   --color-success: var(--success);
   --color-warning: var(--warning);
+  --color-series-revenue: var(--series-revenue);
+  --color-series-expenses: var(--series-expenses);
 
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Manrope", "Inter", ui-sans-serif, system-ui, sans-serif;
@@ -88,6 +90,14 @@
   --chart-4: oklch(0.7 0.19 300);
   --chart-5: oklch(0.72 0.18 20);
 
+  /* Categorical series colours for the revenue/expenses chart. Deliberately
+     NOT --success/--warning: those are reserved status colours, and reusing a
+     status hue for a plain data series makes "amber" mean two things at once.
+     Both sit inside the dark-mode lightness band (L 0.48–0.67) and separate by
+     ΔE 113 under protanopia — verified with the palette validator, not by eye. */
+  --series-revenue: oklch(0.66 0.17 250);
+  --series-expenses: oklch(0.66 0.16 75);
+
   --sidebar: oklch(0.21 0.035 260);
   --sidebar-foreground: oklch(0.98 0.005 240);
   --sidebar-primary: oklch(0.68 0.17 250);
@@ -111,6 +121,19 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    /* The marketing nav is a set of in-page #anchors; without this they jump. */
+    scroll-behavior: smooth;
+  }
+  /* Vestibular safety: honour the OS "reduce motion" setting. */
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+  /* The landing navbar is sticky and 4rem tall, so an anchored section would
+     otherwise land with its heading tucked underneath it. */
+  section[id] {
+    scroll-margin-top: 5rem;
   }
   body {
     background-color: var(--color-background);

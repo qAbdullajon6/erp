@@ -1,5 +1,5 @@
 import { apiFetch } from './fetch';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 
 export type OrderStatus = 'DRAFT' | 'PENDING' | 'ASSIGNED' | 'PICKED_UP' | 'IN_TRANSIT' | 'DELIVERED' | 'CANCELLED';
 
@@ -256,6 +256,13 @@ export function useOrdersList(query: ListOrdersQuery = {}) {
     }
   }, [query.page, query.limit, query.search, query.status, query.customerId, query.driverId, query.vehicleId, query.sortBy, query.sortOrder]);
 
+  // Auto-fetch on mount and whenever the query changes. `fetch` is keyed off
+  // the individual query fields (not the object identity), so this settles
+  // after one request per distinct query rather than looping.
+  useEffect(() => {
+    fetch();
+  }, [fetch]);
+
   return { data, meta, loading, error, refetch: fetch };
 }
 
@@ -278,6 +285,12 @@ export function useOrder(id: string) {
       setLoading(false);
     }
   }, [id]);
+
+  // `loading` starts true, so without this the order detail screen renders its
+  // skeleton forever. Matches useDriver/useVehicle/useCustomerDetail.
+  useEffect(() => {
+    fetch();
+  }, [fetch]);
 
   return { data, loading, error, refetch: fetch };
 }

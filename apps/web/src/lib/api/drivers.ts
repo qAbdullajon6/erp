@@ -155,18 +155,25 @@ export function useDriversList(query?: {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Callers pass `query` as an inline object literal, so it is a fresh
+  // reference on every render. Keying off its serialized value instead of its
+  // identity keeps `fetch` stable — depending on `query` directly makes the
+  // effect below re-run forever, which both storms the API and pins `loading`
+  // to true so consumers never leave their skeleton state.
+  const queryKey = JSON.stringify(query ?? {});
+
   const fetch = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const result = await driversAPI.list(query);
+      const result = await driversAPI.list(JSON.parse(queryKey));
       setData(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch drivers');
     } finally {
       setLoading(false);
     }
-  }, [query]);
+  }, [queryKey]);
 
   useEffect(() => {
     fetch();

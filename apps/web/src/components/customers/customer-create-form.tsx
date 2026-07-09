@@ -5,9 +5,24 @@ import { useNavigate } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useCreateCustomer, CreateCustomerInput, CustomerPaymentTerms } from '@/lib/api/customers';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { toast } from 'sonner';
 
 const PAYMENT_TERMS: CustomerPaymentTerms[] = ['DUE_ON_RECEIPT', 'NET_15', 'NET_30', 'NET_45'];
+
+/// Optional text fields start as "" and stay "" unless the user edits them.
+/// The API validates them as `@IsOptional() @IsEmail()` (and friends), which
+/// rejects "" rather than treating it as absent — so drop empty strings
+/// instead of sending them.
+function stripEmptyOptionalFields(input: CreateCustomerInput): CreateCustomerInput {
+  const cleaned = { ...input };
+  for (const [key, value] of Object.entries(cleaned)) {
+    if (typeof value === 'string' && value.trim() === '') {
+      delete cleaned[key as keyof CreateCustomerInput];
+    }
+  }
+  return cleaned;
+}
 
 export function CustomerCreateForm() {
   const navigate = useNavigate();
@@ -30,6 +45,7 @@ export function CustomerCreateForm() {
 
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [isDirty, setIsDirty] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
 
   const handleChange = (field: string, value: string | number) => {
     setFormData((prev) => ({ ...prev, [field]: value === '' ? undefined : value }));
@@ -80,19 +96,17 @@ export function CustomerCreateForm() {
     }
 
     try {
-      const result = await create(formData);
+      const result = await create(stripEmptyOptionalFields(formData));
       toast.success(`Customer "${result.companyName}" created successfully`);
       navigate({ to: `/app/customers/${result.id}` });
     } catch (err) {
-      toast.error(error || 'Failed to create customer');
+      toast.error(err instanceof Error ? err.message : 'Failed to create customer');
     }
   };
 
   const handleCancel = () => {
     if (isDirty) {
-      if (window.confirm('You have unsaved changes. Are you sure you want to leave?')) {
-        navigate({ to: '/app/customers' });
-      }
+      setDiscardOpen(true);
     } else {
       navigate({ to: '/app/customers' });
     }
@@ -312,6 +326,17 @@ export function CustomerCreateForm() {
           Cancel
         </Button>
       </div>
+
+      <ConfirmDialog
+        open={discardOpen}
+        onOpenChange={setDiscardOpen}
+        title="Discard this customer?"
+        description="You have unsaved changes. Leaving now will lose everything you've typed."
+        confirmLabel="Discard changes"
+        cancelLabel="Keep editing"
+        onConfirm={() => navigate({ to: '/app/customers' })}
+        destructive
+      />
     </form>
   );
 }

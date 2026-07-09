@@ -1,10 +1,12 @@
 import { createFileRoute, useNavigate, Link, Outlet, useLocation } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Logo, LogoMark } from "@/components/brand/Logo";
-import { Button } from "@/components/ui/button";
+import type { LucideIcon } from "lucide-react";
+import { Logo, LogoMark, Wordmark } from "@/components/brand/Logo";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { NotificationBell } from "@/components/notifications/notification-bell";
+import { UserMenu } from "@/components/layout/user-menu";
 import { sessionManager, useLogout, useCurrentUser } from "@/lib/api/auth";
+import type { MembershipRole } from "@/lib/api/organizations";
 import {
   LayoutDashboard,
   Package,
@@ -13,11 +15,11 @@ import {
   Truck,
   Wallet,
   Sparkles,
-  LogOut,
   Menu,
   Settings,
   BarChart3,
   PackageCheck,
+  Users,
 } from "lucide-react";
 
 export const Route = createFileRoute("/app")({
@@ -30,28 +32,64 @@ export const Route = createFileRoute("/app")({
   component: AppShell,
 });
 
-const DRIVER_NAV = [
+type NavItem = {
+  icon: LucideIcon;
+  label: string;
+  path: string;
+  /// Roles whose API can actually serve this screen. Omitted means every role
+  /// in DEFAULT_NAV. Kept in step with each controller's read-role list — a
+  /// link a role cannot use is worse than no link, because it 403s on click.
+  roles?: MembershipRole[];
+};
+
+const DRIVER_NAV: NavItem[] = [
   { icon: LayoutDashboard, label: "Overview", path: "/app" },
   { icon: PackageCheck, label: "My Deliveries", path: "/app/my-deliveries" },
   { icon: Settings, label: "Settings", path: "/app/settings" },
 ];
 
-const DEFAULT_NAV = [
+/// Read-role sources, for whoever has to keep these honest:
+///   Orders      OrdersController.READ_ROLES        — all five
+///   Dispatches  DispatchesController.ROLES_READ    — no SALES_CRM_MANAGER
+///   Customers   CustomersController.READ_ROLES     — all five
+///   Drivers     DriversController.ROLES            — ADMIN/OPS/DISPATCHER
+///   Vehicles    VehiclesController.ROLES           — ADMIN/OPS/DISPATCHER
+///   Finance     FinanceController.ROLES            — all five
+///   Reports     ReportsController.ROLES            — all five
+const FLEET_ROLES: MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER"];
+
+const DEFAULT_NAV: NavItem[] = [
   { icon: LayoutDashboard, label: "Overview", path: "/app" },
   { icon: Package, label: "Orders", path: "/app/orders" },
-  { icon: RouteIcon, label: "Dispatches", path: "/app/dispatches" },
+  {
+    icon: RouteIcon,
+    label: "Dispatches",
+    path: "/app/dispatches",
+    roles: ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER", "ACCOUNTANT"],
+  },
   { icon: MapPin, label: "Customers", path: "/app/customers" },
-  { icon: Truck, label: "Drivers", path: "/app/drivers" },
+  { icon: Users, label: "Drivers", path: "/app/drivers", roles: FLEET_ROLES },
+  // Vehicles had routes, a list, a detail page and a create form, and no way
+  // in: nothing anywhere linked to /app/vehicles.
+  { icon: Truck, label: "Vehicles", path: "/app/vehicles", roles: FLEET_ROLES },
   { icon: Wallet, label: "Finance", path: "/app/finance" },
   { icon: BarChart3, label: "Reports", path: "/app/reports" },
   { icon: Sparkles, label: "AI Assistant", path: "/app/ai-assistant" },
   { icon: Settings, label: "Settings", path: "/app/settings" },
 ];
 
+/// Every screen the shell can render, including the ones reachable from the
+/// bell or the user menu rather than from the sidebar.
+const TITLED_ROUTES = [
+  ...DEFAULT_NAV,
+  { label: "My Deliveries", path: "/app/my-deliveries" },
+  { label: "Notifications", path: "/app/notifications" },
+];
+
 function AppShell() {
   const navigate = useNavigate();
   const { logout } = useLogout();
-  const { data: currentUser, fetch: fetchCurrentUser } = useCurrentUser();
+  const { data: currentUser } = useCurrentUser();
   const [ready, setReady] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const location = useLocation();
@@ -63,10 +101,6 @@ function AppShell() {
       setReady(true);
     }
   }, [navigate]);
-
-  useEffect(() => {
-    if (ready) fetchCurrentUser();
-  }, [ready, fetchCurrentUser]);
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -83,7 +117,15 @@ function AppShell() {
   // Finance/Reports/AI Assistant at all (see OrdersController etc.) — its
   // nav is deliberately just Overview + My Deliveries + Settings, not the
   // full admin nav with links that would all 403.
-  const nav = currentUser?.membership.role === "DRIVER" ? DRIVER_NAV : DEFAULT_NAV;
+  //
+  // The same reasoning applies within the admin nav: an ACCOUNTANT clicking
+  // "Drivers", or a SALES_CRM_MANAGER clicking "Dispatches", used to land on a
+  // screen the API refuses to serve them.
+  const role = (currentUser?.membership.role ?? "") as MembershipRole;
+  const nav =
+    role === "DRIVER"
+      ? DRIVER_NAV
+      : DEFAULT_NAV.filter((item) => !item.roles || item.roles.includes(role));
 
   const isActive = (path: string) => {
     if (path === "/app") {
@@ -92,40 +134,50 @@ function AppShell() {
     return location.pathname.startsWith(path);
   };
 
+  // Longest match wins, so /app/orders/create resolves to "Orders" rather than
+  // to the "/app" Overview entry. Notifications and My Deliveries are reachable
+  // without a sidebar entry for every role, so the title comes from a list that
+  // includes them — searching `nav` alone had every one of those screens
+  // labelled "Overview".
+  const currentPage = [...TITLED_ROUTES]
+    .sort((a, b) => b.path.length - a.path.length)
+    .find((n) => isActive(n.path));
+
+  // Sign out lives in the header's user menu, next to the account it signs out
+  // of — not duplicated at the foot of the sidebar.
   const navContent = (onNavigate?: () => void) => (
     <>
       <nav className="flex-1 space-y-2 overflow-y-auto px-3 py-6">
-        {nav.map((n) => {
-          const active = isActive(n.path);
-          return (
-            <button
-              key={n.label}
-              onClick={() => {
-                navigate({ to: n.path as any });
-                onNavigate?.();
-              }}
-              className={`group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200 ${
-                active
-                  ? "bg-brand/20 text-brand"
-                  : "text-muted-foreground hover:bg-brand/10 hover:text-brand"
-              }`}
-            >
-              <n.icon className="h-5 w-5 transition-transform group-hover:scale-110" />
-              <span>{n.label}</span>
-            </button>
-          );
-        })}
-      </nav>
+        {/* The nav depends on the role, so hold a skeleton until /auth/me lands
+            rather than painting the role-agnostic links and having the rest
+            pop in a moment later. */}
+        {!currentUser &&
+          Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="h-11 animate-pulse rounded-lg bg-brand/5" />
+          ))}
 
-      <div className="border-t border-brand/10 px-3 py-4">
-        <Button
-          onClick={handleLogout}
-          className="w-full justify-start gap-3 rounded-lg bg-destructive/10 px-4 py-3 font-medium text-destructive hover:bg-destructive/20"
-        >
-          <LogOut className="h-5 w-5" />
-          Sign out
-        </Button>
-      </div>
+        {currentUser &&
+          nav.map((n) => {
+            const active = isActive(n.path);
+            return (
+              <button
+                key={n.label}
+                onClick={() => {
+                  navigate({ to: n.path as any });
+                  onNavigate?.();
+                }}
+                className={`group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200 ${
+                  active
+                    ? "bg-brand/20 text-brand"
+                    : "text-muted-foreground hover:bg-brand/10 hover:text-brand"
+                }`}
+              >
+                <n.icon className="h-5 w-5 transition-transform group-hover:scale-110" />
+                <span>{n.label}</span>
+              </button>
+            );
+          })}
+      </nav>
     </>
   );
 
@@ -136,7 +188,7 @@ function AppShell() {
         <div className="border-b border-brand/10 px-6 py-6">
           <Link to="/" className="flex items-center gap-3">
             <LogoMark size={32} />
-            <span className="font-display text-base font-semibold">FlowERP<span className="text-brand"> AI</span></span>
+            <Wordmark />
           </Link>
         </div>
         {navContent()}
@@ -149,7 +201,7 @@ function AppShell() {
           <div className="border-b border-brand/10 px-6 py-6">
             <Link to="/" className="flex items-center gap-3" onClick={() => setMobileNavOpen(false)}>
               <LogoMark size={32} />
-              <span className="font-display text-base font-semibold">FlowERP<span className="text-brand"> AI</span></span>
+              <Wordmark />
             </Link>
           </div>
           {navContent(() => setMobileNavOpen(false))}
@@ -160,8 +212,8 @@ function AppShell() {
       <main className="flex-1 overflow-auto md:ml-64">
         {/* Top Bar */}
         <div className="sticky top-0 z-40 border-b border-brand/10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-          <div className="flex h-16 items-center justify-between px-4 sm:px-8">
-            <div className="flex items-center gap-3">
+          <div className="flex h-16 items-center justify-between gap-4 px-4 sm:px-8">
+            <div className="flex min-w-0 items-center gap-3">
               <button
                 onClick={() => setMobileNavOpen(true)}
                 className="rounded-lg p-2 text-muted-foreground hover:bg-brand/10 hover:text-brand md:hidden"
@@ -170,17 +222,27 @@ function AppShell() {
                 <Menu className="h-5 w-5" />
               </button>
               <Logo showWordmark={false} className="md:hidden" />
+              {/* Which screen you're on: the sidebar highlight is off-canvas on
+                  mobile, and on desktop it's easy to lose at a glance. */}
+              <h2 className="hidden truncate font-display text-lg font-semibold text-foreground md:block">
+                {currentPage?.label ?? "Overview"}
+              </h2>
             </div>
-            <div className="flex items-center gap-2 sm:gap-4">
+
+            <div className="flex items-center gap-1 sm:gap-3">
               <NotificationBell />
-              <span className="hidden text-sm text-muted-foreground sm:inline">Welcome back</span>
+              <div className="mx-1 hidden h-6 w-px bg-brand/10 sm:block" />
+              <UserMenu currentUser={currentUser} onSignOut={handleLogout} />
             </div>
           </div>
         </div>
 
-        {/* Page Content */}
-        <div className="p-4 sm:p-8">
-          <div className="mx-auto max-w-7xl">
+        {/* Page Content — full-bleed with generous gutters. A narrow centred
+            column stranded the tables in the middle of wide monitors, which is
+            the opposite of what a data-dense ERP wants. The cap only kicks in
+            on ultra-wide displays, where unbounded line lengths hurt. */}
+        <div className="px-4 py-6 sm:px-8 sm:py-8">
+          <div className="mx-auto w-full max-w-[1920px]">
             <Outlet />
           </div>
         </div>

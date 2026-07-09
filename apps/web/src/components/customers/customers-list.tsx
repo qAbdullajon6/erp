@@ -1,11 +1,17 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useCustomersList, CustomerStatus, CustomerSortField } from '@/lib/api/customers';
-import { Plus, ChevronLeft, ChevronRight } from 'lucide-react';
+import { PageHeader } from '@/components/shared/page-header';
+import { ListToolbar, FilterSelect } from '@/components/shared/list-toolbar';
+import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-states';
+import { PaginationBar } from '@/components/shared/pagination-bar';
+import { StatusBadge } from '@/components/shared/status-badge';
+import { SortHeader } from '@/components/shared/sort-header';
+import { Plus } from 'lucide-react';
 
 interface ListSearchState {
   page?: number;
@@ -17,7 +23,7 @@ interface ListSearchState {
 
 export function CustomersList() {
   const navigate = useNavigate();
-  const searchState = useSearch({ from: '/app/customers' }) as ListSearchState;
+  const searchState = useSearch({ from: '/app/customers/' }) as ListSearchState;
 
   const page = searchState.page || 1;
   const search = searchState.search || '';
@@ -38,244 +44,144 @@ export function CustomersList() {
   const [statusFilter, setStatusFilter] = useState<CustomerStatus | ''>(status || '');
 
   useEffect(() => {
-    refetch({
-      page,
-      limit: 20,
-      search: search || undefined,
-      status: status,
-      sortBy,
-      sortOrder,
-    });
+    refetch({ page, limit: 20, search: search || undefined, status, sortBy, sortOrder });
   }, [page, search, status, sortBy, sortOrder, refetch]);
 
   const handleSearch = (value: string) => {
     setLocalSearch(value);
-    navigate({
-      to: '/app/customers',
-      search: { page: 1, search: value || undefined, status, sortBy, sortOrder },
-    });
+    navigate({ to: '/app/customers', search: { page: 1, search: value || undefined, status, sortBy, sortOrder } });
   };
 
   const handleStatusFilter = (newStatus: CustomerStatus | '') => {
     setStatusFilter(newStatus);
-    navigate({
-      to: '/app/customers',
-      search: { page: 1, search, status: newStatus || undefined, sortBy, sortOrder },
-    });
+    navigate({ to: '/app/customers', search: { page: 1, search, status: newStatus || undefined, sortBy, sortOrder } });
   };
 
   const handleSort = (field: CustomerSortField) => {
     const newOrder = sortBy === field && sortOrder === 'asc' ? 'desc' : 'asc';
-    navigate({
-      to: '/app/customers',
-      search: { page, search, status, sortBy: field, sortOrder: newOrder },
-    });
+    navigate({ to: '/app/customers', search: { page, search, status, sortBy: field, sortOrder: newOrder } });
   };
 
   const handlePageChange = (newPage: number) => {
-    navigate({
-      to: '/app/customers',
-      search: { page: newPage, search, status, sortBy, sortOrder },
-    });
+    navigate({ to: '/app/customers', search: { page: newPage, search, status, sortBy, sortOrder } });
   };
 
-  const getStatusBadgeClass = (s: CustomerStatus) => {
-    switch (s) {
-      case 'ACTIVE':
-        return 'bg-success/10 text-success';
-      case 'AT_RISK':
-        return 'bg-warning/10 text-warning';
-      case 'INACTIVE':
-        return 'bg-muted text-muted-foreground';
-      case 'ARCHIVED':
-        return 'bg-destructive/10 text-destructive';
-      default:
-        return 'bg-muted text-muted-foreground';
-    }
-  };
-
-  const getStatusLabel = (s: CustomerStatus) => {
-    return s.replace(/_/g, ' ');
-  };
-
-  const SortHeader = ({ field, label }: { field: CustomerSortField; label: string }) => (
-    <button
-      onClick={() => handleSort(field)}
-      className="flex items-center gap-1 font-semibold text-foreground hover:text-brand transition-colors"
-    >
-      {label}
-      {sortBy === field && (
-        <span className="text-xs">{sortOrder === 'asc' ? '↑' : '↓'}</span>
-      )}
-    </button>
-  );
+  const sortProps = { activeField: sortBy, order: sortOrder, onSort: handleSort };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="font-display text-3xl font-bold text-foreground">Customers</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {loading ? 'Loading...' : error ? 'Error loading customers' : `${meta.total} customers found`}
-          </p>
-        </div>
-        <Button
-          onClick={() => navigate({ to: '/app/customers/create' })}
-          className="gap-2 bg-gradient-brand text-brand-foreground hover:opacity-90"
+    <div className="space-y-6" data-testid="customers-page">
+      <PageHeader
+        title="Customers"
+        subtitle={loading ? 'Loading...' : error ? 'Error loading customers' : `${meta.total} customers found`}
+        action={
+          <Button
+            onClick={() => navigate({ to: '/app/customers/create' })}
+            className="gap-2 bg-gradient-brand text-brand-foreground hover:opacity-90"
+          >
+            <Plus className="h-4 w-4" />
+            Create Customer
+          </Button>
+        }
+      />
+
+      <ListToolbar
+        searchValue={localSearch}
+        onSearchChange={handleSearch}
+        searchPlaceholder="Company name, contact, email, phone..."
+        searchTestId="customers-search-input"
+      >
+        <FilterSelect
+          label="Status"
+          value={statusFilter}
+          onChange={(value) => handleStatusFilter(value as CustomerStatus | '')}
+          testId="customers-status-filter"
         >
-          <Plus className="h-4 w-4" />
-          Create Customer
-        </Button>
-      </div>
+          <option value="">All Statuses</option>
+          <option value="ACTIVE">Active</option>
+          <option value="AT_RISK">At Risk</option>
+          <option value="INACTIVE">Inactive</option>
+          <option value="ARCHIVED">Archived</option>
+        </FilterSelect>
+      </ListToolbar>
 
-      {/* Filters & Search */}
-      <div className="space-y-4 rounded-lg border border-brand/10 bg-surface p-4">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className="text-sm font-medium text-foreground">Search</label>
-            <Input
-              type="text"
-              placeholder="Company name, contact, email, phone..."
-              value={localSearch}
-              onChange={(e) => handleSearch(e.target.value)}
-              className="mt-1"
-            />
-          </div>
-          <div>
-            <label className="text-sm font-medium text-foreground">Status</label>
-            <select
-              value={statusFilter}
-              onChange={(e) => handleStatusFilter(e.target.value as CustomerStatus | '')}
-              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            >
-              <option value="">All Statuses</option>
-              <option value="ACTIVE">Active</option>
-              <option value="AT_RISK">At Risk</option>
-              <option value="INACTIVE">Inactive</option>
-              <option value="ARCHIVED">Archived</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* Table */}
       <div className="overflow-hidden rounded-lg border border-brand/10">
-        {loading && (
-          <div className="flex items-center justify-center py-12">
-            <div className="text-center">
-              <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-brand/20 border-t-brand" />
-              <p className="mt-4 text-sm text-muted-foreground">Loading customers...</p>
-            </div>
-          </div>
+        {loading && <LoadingState label="Loading customers..." />}
+
+        {error && !loading && <ErrorState message={error} onRetry={() => refetch()} />}
+
+        {!loading && !error && data.length === 0 && (
+          <EmptyState
+            title="No customers found"
+            description="Add a customer before creating orders for them."
+            action={
+              <Button onClick={() => navigate({ to: '/app/customers/create' })} variant="outline">
+                Create the first customer
+              </Button>
+            }
+          />
         )}
 
-        {error && !loading && (
-          <div className="p-6">
-            <div className="rounded-lg bg-destructive/10 p-4 text-sm text-destructive">
-              {error}
-              <button
-                onClick={() => refetch()}
-                className="ml-2 font-semibold underline hover:no-underline"
-              >
-                Retry
-              </button>
-            </div>
-          </div>
-        )}
-
-        {!loading && data.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-12">
-            <p className="text-muted-foreground">No customers found</p>
-            <Button
-              onClick={() => navigate({ to: '/app/customers/create' })}
-              variant="outline"
-              className="mt-4"
-            >
-              Create the first customer
-            </Button>
-          </div>
-        )}
-
-        {!loading && data.length > 0 && (
+        {!loading && !error && data.length > 0 && (
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-brand/10 bg-surface/50">
-                  <th className="px-6 py-3 text-left text-sm">
-                    <SortHeader field="companyName" label="Company" />
-                  </th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">Contact</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">Email</th>
-                  <th className="px-6 py-3 text-left text-sm">
-                    <SortHeader field="creditLimit" label="Credit Limit" />
-                  </th>
-                  <th className="px-6 py-3 text-left text-sm">
-                    <SortHeader field="status" label="Status" />
-                  </th>
-                  <th className="px-6 py-3 text-right text-sm font-semibold text-foreground">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-brand/10">
+            <Table data-testid="customers-table">
+              <TableHeader>
+                <TableRow className="bg-surface/50 hover:bg-surface/50">
+                  <TableHead>
+                    <SortHeader field="companyName" label="Company" {...sortProps} />
+                  </TableHead>
+                  <TableHead>Contact</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>
+                    <SortHeader field="creditLimit" label="Credit Limit" {...sortProps} />
+                  </TableHead>
+                  <TableHead>
+                    <SortHeader field="status" label="Status" {...sortProps} />
+                  </TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {data.map((customer) => (
-                  <tr
-                    key={customer.id}
-                    className="transition-colors hover:bg-background/40"
-                  >
-                    <td className="px-6 py-4 text-sm font-medium text-foreground">{customer.companyName}</td>
-                    <td className="px-6 py-4 text-sm text-muted-foreground">{customer.contactName}</td>
-                    <td className="px-6 py-4 text-sm text-muted-foreground">{customer.email || '—'}</td>
-                    <td className="px-6 py-4 text-sm font-mono text-foreground">
-                      ${parseFloat(customer.creditLimit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    <td className="px-6 py-4 text-sm">
-                      <span className={`inline-block rounded-full px-2 py-1 text-xs font-medium ${getStatusBadgeClass(customer.status)}`}>
-                        {getStatusLabel(customer.status)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
+                  <TableRow key={customer.id} data-testid="customer-row">
+                    <TableCell className="font-medium text-foreground">{customer.companyName}</TableCell>
+                    <TableCell className="text-muted-foreground">{customer.contactName}</TableCell>
+                    <TableCell className="text-muted-foreground">{customer.email || '—'}</TableCell>
+                    <TableCell className="font-mono text-foreground">
+                      $
+                      {parseFloat(customer.creditLimit).toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={customer.status} />
+                    </TableCell>
+                    <TableCell className="text-right">
                       <Button
                         onClick={() => navigate({ to: `/app/customers/${customer.id}` })}
                         variant="ghost"
                         size="sm"
+                        data-testid="customer-view-button"
                       >
                         View
                       </Button>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         )}
       </div>
 
-      {/* Pagination */}
-      {!loading && data.length > 0 && meta.totalPages > 1 && (
-        <div className="flex items-center justify-between rounded-lg border border-brand/10 bg-surface p-4">
-          <p className="text-sm text-muted-foreground">
-            Page {meta.page} of {meta.totalPages} ({meta.total} total)
-          </p>
-          <div className="flex gap-2">
-            <Button
-              onClick={() => handlePageChange(meta.page - 1)}
-              disabled={meta.page <= 1}
-              variant="outline"
-              size="sm"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button
-              onClick={() => handlePageChange(meta.page + 1)}
-              disabled={meta.page >= meta.totalPages}
-              variant="outline"
-              size="sm"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      )}
+      <PaginationBar
+        page={meta.page}
+        totalPages={meta.totalPages}
+        total={meta.total}
+        onPageChange={handlePageChange}
+        prevTestId="customers-prev-page"
+        nextTestId="customers-next-page"
+      />
     </div>
   );
 }

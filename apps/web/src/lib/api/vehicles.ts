@@ -164,18 +164,22 @@ export function useVehiclesList(query?: {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // See useDriversList: `query` is an inline object literal at every call
+  // site, so depending on its identity re-runs the effect forever.
+  const queryKey = JSON.stringify(query ?? {});
+
   const fetch = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const result = await vehiclesAPI.list(query);
+      const result = await vehiclesAPI.list(JSON.parse(queryKey));
       setData(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch vehicles');
     } finally {
       setLoading(false);
     }
-  }, [query]);
+  }, [queryKey]);
 
   useEffect(() => {
     fetch();

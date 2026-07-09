@@ -8,7 +8,9 @@ import { AISection } from "@/components/site/AISection";
 import { Contact } from "@/components/site/Contact";
 import { Footer } from "@/components/site/Footer";
 import { DemoModal } from "@/components/site/DemoModal";
-import { isAuthenticated } from "@/lib/auth";
+import { ProofBand } from "@/components/site/ProofBand";
+import { Faq } from "@/components/site/Faq";
+import { sessionManager } from "@/lib/api/session";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -33,7 +35,10 @@ export const Route = createFileRoute("/")({
 function Landing() {
   const navigate = useNavigate();
   useEffect(() => {
-    if (isAuthenticated()) navigate({ to: "/app", replace: true });
+    // Reads the real session. This used to consult a `flowerp_authed`
+    // localStorage flag that nothing in the app ever wrote, so a signed-in
+    // visitor always landed on the marketing page.
+    if (sessionManager.hasValidSession()) navigate({ to: "/app", replace: true });
   }, [navigate]);
 
   return (
@@ -41,9 +46,11 @@ function Landing() {
       <Navbar />
       <main>
         <Hero />
+        <ProofBand />
         <Features />
         <HowItWorks />
         <AISection />
+        <Faq />
         <Contact />
       </main>
       <Footer />

@@ -9,6 +9,14 @@ interface RevenueChartProps {
   loading: boolean;
 }
 
+/// Two series means a legend is mandatory — identity must never rest on colour
+/// alone. The hues are the validated categorical pair (see --series-* in
+/// styles.css), not the reserved success/warning status colours.
+const SERIES = [
+  { key: "revenue", label: "Revenue", color: "var(--color-series-revenue)", fill: "url(#revenueFill)" },
+  { key: "expenses", label: "Expenses", color: "var(--color-series-expenses)", fill: "url(#expensesFill)" },
+] as const;
+
 export function RevenueChart({ data, totalRevenue, loading }: RevenueChartProps) {
   if (loading) {
     return <Skeleton className="h-[22rem] rounded-2xl" />;
@@ -17,32 +25,42 @@ export function RevenueChart({ data, totalRevenue, loading }: RevenueChartProps)
   const hasData = data.length > 0 && data.some((d) => d.revenue > 0 || d.expenses > 0);
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50 p-8">
-      <div className="flex items-center justify-between">
+    <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50 p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h3 className="font-display text-2xl font-bold text-foreground">Revenue vs Expenses</h3>
-          <p className="mt-1 text-sm text-muted-foreground">Last 30 days</p>
+          <h3 className="text-lg font-semibold text-foreground">Revenue vs expenses</h3>
+          <p className="mt-0.5 text-sm text-muted-foreground">Last 30 days</p>
         </div>
         <div className="text-right">
-          <div className="font-display text-2xl font-bold text-foreground">
+          {/* Sans, not the display face — this is a figure, not a headline. */}
+          <div className="text-2xl font-semibold leading-none text-foreground">
             {totalRevenue ? formatMoney(totalRevenue) : "—"}
           </div>
-          <div className="text-sm font-medium text-muted-foreground">total revenue</div>
+          <div className="mt-1 text-sm text-muted-foreground">Total revenue</div>
         </div>
       </div>
 
-      <div className="mt-8 h-64">
+      <div className="mt-4 flex items-center gap-5">
+        {SERIES.map((s) => (
+          <span key={s.key} className="flex items-center gap-2 text-sm text-muted-foreground">
+            <span className="h-2 w-2 rounded-full" style={{ background: s.color }} aria-hidden />
+            {s.label}
+          </span>
+        ))}
+      </div>
+
+      <div className="mt-4 h-64 flex-1">
         {hasData ? (
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="revenueFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="var(--color-brand)" stopOpacity={0.35} />
-                  <stop offset="95%" stopColor="var(--color-brand)" stopOpacity={0} />
+                  <stop offset="5%" stopColor="var(--color-series-revenue)" stopOpacity={0.35} />
+                  <stop offset="95%" stopColor="var(--color-series-revenue)" stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="expensesFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="var(--color-warning)" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="var(--color-warning)" stopOpacity={0} />
+                  <stop offset="5%" stopColor="var(--color-series-expenses)" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="var(--color-series-expenses)" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" opacity={0.4} />
@@ -61,7 +79,10 @@ export function RevenueChart({ data, totalRevenue, loading }: RevenueChartProps)
                 tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : `${v}`)}
               />
               <Tooltip
-                formatter={(value: number, name: string) => [formatMoney(value), name === "revenue" ? "Revenue" : "Expenses"]}
+                formatter={(value: number, name: string) => [
+                  formatMoney(value),
+                  SERIES.find((s) => s.key === name)?.label ?? name,
+                ]}
                 contentStyle={{
                   background: "var(--color-surface)",
                   border: "1px solid var(--color-border)",
@@ -69,8 +90,9 @@ export function RevenueChart({ data, totalRevenue, loading }: RevenueChartProps)
                   fontSize: 12,
                 }}
               />
-              <Area type="monotone" dataKey="revenue" stroke="var(--color-brand)" fill="url(#revenueFill)" strokeWidth={2} />
-              <Area type="monotone" dataKey="expenses" stroke="var(--color-warning)" fill="url(#expensesFill)" strokeWidth={2} />
+              {SERIES.map((s) => (
+                <Area key={s.key} type="monotone" dataKey={s.key} stroke={s.color} fill={s.fill} strokeWidth={2} />
+              ))}
             </AreaChart>
           </ResponsiveContainer>
         ) : (
