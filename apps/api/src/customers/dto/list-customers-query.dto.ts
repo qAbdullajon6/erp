@@ -27,11 +27,13 @@ export class ListCustomersQueryDto {
   @Min(1)
   page: number = 1;
 
+  /// Capped at 200 rather than 100: the Orders and Invoices screens load the
+  /// full customer set in one request to populate their customer pickers.
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(100)
+  @Max(200)
   limit: number = 20;
 
   @IsOptional()
