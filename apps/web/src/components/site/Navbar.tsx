@@ -27,6 +27,7 @@ export function Navbar() {
           <a href="#features" className="transition-colors hover:text-foreground">Features</a>
           <a href="#workflow" className="transition-colors hover:text-foreground">How it works</a>
           <a href="#ai" className="transition-colors hover:text-foreground">AI Assistant</a>
+          <a href="#faq" className="transition-colors hover:text-foreground">FAQ</a>
           <a href="#contact" className="transition-colors hover:text-foreground">Contact</a>
         </nav>
         <div className="flex items-center gap-2">
