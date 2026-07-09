@@ -1,5 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { Button } from "@/components/ui/button";
+import { Plus, Route as RouteIcon } from "lucide-react";
 import { KpiCards } from "@/components/dashboard/kpi-cards";
 import { RevenueChart } from "@/components/dashboard/revenue-chart";
 import { DeliveryStatusChart } from "@/components/dashboard/delivery-status-chart";
@@ -26,10 +27,6 @@ function DashboardPage() {
   const { data: currentUser, loading: userLoading, error: userError, refetch: refetchUser } = useCurrentUser();
   const role = currentUser?.membership.role;
   const isDriver = role === "DRIVER";
-
-  useEffect(() => {
-    refetchUser();
-  }, [refetchUser]);
 
   if (userLoading) {
     return <div className="h-40 animate-pulse rounded-2xl bg-primary/5" />;
@@ -71,11 +68,28 @@ function OperationsDashboard({ includeFleet }: { includeFleet: boolean }) {
       : null;
 
   return (
-    <div className="space-y-8">
-      {/* Page Header */}
-      <div>
-        <h1 className="font-display text-3xl font-bold text-foreground">Command Center</h1>
-        <p className="mt-2 text-muted-foreground">Welcome back. Here's your operations at a glance.</p>
+    <div className="space-y-6">
+      {/* Page Header — the two actions that start every logistics workflow are
+          here rather than buried one navigation click deep. */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="font-display text-3xl font-bold text-foreground">Command Center</h1>
+          <p className="mt-2 text-muted-foreground">Welcome back. Here's your operations at a glance.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button asChild variant="outline" className="gap-2">
+            <Link to="/app/dispatches/create">
+              <RouteIcon className="h-4 w-4" />
+              New dispatch
+            </Link>
+          </Button>
+          <Button asChild className="gap-2 bg-gradient-brand text-brand-foreground hover:opacity-90">
+            <Link to="/app/orders/create">
+              <Plus className="h-4 w-4" />
+              New order
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -93,8 +107,9 @@ function OperationsDashboard({ includeFleet }: { includeFleet: boolean }) {
       {/* KPI Cards */}
       <KpiCards totals={overview?.totals ?? null} fleet={fleet} loading={loading} />
 
-      {/* Charts Grid */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      {/* Charts Grid — items-stretch so the narrow status card matches the
+          chart's height instead of leaving a well of empty surface beneath it. */}
+      <div className="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <RevenueChart
             data={overview?.revenueVsExpensesTimeSeries ?? []}
@@ -108,7 +123,7 @@ function OperationsDashboard({ includeFleet }: { includeFleet: boolean }) {
       </div>
 
       {/* Orders and Alerts */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <RecentOrdersTable orders={recentOrders} loading={loading} />
         </div>

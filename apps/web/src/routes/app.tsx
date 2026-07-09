@@ -1,9 +1,9 @@
 import { createFileRoute, useNavigate, Link, Outlet, useLocation } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Logo, LogoMark } from "@/components/brand/Logo";
-import { Button } from "@/components/ui/button";
+import { Logo, LogoMark, Wordmark } from "@/components/brand/Logo";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { NotificationBell } from "@/components/notifications/notification-bell";
+import { UserMenu } from "@/components/layout/user-menu";
 import { sessionManager, useLogout, useCurrentUser } from "@/lib/api/auth";
 import {
   LayoutDashboard,
@@ -13,7 +13,6 @@ import {
   Truck,
   Wallet,
   Sparkles,
-  LogOut,
   Menu,
   Settings,
   BarChart3,
@@ -51,7 +50,7 @@ const DEFAULT_NAV = [
 function AppShell() {
   const navigate = useNavigate();
   const { logout } = useLogout();
-  const { data: currentUser, fetch: fetchCurrentUser } = useCurrentUser();
+  const { data: currentUser } = useCurrentUser();
   const [ready, setReady] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const location = useLocation();
@@ -63,10 +62,6 @@ function AppShell() {
       setReady(true);
     }
   }, [navigate]);
-
-  useEffect(() => {
-    if (ready) fetchCurrentUser();
-  }, [ready, fetchCurrentUser]);
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -92,6 +87,12 @@ function AppShell() {
     return location.pathname.startsWith(path);
   };
 
+  // Longest match wins, so /app/orders/create still resolves to "Orders"
+  // rather than to the "/app" Overview entry.
+  const currentPage = [...nav].sort((a, b) => b.path.length - a.path.length).find((n) => isActive(n.path));
+
+  // Sign out lives in the header's user menu, next to the account it signs out
+  // of — not duplicated at the foot of the sidebar.
   const navContent = (onNavigate?: () => void) => (
     <>
       <nav className="flex-1 space-y-2 overflow-y-auto px-3 py-6">
@@ -116,16 +117,6 @@ function AppShell() {
           );
         })}
       </nav>
-
-      <div className="border-t border-brand/10 px-3 py-4">
-        <Button
-          onClick={handleLogout}
-          className="w-full justify-start gap-3 rounded-lg bg-destructive/10 px-4 py-3 font-medium text-destructive hover:bg-destructive/20"
-        >
-          <LogOut className="h-5 w-5" />
-          Sign out
-        </Button>
-      </div>
     </>
   );
 
@@ -136,7 +127,7 @@ function AppShell() {
         <div className="border-b border-brand/10 px-6 py-6">
           <Link to="/" className="flex items-center gap-3">
             <LogoMark size={32} />
-            <span className="font-display text-base font-semibold">FlowERP<span className="text-brand"> AI</span></span>
+            <Wordmark />
           </Link>
         </div>
         {navContent()}
@@ -149,7 +140,7 @@ function AppShell() {
           <div className="border-b border-brand/10 px-6 py-6">
             <Link to="/" className="flex items-center gap-3" onClick={() => setMobileNavOpen(false)}>
               <LogoMark size={32} />
-              <span className="font-display text-base font-semibold">FlowERP<span className="text-brand"> AI</span></span>
+              <Wordmark />
             </Link>
           </div>
           {navContent(() => setMobileNavOpen(false))}
@@ -160,8 +151,8 @@ function AppShell() {
       <main className="flex-1 overflow-auto md:ml-64">
         {/* Top Bar */}
         <div className="sticky top-0 z-40 border-b border-brand/10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-          <div className="flex h-16 items-center justify-between px-4 sm:px-8">
-            <div className="flex items-center gap-3">
+          <div className="flex h-16 items-center justify-between gap-4 px-4 sm:px-8">
+            <div className="flex min-w-0 items-center gap-3">
               <button
                 onClick={() => setMobileNavOpen(true)}
                 className="rounded-lg p-2 text-muted-foreground hover:bg-brand/10 hover:text-brand md:hidden"
@@ -170,17 +161,27 @@ function AppShell() {
                 <Menu className="h-5 w-5" />
               </button>
               <Logo showWordmark={false} className="md:hidden" />
+              {/* Which screen you're on: the sidebar highlight is off-canvas on
+                  mobile, and on desktop it's easy to lose at a glance. */}
+              <h2 className="hidden truncate font-display text-lg font-semibold text-foreground md:block">
+                {currentPage?.label ?? "Overview"}
+              </h2>
             </div>
-            <div className="flex items-center gap-2 sm:gap-4">
+
+            <div className="flex items-center gap-1 sm:gap-3">
               <NotificationBell />
-              <span className="hidden text-sm text-muted-foreground sm:inline">Welcome back</span>
+              <div className="mx-1 hidden h-6 w-px bg-brand/10 sm:block" />
+              <UserMenu currentUser={currentUser} onSignOut={handleLogout} />
             </div>
           </div>
         </div>
 
-        {/* Page Content */}
-        <div className="p-4 sm:p-8">
-          <div className="mx-auto max-w-7xl">
+        {/* Page Content — full-bleed with generous gutters. A narrow centred
+            column stranded the tables in the middle of wide monitors, which is
+            the opposite of what a data-dense ERP wants. The cap only kicks in
+            on ultra-wide displays, where unbounded line lengths hurt. */}
+        <div className="px-4 py-6 sm:px-8 sm:py-8">
+          <div className="mx-auto w-full max-w-[1920px]">
             <Outlet />
           </div>
         </div>
