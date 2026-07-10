@@ -7,11 +7,19 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 export default defineConfig({
-  // Nitro defaults to a Cloudflare Workers bundle, which will not start under
-  // Node on a VPS — `node .output/server/index.mjs` needs the node-server
-  // preset. Override with NITRO_PRESET if this is ever deployed elsewhere.
+  // Nitro's default here is a Cloudflare Workers bundle, which starts neither
+  // on Vercel nor under Node on a VPS. Two targets, picked automatically:
+  //
+  //   Vercel  `vercel` preset -> .vercel/output (Build Output API v3). Vercel
+  //           detects that directory itself, which is why the project's "Output
+  //           Directory" setting must stay empty — pointing it at `build` is
+  //           what produced "No Output Directory named build found".
+  //   VPS     `node-server` -> .output/server/index.mjs, started by Node in the
+  //           web container. Also what `npm run build:web` gives locally.
+  //
+  // NITRO_PRESET overrides both.
   nitro: {
-    preset: process.env.NITRO_PRESET ?? "node-server",
+    preset: process.env.NITRO_PRESET ?? (process.env.VERCEL ? "vercel" : "node-server"),
   },
   vite: {
     server: {

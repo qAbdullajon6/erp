@@ -72,7 +72,15 @@ services:
     expose:
       - "4000"
 
+  # Not started by default: the frontend is deployed to Vercel, and the VPS
+  # serves the API alone. This service exists so the whole stack — SSR frontend
+  # included — can be rehearsed locally on one origin, which is how Vercel's
+  # rewrite makes it look to the browser anyway.
+  #
+  #   CADDYFILE=./deploy/Caddyfile.local docker compose \
+  #     -f docker-compose.staging.yml --env-file .env.staging --profile web up -d
   web:
+    profiles: ["web"]
     build:
       context: .
       dockerfile: apps/web/Dockerfile
@@ -114,17 +122,19 @@ services:
     image: caddy:2-alpine
     restart: unless-stopped
     depends_on:
-      - web
       - api
     environment:
-      # `:8080` locally; `staging.flow-erp.uz` on the VPS, where Caddy then
+      # `:8080` locally; `api.staging.flow-erp.uz` on the VPS, where Caddy then
       # obtains and renews the certificate itself.
       SITE_ADDRESS: ${SITE_ADDRESS:-:8080}
     ports:
       - "${HTTP_PORT:-8080}:${HTTP_PORT:-8080}"
       - "${HTTPS_PORT:-8443}:443"
     volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # deploy/Caddyfile serves the API alone (the VPS's job). Point CADDYFILE
+      # at deploy/Caddyfile.local to also serve the SSR frontend on one origin
+      # for a local rehearsal.
+      - ${CADDYFILE:-./deploy/Caddyfile}:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
 
