@@ -15,7 +15,8 @@ import {
   LEAD_STATUSES,
   type LeadStatus,
 } from '@/lib/api/leads';
-import { Mail, Phone } from 'lucide-react';
+import { useCurrentUser } from '@/lib/api/auth';
+import { Mail, Phone, ShieldOff } from 'lucide-react';
 
 const SELECT_CLASS =
   'h-8 rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50';
@@ -29,15 +30,24 @@ export function LeadsList() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<LeadStatus | ''>('');
 
-  const { data, isLoading, isError, error, refetch } = useLeadsQuery({
-    page,
-    limit: 20,
-    search: search || undefined,
-    status: statusFilter || undefined,
-    sortBy: 'createdAt',
-    sortOrder: 'desc',
-  });
-  const { data: counts } = useLeadStatsQuery();
+  // Typing the URL is not an exploit — the API refuses anyone but staff — but a
+  // customer's admin who lands here should be told that, not left watching a
+  // spinner resolve into "Error loading leads" beside a row of zeroed counters.
+  const { data: currentUser, loading: userLoading } = useCurrentUser();
+  const allowed = currentUser?.user.isPlatformAdmin === true;
+
+  const { data, isLoading, isError, error, refetch } = useLeadsQuery(
+    {
+      page,
+      limit: 20,
+      search: search || undefined,
+      status: statusFilter || undefined,
+      sortBy: 'createdAt',
+      sortOrder: 'desc',
+    },
+    allowed,
+  );
+  const { data: counts } = useLeadStatsQuery(allowed);
   const { mutate: updateStatus, isPending: updating } = useUpdateLeadStatusMutation();
 
   const items = data?.items ?? [];
@@ -51,6 +61,26 @@ export function LeadsList() {
         onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to update lead'),
       },
     );
+
+  if (userLoading) return <LoadingState label="Loading..." />;
+
+  if (!allowed) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Leads" />
+        <div className="flex flex-col items-center justify-center rounded-lg border border-brand/10 py-20 text-center">
+          <div className="rounded-full bg-muted p-3">
+            <ShieldOff className="h-6 w-6 text-muted-foreground" />
+          </div>
+          <p className="mt-4 font-medium text-foreground">This screen is for FlowERP staff</p>
+          <p className="mt-1 max-w-md text-sm text-muted-foreground">
+            Demo requests from the marketing site are not part of your organization's data, so no
+            role within it can open them.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

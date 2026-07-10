@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from './fetch';
+import { unwrapResponse } from './error';
 
 export type LeadStatus = 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'CLOSED';
 
@@ -38,15 +39,7 @@ export interface ListLeadsParams {
 /// does not hide how many sit in the others. Absent keys mean zero.
 export type LeadStatusCounts = Partial<Record<LeadStatus, number>>;
 
-async function unwrap<T>(response: Response, fallback: string): Promise<T> {
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    const message = body?.error?.message ?? body?.message ?? fallback;
-    throw new Error(Array.isArray(message) ? message[0] : message);
-  }
-  const result = await response.json();
-  return (result.data ?? result) as T;
-}
+const unwrap = unwrapResponse;
 
 class LeadsAPI {
   private baseUrl = '/api/leads';
@@ -83,17 +76,21 @@ export const leadKeys = {
   stats: () => [...leadKeys.all, 'stats'] as const,
 };
 
-export function useLeadsQuery(params: ListLeadsParams = {}) {
+/// `enabled` lets the screen hold the request until it knows the viewer is
+/// platform staff, rather than firing one it knows will come back 403.
+export function useLeadsQuery(params: ListLeadsParams = {}, enabled = true) {
   return useQuery({
     queryKey: leadKeys.list(params),
     queryFn: () => leadsAPI.list(params),
+    enabled,
   });
 }
 
-export function useLeadStatsQuery() {
+export function useLeadStatsQuery(enabled = true) {
   return useQuery({
     queryKey: leadKeys.stats(),
     queryFn: () => leadsAPI.stats(),
+    enabled,
   });
 }
 
