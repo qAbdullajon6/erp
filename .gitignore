@@ -68,3 +68,6 @@ apps/web/e2e/auth-state.json
 
 # claude code local session state
 /.claude/
+
+# Database dumps written by scripts/backup-postgres.sh — never commit these.
+backups/

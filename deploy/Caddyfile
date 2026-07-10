@@ -1,0 +1,39 @@
+# Reverse proxy for the staging (and later production) VPS.
+#
+# SITE_ADDRESS is the only thing that changes between environments:
+#   local   :8080                      -> plain HTTP, for testing the stack
+#   staging staging.flow-erp.uz        -> Caddy obtains and renews TLS itself
+#
+# The frontend and the API share one origin on purpose. The browser only ever
+# talks to https://<site>/ and https://<site>/api/*, so:
+#   - the app's existing `/api/...` fetches keep working unchanged,
+#   - there is no cross-origin request, so no CORS preflight to misconfigure,
+#   - tokens in sessionStorage behave identically to local development.
+#
+# Splitting the API onto its own subdomain would work too, but it buys a CORS
+# configuration and buys nothing else.
+
+{$SITE_ADDRESS::8080} {
+	encode zstd gzip
+
+	# The API mounts its routes at the root — /auth/login, /orders — not under
+	# /api. `handle_path` strips the matched prefix before proxying, which is
+	# exactly what the Vite dev proxy's rewrite does locally. Using `handle`
+	# (or reverse_proxy without a strip) would forward /api/orders and 404.
+	handle_path /api/* {
+		reverse_proxy api:4000 {
+			health_uri /health
+			health_interval 30s
+		}
+	}
+
+	# Everything else is the SSR frontend.
+	handle {
+		reverse_proxy web:3000
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

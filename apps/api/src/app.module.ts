@@ -2,6 +2,7 @@ import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
 import { ConfigModule } from "@nestjs/config";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
+import { ThrottlerStorageRedisService } from "@nest-lab/throttler-storage-redis";
 import configuration from "./config/configuration";
 import { PrismaModule } from "./prisma/prisma.module";
 import { AuditModule } from "./audit/audit.module";
@@ -35,7 +36,17 @@ import { LoggingMiddleware } from "./common/middleware/logging.middleware";
     // rather than on abuse. Sensitive auth endpoints override this with a
     // stricter @Throttle() (see AuthController); HealthController opts out
     // entirely with @SkipThrottle().
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 300 }]),
+    //
+    // Without REDIS_URL the counters live in this process's memory, which is
+    // correct for one instance and wrong for two: each would keep its own
+    // tally, so N instances make every limit N times looser — including the
+    // 5/min brute-force guard on /auth/login. Set REDIS_URL to share them.
+    ThrottlerModule.forRoot({
+      throttlers: [{ ttl: 60_000, limit: 300 }],
+      ...(process.env.REDIS_URL
+        ? { storage: new ThrottlerStorageRedisService(process.env.REDIS_URL) }
+        : {}),
+    }),
     PrismaModule,
     AuditModule,
     HealthModule,

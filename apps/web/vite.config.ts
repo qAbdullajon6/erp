@@ -7,12 +7,22 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 export default defineConfig({
+  // Nitro defaults to a Cloudflare Workers bundle, which will not start under
+  // Node on a VPS — `node .output/server/index.mjs` needs the node-server
+  // preset. Override with NITRO_PRESET if this is ever deployed elsewhere.
+  nitro: {
+    preset: process.env.NITRO_PRESET ?? "node-server",
+  },
   vite: {
     server: {
       port: 3000,
       host: true,
       strictPort: false,
       proxy: {
+        // Note the rewrite: the API mounts its routes at the root (/orders,
+        // /auth/login), not under /api. Any reverse proxy in front of a
+        // production deployment has to strip the prefix the same way, or every
+        // call 404s.
         '/api': {
           target: 'http://localhost:4000',
           changeOrigin: true,
