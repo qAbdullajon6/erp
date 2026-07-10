@@ -48,8 +48,12 @@ HTTP_PORT=80
 HTTPS_PORT=443
 PUBLIC_ORIGIN=https://staging.flow-erp.uz
 
-POSTGRES_PASSWORD=$(node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))")
-JWT_ACCESS_SECRET=$(node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))")
+# Generated with openssl, which a fresh Ubuntu already has — the VPS needs no
+# Node at all, since everything is built inside containers.
+#   openssl rand -base64 24 | tr '+/' '-_' | tr -d '='   # POSTGRES_PASSWORD
+#   openssl rand -base64 48 | tr '+/' '-_' | tr -d '='   # JWT_ACCESS_SECRET
+POSTGRES_PASSWORD=...
+JWT_ACCESS_SECRET=...
 ```
 
 Then:

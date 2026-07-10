@@ -37,6 +37,11 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 !.env.example
+# Committed templates, in any directory. Without this the `.env*` rule above
+# swallowed deploy/.env.staging.example, and the deployment runbook referenced a
+# file that was not in the repository.
+!**/*.env.example
+!**/.env.*.example
 
 # vercel
 .vercel
