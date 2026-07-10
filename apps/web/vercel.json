@@ -1,8 +1,9 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://REPLACE_WITH_VPS_DOMAIN/:path*"
+      "destination": "https://staging.flowerp.uz/api/:path*"
     }
   ]
 }

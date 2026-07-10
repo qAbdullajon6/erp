@@ -1,0 +1,50 @@
+# The VPS serves the API only. The frontend is deployed to Vercel.
+#
+# SITE_ADDRESS:
+#   VPS    staging.flowerp.uz   -> Caddy obtains and renews TLS itself
+#   local  :8080                -> plain HTTP, for testing the stack
+#
+# The browser never talks to this box directly. It calls the Vercel origin's
+# /api/*, and Vercel's rewrite (apps/web/vercel.json) proxies that here
+# server-side — so no cross-origin request is made and no CORS preflight ever
+# happens. CORS_ORIGIN is still set on the API in case it is called directly.
+#
+# The rewrite forwards the path unchanged, so what arrives is /api/auth/login.
+# The API mounts its routes at the root (/auth/login), exactly as the Vite dev
+# proxy assumes, so the prefix has to come off here. `handle_path` strips the
+# matched prefix; `handle` alone would forward /api/orders and 404 on every call.
+#
+# Keep this host in lockstep with the destination in apps/web/vercel.json —
+# Vercel does not expand environment variables there.
+#
+# To rehearse the whole thing locally with the frontend on the same origin, use
+# deploy/Caddyfile.local instead:
+#   CADDYFILE=./deploy/Caddyfile.local docker compose \
+#     -f docker-compose.staging.yml --env-file .env.staging --profile web up -d
+
+{$SITE_ADDRESS::8080} {
+	encode zstd gzip
+
+	handle_path /api/* {
+		reverse_proxy api:4000 {
+			# Polled every 5s, not every 30s: the API runs `prisma migrate
+			# deploy` before it listens, so after a deploy Caddy would otherwise
+			# keep answering 503 for up to half a minute after the API was
+			# already serving.
+			health_uri /health
+			health_interval 5s
+			health_timeout 2s
+		}
+	}
+
+	# Nothing else lives on this host. Say so plainly rather than letting Caddy
+	# return an empty 200 that looks like a broken frontend.
+	handle {
+		respond "This host serves the FlowERP API under /api. The application is deployed separately." 404
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

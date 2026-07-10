@@ -219,6 +219,10 @@ export class AuthService {
         email: membership.user.email,
         firstName: membership.user.firstName,
         lastName: membership.user.lastName,
+        // The web shell hides the Leads screen unless this is true. It is a
+        // convenience for the UI only — PlatformAdminGuard is what actually
+        // protects the data.
+        isPlatformAdmin: membership.user.isPlatformAdmin,
       },
       organization: {
         id: membership.organization.id,

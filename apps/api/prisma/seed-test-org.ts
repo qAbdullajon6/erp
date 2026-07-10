@@ -51,8 +51,26 @@ async function main() {
     },
   });
 
-  const roleUsers: { email: string; firstName: string; lastName: string; role: string }[] = [
+  /// `isPlatformAdmin` is FlowERP staff, and is deliberately NOT given to
+  /// admin@flowerp.test. MembershipRole.ADMIN means "admin of one customer
+  /// organization"; that person must never see another company's demo request.
+  /// Keeping them as separate accounts is what lets role-nav.spec.ts prove a
+  /// tenant admin cannot reach Leads.
+  const roleUsers: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    role: string;
+    isPlatformAdmin?: boolean;
+  }[] = [
     { email: "admin@flowerp.test", firstName: "Test", lastName: "Admin", role: "ADMIN" },
+    {
+      email: "platform@flowerp.test",
+      firstName: "FlowERP",
+      lastName: "Staff",
+      role: "PLATFORM_ADMIN",
+      isPlatformAdmin: true,
+    },
     { email: "ops-manager@flowerp.test", firstName: "Test", lastName: "OpsManager", role: "OPERATIONS_MANAGER" },
     { email: "dispatcher@flowerp.test", firstName: "Test", lastName: "Dispatcher", role: "DISPATCHER" },
     { email: "accountant@flowerp.test", firstName: "Test", lastName: "Accountant", role: "ACCOUNTANT" },
@@ -63,11 +81,25 @@ async function main() {
   const usersByRole = new Map<string, { id: string }>();
   for (const roleUser of roleUsers) {
     const user = await prisma.user.create({
-      data: { email: roleUser.email, firstName: roleUser.firstName, lastName: roleUser.lastName, passwordHash },
+      data: {
+        email: roleUser.email,
+        firstName: roleUser.firstName,
+        lastName: roleUser.lastName,
+        passwordHash,
+        isPlatformAdmin: roleUser.isPlatformAdmin ?? false,
+      },
     });
     usersByRole.set(roleUser.role, user);
     await prisma.membership.create({
-      data: { organizationId: organization.id, userId: user.id, role: roleUser.role as never },
+      data: {
+        organizationId: organization.id,
+        // "PLATFORM_ADMIN" is not a MembershipRole — the staff account still
+        // needs an ordinary membership to hold a session, so it joins the test
+        // organization as an ADMIN. Its access to Leads comes from the flag,
+        // never from this role.
+        userId: user.id,
+        role: (roleUser.role === "PLATFORM_ADMIN" ? "ADMIN" : roleUser.role) as never,
+      },
     });
   }
   const adminUser = usersByRole.get("ADMIN")!;

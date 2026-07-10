@@ -5,43 +5,76 @@ const PASSWORD = 'FlowERP-Test-2026!';
 
 /// A sidebar link a role cannot use is worse than no link: it 403s on click.
 /// These expectations mirror each controller's read-role list.
+///
+/// "Leads" is not role-gated at all — it is FlowERP staff only
+/// (User.isPlatformAdmin). The seed keeps that account separate from the
+/// customer organization's ADMIN precisely so this file can prove a tenant
+/// admin cannot reach it.
 const EXPECTED: Record<string, { email: string; visible: string[]; hidden: string[] }> = {
+  // Holds an ADMIN membership so it can carry a session, so it sees the full
+  // admin nav — plus Leads, which comes from the flag and not from that role.
+  PLATFORM_ADMIN: {
+    email: 'platform@flowerp.test',
+    visible: [
+      'Overview',
+      'Orders',
+      'Dispatches',
+      'Customers',
+      'Drivers',
+      'Vehicles',
+      'Finance',
+      'Reports',
+      'Leads',
+      'Settings',
+    ],
+    hidden: ['My Deliveries'],
+  },
   ADMIN: {
     email: 'admin@flowerp.test',
-    visible: ['Overview', 'Orders', 'Dispatches', 'Customers', 'Drivers', 'Vehicles', 'Finance', 'Reports', 'Settings'],
-    hidden: ['My Deliveries'],
+    visible: [
+      'Overview',
+      'Orders',
+      'Dispatches',
+      'Customers',
+      'Drivers',
+      'Vehicles',
+      'Finance',
+      'Reports',
+      'Settings',
+    ],
+    hidden: ['Leads', 'My Deliveries'],
   },
   OPERATIONS_MANAGER: {
     email: 'ops-manager@flowerp.test',
     visible: ['Orders', 'Dispatches', 'Customers', 'Drivers', 'Vehicles', 'Finance', 'Reports'],
-    hidden: ['My Deliveries'],
+    hidden: ['Leads', 'My Deliveries'],
   },
   DISPATCHER: {
     email: 'dispatcher@flowerp.test',
     visible: ['Orders', 'Dispatches', 'Customers', 'Drivers', 'Vehicles', 'Finance', 'Reports'],
-    hidden: ['My Deliveries'],
+    hidden: ['Leads', 'My Deliveries'],
   },
   ACCOUNTANT: {
     email: 'accountant@flowerp.test',
     visible: ['Orders', 'Dispatches', 'Customers', 'Finance', 'Reports'],
-    hidden: ['Drivers', 'Vehicles', 'My Deliveries'],
+    hidden: ['Drivers', 'Vehicles', 'Leads', 'My Deliveries'],
   },
   SALES_CRM_MANAGER: {
     email: 'sales@flowerp.test',
     visible: ['Orders', 'Customers', 'Finance', 'Reports'],
-    hidden: ['Dispatches', 'Drivers', 'Vehicles', 'My Deliveries'],
+    hidden: ['Dispatches', 'Drivers', 'Vehicles', 'Leads', 'My Deliveries'],
   },
   DRIVER: {
     email: 'driver@flowerp.test',
     visible: ['Overview', 'My Deliveries', 'Settings'],
-    hidden: ['Orders', 'Dispatches', 'Customers', 'Drivers', 'Vehicles', 'Finance', 'Reports'],
+    hidden: ['Orders', 'Dispatches', 'Customers', 'Drivers', 'Vehicles', 'Finance', 'Reports', 'Leads'],
   },
 };
 
-/// One real login per role — six in all, past the /auth/login throttle of
+/// One real login per account — seven in all, past the /auth/login throttle of
 /// 5/min per IP. CI runs the API with NODE_ENV=test, where the ThrottlerGuard
 /// is never registered (see app.module.ts), so the suite sails through. Against
-/// a dev API the sixth login gets a 429, so back off and retry rather than
+/// a dev API the later logins get a 429, so back off and retry rather than
 /// weakening a brute-force guard that is doing its job.
 test.describe.configure({ mode: 'serial' });
 

@@ -1,0 +1,30 @@
+# Keep the build context small and reproducible: everything below is either
+# regenerated inside the image or must never reach it.
+node_modules
+**/node_modules
+
+# Build output
+apps/web/.output
+apps/web/.wrangler
+apps/api/dist
+**/dist
+
+# Secrets — the compose file supplies these as environment variables.
+.env
+.env.*
+!.env.example
+apps/api/.env
+apps/api/.env.*
+!apps/api/.env.example
+
+# Test and tooling artefacts
+apps/web/playwright-report
+apps/web/test-results
+apps/web/shots
+coverage
+
+.git
+.github
+docs
+*.md
+!README.md

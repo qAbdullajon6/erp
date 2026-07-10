@@ -49,6 +49,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       organizationId: membership.organizationId,
       role: membership.role,
       email: membership.user.email,
+      // Read fresh from the user row like everything else here, so revoking
+      // staff access takes effect on the next request rather than whenever the
+      // access token happens to expire.
+      isPlatformAdmin: membership.user.isPlatformAdmin,
     };
   }
 }

@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from './fetch';
 import { sessionManager } from './session';
 
@@ -36,6 +37,10 @@ export interface CurrentUser {
     email: string;
     firstName: string;
     lastName: string;
+    /// FlowERP staff rather than a customer. Used only to decide whether to
+    /// render the Leads screen — the API's PlatformAdminGuard is what actually
+    /// protects the data.
+    isPlatformAdmin: boolean;
   };
   organization: {
     id: string;
@@ -155,39 +160,44 @@ export function useLogin() {
   return { login, loading, error };
 }
 
+export const currentUserQueryKey = ['auth', 'me'] as const;
+
+/// Backed by React Query so the shell, the dashboard, the notification bell and
+/// every other consumer share one request. As a hand-rolled useState/useEffect
+/// hook each caller fetched independently: a single dashboard load fired
+/// GET /auth/me five times, and when the access token had expired, five 401s
+/// before the refresh.
+///
+/// Returns the same shape the old hook did, so consumers did not have to change.
 export function useCurrentUser() {
-  const [data, setData] = useState<CurrentUser | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const query = useQuery({
+    queryKey: currentUserQueryKey,
+    queryFn: () => authAPI.getCurrentUser(),
+    // The role and the platform-admin flag drive what the shell renders; a
+    // minute of staleness is fine, and the API re-derives both on every request
+    // anyway, so nothing security-relevant rests on this cache.
+    staleTime: 60_000,
+  });
 
-  const fetch = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await authAPI.getCurrentUser();
-      setData(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load user');
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // `loading` starts true, so a consumer that forgets to call fetch() renders
-  // its skeleton forever — which is exactly what Settings → Profile did. The
-  // callback has no dependencies, so this runs once per mount.
-  useEffect(() => {
-    fetch();
-  }, [fetch]);
-
-  return { data, loading, error, refetch: fetch, fetch };
+  return {
+    data: query.data ?? null,
+    loading: query.isLoading,
+    error: query.error instanceof Error ? query.error.message : null,
+    refetch: query.refetch,
+    fetch: query.refetch,
+  };
 }
 
 export function useLogout() {
+  const queryClient = useQueryClient();
+
   const logout = useCallback(async () => {
     await authAPI.logout();
-  }, []);
+    // Everything cached — the current user, their organization's orders,
+    // invoices, notifications — belonged to the session that just ended. Signing
+    // a different person in on this tab must not show them the last one's data.
+    queryClient.clear();
+  }, [queryClient]);
 
   return { logout };
 }

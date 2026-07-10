@@ -43,6 +43,12 @@ const STATUS_VARIANTS: Record<string, BadgeVariant> = {
   INVITED: 'brand',
   REMOVED: 'danger',
 
+  // Sales leads
+  NEW: 'brand',
+  CONTACTED: 'warning',
+  QUALIFIED: 'success',
+  CLOSED: 'muted',
+
   // Finance
   PAID: 'success',
   PARTIALLY_PAID: 'warning',

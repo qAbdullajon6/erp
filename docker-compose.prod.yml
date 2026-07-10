@@ -1,5 +1,14 @@
-# Production stack for the VPS: PostgreSQL + the NestJS API container.
-# The frontend is deployed separately on Vercel, not here.
+# SUPERSEDED by docker-compose.staging.yml — see deploy/README.md.
+#
+# This file predates the move off Vercel. It has three problems that make it
+# unsafe to copy to a VPS as-is:
+#   - it publishes the API on :4000 straight to the internet, with no proxy,
+#   - it has no frontend service, so the app's /api/* calls have nowhere to go,
+#   - it has no Redis, so rate-limit counters stay per-process.
+#
+# Kept only so an existing deployment that references it does not break. New
+# environments should use docker-compose.staging.yml, which runs Postgres,
+# Redis, the API, the SSR frontend and Caddy behind one origin.
 #
 # Usage on the VPS:
 #   cp apps/api/.env.example .env.prod   # fill in real secrets

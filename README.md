@@ -1,213 +1,238 @@
-## FlowERP AI
+# FlowERP AI
 
-FlowERP AI is an intelligent logistics operations platform — a portfolio demo built by
-IT Technology Group. It brings order management, dispatch, fleet, customer CRM, finance
-and reporting into one workspace, plus a local AI Operations Assistant that answers
-questions about the live data.
+An intelligent logistics operations platform: orders, dispatch, fleet, customer CRM,
+finance, reporting and notifications in one workspace, backed by a real multi-tenant API.
 
-The live demo (`apps/web`) still runs entirely on `localStorage` by default — nothing
-changes there unless a developer explicitly opts into **Connected Mode**
-(`NEXT_PUBLIC_DATA_MODE=api`) locally. A real NestJS + PostgreSQL backend (`apps/api`) now
-exists alongside it, with working auth, organizations, and Customers/Drivers/Vehicles/
-Orders/Dispatch/Finance APIs — see the sections below and [`docs/`](docs/) for how much of
-that is wired into the frontend so far.
+Built by IT Technology Group.
 
-### Repository structure
+## Stack
 
-This repository is an npm-workspaces monorepo:
+| | |
+|---|---|
+| **`apps/web`** | Vite + TanStack Start/Router + React 19 + Tailwind + shadcn/ui |
+| **`apps/api`** | NestJS + Prisma + PostgreSQL |
+| **Auth** | Argon2id passwords, JWT access tokens (15 min), rotating opaque refresh tokens |
+| **Tests** | Jest (API units), Playwright (browser end-to-end) |
+
+The frontend talks to the API through `/api`, which the Vite dev server proxies to
+`http://localhost:4000` (see `apps/web/vite.config.ts`). There is no `localStorage` demo
+mode and no data-mode switch — every screen reads and writes the real API.
+
+## Prerequisites
+
+- Node.js 20+
+- Docker (for local PostgreSQL)
+
+## Getting started
+
+Run everything from the repository root; npm workspaces forwards to the right app.
+
+```bash
+# 1. Install
+npm install
+
+# 2. Start PostgreSQL (host port 5433, not 5432 — see docker-compose.yml)
+docker compose up -d
+
+# 3. Configure the API
+cp apps/api/.env.example apps/api/.env
+# Generate a JWT secret and paste it into JWT_ACCESS_SECRET:
+node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+
+# 4. Apply migrations and generate the Prisma client
+npm run prisma:migrate:deploy
+npm run prisma:generate
+
+# 5. Seed a demo organization with test accounts (see below)
+npm run seed:test-org
+```
+
+Then start both processes, in two terminals:
+
+```bash
+npm run dev:api    # http://localhost:4000
+npm run dev:web    # http://localhost:3000
+```
+
+Open <http://localhost:3000>. The marketing page is at `/`, the application at `/app`.
+
+> `npm run prisma:generate` fails with `EPERM` on Windows while the API is running — it
+> holds the query engine DLL. Stop `dev:api` first.
+
+## Test accounts
+
+> **These accounts are for local development and demos only.** They ship with a known
+> password and must never exist in a production database.
+
+`npm run seed:test-org` creates one organization, **FlowERP Test Logistics**, with seven
+accounts. They all share the password:
+
+```
+FlowERP-Test-2026!
+```
+
+| Email | Role | Sees |
+|---|---|---|
+| `admin@flowerp.test` | Admin | everything except **Leads** |
+| `ops-manager@flowerp.test` | Operations Manager | orders, dispatch, customers, fleet, finance, reports |
+| `dispatcher@flowerp.test` | Dispatcher | same as above |
+| `accountant@flowerp.test` | Accountant | orders, dispatch, customers, finance, reports — no fleet |
+| `sales@flowerp.test` | Sales / CRM Manager | orders, customers, finance, reports |
+| `driver@flowerp.test` | Driver | overview and **My Deliveries** only |
+| `platform@flowerp.test` | FlowERP staff | the admin screens **plus Leads** |
+
+The sidebar is scoped to what each role's API will actually serve, so a link never leads
+to a `403`. `apps/web/e2e/role-nav.spec.ts` asserts this for every account above.
+
+The seed is safe to re-run: it refuses to create a second copy if the organization already
+exists, and prints the SQL to remove it first.
+
+### Platform admin
+
+**Leads** — demo requests captured from the marketing page — belong to FlowERP, not to any
+customer organization. A `Lead` row has no `organizationId`, so the tenant scoping every
+other table relies on cannot apply to it.
+
+They are therefore gated on `User.isPlatformAdmin`, never on a membership role.
+`MembershipRole.ADMIN` only ever means "admin of one customer organization", and that
+person must not see another company's demo request. `admin@flowerp.test` and
+`platform@flowerp.test` are separate accounts for exactly this reason, and
+`apps/web/e2e/leads-admin.spec.ts` asserts that a tenant admin gets a `403` from
+`GET /leads` — not merely a hidden sidebar link.
+
+Nothing in the product grants the flag: there is no UI, no endpoint, and no role that can
+set it. That is deliberate — it cannot be escalated into.
+
+**Bootstrapping it in production.** Register the staff account through the normal sign-up
+flow (or invite it into an organization), then flip the flag once, by hand, against the
+production database:
+
+```sql
+UPDATE users SET "isPlatformAdmin" = true WHERE email = 'you@yourcompany.com';
+```
+
+Revoking it is the same statement with `false`, and takes effect on that user's very next
+request — `JwtStrategy` re-reads the flag from the database every time rather than trusting
+the token.
+
+## Everyday commands
+
+Run these from the repository root.
+
+```bash
+npm run dev:api          # NestJS, watch mode          → :4000
+npm run dev:web          # Vite dev server             → :3000
+
+npm run typecheck        # tsc --noEmit, both apps
+npm run lint             # eslint on apps/web — 0 errors
+
+npm run test:api         # Jest unit tests
+npm run test:e2e         # Playwright, needs both servers running (see below)
+
+npm run build:web        # `npm run build` is an alias for this one
+npm run build:api
+```
+
+Before opening a pull request, the full gate is:
+
+```bash
+npm run typecheck && npm run lint && npm run test:api && npm run build:web && npm run build:api
+```
+
+`npm run lint:api` exists but does not pass yet — see *Known gaps*.
+
+## End-to-end tests
+
+Playwright drives a real browser against the running dev servers, so **start `dev:api` and
+`dev:web` first**. It signs in with the seeded accounts above, so run `seed:test-org` too.
+
+```bash
+cd apps/web
+FRONTEND_URL=http://localhost:3000 npx playwright test
+```
+
+| Spec | Covers |
+|---|---|
+| `crud-audit.spec.ts` | create → read → update → archive for drivers, vehicles, customers |
+| `order-dispatch-flow.spec.ts` | an order, then a dispatch, with every picker populated |
+| `token-refresh.spec.ts` | an expired access token is refreshed, not signed out |
+| `sign-in-flow.spec.ts` | a wrong password shows the real error; the reveal toggle works |
+| `role-nav.spec.ts` | the sidebar matches each of the six roles' API permissions |
+| `leads-admin.spec.ts` | only platform admins can read or triage leads |
+| `demo-lead.spec.ts` | the landing form performs a real `POST /leads` |
+| `notifications-panel.spec.ts` | the notification slide-over opens against real data |
+| `shots.spec.ts` | screenshots a route list, for reviewing a change by eye |
+
+Two things worth knowing:
+
+- **`POST /auth/login` is throttled to 5 requests/minute per IP.** `role-nav` and
+  `leads-admin` sign in as several accounts and back off on a `429`, which makes them slow
+  against a dev API. CI runs the API with `NODE_ENV=test`, where the throttler is not
+  registered at all. Every other spec shares one memoized login (`e2e/session.ts`).
+- **The pages are server-rendered.** Markup arrives before React hydrates, so a click that
+  lands in between does nothing. Specs wait for interactivity, not for visibility.
+
+## Database
+
+```bash
+npm run prisma:migrate:deploy   # apply pending migrations (safe on an existing database)
+npm run prisma:migrate          # author a new migration (development only)
+npm run prisma:studio           # browse the data
+npm run seed:test-org           # demo organization + the seven accounts above
+```
+
+Neither seed deletes anything. `seed:test-org` skips if **FlowERP Test Logistics** already
+exists; `seed:development-company` adds a *second*, separate organization
+(`admin@dev-test.local` / `DevTest@123!`), skips if it already exists, and refuses to run
+under `NODE_ENV=production`. Both are additive — to start over, drop the rows yourself.
+
+If `prisma migrate dev` ever offers to reset the database, **do not accept it.** That
+means the datamodel and the database have drifted. Diagnose with:
+
+```bash
+cd apps/api
+npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --script
+```
+
+An empty result means they agree.
+
+## Repository structure
 
 ```text
 erp/
   apps/
-    web/          # the Next.js frontend — still fully localStorage-based, unchanged behavior
-    api/          # NestJS + Prisma + PostgreSQL backend foundation (not yet used by apps/web)
-  packages/
-    ui/           # placeholder — no shared components yet
-    types/        # placeholder — no shared types yet
-  docs/
-    DEMO_SCRIPT.md
-    MONOREPO_MIGRATION.md
-    BACKEND_FOUNDATION.md
-    AUTH_ONBOARDING.md
-    CUSTOMERS_API.md
-    CONNECTED_MODE_AUTH_UI.md
-    ORDERS_DISPATCH_API.md
-    FINANCE_API.md
-  docker-compose.yml   # local PostgreSQL only, for apps/api development
-  package.json         # workspace root — forwards scripts to apps/web and apps/api
-  README.md
+    web/                 # Vite + TanStack frontend
+      src/components/
+        shared/          # the design system — page headers, tables states, badges, dialogs
+        ui/              # shadcn primitives
+      e2e/               # Playwright specs
+    api/                 # NestJS + Prisma backend
+      prisma/            # schema, migrations, seeds
+      src/<module>/      # one folder per business module
+  docs/                  # per-phase API contracts and design notes
+  docker-compose.yml     # local PostgreSQL
 ```
 
-See [`docs/MONOREPO_MIGRATION.md`](docs/MONOREPO_MIGRATION.md) for how the repo was
-restructured, and [`docs/BACKEND_FOUNDATION.md`](docs/BACKEND_FOUNDATION.md) for the
-backend's setup, environment variables, and tenant-isolation rules.
+`apps/web/src/components/shared/` is the design system. `status-badge.tsx` is the single
+source of truth for how a domain status is coloured — reach for these rather than
+hand-rolling a table or picking a colour, and never use raw `bg-gray-*` / `text-blue-*`
+against this app's dark surfaces.
 
-### Main modules
+## Known gaps
 
-- **Dashboard** — today's orders, active deliveries, revenue trend, fleet status
-- **Orders** — full order lifecycle from Draft to Delivered/Cancelled
-- **Dispatch Board** — assign drivers and vehicles with capacity/availability checks
-- **Drivers & Vehicles** — fleet roster, status, maintenance and license expiry
-- **Customers / CRM** — profiles, credit limits, order history, activity timeline
-- **Finance** — invoices, payments, expense approvals, order profitability
-- **Reports** — Executive Overview, Operations and Financial reporting tabs
-- **Notifications** — a derived, rule-based alert center
-- **AI Operations Assistant** — a local, deterministic Q&A engine over the live ERP data (no external AI API)
-- **My Deliveries** — the Driver role's restricted delivery checklist
-- **Landing page** (`/landing`) — the public marketing page for the product
+These are deliberate and tracked, not oversights:
 
-### Demo roles
-
-Use the role switcher in the topbar to preview six demo identities: **Admin/Owner**,
-**Operations Manager**, **Dispatcher**, **Accountant**, **Driver** and **Sales/CRM Manager**.
-Each role has its own allowed pages and gated actions — this is a **UI permission preview
-for demo purposes only**, not real authorization.
-
-### How the demo data works
-
-All ERP data (orders, drivers, vehicles, customers, invoices, expenses) and your selected
-role are persisted to `localStorage` in your browser — nothing is sent to a server. This
-means your changes (assigning a driver, recording a payment, switching roles) persist
-across page reloads, but only on that browser/device.
-
-### Resetting the demo
-
-Open **Demo Guide** in the topbar and use **Reset demo data** (with confirmation) to erase
-all local changes and restore the original seeded data and the Admin role. This is also
-useful before starting a fresh live demo.
-
-### Development
-
-Run all commands from the repository root — npm workspaces forwards them to `apps/web`:
-
-```bash
-npm install
-npm run dev          # start the dev server
-npm run typecheck    # tsc --noEmit
-npm run lint         # eslint
-```
-
-Open [http://localhost:3000](http://localhost:3000) — this is the live ERP app.
-The marketing landing page is at [http://localhost:3000/landing](http://localhost:3000/landing).
-
-### Production build & deployment
-
-```bash
-npm run build
-npm run start
-```
-
-Deploys cleanly to [Vercel](https://vercel.com) with no environment variables or database
-required, since all persistence is client-side `localStorage`. Because the app now lives in
-`apps/web`, the Vercel project's **Root Directory** setting must be `apps/web`, not `.`.
-
-### Backend foundation (apps/api)
-
-A NestJS + PostgreSQL + Prisma backend foundation lives in `apps/api` — organizations,
-users, memberships (with roles mirroring the frontend's demo roles), an audit log
-foundation, and health endpoints. Full setup instructions (Docker Compose for local
-Postgres, environment variables, migration/seed commands, tenant-isolation rules, and
-what's intentionally not implemented yet) are in
-[`docs/BACKEND_FOUNDATION.md`](docs/BACKEND_FOUNDATION.md).
-
-```bash
-docker compose up -d          # start local PostgreSQL
-cp apps/api/.env.example apps/api/.env
-npm run prisma:migrate        # apply migrations
-npm run dev:api                # http://localhost:4000
-```
-
-### Auth + organizations (apps/api)
-
-Real email/password auth (Argon2 hashing, JWT access tokens, rotating refresh tokens) and
-organization/membership management now run on top of that foundation — registration
-creates a User, an Organization, and an ADMIN Membership together; role-based guards
-enforce admin-only actions, cross-organization isolation, and last-admin protection.
-Endpoint contracts, the token/refresh strategy, and security notes are in
-[`docs/AUTH_ONBOARDING.md`](docs/AUTH_ONBOARDING.md). A real `/auth/login` +
-`/auth/register` UI, and `/settings/organization` + `/settings/members` admin pages, are
-described in [`docs/CONNECTED_MODE_AUTH_UI.md`](docs/CONNECTED_MODE_AUTH_UI.md) — like the
-API itself, none of this is reachable from the live demo unless Connected Mode is enabled
-locally (see below).
-
-### Customers API + Connected Mode
-
-The first ERP business module (Customers) now has a real, multi-tenant, role-authorized API
-in `apps/api`, and the frontend's Customers page can optionally load/mutate data through it
-instead of `localStorage` — an opt-in, per-module **Connected Mode**:
-
-```bash
-# apps/web/.env.local
-NEXT_PUBLIC_DATA_MODE=demo   # default — current localStorage behavior, unchanged
-NEXT_PUBLIC_DATA_MODE=api    # Customers page only: uses apps/api instead
-```
-
-This defaults to `demo` everywhere (including the production Vercel deployment, which never
-sets this variable) and, even when enabled, only ever affects Customers, Orders, Dispatch,
-Finance, and the `/settings/*` admin pages — every other module and the demo role switcher
-are unchanged. Visiting a Connected Mode page while signed out redirects to a real
-`/auth/login` page (see [`docs/CONNECTED_MODE_AUTH_UI.md`](docs/CONNECTED_MODE_AUTH_UI.md))
-and back afterward. Full API contracts, data-mode behavior, and local testing steps are in
-[`docs/CUSTOMERS_API.md`](docs/CUSTOMERS_API.md).
-
-### Orders + Dispatch (apps/api)
-
-Drivers, Vehicles, Orders, and Dispatch now have real, tested, multi-tenant, role-authorized
-APIs too — order status transitions, driver/vehicle assignment (with capacity checks and
-double-booking prevention), and cancellation are all enforced server-side, not just in the
-UI. `/orders` and `/dispatch` gained the same opt-in Connected Mode as Customers; Drivers
-and Vehicles are API-complete but have no Connected Mode UI yet (documented, not an
-oversight). Full business rules, endpoints, role matrix, and a separate `npm run
-seed:test-org` command for creating a clearly-labelled demo organization (as opposed to an
-empty real one, which is just normal registration) are in
-[`docs/ORDERS_DISPATCH_API.md`](docs/ORDERS_DISPATCH_API.md).
-
-### Finance (apps/api)
-
-Invoices, Payments, and Expenses now have a real, tested, multi-tenant, role-authorized
-API too — totals are always calculated server-side from line items (never trusted from
-the client), payments atomically update an invoice's paid amount/balance/status in one
-transaction, overdue status is recomputed on read, and only approved expenses count
-toward order profitability. `/finance` gained the same opt-in Connected Mode as the other
-migrated modules, keeping its existing 4-tab (Dashboard/Invoices/Payments/Expenses)
-layout but with real numbers — a brand-new organization shows zeroes, not fake demo KPIs.
-Full business rules, endpoints, role matrix, and the extended `npm run seed:test-org`
-(now including invoices/payments/expenses) are in
-[`docs/FINANCE_API.md`](docs/FINANCE_API.md).
-
-### What this demo is not
-
-FlowERP AI's live demo does not use a real external AI API, real GPS tracking, real
-authentication, or production-grade security — these would be part of a production
-deployment, not this portfolio demo. `apps/api` now has real auth, organization management,
-and Customers/Drivers/Vehicles/Orders/Dispatch/Finance APIs plus a real sign-in/
-registration/admin-settings UI, but the live demo is not connected to any of it by
-default, and Reports, Notifications, and the AI Assistant have not been migrated yet. The
-Connected Mode session storage is also a documented local-development tradeoff (in-memory access token,
-optionally-persisted refresh token) — see
-[`docs/CONNECTED_MODE_AUTH_UI.md`](docs/CONNECTED_MODE_AUTH_UI.md) for why it isn't
-production-grade as-is. **Direction note:** the demo/localStorage layer, the demo role
-switcher, and the Demo Guide are intentionally being kept for now — they'll be removed once
-enough core modules have real Connected Mode equivalents, not before.
-
----
-
-The `apps/web` frontend is a [Next.js](https://nextjs.org) project originally bootstrapped
-with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app),
-using [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts)
-to load the Geist font family.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Rate limiting is in-memory.** Every API instance counts on its own, so running more
+  than one behind a load balancer multiplies every limit — including the brute-force guard
+  on `/auth/login`. A shared store (Redis) is required before scaling out.
+- **There is no password-reset email.** No mail provider is configured, so
+  `/auth/forgot-password` directs the user to an admin or to support rather than claiming
+  an email was sent.
+- **Tokens live in `sessionStorage`.** Closing the tab ends the session. This keeps a
+  refresh token out of `localStorage`, where any injected script could read it.
+- **`npm run lint:api` does not pass.** It reports ~127 pre-existing errors, mostly
+  `no-unsafe-*` from `any` in `dispatches.service.ts`, and it also lints stale `.d.ts`
+  build artifacts under `apps/api/test/`. `npm run lint` (the web app) is clean and is the
+  one wired into the pull-request gate.
+- **The AI Assistant is a placeholder.** It is planned as a separate read-only,
+  role-scoped feature over the live ERP data.
