@@ -36,6 +36,10 @@ export interface CurrentUser {
     email: string;
     firstName: string;
     lastName: string;
+    /// FlowERP staff rather than a customer. Used only to decide whether to
+    /// render the Leads screen — the API's PlatformAdminGuard is what actually
+    /// protects the data.
+    isPlatformAdmin: boolean;
   };
   organization: {
     id: string;

@@ -22,6 +22,7 @@ import { Route as AppFinanceRouteImport } from './routes/app.finance'
 import { Route as AppAiAssistantRouteImport } from './routes/app.ai-assistant'
 import { Route as AppVehiclesIndexRouteImport } from './routes/app.vehicles.index'
 import { Route as AppOrdersIndexRouteImport } from './routes/app.orders.index'
+import { Route as AppLeadsIndexRouteImport } from './routes/app.leads.index'
 import { Route as AppDriversIndexRouteImport } from './routes/app.drivers.index'
 import { Route as AppDispatchesIndexRouteImport } from './routes/app.dispatches.index'
 import { Route as AppCustomersIndexRouteImport } from './routes/app.customers.index'
@@ -99,6 +100,11 @@ const AppVehiclesIndexRoute = AppVehiclesIndexRouteImport.update({
 const AppOrdersIndexRoute = AppOrdersIndexRouteImport.update({
   id: '/orders/',
   path: '/orders/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppLeadsIndexRoute = AppLeadsIndexRouteImport.update({
+  id: '/leads/',
+  path: '/leads/',
   getParentRoute: () => AppRoute,
 } as any)
 const AppDriversIndexRoute = AppDriversIndexRouteImport.update({
@@ -192,6 +198,7 @@ export interface FileRoutesByFullPath {
   '/app/customers/': typeof AppCustomersIndexRoute
   '/app/dispatches/': typeof AppDispatchesIndexRoute
   '/app/drivers/': typeof AppDriversIndexRoute
+  '/app/leads/': typeof AppLeadsIndexRoute
   '/app/orders/': typeof AppOrdersIndexRoute
   '/app/vehicles/': typeof AppVehiclesIndexRoute
 }
@@ -219,6 +226,7 @@ export interface FileRoutesByTo {
   '/app/customers': typeof AppCustomersIndexRoute
   '/app/dispatches': typeof AppDispatchesIndexRoute
   '/app/drivers': typeof AppDriversIndexRoute
+  '/app/leads': typeof AppLeadsIndexRoute
   '/app/orders': typeof AppOrdersIndexRoute
   '/app/vehicles': typeof AppVehiclesIndexRoute
 }
@@ -248,6 +256,7 @@ export interface FileRoutesById {
   '/app/customers/': typeof AppCustomersIndexRoute
   '/app/dispatches/': typeof AppDispatchesIndexRoute
   '/app/drivers/': typeof AppDriversIndexRoute
+  '/app/leads/': typeof AppLeadsIndexRoute
   '/app/orders/': typeof AppOrdersIndexRoute
   '/app/vehicles/': typeof AppVehiclesIndexRoute
 }
@@ -278,6 +287,7 @@ export interface FileRouteTypes {
     | '/app/customers/'
     | '/app/dispatches/'
     | '/app/drivers/'
+    | '/app/leads/'
     | '/app/orders/'
     | '/app/vehicles/'
   fileRoutesByTo: FileRoutesByTo
@@ -305,6 +315,7 @@ export interface FileRouteTypes {
     | '/app/customers'
     | '/app/dispatches'
     | '/app/drivers'
+    | '/app/leads'
     | '/app/orders'
     | '/app/vehicles'
   id:
@@ -333,6 +344,7 @@ export interface FileRouteTypes {
     | '/app/customers/'
     | '/app/dispatches/'
     | '/app/drivers/'
+    | '/app/leads/'
     | '/app/orders/'
     | '/app/vehicles/'
   fileRoutesById: FileRoutesById
@@ -435,6 +447,13 @@ declare module '@tanstack/react-router' {
       path: '/orders'
       fullPath: '/app/orders/'
       preLoaderRoute: typeof AppOrdersIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/leads/': {
+      id: '/app/leads/'
+      path: '/leads'
+      fullPath: '/app/leads/'
+      preLoaderRoute: typeof AppLeadsIndexRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/drivers/': {
@@ -552,6 +571,7 @@ interface AppRouteChildren {
   AppCustomersIndexRoute: typeof AppCustomersIndexRoute
   AppDispatchesIndexRoute: typeof AppDispatchesIndexRoute
   AppDriversIndexRoute: typeof AppDriversIndexRoute
+  AppLeadsIndexRoute: typeof AppLeadsIndexRoute
   AppOrdersIndexRoute: typeof AppOrdersIndexRoute
   AppVehiclesIndexRoute: typeof AppVehiclesIndexRoute
 }
@@ -577,6 +597,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppCustomersIndexRoute: AppCustomersIndexRoute,
   AppDispatchesIndexRoute: AppDispatchesIndexRoute,
   AppDriversIndexRoute: AppDriversIndexRoute,
+  AppLeadsIndexRoute: AppLeadsIndexRoute,
   AppOrdersIndexRoute: AppOrdersIndexRoute,
   AppVehiclesIndexRoute: AppVehiclesIndexRoute,
 }

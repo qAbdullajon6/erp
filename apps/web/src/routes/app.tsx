@@ -20,6 +20,7 @@ import {
   BarChart3,
   PackageCheck,
   Users,
+  Inbox,
 } from "lucide-react";
 
 export const Route = createFileRoute("/app")({
@@ -40,6 +41,9 @@ type NavItem = {
   /// in DEFAULT_NAV. Kept in step with each controller's read-role list — a
   /// link a role cannot use is worse than no link, because it 403s on click.
   roles?: MembershipRole[];
+  /// FlowERP staff only, regardless of role. The API enforces this with
+  /// PlatformAdminGuard; hiding the link is a courtesy, not the control.
+  platformAdminOnly?: boolean;
 };
 
 const DRIVER_NAV: NavItem[] = [
@@ -74,6 +78,9 @@ const DEFAULT_NAV: NavItem[] = [
   { icon: Truck, label: "Vehicles", path: "/app/vehicles", roles: FLEET_ROLES },
   { icon: Wallet, label: "Finance", path: "/app/finance" },
   { icon: BarChart3, label: "Reports", path: "/app/reports" },
+  // Demo requests from the marketing site. They belong to FlowERP, not to any
+  // customer organization, so no MembershipRole can reach them.
+  { icon: Inbox, label: "Leads", path: "/app/leads", platformAdminOnly: true },
   { icon: Sparkles, label: "AI Assistant", path: "/app/ai-assistant" },
   { icon: Settings, label: "Settings", path: "/app/settings" },
 ];
@@ -122,10 +129,14 @@ function AppShell() {
   // "Drivers", or a SALES_CRM_MANAGER clicking "Dispatches", used to land on a
   // screen the API refuses to serve them.
   const role = (currentUser?.membership.role ?? "") as MembershipRole;
+  const isPlatformAdmin = currentUser?.user.isPlatformAdmin === true;
   const nav =
     role === "DRIVER"
       ? DRIVER_NAV
-      : DEFAULT_NAV.filter((item) => !item.roles || item.roles.includes(role));
+      : DEFAULT_NAV.filter(
+          (item) =>
+            (!item.roles || item.roles.includes(role)) && (!item.platformAdminOnly || isPlatformAdmin),
+        );
 
   const isActive = (path: string) => {
     if (path === "/app") {

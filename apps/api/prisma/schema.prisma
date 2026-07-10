@@ -208,6 +208,13 @@ model User {
   /// organization by an admin) before ever setting a password.
   passwordHash String?
   status       UserStatus @default(ACTIVE)
+  /// FlowERP staff, not a customer. Grants access to platform-wide data that
+  /// belongs to no organization — currently the Lead pipeline captured from
+  /// the marketing site. Deliberately separate from MembershipRole.ADMIN,
+  /// which only ever means "admin of one customer organization": a customer's
+  /// admin must never see another company's demo request. Nothing in the
+  /// product grants this flag; it is set by seed or by hand.
+  isPlatformAdmin Boolean @default(false)
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
   /// Soft-delete marker — see Organization.deletedAt.

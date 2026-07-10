@@ -9,4 +9,7 @@ export interface CurrentUserPayload {
   organizationId: string;
   role: MembershipRole;
   email: string;
+  /// FlowERP staff. Orthogonal to `role`, which is always scoped to one
+  /// customer organization. See User.isPlatformAdmin in schema.prisma.
+  isPlatformAdmin: boolean;
 }
