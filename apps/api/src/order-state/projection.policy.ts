@@ -1,4 +1,9 @@
 import { DispatchStatus, OrderStatus } from "@prisma/client";
+// R13's chain and its ordering live in ONE place (TD-011). This file used to carry
+// its own copies; adding a dispatch state then meant editing three tables, and the
+// compiler would not have told you if you missed one. Importing keeps this policy
+// pure — dispatch-transitions.ts is a plain table, no Nest, no Prisma client.
+import { DISPATCH_PROGRESS, DISPATCH_SEQUENCE } from "../dispatch/dispatch-transitions";
 
 /// ProjectionPolicy — ADR-001 Phase 4, Amendment B.
 ///
@@ -86,18 +91,6 @@ const OPERATIONAL_SEQUENCE: OrderStatus[] = [
   "DELIVERED",
 ];
 
-/// How far along a dispatch is. The governing dispatch of an order is the one
-/// that has progressed furthest — see aggregate() for why.
-const DISPATCH_PROGRESS: Record<DispatchStatus, number> = {
-  CANCELLED: 0,
-  DRAFT: 1,
-  ASSIGNED: 2,
-  EN_ROUTE_TO_PICKUP: 3,
-  AT_PICKUP: 4,
-  IN_TRANSIT: 5,
-  DELIVERED: 6,
-};
-
 /// THE projection table (ADR-001 Amendment B, Z1).
 ///
 /// EN_ROUTE_TO_PICKUP collapses onto ASSIGNED because the order has no notion of
@@ -119,17 +112,6 @@ const PROJECTION: Record<DispatchStatus, OrderStatus | null> = {
   // nothing, but ALL of them cancelled means the order is back in the pool (R8).
   CANCELLED: null,
 };
-
-/// The dispatch's own forward chain (R13), needed to work out how many steps a
-/// single order-level request implies.
-const DISPATCH_SEQUENCE: DispatchStatus[] = [
-  "DRAFT",
-  "ASSIGNED",
-  "EN_ROUTE_TO_PICKUP",
-  "AT_PICKUP",
-  "IN_TRANSIT",
-  "DELIVERED",
-];
 
 /// The INVERSE of the projection table: the dispatch state that produces a given
 /// operational order state.

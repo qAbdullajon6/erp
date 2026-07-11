@@ -1,4 +1,5 @@
 import { DispatchStatus, PrismaClient } from "@prisma/client";
+import { ACTIVE_DISPATCH_STATUSES } from "../dispatch/assignment/assignment.queries";
 
 /// TD-005 — reconcile dispatches that drifted away from the order they execute.
 ///
@@ -53,13 +54,9 @@ export interface RepairReport {
   repaired: RepairEntry[];
 }
 
-/// A dispatch in one of these states reserves its driver and vehicle (R1).
-const RESERVING: DispatchStatus[] = [
-  "ASSIGNED",
-  "EN_ROUTE_TO_PICKUP",
-  "AT_PICKUP",
-  "IN_TRANSIT",
-];
+// R1's reserving set is NOT redeclared here. It used to be — a second copy called
+// RESERVING, identical to ACTIVE_DISPATCH_STATUSES on the day it was written and
+// free to drift from it on any day after. Imported instead (TD-010, AR1).
 
 /// Where a drifted dispatch should end up, given what its order actually did.
 ///
@@ -112,7 +109,7 @@ export async function repairDriftedDispatches(
       orderStatus: dispatch.order.status,
       from: dispatch.status,
       to: target,
-      wasPhantomReservation: RESERVING.includes(dispatch.status),
+      wasPhantomReservation: ACTIVE_DISPATCH_STATUSES.includes(dispatch.status),
     });
 
     if (dryRun) continue;

@@ -157,37 +157,75 @@ test('RC5: driver moves their own delivery ASSIGNED -> DELIVERED', async ({ requ
   console.log(`[RC5] assign to linked driver: ${assign.status()}`);
   if (assign.status() >= 400) fail('P1', `assign to linked driver returned ${assign.status()} ${await assign.text()}`);
 
-  // The driver only ever sees their own work.
-  const mine = await request.get(`${API}/orders/my`, { headers: driver });
-  console.log(`[RC5] GET /orders/my: ${mine.status()}`);
+  // A driver EXECUTES a dispatch (ADR-001). They used to read their work from
+  // /orders/my, which found it by Order.driverId — a projection, a copy of what the
+  // dispatch says. They now read the original.
+  const mine = await request.get(`${API}/dispatches/my`, { headers: driver });
+  console.log(`[RC5] GET /dispatches/my: ${mine.status()}`);
   if (mine.status() !== 200) {
-    fail('P0', `driver cannot list their deliveries: ${mine.status()}`);
+    fail('P0', `driver cannot list their dispatches: ${mine.status()} ${await mine.text()}`);
     return;
   }
-  // /orders/my returns a plain array, not the paginated { items, meta } shape
-  // the org-wide list uses.
-  const items = (await mine.json()).data as { id: string }[];
-  const found = items.some((o) => o.id === order.id);
-  console.log(`[RC5] assigned order visible to driver: ${found} (of ${items.length})`);
-  if (!found) fail('P0', 'the order assigned to this driver is missing from /orders/my');
 
-  for (const status of ['PICKED_UP', 'IN_TRANSIT', 'DELIVERED']) {
-    const step = await request.post(`${API}/orders/my/${order.id}/status`, { headers: driver, data: { status } });
-    console.log(`[RC5] driver -> ${status}: ${step.status()}`);
-    if (step.status() >= 400) fail('P0', `driver ${status} returned ${step.status()} ${await step.text()}`);
+  // A plain array, not the paginated { items, meta } the org-wide lists use.
+  const items = (await mine.json()).data as { id: string; order: { id: string } }[];
+  const dispatch = items.find((d) => d.order.id === order.id);
+  console.log(`[RC5] assigned dispatch visible to driver: ${Boolean(dispatch)} (of ${items.length})`);
+  if (!dispatch) {
+    fail('P0', 'the dispatch assigned to this driver is missing from /dispatches/my');
+    return;
   }
+
+  // Walk the trip using the moves the SERVER offers, rather than a hard-coded chain.
+  // A copy of R13 in this file would be a fourth one, and it would rot silently the
+  // day the transition table changes. Driving allowedTransitions means this test
+  // follows the rule instead of restating it.
+  let current = (await (await request.get(`${API}/dispatches/my/${dispatch.id}`, { headers: driver })).json()).data as {
+    status: string;
+    allowedTransitions: string[];
+  };
+  const walked: string[] = [];
+
+  for (let guard = 0; guard < 10 && current.allowedTransitions.length > 0; guard += 1) {
+    const next = current.allowedTransitions[0];
+    const step = await request.post(`${API}/dispatches/my/${dispatch.id}/status`, {
+      headers: driver,
+      data: { status: next },
+    });
+    console.log(`[RC5] driver -> ${next}: ${step.status()}`);
+    if (step.status() >= 400) fail('P0', `driver ${next} returned ${step.status()} ${await step.text()}`);
+    walked.push(next);
+    current = (await step.json()).data as { status: string; allowedTransitions: string[] };
+  }
+
+  console.log(`[RC5] driver walked: ${walked.join(' -> ')}`);
+  // EN_ROUTE_TO_PICKUP is the point of Task 8.12: the driver can now record setting
+  // off, at the time they set off. It used to be backfilled with the timestamp of
+  // their arrival, because only the order API was reachable.
+  if (!walked.includes('EN_ROUTE_TO_PICKUP')) fail('P1', 'the driver could not record EN_ROUTE_TO_PICKUP');
+  if (current.status !== 'DELIVERED') fail('P0', `driver ended on ${current.status}, expected DELIVERED`);
+
+  // The order is a projection: delivering the dispatch must complete it (R3, R7).
+  const projected = (await (await request.get(`${API}/orders/${order.id}`, { headers: admin })).json()).data as {
+    status: string;
+    deliveredAt: string | null;
+  };
+  console.log(`[RC5] order projected to: ${projected.status}`);
+  if (projected.status !== 'DELIVERED') fail('P0', `order did not follow its dispatch: ${projected.status}`);
+  if (!projected.deliveredAt) fail('P0', 'the delivered order carries no deliveredAt');
 
   // A driver must not reach anyone else's data.
   const forbidden = await request.get(`${API}/orders`, { headers: driver });
   console.log(`[RC5] driver GET /orders (all): ${forbidden.status()} (expect 403)`);
   if (forbidden.status() !== 403) fail('P0', `driver reached the org-wide order list: ${forbidden.status()}`);
 
-  const cancelAttempt = await request.post(`${API}/orders/my/${order.id}/status`, {
+  // Cancelling is an operational decision, not a driver's.
+  const cancelAttempt = await request.post(`${API}/dispatches/my/${dispatch.id}/status`, {
     headers: driver,
     data: { status: 'CANCELLED' },
   });
-  console.log(`[RC5] driver cancelling own order: ${cancelAttempt.status()} (expect 4xx)`);
-  if (cancelAttempt.status() < 400) fail('P0', 'a driver can cancel an order');
+  console.log(`[RC5] driver cancelling own dispatch: ${cancelAttempt.status()} (expect 4xx)`);
+  if (cancelAttempt.status() < 400) fail('P0', 'a driver can cancel a dispatch');
 });
 
 test('RC6: accountant and sales see only what they may', async ({ request }) => {
