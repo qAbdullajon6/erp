@@ -7,6 +7,7 @@ import {
   Logger,
 } from "@nestjs/common";
 import type { Request, Response } from "express";
+import { redactUrlForLog } from "../log-redaction.util";
 
 interface ErrorBody {
   error: {
@@ -58,7 +59,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     if (!isHttpException) {
       this.logger.error(
-        `Unhandled exception on ${request.method} ${request.url}`,
+        // Redact bearer secrets (the invitation token in /invite/:token) —
+        // an unhandled error on that route would otherwise log the raw token.
+        `Unhandled exception on ${request.method} ${redactUrlForLog(request.url)}`,
         exception instanceof Error ? exception.stack : String(exception),
       );
     }

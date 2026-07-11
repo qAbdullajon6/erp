@@ -76,3 +76,12 @@ apps/web/e2e/auth-state.json
 
 # Database dumps written by scripts/backup-postgres.sh — never commit these.
 backups/
+
+# This repo is npm-managed (package-lock.json is the committed lockfile, and the
+# root package.json uses npm `workspaces`, which pnpm does not support). A stray
+# `pnpm install` leaves a .pnpm store in node_modules and symlinks packages into
+# it — which produced two copies of React (npm-flat 19.2.4 vs .pnpm 19.2.7) and
+# 500'd every SSR route with "Cannot read properties of null (reading
+# 'useState')". Ignore the lockfile so it cannot reappear and invite that again.
+pnpm-lock.yaml
+yarn.lock

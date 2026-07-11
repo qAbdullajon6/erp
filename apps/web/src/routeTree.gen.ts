@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppIndexRouteImport } from './routes/app.index'
+import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as AuthSignInRouteImport } from './routes/auth.sign-in'
 import { Route as AuthForgotPasswordRouteImport } from './routes/auth.forgot-password'
 import { Route as AppSettingsRouteImport } from './routes/app.settings'
@@ -26,6 +27,7 @@ import { Route as AppLeadsIndexRouteImport } from './routes/app.leads.index'
 import { Route as AppDriversIndexRouteImport } from './routes/app.drivers.index'
 import { Route as AppDispatchesIndexRouteImport } from './routes/app.dispatches.index'
 import { Route as AppCustomersIndexRouteImport } from './routes/app.customers.index'
+import { Route as InviteTokenAcceptRouteImport } from './routes/invite.$token_.accept'
 import { Route as AppVehiclesCreateRouteImport } from './routes/app.vehicles.create'
 import { Route as AppVehiclesVehicleIdRouteImport } from './routes/app.vehicles.$vehicleId'
 import { Route as AppOrdersCreateRouteImport } from './routes/app.orders.create'
@@ -51,6 +53,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AppRoute,
+} as any)
+const InviteTokenRoute = InviteTokenRouteImport.update({
+  id: '/invite/$token',
+  path: '/invite/$token',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AuthSignInRoute = AuthSignInRouteImport.update({
   id: '/auth/sign-in',
@@ -122,6 +129,11 @@ const AppCustomersIndexRoute = AppCustomersIndexRouteImport.update({
   path: '/customers/',
   getParentRoute: () => AppRoute,
 } as any)
+const InviteTokenAcceptRoute = InviteTokenAcceptRouteImport.update({
+  id: '/invite/$token_/accept',
+  path: '/invite/$token/accept',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppVehiclesCreateRoute = AppVehiclesCreateRouteImport.update({
   id: '/vehicles/create',
   path: '/vehicles/create',
@@ -184,6 +196,7 @@ export interface FileRoutesByFullPath {
   '/app/settings': typeof AppSettingsRoute
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/sign-in': typeof AuthSignInRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/app/': typeof AppIndexRoute
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
   '/app/customers/create': typeof AppCustomersCreateRoute
@@ -195,6 +208,7 @@ export interface FileRoutesByFullPath {
   '/app/orders/create': typeof AppOrdersCreateRoute
   '/app/vehicles/$vehicleId': typeof AppVehiclesVehicleIdRoute
   '/app/vehicles/create': typeof AppVehiclesCreateRoute
+  '/invite/$token/accept': typeof InviteTokenAcceptRoute
   '/app/customers/': typeof AppCustomersIndexRoute
   '/app/dispatches/': typeof AppDispatchesIndexRoute
   '/app/drivers/': typeof AppDriversIndexRoute
@@ -212,6 +226,7 @@ export interface FileRoutesByTo {
   '/app/settings': typeof AppSettingsRoute
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/sign-in': typeof AuthSignInRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/app': typeof AppIndexRoute
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
   '/app/customers/create': typeof AppCustomersCreateRoute
@@ -223,6 +238,7 @@ export interface FileRoutesByTo {
   '/app/orders/create': typeof AppOrdersCreateRoute
   '/app/vehicles/$vehicleId': typeof AppVehiclesVehicleIdRoute
   '/app/vehicles/create': typeof AppVehiclesCreateRoute
+  '/invite/$token/accept': typeof InviteTokenAcceptRoute
   '/app/customers': typeof AppCustomersIndexRoute
   '/app/dispatches': typeof AppDispatchesIndexRoute
   '/app/drivers': typeof AppDriversIndexRoute
@@ -242,6 +258,7 @@ export interface FileRoutesById {
   '/app/settings': typeof AppSettingsRoute
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/sign-in': typeof AuthSignInRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/app/': typeof AppIndexRoute
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
   '/app/customers/create': typeof AppCustomersCreateRoute
@@ -253,6 +270,7 @@ export interface FileRoutesById {
   '/app/orders/create': typeof AppOrdersCreateRoute
   '/app/vehicles/$vehicleId': typeof AppVehiclesVehicleIdRoute
   '/app/vehicles/create': typeof AppVehiclesCreateRoute
+  '/invite/$token_/accept': typeof InviteTokenAcceptRoute
   '/app/customers/': typeof AppCustomersIndexRoute
   '/app/dispatches/': typeof AppDispatchesIndexRoute
   '/app/drivers/': typeof AppDriversIndexRoute
@@ -273,6 +291,7 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/auth/forgot-password'
     | '/auth/sign-in'
+    | '/invite/$token'
     | '/app/'
     | '/app/customers/$customerId'
     | '/app/customers/create'
@@ -284,6 +303,7 @@ export interface FileRouteTypes {
     | '/app/orders/create'
     | '/app/vehicles/$vehicleId'
     | '/app/vehicles/create'
+    | '/invite/$token/accept'
     | '/app/customers/'
     | '/app/dispatches/'
     | '/app/drivers/'
@@ -301,6 +321,7 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/auth/forgot-password'
     | '/auth/sign-in'
+    | '/invite/$token'
     | '/app'
     | '/app/customers/$customerId'
     | '/app/customers/create'
@@ -312,6 +333,7 @@ export interface FileRouteTypes {
     | '/app/orders/create'
     | '/app/vehicles/$vehicleId'
     | '/app/vehicles/create'
+    | '/invite/$token/accept'
     | '/app/customers'
     | '/app/dispatches'
     | '/app/drivers'
@@ -330,6 +352,7 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/auth/forgot-password'
     | '/auth/sign-in'
+    | '/invite/$token'
     | '/app/'
     | '/app/customers/$customerId'
     | '/app/customers/create'
@@ -341,6 +364,7 @@ export interface FileRouteTypes {
     | '/app/orders/create'
     | '/app/vehicles/$vehicleId'
     | '/app/vehicles/create'
+    | '/invite/$token_/accept'
     | '/app/customers/'
     | '/app/dispatches/'
     | '/app/drivers/'
@@ -354,6 +378,8 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   AuthForgotPasswordRoute: typeof AuthForgotPasswordRoute
   AuthSignInRoute: typeof AuthSignInRoute
+  InviteTokenRoute: typeof InviteTokenRoute
+  InviteTokenAcceptRoute: typeof InviteTokenAcceptRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -378,6 +404,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/app/'
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/invite/$token': {
+      id: '/invite/$token'
+      path: '/invite/$token'
+      fullPath: '/invite/$token'
+      preLoaderRoute: typeof InviteTokenRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/auth/sign-in': {
       id: '/auth/sign-in'
@@ -476,6 +509,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/app/customers/'
       preLoaderRoute: typeof AppCustomersIndexRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/invite/$token_/accept': {
+      id: '/invite/$token_/accept'
+      path: '/invite/$token/accept'
+      fullPath: '/invite/$token/accept'
+      preLoaderRoute: typeof InviteTokenAcceptRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/app/vehicles/create': {
       id: '/app/vehicles/create'
@@ -609,6 +649,8 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   AuthForgotPasswordRoute: AuthForgotPasswordRoute,
   AuthSignInRoute: AuthSignInRoute,
+  InviteTokenRoute: InviteTokenRoute,
+  InviteTokenAcceptRoute: InviteTokenAcceptRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

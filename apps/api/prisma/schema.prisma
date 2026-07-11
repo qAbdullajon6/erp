@@ -48,6 +48,16 @@ enum MembershipStatus {
   REMOVED
 }
 
+/// Lifecycle of a staff invitation. There is deliberately no EXPIRED value —
+/// expiry is derived from `Invitation.expiresAt` at read time by the service
+/// layer (the same lazy pattern InvoiceStatus.OVERDUE uses), so no background
+/// job is needed to keep a stored status honest.
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+}
+
 enum CustomerPaymentTerms {
   DUE_ON_RECEIPT
   NET_15
@@ -191,6 +201,7 @@ model Organization {
   notifications           Notification[]
   notificationSettings    NotificationSettings?
   onboardingProgress      OnboardingProgress?
+  invitations             Invitation[]
 
   @@map("organizations")
 }
@@ -199,39 +210,43 @@ model Organization {
 /// Organization (e.g. a consultant working with several logistics
 /// companies), each membership carrying its own role.
 model User {
-  id           String     @id @default(uuid())
-  email        String     @unique
-  firstName    String
-  lastName     String
+  id              String     @id @default(uuid())
+  email           String     @unique
+  firstName       String
+  lastName        String
   /// Argon2id hash — never the plaintext password, never returned by any
   /// endpoint. Nullable because a User can exist (invited into an
   /// organization by an admin) before ever setting a password.
-  passwordHash String?
-  status       UserStatus @default(ACTIVE)
+  passwordHash    String?
+  status          UserStatus @default(ACTIVE)
   /// FlowERP staff, not a customer. Grants access to platform-wide data that
   /// belongs to no organization — currently the Lead pipeline captured from
   /// the marketing site. Deliberately separate from MembershipRole.ADMIN,
   /// which only ever means "admin of one customer organization": a customer's
   /// admin must never see another company's demo request. Nothing in the
   /// product grants this flag; it is set by seed or by hand.
-  isPlatformAdmin Boolean @default(false)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  isPlatformAdmin Boolean    @default(false)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
   /// Soft-delete marker — see Organization.deletedAt.
-  deletedAt    DateTime?
+  deletedAt       DateTime?
 
-  memberships           Membership[]
-  refreshTokens         RefreshToken[]
-  auditLogEntries       AuditLog[]              @relation("AuditLogActor")
-  orderStatusChanges    OrderStatusHistory[]    @relation("OrderStatusChangedBy")
-  dispatchStatusChanges DispatchStatusHistory[] @relation("DispatchStatusChangedBy")
-  approvedExpenses      Expense[]               @relation("ExpenseApprovedBy")
-  createdDispatches     Dispatch[]              @relation("CreatedDispatches")
+  memberships               Membership[]
+  refreshTokens             RefreshToken[]
+  auditLogEntries           AuditLog[]              @relation("AuditLogActor")
+  orderStatusChanges        OrderStatusHistory[]    @relation("OrderStatusChangedBy")
+  dispatchStatusChanges     DispatchStatusHistory[] @relation("DispatchStatusChangedBy")
+  approvedExpenses          Expense[]               @relation("ExpenseApprovedBy")
+  createdDispatches         Dispatch[]              @relation("CreatedDispatches")
   /// Set when this login account belongs to a fleet driver, letting a
   /// DRIVER-role membership resolve "my deliveries" without ever accepting
   /// a client-supplied driverId. Most Users have no linked Driver at all
   /// (dispatchers/admins/etc. never get one) — see Driver.userId.
-  driverProfile         Driver?
+  driverProfile             Driver?
+  /// Invitations this user sent as an org admin. Named relation for
+  /// consistency with the other nullable actor links above (AuditLogActor,
+  /// CreatedDispatches, ...), all of which SetNull when the actor is removed.
+  invitationsSent           Invitation[]            @relation("InvitationInvitedBy")
 
   @@map("users")
 }
@@ -282,6 +297,41 @@ model RefreshToken {
   @@index([userId])
   @@index([organizationId])
   @@map("refresh_tokens")
+}
+
+/// A pending invitation for a person to join one Organization with a given
+/// role. Deliberately separate from User/Membership: the invitee may not have
+/// a User row yet, so there is nothing to hang a Membership on until they
+/// accept — creating the User + Membership is the single transactional step
+/// that acceptance performs. Like RefreshToken, only the SHA-256 `tokenHash`
+/// is stored; the raw token lives only in the emailed link and is never
+/// persisted. A partial unique index (added by raw SQL in this model's
+/// migration, since Prisma's DSL can't express `WHERE ... IS NULL` or
+/// `lower(email)`) enforces "at most one open invitation per organization +
+/// email" — an open invite being one that is neither accepted nor revoked —
+/// so a resend rotates the token in place rather than stacking rows.
+model Invitation {
+  id              String           @id @default(uuid())
+  organizationId  String
+  /// Stored lowercase by the service layer; the partial unique index also
+  /// applies lower() so casing can never split "one open invite per email".
+  email           String
+  role            MembershipRole
+  tokenHash       String           @unique
+  status          InvitationStatus @default(PENDING)
+  invitedByUserId String?
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy    User?        @relation("InvitationInvitedBy", fields: [invitedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@map("invitations")
 }
 
 /// Append-only audit trail. `organizationId` is nullable specifically for
@@ -379,11 +429,11 @@ model Driver {
   /// managing the driver record. Most Driver rows have no linked User.
   userId         String?      @unique
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User?        @relation(fields: [userId], references: [id])
-  orders       Order[]
-  dispatches   Dispatch[]
-  expenses     Expense[]
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user                User?                @relation(fields: [userId], references: [id])
+  orders              Order[]
+  dispatches          Dispatch[]
+  expenses            Expense[]
 
   @@unique([organizationId, employeeCode])
   @@index([organizationId])
@@ -412,10 +462,10 @@ model Vehicle {
   /// Soft-archive marker — there is no hard-delete endpoint for vehicles.
   archivedAt       DateTime?
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  orders       Order[]
-  dispatches   Dispatch[]
-  expenses     Expense[]
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orders              Order[]
+  dispatches          Dispatch[]
+  expenses            Expense[]
 
   @@unique([organizationId, vehicleCode])
   @@index([organizationId])

@@ -13,6 +13,8 @@ import {
   type MembershipRole,
 } from '@/lib/api/organizations';
 import { AddMemberDialog } from './add-member-dialog';
+import { InviteMemberDialog } from './invite-member-dialog';
+import { PendingInvitations } from './pending-invitations';
 import { UserMinus } from 'lucide-react';
 
 const ROLES: MembershipRole[] = [
@@ -62,7 +64,10 @@ export function MembersTab() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <p className="text-sm text-muted-foreground">{members?.length ?? 0} members</p>
-        <AddMemberDialog />
+        <div className="flex flex-wrap items-center gap-2">
+          <InviteMemberDialog />
+          <AddMemberDialog />
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-lg border border-brand/10">
@@ -150,6 +155,8 @@ export function MembersTab() {
           </div>
         )}
       </div>
+
+      <PendingInvitations />
     </div>
   );
 }
