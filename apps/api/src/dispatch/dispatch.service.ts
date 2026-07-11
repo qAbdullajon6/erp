@@ -1,10 +1,8 @@
 import { Injectable } from "@nestjs/common";
-import { Driver, OrderStatus, Vehicle } from "@prisma/client";
+import { Driver, Vehicle } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { AssignmentQueries, TripSummary } from "./assignment/assignment.queries";
 import { DispatchAvailabilityQueryDto } from "./dto/dispatch-availability-query.dto";
-
-/// Same "currently in flight" set OrdersService uses for double-booking.
-const ACTIVE_ASSIGNMENT_STATUSES: OrderStatus[] = ["ASSIGNED", "PICKED_UP", "IN_TRANSIT"];
 
 function toDriverSummary(driver: Driver) {
   return {
@@ -29,15 +27,7 @@ function toVehicleSummary(vehicle: Vehicle) {
   };
 }
 
-function toOrderSummary(order: {
-  id: string;
-  orderNumber: string;
-  pickupCity: string;
-  deliveryCity: string;
-  pickupDate: Date;
-  deliveryDate: Date;
-  status: OrderStatus;
-}) {
+function toOrderSummary(order: TripSummary) {
   return {
     id: order.id,
     orderNumber: order.orderNumber,
@@ -51,59 +41,62 @@ function toOrderSummary(order: {
 
 @Injectable()
 export class DispatchService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly assignmentQueries: AssignmentQueries,
+  ) {}
 
   /// A read-only aggregation for the Dispatch Board: unassigned (PENDING)
   /// orders, and drivers/vehicles split by their administrative status
   /// (Driver.status / Vehicle.status — a coarse, manually-managed field)
-  /// further cross-referenced against orders currently ASSIGNED/PICKED_UP/
-  /// IN_TRANSIT to compute who's actually busy right now vs. genuinely free.
-  /// Deliberately reads Prisma directly rather than depending on
-  /// Drivers/VehiclesService, to keep this module decoupled from theirs.
+  /// cross-referenced against who is actually committed right now.
+  ///
+  /// "Committed right now" is deliberately NOT computed here: AssignmentQueries
+  /// owns that definition (AR4), which is how the board finally agrees with the
+  /// assignment checks. It used to derive busy-ness from orders alone, so a
+  /// driver held by a dispatch showed up as free.
   async board(organizationId: string) {
-    const [unassignedOrders, drivers, vehicles, activeOrders] = await Promise.all([
+    const [unassignedOrders, drivers, vehicles, reservations] = await Promise.all([
       this.prisma.order.findMany({
         where: { organizationId, status: "PENDING" },
         orderBy: { pickupDate: "asc" },
       }),
       this.prisma.driver.findMany({ where: { organizationId, archivedAt: null } }),
       this.prisma.vehicle.findMany({ where: { organizationId, archivedAt: null } }),
-      this.prisma.order.findMany({
-        where: { organizationId, status: { in: ACTIVE_ASSIGNMENT_STATUSES } },
-      }),
+      // No window: the board asks "who is committed at all", not "who is free
+      // between these dates".
+      this.assignmentQueries.reservationsIn(organizationId),
     ]);
 
-    const orderByDriverId = new Map(
-      activeOrders.filter((o) => o.driverId).map((o) => [o.driverId as string, o]),
-    );
-    const orderByVehicleId = new Map(
-      activeOrders.filter((o) => o.vehicleId).map((o) => [o.vehicleId as string, o]),
-    );
+    const heldDriver = (id: string) =>
+      AssignmentQueries.reservationFor(reservations, "driverId", id);
+    const heldVehicle = (id: string) =>
+      AssignmentQueries.reservationFor(reservations, "vehicleId", id);
 
     return {
       unassignedOrders: unassignedOrders.map(toOrderSummary),
       drivers: {
         available: drivers
-          .filter((d) => d.status === "ACTIVE" && !orderByDriverId.has(d.id))
+          .filter((d) => d.status === "ACTIVE" && !heldDriver(d.id))
           .map(toDriverSummary),
         busy: drivers
-          .filter((d) => d.status === "ACTIVE" && orderByDriverId.has(d.id))
+          .filter((d) => d.status === "ACTIVE" && heldDriver(d.id))
           .map((d) => ({
             driver: toDriverSummary(d),
-            currentOrder: toOrderSummary(orderByDriverId.get(d.id)!),
+            currentOrder: toOrderSummary(heldDriver(d.id)!.trip),
           })),
         onLeave: drivers.filter((d) => d.status === "ON_LEAVE").map(toDriverSummary),
         inactive: drivers.filter((d) => d.status === "INACTIVE").map(toDriverSummary),
       },
       vehicles: {
         available: vehicles
-          .filter((v) => v.status === "AVAILABLE" && !orderByVehicleId.has(v.id))
+          .filter((v) => v.status === "AVAILABLE" && !heldVehicle(v.id))
           .map(toVehicleSummary),
         busy: vehicles
-          .filter((v) => v.status === "AVAILABLE" && orderByVehicleId.has(v.id))
+          .filter((v) => v.status === "AVAILABLE" && heldVehicle(v.id))
           .map((v) => ({
             vehicle: toVehicleSummary(v),
-            currentOrder: toOrderSummary(orderByVehicleId.get(v.id)!),
+            currentOrder: toOrderSummary(heldVehicle(v.id)!.trip),
           })),
         inUse: vehicles.filter((v) => v.status === "IN_USE").map(toVehicleSummary),
         maintenance: vehicles.filter((v) => v.status === "MAINTENANCE").map(toVehicleSummary),
@@ -112,12 +105,16 @@ export class DispatchService {
     };
   }
 
-  /// Who's assignable right now (or for a given date range). Without dates,
+  /// Who is assignable right now (or for a given date range). Without dates,
   /// this is just the administrative snapshot (ACTIVE drivers, AVAILABLE
   /// vehicles). With both `pickupDate` and `deliveryDate`, it additionally
-  /// excludes anyone with an overlapping ASSIGNED/PICKED_UP/IN_TRANSIT order
-  /// in that range — the same rule OrdersService.assign enforces, exposed
-  /// here so the frontend can pre-check before submitting an assignment.
+  /// excludes anyone already committed in that window.
+  ///
+  /// This is the endpoint the frontend pre-checks against before submitting an
+  /// assignment, so it MUST agree with AssignmentPolicy — and now it does, by
+  /// construction, because both ask AssignmentQueries the same question (AR4).
+  /// Previously they disagreed: this read orders, the dispatch check read
+  /// dispatches, and the form could offer a driver the API would then reject.
   async availability(organizationId: string, query: DispatchAvailabilityQueryDto) {
     const [drivers, vehicles] = await Promise.all([
       this.prisma.driver.findMany({ where: { organizationId, archivedAt: null, status: "ACTIVE" } }),
@@ -131,24 +128,15 @@ export class DispatchService {
       };
     }
 
-    const pickupDate = new Date(query.pickupDate);
-    const deliveryDate = new Date(query.deliveryDate);
-
-    const overlapping = await this.prisma.order.findMany({
-      where: {
-        organizationId,
-        status: { in: ACTIVE_ASSIGNMENT_STATUSES },
-        pickupDate: { lte: deliveryDate },
-        deliveryDate: { gte: pickupDate },
-      },
-      select: { driverId: true, vehicleId: true },
+    const reservations = await this.assignmentQueries.reservationsIn(organizationId, {
+      pickupDate: new Date(query.pickupDate),
+      deliveryDate: new Date(query.deliveryDate),
     });
-    const busyDriverIds = new Set(overlapping.filter((o) => o.driverId).map((o) => o.driverId));
-    const busyVehicleIds = new Set(overlapping.filter((o) => o.vehicleId).map((o) => o.vehicleId));
+    const busy = AssignmentQueries.busyResourceIds(reservations);
 
     return {
-      drivers: drivers.filter((d) => !busyDriverIds.has(d.id)).map(toDriverSummary),
-      vehicles: vehicles.filter((v) => !busyVehicleIds.has(v.id)).map(toVehicleSummary),
+      drivers: drivers.filter((d) => !busy.driverIds.has(d.id)).map(toDriverSummary),
+      vehicles: vehicles.filter((v) => !busy.vehicleIds.has(v.id)).map(toVehicleSummary),
     };
   }
 }

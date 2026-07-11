@@ -485,7 +485,13 @@ describe("Orders + Dispatch (e2e)", () => {
         .set("Authorization", `Bearer ${admin.accessToken}`)
         .send({ driverId: driver.id, vehicleId: vehicle.id })
         .expect(409);
-      expect((conflictRes.body as ErrorBody).error.message).toMatch(/overlapping order/i);
+      // Still a 409, still the same rule. The message now names the DISPATCH that
+      // holds the driver rather than the order, because since ADR-001 Phase 4
+      // assigning an order IS creating a dispatch, and the dispatch is the record
+      // that actually reserves the resource (R3).
+      expect((conflictRes.body as ErrorBody).error.message).toMatch(
+        /already assigned to dispatch DSP-\d+ during the requested time range/i,
+      );
 
       // Starts the day after orderA ends -> no overlap, allowed.
       const orderC = await createOrder(admin, customer.id, {

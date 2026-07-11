@@ -24,20 +24,11 @@ import {
   type UpdateOrderInput,
   type OrderStatus,
 } from '@/lib/api/orders';
-import { useDriversList, driversAPI, type Driver } from '@/lib/api/drivers';
-import { useVehiclesList, vehiclesAPI, type Vehicle } from '@/lib/api/vehicles';
+import { useAvailability } from '@/lib/api/availability';
+import { driversAPI, type Driver } from '@/lib/api/drivers';
+import { vehiclesAPI, type Vehicle } from '@/lib/api/vehicles';
 import { customersAPI, type Customer } from '@/lib/api/customers';
 import { toast } from 'sonner';
-
-const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  DRAFT: ['PENDING'],
-  PENDING: ['ASSIGNED'],
-  ASSIGNED: ['PICKED_UP'],
-  PICKED_UP: ['IN_TRANSIT'],
-  IN_TRANSIT: ['DELIVERED'],
-  DELIVERED: [],
-  CANCELLED: [],
-};
 
 interface OrderDetailProps {
   orderId: string;
@@ -51,17 +42,18 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
   const { updateStatus, loading: statusLoading } = useUpdateOrderStatus();
   const { cancel, loading: cancelLoading } = useCancelOrder();
 
-  // Fetch drivers and vehicles for assignment
-  const { data: driversData, loading: driversLoading } = useDriversList({
-    limit: 100,
-    status: 'ACTIVE',
-    includeArchived: false,
-  });
-  const { data: vehiclesData, loading: vehiclesLoading } = useVehiclesList({
-    limit: 100,
-    status: 'AVAILABLE',
-    includeArchived: false,
-  });
+  // Who may take THIS trip. Not "which drivers are employed" — that is what this
+  // used to ask (useDriversList with status: 'ACTIVE'), and it is not availability:
+  // it cannot see that a driver is already booked for these dates, so the dialog
+  // offered people the API then rejected with a 409.
+  //
+  // The window is the order's own pickup/delivery dates, which is exactly the window
+  // AssignmentPolicy will check against (AR4).
+  const { data: availability, loading: availabilityLoading } = useAvailability(
+    order ? { pickupDate: order.pickupDate, deliveryDate: order.deliveryDate } : undefined,
+  );
+  const driversLoading = availabilityLoading;
+  const vehiclesLoading = availabilityLoading;
 
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<UpdateOrderInput>({});
@@ -166,11 +158,16 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
     return <div className="text-center py-12 text-muted-foreground">Order not found</div>;
   }
 
-  // PENDING -> ASSIGNED is only reachable through the Assign panel below
-  // (POST /orders/:id/assign) until a driver and vehicle are set — the
-  // backend rejects a bare status update to ASSIGNED before that, so this
-  // quick-transition button is hidden until it would actually succeed.
-  const allowedTransitions = (ALLOWED_TRANSITIONS[order.status] || []).filter(
+  // Straight from the server (TD-006). This file used to carry a hand-copied
+  // duplicate of the backend's order transition table; it is now the API's answer,
+  // so the screen cannot offer a button the API would refuse.
+  //
+  // PENDING -> ASSIGNED stays filtered out until a driver and vehicle exist: the
+  // transition is legal in the graph, but it is reachable only through the Assign
+  // panel below (POST /orders/:id/assign), and a bare status update would be
+  // rejected. That is a fact about which ENDPOINT to use, not about which
+  // transitions exist — so it is a UI routing decision, not a business rule.
+  const allowedTransitions = order.allowedTransitions.filter(
     (status) => status !== 'ASSIGNED' || (order.driverId && order.vehicleId),
   );
   const canEdit = order.status !== 'DELIVERED' && order.status !== 'CANCELLED';
@@ -206,7 +203,6 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
       await updateOrder(orderId, editData);
       toast.success('Order updated successfully');
       setIsEditing(false);
-      refetch();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update order');
     }
@@ -230,7 +226,9 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
       setDriverId('');
       setVehicleId('');
       setAssignError('');
-      refetch();
+      // No refetch here. The mutation invalidated orders, dispatches and
+      // availability through the shared helper, and React Query refetches whatever
+      // is actually mounted (Task 8.9).
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to assign order';
       setAssignError(message);
@@ -241,7 +239,7 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
     try {
       await updateStatus(orderId, { status: newStatus });
       toast.success(`Order moved to ${newStatus}`);
-      refetch();
+      // Invalidated by the mutation — see useUpdateOrderStatus.
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update status');
     }
@@ -252,7 +250,7 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
       await cancel(orderId, { note: cancelNote });
       toast.success('Order cancelled successfully');
       setShowCancel(false);
-      refetch();
+      // Invalidated by the mutation — see useCancelOrder.
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to cancel order');
     }
@@ -640,7 +638,7 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                     <option value="">
                       {driversLoading ? 'Loading drivers...' : 'Choose a driver'}
                     </option>
-                    {driversData?.items.map((driver) => (
+                    {availability?.drivers.map((driver) => (
                       <option key={driver.id} value={driver.id}>
                         {driver.firstName} {driver.lastName} ({driver.employeeCode})
                       </option>
@@ -659,7 +657,7 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                     <option value="">
                       {vehiclesLoading ? 'Loading vehicles...' : 'Choose a vehicle'}
                     </option>
-                    {vehiclesData?.items.map((vehicle) => (
+                    {availability?.vehicles.map((vehicle) => (
                       <option key={vehicle.id} value={vehicle.id}>
                         {vehicle.plateNumber} - {vehicle.type} ({vehicle.vehicleCode})
                       </option>

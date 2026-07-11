@@ -1,14 +1,39 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { describeError } from './describe-error';
+import { unwrapResponse } from './error';
 import { apiFetch } from './fetch';
+import { useInvalidateOperationalState } from './invalidate';
+import { driverDispatchKeys } from './query-keys';
 
-export type DriverOrderStatus = 'DRAFT' | 'PENDING' | 'ASSIGNED' | 'PICKED_UP' | 'IN_TRANSIT' | 'DELIVERED' | 'CANCELLED';
+/// The driver's API (Task 8.12).
+///
+/// A driver executes a DISPATCH. This file used to talk to `/orders/my/*`, and that
+/// list was found by `Order.driverId` — but since Task 8.6 that column is a
+/// projection, a copy of what the dispatch says. The driver was reading their own
+/// work off a photocopy. It now reads the original: `/dispatches/my`.
+///
+/// What the driver gains by it: the dispatch number, the scheduled window, and the
+/// ability to say EN_ROUTE_TO_PICKUP — a state that previously could not be recorded
+/// when it happened, only backfilled with a false timestamp once they had already
+/// arrived.
 
-/// Only these are ever accepted by POST /orders/my/:id/status — the
-/// backend rejects anything else with 403 (see OrdersService's
-/// DRIVER_ALLOWED_STATUSES). ASSIGNED and CANCELLED are deliberately never
-/// reachable from here: assignment happens through the dispatcher's
-/// /orders/:id/assign, and cancellation is a dispatch decision.
-export type DriverActionableStatus = 'PICKED_UP' | 'IN_TRANSIT' | 'DELIVERED';
+export type DispatchStatus =
+  | 'DRAFT'
+  | 'ASSIGNED'
+  | 'EN_ROUTE_TO_PICKUP'
+  | 'AT_PICKUP'
+  | 'IN_TRANSIT'
+  | 'DELIVERED'
+  | 'CANCELLED';
+
+/// What a driver may set. Never ASSIGNED (committing a driver to a job is the
+/// dispatcher's call) and never CANCELLED (an operational decision above them).
+/// Enforced server-side; this type only stops us writing nonsense.
+export type DriverActionableStatus =
+  | 'EN_ROUTE_TO_PICKUP'
+  | 'AT_PICKUP'
+  | 'IN_TRANSIT'
+  | 'DELIVERED';
 
 export interface MyDeliveryCustomer {
   id: string;
@@ -25,35 +50,44 @@ export interface MyDeliveryVehicle {
   type: string;
 }
 
-export interface MyDeliveryStatusHistoryEntry {
-  id: string;
-  status: DriverOrderStatus;
-  changedByUserId: string | null;
-  note: string | null;
-  createdAt: string;
-}
-
-export interface MyDelivery {
+/// The commercial job the dispatch executes. Context for the driver, not the thing
+/// they are working on — which is why it is nested.
+export interface MyDeliveryOrder {
   id: string;
   orderNumber: string;
   pickupAddress: string;
   pickupCity: string;
-  pickupDate: string;
   deliveryAddress: string;
   deliveryCity: string;
-  deliveryDate: string;
   cargoDescription: string;
   cargoWeightKg: string | null;
-  cargoVolumeM3: string | null;
-  price: string;
-  currency: string;
-  status: DriverOrderStatus;
-  isDelayed: boolean;
-  notes: string | null;
   deliveryNotes: string | null;
-  deliveredAt: string | null;
+  status: string;
+}
+
+export interface MyDeliveryStatusHistoryEntry {
+  id: string;
+  status: DispatchStatus;
+  note: string | null;
+  createdAt: string;
+}
+
+/// A dispatch, as the driver sees it.
+export interface MyDelivery {
+  id: string;
+  dispatchNumber: string;
+  status: DispatchStatus;
+  /// Already narrowed by the server to what a DRIVER may do from here (R13 + the
+  /// driver-safe set). The phone renders a button per entry and decides nothing.
+  allowedTransitions: DriverActionableStatus[];
+  pickupDateScheduled: string;
+  pickupDateActual: string | null;
+  deliveryDateScheduled: string;
+  deliveryDateActual: string | null;
+  notes: string | null;
+  order: MyDeliveryOrder;
   customer: MyDeliveryCustomer;
-  vehicle: MyDeliveryVehicle | null;
+  vehicle: MyDeliveryVehicle;
   statusHistory?: MyDeliveryStatusHistoryEntry[];
 }
 
@@ -69,49 +103,42 @@ export interface DriverProfile {
   licenseExpiry: string | null;
 }
 
-async function unwrap<T>(response: Response, fallbackMessage: string): Promise<T> {
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.message || fallbackMessage);
-  }
-  const result = await response.json();
-  return (result.data ?? result) as T;
-}
-
 class MyDeliveriesAPI {
   async getMyDriverProfile(): Promise<DriverProfile> {
     const response = await apiFetch('/api/drivers/me', { method: 'GET' });
-    return unwrap(response, 'Failed to load your driver profile');
+    return unwrapResponse(response, 'Failed to load your driver profile');
   }
 
-  async list(status?: DriverOrderStatus): Promise<MyDelivery[]> {
-    const qs = status ? `?status=${status}` : '';
-    const response = await apiFetch(`/api/orders/my${qs}`, { method: 'GET' });
-    return unwrap(response, 'Failed to load your deliveries');
+  async list(includeFinished = false): Promise<MyDelivery[]> {
+    const qs = includeFinished ? '?includeFinished=true' : '';
+    const response = await apiFetch(`/api/dispatches/my${qs}`, { method: 'GET' });
+    return unwrapResponse(response, 'Failed to load your deliveries');
   }
 
   async getById(id: string): Promise<MyDelivery> {
-    const response = await apiFetch(`/api/orders/my/${id}`, { method: 'GET' });
-    return unwrap(response, 'Failed to load delivery');
+    const response = await apiFetch(`/api/dispatches/my/${id}`, { method: 'GET' });
+    return unwrapResponse(response, 'Failed to load delivery');
   }
 
-  async updateStatus(id: string, status: DriverActionableStatus, note?: string): Promise<MyDelivery> {
-    const response = await apiFetch(`/api/orders/my/${id}/status`, {
+  async updateStatus(
+    id: string,
+    status: DriverActionableStatus,
+    note?: string,
+  ): Promise<MyDelivery> {
+    const response = await apiFetch(`/api/dispatches/my/${id}/status`, {
       method: 'POST',
       body: JSON.stringify({ status, note }),
     });
-    return unwrap(response, 'Failed to update delivery status');
+    return unwrapResponse(response, 'Failed to update delivery status');
   }
 }
 
 export const myDeliveriesAPI = new MyDeliveriesAPI();
 
-export const myDeliveryKeys = {
-  all: ['my-deliveries'] as const,
-  profile: () => [...myDeliveryKeys.all, 'profile'] as const,
-  lists: () => [...myDeliveryKeys.all, 'list'] as const,
-  detail: (id: string) => [...myDeliveryKeys.all, 'detail', id] as const,
-};
+/// Re-exported from the shared factory so there is exactly one spelling of these
+/// keys (Task 8.9): a key written twice is two caches, and a mutation invalidates
+/// only one of them.
+export const myDeliveryKeys = driverDispatchKeys;
 
 export function useMyDriverProfileQuery(enabled = true) {
   return useQuery({
@@ -134,26 +161,23 @@ export function useMyDeliveryQuery(id: string, enabled = true) {
   return useQuery({
     queryKey: myDeliveryKeys.detail(id),
     queryFn: () => myDeliveriesAPI.getById(id),
-    enabled: enabled && !!id,
+    enabled: enabled && Boolean(id),
   });
 }
 
-/// Invalidates my-deliveries list+detail so the driver's own view always
-/// reflects the just-made change immediately. Note: the dispatcher-facing
-/// Orders/Dispatch pages (`lib/api/orders.ts`, `dispatches.ts`) are NOT
-/// react-query-based at all — they're hand-rolled useState hooks that
-/// always refetch fresh on mount, with no shared cache to invalidate here.
-/// A dispatcher viewing Orders in another session simply sees the new
-/// status next time that page mounts/refetches, same as every other
-/// cross-session update in this app (no websockets/shared cache anywhere).
+/// A driver moving a dispatch is the SAME operational fact a dispatcher moving one
+/// is: the dispatch changes, the order projection follows, and who is free changes.
+/// So it invalidates through the one shared helper (Task 8.9), plus the driver's own
+/// two queries — which the helper knows nothing about, because they are a different
+/// view of the same data under a different key.
 export function useUpdateMyDeliveryStatusMutation(id: string) {
-  const queryClient = useQueryClient();
+  const invalidateOperational = useInvalidateOperationalState();
+
   return useMutation({
     mutationFn: ({ status, note }: { status: DriverActionableStatus; note?: string }) =>
       myDeliveriesAPI.updateStatus(id, status, note),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: myDeliveryKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: myDeliveryKeys.detail(id) });
-    },
+    onSuccess: invalidateOperational,
   });
 }
+
+export { describeError };

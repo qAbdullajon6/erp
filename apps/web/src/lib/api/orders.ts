@@ -1,5 +1,9 @@
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { describeError } from './describe-error';
+import { unwrapResponse } from './error';
 import { apiFetch } from './fetch';
-import { useState, useCallback, useEffect } from 'react';
+import { useInvalidateOperationalState } from './invalidate';
+import { orderKeys } from './query-keys';
 
 export type OrderStatus = 'DRAFT' | 'PENDING' | 'ASSIGNED' | 'PICKED_UP' | 'IN_TRANSIT' | 'DELIVERED' | 'CANCELLED';
 
@@ -20,6 +24,10 @@ export interface Order {
   price: string; // decimal as string
   currency: string;
   status: OrderStatus;
+  /// Which statuses this order may legally move to, straight from the server's own
+  /// transition table (TD-006). The UI does not decide this and must never try: two
+  /// separate frontend copies of that table used to exist. Empty = terminal.
+  allowedTransitions: OrderStatus[];
   isDelayed: boolean;
   driverId: string | null;
   vehicleId: string | null;
@@ -132,13 +140,7 @@ class OrdersAPI {
 
     const response = await apiFetch(url, { method: 'GET' });
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || `Failed to fetch orders: ${response.statusText}`);
-    }
-
-    const result = await response.json();
-    return result.data || result;
+    return unwrapResponse(response, 'Failed to fetch orders');
   }
 
   async getOrder(id: string): Promise<Order> {
@@ -162,13 +164,7 @@ class OrdersAPI {
       body: JSON.stringify(input),
     });
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || 'Failed to create order');
-    }
-
-    const result = await response.json();
-    return result.data;
+    return unwrapResponse(response, 'Failed to create order');
   }
 
   async updateOrder(id: string, input: UpdateOrderInput): Promise<Order> {
@@ -177,13 +173,7 @@ class OrdersAPI {
       body: JSON.stringify(input),
     });
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || 'Failed to update order');
-    }
-
-    const result = await response.json();
-    return result.data;
+    return unwrapResponse(response, 'Failed to update order');
   }
 
   async assignOrder(id: string, input: AssignOrderInput): Promise<Order> {
@@ -192,13 +182,7 @@ class OrdersAPI {
       body: JSON.stringify(input),
     });
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || 'Failed to assign order');
-    }
-
-    const result = await response.json();
-    return result.data;
+    return unwrapResponse(response, 'Failed to assign order');
   }
 
   async updateOrderStatus(id: string, input: UpdateOrderStatusInput): Promise<Order> {
@@ -207,13 +191,7 @@ class OrdersAPI {
       body: JSON.stringify(input),
     });
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || 'Failed to update order status');
-    }
-
-    const result = await response.json();
-    return result.data;
+    return unwrapResponse(response, 'Failed to update order status');
   }
 
   async cancelOrder(id: string, input: CancelOrderInput = {}): Promise<Order> {
@@ -222,185 +200,125 @@ class OrdersAPI {
       body: JSON.stringify(input),
     });
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || 'Failed to cancel order');
-    }
-
-    const result = await response.json();
-    return result.data;
+    return unwrapResponse(response, 'Failed to cancel order');
   }
 }
 
 export const ordersAPI = new OrdersAPI();
 
-// Hooks
+/// Hooks — React Query (Task 8.9).
+///
+/// The return shapes below deliberately match what the manual hooks returned
+/// (`data` / `loading` / `error` / `refetch`, and `assign` / `cancel` / ...), so the
+/// screens did not have to be rewritten around a new API. What changed is
+/// underneath: there is no hand-rolled fetch state any more, and — crucially — no
+/// mutation calls `refetch()` on its neighbours. Server state is invalidated, and
+/// React Query refetches whatever is actually on screen.
+
 export function useOrdersList(query: ListOrdersQuery = {}) {
-  const [data, setData] = useState<Order[]>([]);
-  const [meta, setMeta] = useState({ page: 1, limit: 20, total: 0, totalPages: 0 });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const result = useQuery({
+    queryKey: orderKeys.list(query),
+    queryFn: () => ordersAPI.listOrders(query),
+  });
 
-  const fetch = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await ordersAPI.listOrders(query);
-      setData(result.items);
-      setMeta(result.meta);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load orders');
-      setData([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [query.page, query.limit, query.search, query.status, query.customerId, query.driverId, query.vehicleId, query.sortBy, query.sortOrder]);
-
-  // Auto-fetch on mount and whenever the query changes. `fetch` is keyed off
-  // the individual query fields (not the object identity), so this settles
-  // after one request per distinct query rather than looping.
-  useEffect(() => {
-    fetch();
-  }, [fetch]);
-
-  return { data, meta, loading, error, refetch: fetch };
+  return {
+    data: result.data?.items ?? [],
+    meta: result.data?.meta ?? { page: 1, limit: 20, total: 0, totalPages: 0 },
+    loading: result.isPending,
+    error: result.error ? describeError(result.error, 'Failed to load orders') : null,
+    refetch: result.refetch,
+  };
 }
 
 export function useOrder(id: string) {
-  const [data, setData] = useState<Order | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const result = useQuery({
+    queryKey: orderKeys.detail(id),
+    queryFn: () => ordersAPI.getOrder(id),
+    enabled: Boolean(id),
+  });
 
-  const fetch = useCallback(async () => {
-    if (!id) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await ordersAPI.getOrder(id);
-      setData(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load order');
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
-  // `loading` starts true, so without this the order detail screen renders its
-  // skeleton forever. Matches useDriver/useVehicle/useCustomerDetail.
-  useEffect(() => {
-    fetch();
-  }, [fetch]);
-
-  return { data, loading, error, refetch: fetch };
+  return {
+    data: result.data ?? null,
+    loading: result.isPending,
+    error: result.error ? describeError(result.error, 'Failed to load order') : null,
+    refetch: result.refetch,
+  };
 }
 
 export function useCreateOrder() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const invalidate = useInvalidateOperationalState();
+  const mutation = useMutation({
+    mutationFn: (input: CreateOrderInput) => ordersAPI.createOrder(input),
+    onSuccess: invalidate,
+  });
 
-  const create = useCallback(async (input: CreateOrderInput) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await ordersAPI.createOrder(input);
-      return result;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to create order';
-      setError(message);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  return { create, loading, error };
+  return {
+    create: mutation.mutateAsync,
+    loading: mutation.isPending,
+    error: mutation.error ? describeError(mutation.error, 'Failed to create order') : null,
+  };
 }
 
 export function useUpdateOrder() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const invalidate = useInvalidateOperationalState();
+  const mutation = useMutation({
+    mutationFn: ({ id, input }: { id: string; input: UpdateOrderInput }) =>
+      ordersAPI.updateOrder(id, input),
+    onSuccess: invalidate,
+  });
 
-  const update = useCallback(async (id: string, input: UpdateOrderInput) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await ordersAPI.updateOrder(id, input);
-      return result;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to update order';
-      setError(message);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  return { update, loading, error };
+  return {
+    update: (id: string, input: UpdateOrderInput) => mutation.mutateAsync({ id, input }),
+    loading: mutation.isPending,
+    error: mutation.error ? describeError(mutation.error, 'Failed to update order') : null,
+  };
 }
 
+/// Assigning an order creates or reassigns a DISPATCH (ADR-001, Task 8.7), which
+/// moves the order projection and takes a driver and a vehicle out of the pool. All
+/// three views are invalidated by the shared helper — no screen refetches another.
 export function useAssignOrder() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const invalidate = useInvalidateOperationalState();
+  const mutation = useMutation({
+    mutationFn: ({ id, input }: { id: string; input: AssignOrderInput }) =>
+      ordersAPI.assignOrder(id, input),
+    onSuccess: invalidate,
+  });
 
-  const assign = useCallback(async (id: string, input: AssignOrderInput) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await ordersAPI.assignOrder(id, input);
-      return result;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to assign order';
-      setError(message);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  return { assign, loading, error };
+  return {
+    assign: (id: string, input: AssignOrderInput) => mutation.mutateAsync({ id, input }),
+    loading: mutation.isPending,
+    error: mutation.error ? describeError(mutation.error, 'Failed to assign order') : null,
+  };
 }
 
 export function useUpdateOrderStatus() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const invalidate = useInvalidateOperationalState();
+  const mutation = useMutation({
+    mutationFn: ({ id, input }: { id: string; input: UpdateOrderStatusInput }) =>
+      ordersAPI.updateOrderStatus(id, input),
+    onSuccess: invalidate,
+  });
 
-  const updateStatus = useCallback(async (id: string, input: UpdateOrderStatusInput) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await ordersAPI.updateOrderStatus(id, input);
-      return result;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to update order status';
-      setError(message);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  return { updateStatus, loading, error };
+  return {
+    updateStatus: (id: string, input: UpdateOrderStatusInput) =>
+      mutation.mutateAsync({ id, input }),
+    loading: mutation.isPending,
+    error: mutation.error ? describeError(mutation.error, 'Failed to update order status') : null,
+  };
 }
 
 export function useCancelOrder() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const invalidate = useInvalidateOperationalState();
+  const mutation = useMutation({
+    mutationFn: ({ id, input }: { id: string; input: CancelOrderInput }) =>
+      ordersAPI.cancelOrder(id, input),
+    onSuccess: invalidate,
+  });
 
-  const cancel = useCallback(async (id: string, input: CancelOrderInput = {}) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await ordersAPI.cancelOrder(id, input);
-      return result;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to cancel order';
-      setError(message);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  return { cancel, loading, error };
+  return {
+    cancel: (id: string, input: CancelOrderInput = {}) => mutation.mutateAsync({ id, input }),
+    loading: mutation.isPending,
+    error: mutation.error ? describeError(mutation.error, 'Failed to cancel order') : null,
+  };
 }

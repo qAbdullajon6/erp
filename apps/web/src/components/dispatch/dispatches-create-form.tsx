@@ -4,8 +4,7 @@ import { useState } from 'react';
 import { useRouter } from '@tanstack/react-router';
 import { useCreateDispatch } from '@/lib/hooks/use-dispatches';
 import { useOrdersList } from '@/lib/api/orders';
-import { useDriversList } from '@/lib/api/drivers';
-import { useVehiclesList } from '@/lib/api/vehicles';
+import { useAvailability } from '@/lib/api/availability';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,8 +36,6 @@ export function DispatchesCreateForm() {
   const router = useRouter();
   const { create, loading: creating, error: submitError } = useCreateDispatch();
   const { data: ordersData } = useOrdersList({ page: 1, limit: 100 });
-  const { data: driversData } = useDriversList({ includeArchived: false, limit: 100 });
-  const { data: vehiclesData } = useVehiclesList({ includeArchived: false, limit: 100 });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formData, setFormData] = useState({
@@ -49,10 +46,24 @@ export function DispatchesCreateForm() {
   });
 
   const selectableOrders = (ordersData ?? []).filter((o) => DISPATCHABLE_ORDER_STATUSES.has(o.status));
-  const selectableDrivers = (driversData?.items ?? []).filter((d) => d.status === 'ACTIVE' && !d.archivedAt);
-  const selectableVehicles = (vehiclesData?.items ?? []).filter((v) => v.status === 'AVAILABLE' && !v.archivedAt);
-
   const selectedOrder = selectableOrders.find((o) => o.id === formData.orderId);
+
+  // Who can actually take THIS trip (AR4). The window is the selected order's own
+  // dates, which is the window AssignmentPolicy will check against — so this list
+  // is precisely what the backend will accept, and never offers a driver it is
+  // about to reject.
+  //
+  // This used to be `drivers.filter(d => d.status === 'ACTIVE')`, which is not
+  // availability at all: Driver.status says whether someone is employed, not whether
+  // they are already out on another job those days.
+  const { data: availability, loading: availabilityLoading } = useAvailability(
+    selectedOrder
+      ? { pickupDate: selectedOrder.pickupDate, deliveryDate: selectedOrder.deliveryDate }
+      : undefined,
+  );
+  const selectableDrivers = availability?.drivers ?? [];
+  const selectableVehicles = availability?.vehicles ?? [];
+
   const selectedDriver = selectableDrivers.find((d) => d.id === formData.driverId);
   const selectedVehicle = selectableVehicles.find((v) => v.id === formData.vehicleId);
 
@@ -70,6 +81,13 @@ export function DispatchesCreateForm() {
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
+      // Put the cursor on the first thing that is wrong, in the order the fields
+      // are actually laid out — otherwise the user is told "3 errors" and left to
+      // hunt for them, and on a long form the first one may be off-screen.
+      const firstInvalid = ['orderId', 'driverId', 'vehicleId'].find((id) => newErrors[id]);
+      if (firstInvalid) {
+        document.getElementById(firstInvalid)?.focus();
+      }
       return;
     }
 
@@ -103,7 +121,11 @@ export function DispatchesCreateForm() {
                 id="orderId"
                 value={formData.orderId}
                 onChange={(e) => {
-                  setFormData({ ...formData, orderId: e.target.value });
+                  // Changing the order changes the WINDOW, and therefore who is free.
+                  // A driver picked for the old order's dates may be booked solid for
+                  // these — so the selection is cleared rather than silently carried
+                  // over into a request the backend would reject.
+                  setFormData({ ...formData, orderId: e.target.value, driverId: '', vehicleId: '' });
                   setErrors({ ...errors, orderId: '' });
                 }}
                 className={`${SELECT_CLASS} ${errors.orderId ? 'border-destructive' : ''}`}
@@ -143,9 +165,18 @@ export function DispatchesCreateForm() {
                   setFormData({ ...formData, driverId: e.target.value });
                   setErrors({ ...errors, driverId: '' });
                 }}
+                disabled={!selectedOrder || availabilityLoading}
                 className={`${SELECT_CLASS} ${errors.driverId ? 'border-destructive' : ''}`}
               >
-                <option value="">Select a driver...</option>
+                <option value="">
+                  {!selectedOrder
+                    ? 'Select an order first...'
+                    : availabilityLoading
+                      ? 'Checking who is free...'
+                      : selectableDrivers.length === 0
+                        ? 'No driver is free for these dates'
+                        : 'Select a driver...'}
+                </option>
                 {selectableDrivers.map((driver) => (
                   <option key={driver.id} value={driver.id}>
                     {driver.firstName} {driver.lastName} ({driver.phone})
@@ -159,7 +190,6 @@ export function DispatchesCreateForm() {
                 <DetailField label="Code" value={selectedDriver.employeeCode} mono />
                 <DetailField label="Status" value={<StatusBadge status={selectedDriver.status} />} />
                 <DetailField label="Phone" value={selectedDriver.phone} />
-                <DetailField label="License" value={selectedDriver.licenseNumber} mono />
               </div>
             )}
           </CardContent>
@@ -178,9 +208,18 @@ export function DispatchesCreateForm() {
                   setFormData({ ...formData, vehicleId: e.target.value });
                   setErrors({ ...errors, vehicleId: '' });
                 }}
+                disabled={!selectedOrder || availabilityLoading}
                 className={`${SELECT_CLASS} ${errors.vehicleId ? 'border-destructive' : ''}`}
               >
-                <option value="">Select a vehicle...</option>
+                <option value="">
+                  {!selectedOrder
+                    ? 'Select an order first...'
+                    : availabilityLoading
+                      ? 'Checking what is free...'
+                      : selectableVehicles.length === 0
+                        ? 'No vehicle is free for these dates'
+                        : 'Select a vehicle...'}
+                </option>
                 {selectableVehicles.map((vehicle) => (
                   <option key={vehicle.id} value={vehicle.id}>
                     {vehicle.plateNumber} — {vehicle.type}

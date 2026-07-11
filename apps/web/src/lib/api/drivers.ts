@@ -1,3 +1,4 @@
+import { unwrapResponse } from './error';
 import { apiFetch } from './fetch';
 import { useState, useCallback, useEffect } from 'react';
 
@@ -73,22 +74,12 @@ class DriversAPI {
       `/api/drivers${params.size > 0 ? `?${params.toString()}` : ''}`,
       { method: 'GET' }
     );
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || `Failed to fetch drivers: ${response.statusText}`);
-    }
-    const result = await response.json();
-    return result.data || result;
+    return unwrapResponse(response, 'Failed to fetch drivers');
   }
 
   async getById(id: string): Promise<Driver> {
     const response = await apiFetch(`/api/drivers/${id}`, { method: 'GET' });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || `Failed to fetch driver: ${response.statusText}`);
-    }
-    const result = await response.json();
-    return result.data || result;
+    return unwrapResponse(response, 'Failed to fetch driver');
   }
 
   async create(input: CreateDriverInput): Promise<Driver> {
@@ -97,12 +88,7 @@ class DriversAPI {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
     });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || 'Failed to create driver');
-    }
-    const result = await response.json();
-    return result.data || result;
+    return unwrapResponse(response, 'Failed to create driver');
   }
 
   async update(id: string, input: UpdateDriverInput): Promise<Driver> {
@@ -111,32 +97,17 @@ class DriversAPI {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
     });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || 'Failed to update driver');
-    }
-    const result = await response.json();
-    return result.data || result;
+    return unwrapResponse(response, 'Failed to update driver');
   }
 
   async archive(id: string): Promise<Driver> {
     const response = await apiFetch(`/api/drivers/${id}/archive`, { method: 'POST' });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || 'Failed to archive driver');
-    }
-    const result = await response.json();
-    return result.data || result;
+    return unwrapResponse(response, 'Failed to archive driver');
   }
 
   async restore(id: string): Promise<Driver> {
     const response = await apiFetch(`/api/drivers/${id}/restore`, { method: 'POST' });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || 'Failed to restore driver');
-    }
-    const result = await response.json();
-    return result.data || result;
+    return unwrapResponse(response, 'Failed to restore driver');
   }
 }
 

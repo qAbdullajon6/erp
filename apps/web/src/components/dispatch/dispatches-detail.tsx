@@ -14,24 +14,11 @@ import { FormField } from '@/components/shared/form-field';
 import { LoadingState, ErrorState } from '@/components/shared/list-states';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
+import { describeError } from '@/lib/api/describe-error';
 
 interface DispatchesDetailProps {
   dispatchId: string;
 }
-
-/// Mirrors the server-side transition map in DispatchesService — forward-only,
-/// one step at a time, with DELIVERED and CANCELLED terminal.
-const STATUS_TRANSITIONS: Record<string, string[]> = {
-  DRAFT: ['ASSIGNED'],
-  ASSIGNED: ['EN_ROUTE_TO_PICKUP'],
-  EN_ROUTE_TO_PICKUP: ['AT_PICKUP'],
-  AT_PICKUP: ['IN_TRANSIT'],
-  IN_TRANSIT: ['DELIVERED'],
-  DELIVERED: [],
-  CANCELLED: [],
-};
-
-const CANCELLABLE_STATUSES = ['DRAFT', 'ASSIGNED', 'EN_ROUTE_TO_PICKUP', 'AT_PICKUP', 'IN_TRANSIT'];
 
 const SELECT_CLASS =
   'h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
@@ -63,8 +50,12 @@ export function DispatchesDetail({ dispatchId }: DispatchesDetailProps) {
     return <ErrorState message={error || 'Dispatch not found'} onRetry={refetch} />;
   }
 
-  const validNextStatuses = STATUS_TRANSITIONS[dispatch.status] || [];
-  const canCancel = CANCELLABLE_STATUSES.includes(dispatch.status);
+  // Straight from the server (Task 8.10). The transition table used to be copied
+  // into this file; it is now the API's answer, so this screen cannot offer a
+  // button the API would refuse. Cancellation has its own endpoint, so it is split
+  // out of the forward moves rather than computed separately.
+  const validNextStatuses = dispatch.allowedTransitions.filter((s) => s !== 'CANCELLED');
+  const canCancel = dispatch.allowedTransitions.includes('CANCELLED');
 
   const handleStatusChange = async () => {
     if (!selectedNextStatus) return;
@@ -72,20 +63,20 @@ export function DispatchesDetail({ dispatchId }: DispatchesDetailProps) {
       await updateStatus({ status: selectedNextStatus, note: statusNote || undefined });
       setSelectedNextStatus('');
       setStatusNote('');
-      refetch();
+      // Invalidated by the mutation (Task 8.9) — no manual refetch chain.
       toast.success('Dispatch status updated');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update status');
+      toast.error(describeError(err, 'Failed to update status'));
     }
   };
 
   const handleCancel = async () => {
     try {
       await cancel();
-      refetch();
+      // Invalidated by the mutation (Task 8.9) — no manual refetch chain.
       toast.success('Dispatch cancelled');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to cancel dispatch');
+      toast.error(describeError(err, 'Failed to cancel dispatch'));
     }
   };
 
@@ -267,7 +258,7 @@ export function DispatchesDetail({ dispatchId }: DispatchesDetailProps) {
                     </Button>
                   }
                   title="Cancel this dispatch?"
-                  description="This cannot be undone. The order will need a new dispatch to be delivered."
+                  description="The driver and vehicle are released, and the order returns to the unassigned pool. This cannot be undone."
                   confirmLabel="Yes, cancel it"
                   onConfirm={handleCancel}
                   destructive

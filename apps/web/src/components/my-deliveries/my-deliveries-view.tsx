@@ -71,11 +71,17 @@ export function MyDeliveriesView() {
     );
   }
 
+  // "Active" is now a fact about the DISPATCH, not a guess from a date: a driver who
+  // has set off, arrived, or loaded is on the job, whatever the calendar says. The
+  // `isDelayed` flag is gone with the order (Task 8.12) — being late is something the
+  // dispatcher's board reasons about, not something the driver needs told twice.
+  const IN_PROGRESS = ['EN_ROUTE_TO_PICKUP', 'AT_PICKUP', 'IN_TRANSIT'];
+
   const buckets = { active: [] as MyDelivery[], upcoming: [] as MyDelivery[], completed: [] as MyDelivery[] };
   for (const d of deliveries ?? []) {
     if (d.status === 'DELIVERED' || d.status === 'CANCELLED') {
       buckets.completed.push(d);
-    } else if (d.isDelayed || isToday(d.deliveryDate)) {
+    } else if (IN_PROGRESS.includes(d.status) || isToday(d.deliveryDateScheduled)) {
       buckets.active.push(d);
     } else {
       buckets.upcoming.push(d);

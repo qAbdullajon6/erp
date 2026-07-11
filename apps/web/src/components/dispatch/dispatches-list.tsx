@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from '@tanstack/react-router';
 import { useDispatches } from '@/lib/hooks/use-dispatches';
+import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PageHeader } from '@/components/shared/page-header';
@@ -10,7 +11,7 @@ import { ListToolbar, FilterSelect } from '@/components/shared/list-toolbar';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-states';
 import { PaginationBar } from '@/components/shared/pagination-bar';
 import { StatusBadge } from '@/components/shared/status-badge';
-import { Plus, X } from 'lucide-react';
+import { LayoutGrid, Loader2, Plus, X } from 'lucide-react';
 
 function formatDate(dateString?: string) {
   if (!dateString) return '—';
@@ -30,8 +31,12 @@ export function DispatchesList() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
-  const { data, meta, loading, error, refetch } = useDispatches(page, 20, {
-    search: search || undefined,
+  // The input updates on every keystroke; the QUERY does not. Without this each
+  // character is a fresh React Query key and therefore a fresh request.
+  const debouncedSearch = useDebouncedValue(search, 300);
+
+  const { data, meta, loading, refreshing, error, refetch } = useDispatches(page, 20, {
+    search: debouncedSearch || undefined,
     status: statusFilter || undefined,
   });
 
@@ -52,14 +57,32 @@ export function DispatchesList() {
           loading ? 'Loading...' : error ? 'Error loading dispatches' : `${meta?.total ?? 0} dispatches found`
         }
         action={
-          <Button
-            onClick={() => router.navigate({ to: '/app/dispatches/create' })}
-            data-testid="create-dispatch-button"
-            className="gap-2 bg-gradient-brand text-brand-foreground hover:opacity-90"
-          >
-            <Plus className="h-4 w-4" />
-            Create Dispatch
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {refreshing ? (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                Updating...
+              </span>
+            ) : null}
+            {/* The board existed but was reachable only by typing the URL. */}
+            <Button
+              onClick={() => router.navigate({ to: '/app/dispatches/board' })}
+              variant="outline"
+              className="gap-2"
+              data-testid="dispatch-board-button"
+            >
+              <LayoutGrid className="h-4 w-4" aria-hidden="true" />
+              Board view
+            </Button>
+            <Button
+              onClick={() => router.navigate({ to: '/app/dispatches/create' })}
+              data-testid="create-dispatch-button"
+              className="gap-2 bg-gradient-brand text-brand-foreground hover:opacity-90"
+            >
+              <Plus className="h-4 w-4" />
+              Create Dispatch
+            </Button>
+          </div>
         }
       />
 

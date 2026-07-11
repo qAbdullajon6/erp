@@ -35,6 +35,7 @@ import { Route as AppOrdersOrderIdRouteImport } from './routes/app.orders.$order
 import { Route as AppDriversCreateRouteImport } from './routes/app.drivers.create'
 import { Route as AppDriversDriverIdRouteImport } from './routes/app.drivers.$driverId'
 import { Route as AppDispatchesCreateRouteImport } from './routes/app.dispatches.create'
+import { Route as AppDispatchesBoardRouteImport } from './routes/app.dispatches.board'
 import { Route as AppDispatchesDispatchIdRouteImport } from './routes/app.dispatches.$dispatchId'
 import { Route as AppCustomersCreateRouteImport } from './routes/app.customers.create'
 import { Route as AppCustomersCustomerIdRouteImport } from './routes/app.customers.$customerId'
@@ -169,6 +170,11 @@ const AppDispatchesCreateRoute = AppDispatchesCreateRouteImport.update({
   path: '/dispatches/create',
   getParentRoute: () => AppRoute,
 } as any)
+const AppDispatchesBoardRoute = AppDispatchesBoardRouteImport.update({
+  id: '/dispatches/board',
+  path: '/dispatches/board',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppDispatchesDispatchIdRoute = AppDispatchesDispatchIdRouteImport.update({
   id: '/dispatches/$dispatchId',
   path: '/dispatches/$dispatchId',
@@ -201,6 +207,7 @@ export interface FileRoutesByFullPath {
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
   '/app/customers/create': typeof AppCustomersCreateRoute
   '/app/dispatches/$dispatchId': typeof AppDispatchesDispatchIdRoute
+  '/app/dispatches/board': typeof AppDispatchesBoardRoute
   '/app/dispatches/create': typeof AppDispatchesCreateRoute
   '/app/drivers/$driverId': typeof AppDriversDriverIdRoute
   '/app/drivers/create': typeof AppDriversCreateRoute
@@ -231,6 +238,7 @@ export interface FileRoutesByTo {
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
   '/app/customers/create': typeof AppCustomersCreateRoute
   '/app/dispatches/$dispatchId': typeof AppDispatchesDispatchIdRoute
+  '/app/dispatches/board': typeof AppDispatchesBoardRoute
   '/app/dispatches/create': typeof AppDispatchesCreateRoute
   '/app/drivers/$driverId': typeof AppDriversDriverIdRoute
   '/app/drivers/create': typeof AppDriversCreateRoute
@@ -263,6 +271,7 @@ export interface FileRoutesById {
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
   '/app/customers/create': typeof AppCustomersCreateRoute
   '/app/dispatches/$dispatchId': typeof AppDispatchesDispatchIdRoute
+  '/app/dispatches/board': typeof AppDispatchesBoardRoute
   '/app/dispatches/create': typeof AppDispatchesCreateRoute
   '/app/drivers/$driverId': typeof AppDriversDriverIdRoute
   '/app/drivers/create': typeof AppDriversCreateRoute
@@ -296,6 +305,7 @@ export interface FileRouteTypes {
     | '/app/customers/$customerId'
     | '/app/customers/create'
     | '/app/dispatches/$dispatchId'
+    | '/app/dispatches/board'
     | '/app/dispatches/create'
     | '/app/drivers/$driverId'
     | '/app/drivers/create'
@@ -326,6 +336,7 @@ export interface FileRouteTypes {
     | '/app/customers/$customerId'
     | '/app/customers/create'
     | '/app/dispatches/$dispatchId'
+    | '/app/dispatches/board'
     | '/app/dispatches/create'
     | '/app/drivers/$driverId'
     | '/app/drivers/create'
@@ -357,6 +368,7 @@ export interface FileRouteTypes {
     | '/app/customers/$customerId'
     | '/app/customers/create'
     | '/app/dispatches/$dispatchId'
+    | '/app/dispatches/board'
     | '/app/dispatches/create'
     | '/app/drivers/$driverId'
     | '/app/drivers/create'
@@ -566,6 +578,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDispatchesCreateRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/dispatches/board': {
+      id: '/app/dispatches/board'
+      path: '/dispatches/board'
+      fullPath: '/app/dispatches/board'
+      preLoaderRoute: typeof AppDispatchesBoardRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/dispatches/$dispatchId': {
       id: '/app/dispatches/$dispatchId'
       path: '/dispatches/$dispatchId'
@@ -601,6 +620,7 @@ interface AppRouteChildren {
   AppCustomersCustomerIdRoute: typeof AppCustomersCustomerIdRoute
   AppCustomersCreateRoute: typeof AppCustomersCreateRoute
   AppDispatchesDispatchIdRoute: typeof AppDispatchesDispatchIdRoute
+  AppDispatchesBoardRoute: typeof AppDispatchesBoardRoute
   AppDispatchesCreateRoute: typeof AppDispatchesCreateRoute
   AppDriversDriverIdRoute: typeof AppDriversDriverIdRoute
   AppDriversCreateRoute: typeof AppDriversCreateRoute
@@ -627,6 +647,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppCustomersCustomerIdRoute: AppCustomersCustomerIdRoute,
   AppCustomersCreateRoute: AppCustomersCreateRoute,
   AppDispatchesDispatchIdRoute: AppDispatchesDispatchIdRoute,
+  AppDispatchesBoardRoute: AppDispatchesBoardRoute,
   AppDispatchesCreateRoute: AppDispatchesCreateRoute,
   AppDriversDriverIdRoute: AppDriversDriverIdRoute,
   AppDriversCreateRoute: AppDriversCreateRoute,

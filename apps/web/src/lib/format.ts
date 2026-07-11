@@ -9,6 +9,17 @@ export function formatMoney(amount: string | number, currency = 'USD'): string {
   }).format(value);
 }
 
+/// One short-date format for the whole app — "Jul 17, 2026". Pinned to en-US
+/// like the dispatch and leads lists, so the same date never renders in two
+/// different locale formats on two different screens.
+export function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
 export function formatRelativeTime(iso: string): string {
   const date = new Date(iso);
   const diffMs = Date.now() - date.getTime();

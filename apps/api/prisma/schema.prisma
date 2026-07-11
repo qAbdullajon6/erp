@@ -198,6 +198,7 @@ model Organization {
   expenses                Expense[]
   dispatches              Dispatch[]
   dispatchStatusHistories DispatchStatusHistory[]
+  dispatchAssignments     DispatchAssignment[]
   notifications           Notification[]
   notificationSettings    NotificationSettings?
   onboardingProgress      OnboardingProgress?
@@ -238,6 +239,7 @@ model User {
   dispatchStatusChanges     DispatchStatusHistory[] @relation("DispatchStatusChangedBy")
   approvedExpenses          Expense[]               @relation("ExpenseApprovedBy")
   createdDispatches         Dispatch[]              @relation("CreatedDispatches")
+  dispatchAssignmentChanges DispatchAssignment[]    @relation("DispatchAssignmentChangedBy")
   /// Set when this login account belongs to a fleet driver, letting a
   /// DRIVER-role membership resolve "my deliveries" without ever accepting
   /// a client-supplied driverId. Most Users have no linked Driver at all
@@ -433,6 +435,7 @@ model Driver {
   user                User?                @relation(fields: [userId], references: [id])
   orders              Order[]
   dispatches          Dispatch[]
+  dispatchAssignments DispatchAssignment[]
   expenses            Expense[]
 
   @@unique([organizationId, employeeCode])
@@ -465,6 +468,7 @@ model Vehicle {
   organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   orders              Order[]
   dispatches          Dispatch[]
+  dispatchAssignments DispatchAssignment[]
   expenses            Expense[]
 
   @@unique([organizationId, vehicleCode])
@@ -576,6 +580,7 @@ model Dispatch {
   vehicle       Vehicle                 @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
   createdByUser User?                   @relation("CreatedDispatches", fields: [createdByUserId], references: [id], onDelete: SetNull)
   statusHistory DispatchStatusHistory[]
+  assignments   DispatchAssignment[]
 
   @@unique([organizationId, dispatchNumber])
   @@index([organizationId])
@@ -584,6 +589,55 @@ model Dispatch {
   @@index([driverId])
   @@index([vehicleId])
   @@map("dispatches")
+}
+
+/// Append-only assignment history for a dispatch (ADR-001 R9). The dispatch
+/// keeps its identity — and its number — across driver/vehicle replacement:
+/// each reassignment CLOSES the open row (stamps `unassignedAt`) and OPENS a new
+/// one. Nothing is ever overwritten, so "who drove what, when" survives.
+///
+/// This table is HISTORY, not the reservation. The reservation that makes
+/// double-booking impossible lives on Dispatch itself, as two GiST EXCLUDE
+/// constraints added by this model's migration (R1/R5) — a range-overlap rule
+/// Prisma's DSL cannot express.
+///
+/// Two database invariants are enforced by raw SQL in that migration, for the
+/// same reason:
+///   - at most one OPEN assignment per dispatch (partial unique on dispatchId
+///     WHERE unassignedAt IS NULL) — this is what makes "close, then open"
+///     the only legal way to reassign;
+///   - the driver/vehicle overlap exclusions on `dispatches`.
+model DispatchAssignment {
+  id              String    @id @default(uuid())
+  organizationId  String
+  dispatchId      String
+  driverId        String
+  vehicleId       String
+  assignedAt      DateTime  @default(now())
+  /// Null while this is the dispatch's CURRENT assignment. Exactly one open row
+  /// per dispatch is permitted (see the partial unique index).
+  unassignedAt    DateTime?
+  /// Nullable for system-initiated changes, and for consistency with the other
+  /// actor links (AuditLog.actorUserId, Dispatch.createdByUserId).
+  changedByUserId String?
+  /// Why the driver/vehicle was replaced. Free text; never parsed.
+  reason          String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  dispatch      Dispatch     @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+  /// Restrict, exactly like Dispatch.driver/vehicle: a driver or vehicle that
+  /// has ever been assigned must not be hard-deleted out from under the history.
+  driver        Driver       @relation(fields: [driverId], references: [id], onDelete: Restrict)
+  vehicle       Vehicle      @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  changedByUser User?        @relation("DispatchAssignmentChangedBy", fields: [changedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([dispatchId])
+  @@index([driverId])
+  @@index([vehicleId])
+  @@map("dispatch_assignments")
 }
 
 /// Append-only dispatch status history, similar to OrderStatusHistory.
