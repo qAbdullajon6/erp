@@ -1,9 +1,9 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import type { MembershipRole, MembershipStatus } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
+import { BillingSeatsService } from "../billing/billing-seats.service";
 import { PrismaService } from "../prisma/prisma.service";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
-import { AddMemberDto } from "./dto/add-member.dto";
 import { UpdateMemberDto } from "./dto/update-member.dto";
 import { UpdateOrganizationDto } from "./dto/update-organization.dto";
 
@@ -12,6 +12,7 @@ export class OrganizationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly billingSeatsService: BillingSeatsService,
   ) {}
 
   async getCurrent(organizationId: string) {
@@ -57,39 +58,6 @@ export class OrganizationsService {
     return memberships.map((membership) => this.toMemberResponse(membership));
   }
 
-  async addMember(organizationId: string, dto: AddMemberDto, actor: CurrentUserPayload) {
-    const email = dto.email.toLowerCase();
-    const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      throw new NotFoundException(
-        "No user account exists with this email — invite-by-email for new users is not implemented yet",
-      );
-    }
-
-    const existingMembership = await this.prisma.membership.findUnique({
-      where: { organizationId_userId: { organizationId, userId: user.id } },
-    });
-    if (existingMembership) {
-      throw new ConflictException("This user is already a member of this organization");
-    }
-
-    const membership = await this.prisma.membership.create({
-      data: { organizationId, userId: user.id, role: dto.role, status: "ACTIVE" },
-      include: { user: true },
-    });
-
-    await this.auditService.log({
-      organizationId,
-      actorUserId: actor.userId,
-      action: "organization.member.add",
-      entityType: "Membership",
-      entityId: membership.id,
-      metadata: { addedUserId: user.id, role: dto.role },
-    });
-
-    return this.toMemberResponse(membership);
-  }
-
   async updateMember(
     organizationId: string,
     membershipId: string,
@@ -97,12 +65,14 @@ export class OrganizationsService {
     actor: CurrentUserPayload,
   ) {
     await this.assertChangeDoesNotRemoveLastAdmin(organizationId, membershipId, dto.role, dto.status);
+    await this.billingSeatsService.assertCanActivateMembership(organizationId, membershipId, dto.status);
 
     const membership = await this.prisma.membership.update({
       where: { id: membershipId },
       data: { role: dto.role, status: dto.status },
       include: { user: true },
     });
+    await this.billingSeatsService.syncSeatsUsed(organizationId);
 
     await this.auditService.log({
       organizationId,
@@ -123,6 +93,7 @@ export class OrganizationsService {
       where: { id: membershipId },
       data: { status: "REMOVED" },
     });
+    await this.billingSeatsService.syncSeatsUsed(organizationId);
 
     await this.auditService.log({
       organizationId,

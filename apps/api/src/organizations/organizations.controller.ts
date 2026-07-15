@@ -1,10 +1,9 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, UseGuards } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
-import { AddMemberDto } from "./dto/add-member.dto";
 import { UpdateMemberDto } from "./dto/update-member.dto";
 import { UpdateOrganizationDto } from "./dto/update-organization.dto";
 import { OrganizationsService } from "./organizations.service";
@@ -36,13 +35,6 @@ export class OrganizationsController {
   @Get("members")
   listMembers(@CurrentUser() user: CurrentUserPayload) {
     return this.organizationsService.listMembers(user.organizationId);
-  }
-
-  @UseGuards(RolesGuard)
-  @Roles("ADMIN")
-  @Post("members")
-  addMember(@Body() dto: AddMemberDto, @CurrentUser() user: CurrentUserPayload) {
-    return this.organizationsService.addMember(user.organizationId, dto, user);
   }
 
   @UseGuards(RolesGuard)

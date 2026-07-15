@@ -72,29 +72,37 @@ describe("Notifications (e2e)", () => {
 
   async function addMemberWithRole(admin: Awaited<ReturnType<typeof registerAdmin>>, role: string) {
     const memberEmail = uniqueEmail();
-    const registerRes = await request(app.getHttpServer()).post("/auth/register").send({
-      email: memberEmail,
-      password: "correct-horse-battery",
-      firstName: "Member",
-      lastName: "User",
-      organizationName: `Throwaway Org ${randomUUID()}`,
-    });
-    const memberBody = registerRes.body as AuthResultBody;
-    createdUserIds.push(memberBody.data.user.id);
-    createdOrganizationIds.push(memberBody.data.organization.id);
 
     await request(app.getHttpServer())
-      .post("/organizations/current/members")
+      .post(`/organizations/${admin.organization.id}/invitations`)
       .set("Authorization", `Bearer ${admin.accessToken}`)
       .send({ email: memberEmail, role })
       .expect(201);
+
+    const outboxRes = await request(app.getHttpServer()).get("/test/mail/outbox").expect(200);
+    const invite = (outboxRes.body as { data: Array<{ to: string; acceptUrl: string }> }).data.find(
+      (entry) => entry.to === memberEmail,
+    );
+    if (!invite) throw new Error(`No invitation email captured for ${memberEmail}`);
+
+    await request(app.getHttpServer())
+      .post("/invite/accept")
+      .send({
+        token: invite.acceptUrl.split("/invite/")[1],
+        firstName: "Member",
+        lastName: "User",
+        password: "correct-horse-battery",
+      })
+      .expect(200);
 
     const loginRes = await request(app.getHttpServer())
       .post("/auth/login")
       .send({ email: memberEmail, password: "correct-horse-battery", organizationSlug: admin.organization.slug })
       .expect(200);
+    const loginBody = loginRes.body as AuthResultBody;
+    createdUserIds.push(loginBody.data.user.id);
 
-    return { email: memberEmail, accessToken: (loginRes.body as AuthResultBody).data.accessToken };
+    return { email: memberEmail, accessToken: loginBody.data.accessToken };
   }
 
   async function createCustomer(admin: Awaited<ReturnType<typeof registerAdmin>>, overrides: Record<string, unknown> = {}) {

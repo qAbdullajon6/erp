@@ -12,7 +12,6 @@ import {
   useRemoveMemberMutation,
   type MembershipRole,
 } from '@/lib/api/organizations';
-import { AddMemberDialog } from './add-member-dialog';
 import { InviteMemberDialog } from './invite-member-dialog';
 import { PendingInvitations } from './pending-invitations';
 import { UserMinus } from 'lucide-react';
@@ -66,7 +65,6 @@ export function MembersTab() {
         <p className="text-sm text-muted-foreground">{members?.length ?? 0} members</p>
         <div className="flex flex-wrap items-center gap-2">
           <InviteMemberDialog />
-          <AddMemberDialog />
         </div>
       </div>
 

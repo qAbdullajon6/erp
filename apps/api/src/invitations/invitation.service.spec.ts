@@ -1,4 +1,4 @@
-import { Logger } from "@nestjs/common";
+import { ConflictException, Logger } from "@nestjs/common";
 import type { ConfigService } from "@nestjs/config";
 import {
   InvitationStatus,
@@ -12,6 +12,7 @@ import {
 import type { InvitationEmailMessage, MailService } from "../mail/mail.service";
 import type { PasswordService } from "../auth/password.service";
 import type { PrismaService } from "../prisma/prisma.service";
+import type { BillingSeatsService } from "../billing/billing-seats.service";
 import { InvitationService } from "./invitation.service";
 import {
   InvitationAccountUnavailableError,
@@ -77,8 +78,12 @@ function buildInternals(
     get: jest.fn().mockReturnValue({ ...INVITATION_CONFIG, ...configOverrides }),
   } as unknown as ConfigService;
   const password = { hash: jest.fn(), verify: jest.fn() } as unknown as PasswordService;
+  const billingSeats = {
+    assertCanAddSeat: jest.fn().mockResolvedValue(undefined),
+    syncSeatsUsed: jest.fn().mockResolvedValue(undefined),
+  } as unknown as BillingSeatsService;
 
-  const service = new InvitationService(prisma, mail, config, password);
+  const service = new InvitationService(prisma, mail, config, password, billingSeats);
   return service as unknown as InvitationServiceInternals;
 }
 
@@ -224,19 +229,30 @@ function buildService(configOverrides: Partial<typeof INVITATION_CONFIG> = {}) {
     organization: { findUnique: jest.fn() },
     user: { findUnique: jest.fn() },
   };
-  const mail = { sendInvitationEmail: jest.fn().mockResolvedValue(undefined) };
+  const mail = {
+    sendInvitationEmail: jest.fn().mockResolvedValue(undefined),
+    // Unused by InvitationService — present only so this mock satisfies the
+    // MailService shape (Milestone 12 added these two sibling methods).
+    sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
+    sendEmailVerificationEmail: jest.fn().mockResolvedValue(undefined),
+  };
   const config = {
     get: jest.fn().mockReturnValue({ ...INVITATION_CONFIG, ...configOverrides }),
   };
   const password = { hash: jest.fn().mockResolvedValue("hashed-pw"), verify: jest.fn() };
+  const billingSeats = {
+    assertCanAddSeat: jest.fn().mockResolvedValue(undefined),
+    syncSeatsUsed: jest.fn().mockResolvedValue(undefined),
+  };
 
   const service = new InvitationService(
     prisma as unknown as PrismaService,
     mail,
     config as unknown as ConfigService,
     password,
+    billingSeats as unknown as BillingSeatsService,
   );
-  return { service, tx, prisma, mail, password };
+  return { service, tx, prisma, mail, password, billingSeats };
 }
 
 const CREATE_INPUT = {
@@ -353,6 +369,15 @@ describe("InvitationService.createInvitation", () => {
     expect(logged).not.toContain("member@example.com");
     expect(logged).not.toContain("/invite/");
     errorSpy.mockRestore();
+  });
+
+  it("rejects before writing anything when the organization is at its seat limit", async () => {
+    const { service, tx, mail, billingSeats } = buildService();
+    billingSeats.assertCanAddSeat.mockRejectedValue(new ConflictException("seat limit reached"));
+
+    await expect(service.createInvitation(CREATE_INPUT)).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.invitation.create).not.toHaveBeenCalled();
+    expect(mail.sendInvitationEmail).not.toHaveBeenCalled();
   });
 });
 
@@ -883,6 +908,22 @@ describe("InvitationService.acceptInvitation", () => {
     });
 
     expect(result).toEqual({ userId: "user-1", organizationId: "org-1", role: MembershipRole.DISPATCHER });
+
+    // Seat capacity checked before the write, counter resynced only after the
+    // membership is actually committed.
+    expect(ctx.billingSeats.assertCanAddSeat).toHaveBeenCalledWith("org-1");
+    expect(ctx.billingSeats.syncSeatsUsed).toHaveBeenCalledWith("org-1");
+  });
+
+  it("rejects, before any write, when the organization is at its seat limit", async () => {
+    const ctx = buildService();
+    primeNewUser(ctx);
+    ctx.billingSeats.assertCanAddSeat.mockRejectedValue(new ConflictException("seat limit reached"));
+
+    await expect(ctx.service.acceptInvitation(ACCEPT_INPUT)).rejects.toBeInstanceOf(ConflictException);
+    expect(ctx.tx.invitation.updateMany).not.toHaveBeenCalled();
+    expect(ctx.tx.membership.create).not.toHaveBeenCalled();
+    expect(ctx.billingSeats.syncSeatsUsed).not.toHaveBeenCalled();
   });
 
   it("rejects a duplicate acceptance when the invitation is already accepted", async () => {

@@ -13,6 +13,7 @@ import type { InvitationConfig } from "../config/configuration";
 import { MailService, type InvitationEmailMessage } from "../mail/mail.service";
 import { PasswordService } from "../auth/password.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { BillingSeatsService } from "../billing/billing-seats.service";
 import {
   InvitationAccountUnavailableError,
   InvitationAlreadyAcceptedError,
@@ -105,14 +106,16 @@ export interface AcceptInvitationResult {
   role: MembershipRole;
 }
 
-/// Foundation for the staff-invitation flow. This phase (5.1) deliberately
-/// exposes no public methods and performs no writes: it wires the dependencies
-/// and provides the reusable, read-only building blocks that the invitation
-/// creation / resend / revoke / accept methods (later phases) will compose.
+/// Staff-invitation flow: create/resend/revoke on the admin side, validate/
+/// accept on the public side.
 ///
-/// Kept intentionally lean: it injects only Prisma, the mail abstraction, and
-/// config — never AuthService/OrganizationsService/etc. — so the invitation
-/// surface never becomes a back door into unrelated logic.
+/// Kept intentionally lean: it injects only Prisma, the mail abstraction,
+/// config, and BillingSeatsService — never AuthService/OrganizationsService/
+/// etc. — so the invitation surface never becomes a back door into unrelated
+/// logic. BillingSeatsService is a peer dependency (not reached through
+/// OrganizationsService) because invitations are now the only way an
+/// organization gains a member, and seat-limit enforcement has to live
+/// wherever that happens.
 @Injectable()
 export class InvitationService {
   private readonly logger = new Logger(InvitationService.name);
@@ -123,6 +126,7 @@ export class InvitationService {
     private readonly mailService: MailService,
     private readonly configService: ConfigService,
     private readonly passwordService: PasswordService,
+    private readonly billingSeats: BillingSeatsService,
   ) {
     this.invitationConfig = this.configService.get<InvitationConfig>("invitation")!;
   }
@@ -132,6 +136,11 @@ export class InvitationService {
   /// that transaction commits — so a failed write never produces an email, and
   /// a failed email never rolls back a committed invitation.
   async createInvitation(input: CreateInvitationInput): Promise<InvitationSummary> {
+    // Fails fast, before minting a token or touching the invitation table, so
+    // an org at its seat limit gets the same ConflictException addMember used
+    // to give rather than a usable invitation nothing can ever accept.
+    await this.billingSeats.assertCanAddSeat(input.organizationId);
+
     const email = input.email.trim().toLowerCase();
 
     // Generated before the transaction: pure, no I/O. The raw token never
@@ -326,6 +335,14 @@ export class InvitationService {
     // Fails fast on an invalid/revoked/accepted/expired token before any write.
     const validated = await this.validateInvitationToken(input.rawToken);
 
+    // Re-check seat capacity at accept time, not just at invite time: the
+    // organization may have filled its remaining seats (another accept, a
+    // downgrade) in the time between createInvitation and this call. Same
+    // pre-check-then-write pattern OrganizationsService.addMember used —
+    // not perfectly race-free under two simultaneous accepts for the last
+    // seat, but no less safe than that.
+    await this.billingSeats.assertCanAddSeat(validated.organizationId);
+
     // Only pay for argon2 if a password might actually be set: a brand-new user,
     // or an existing one that never set a password. A cheap pre-read decides
     // this; the transaction re-reads for atomicity and hashes in the (near
@@ -340,7 +357,7 @@ export class InvitationService {
         ? await this.passwordService.hash(input.password)
         : null;
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       // Step 2 + Step 5: compare-and-set consume. Claims the invitation
       // atomically — only a row still scoped to this org, PENDING, unaccepted,
       // unrevoked and unexpired is marked ACCEPTED. Doing it first serializes
@@ -381,6 +398,13 @@ export class InvitationService {
       // Step 6: safe result only.
       return { userId, organizationId: validated.organizationId, role: validated.role };
     });
+
+    // After commit only, mirroring addMember: the membership is real by now,
+    // so the subscription's seatsUsed counter should reflect it immediately
+    // rather than drift until the next unrelated sync.
+    await this.billingSeats.syncSeatsUsed(result.organizationId);
+
+    return result;
   }
 
   /// A fresh, cryptographically secure raw token. It exists only as a local
@@ -679,8 +703,8 @@ export class InvitationService {
   /// Creates the membership for an accepted invitation. Any existing membership
   /// — including a soft-REMOVED one — is a conflict: re-enabling a removed
   /// member is a deliberate admin action (OrganizationsService.updateMember),
-  /// consistent with addMember, which also treats REMOVED as a conflict. The
-  /// unique index backs up the pre-check under a concurrent race.
+  /// not a side effect of accepting a fresh invite. The unique index backs up
+  /// the pre-check under a concurrent race.
   private async provisionMembership(
     tx: Prisma.TransactionClient,
     organizationId: string,

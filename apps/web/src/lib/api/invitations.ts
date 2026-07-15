@@ -127,7 +127,7 @@ export const invitationsAPI = new InvitationsAPI();
 
 /// Query key for an organization's pending invitations. Admin mutations
 /// invalidate it so a future invitations list stays fresh — the same
-/// invalidate-the-list pattern useAddMemberMutation uses for members.
+/// invalidate-the-list pattern useUpdateMemberMutation uses for members.
 const invitationsKey = (organizationId: string) => ['organization-invitations', organizationId] as const;
 
 /// Admin: the organization's invitations. Keyed exactly as the mutations

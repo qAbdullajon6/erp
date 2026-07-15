@@ -18,11 +18,12 @@ import { useCurrentUser } from '@/lib/api/auth';
 import { useCreateInvitation } from '@/lib/api/invitations';
 import type { MembershipRole } from '@/lib/api/organizations';
 
-/// Sibling of AddMemberDialog (which attaches an EXISTING account). This one
-/// emails an invitation to someone who has no account yet. Same dialog/form
-/// shape — only the mutation differs. Rendered inside MembersTab, which
-/// SettingsView already gates behind `isAdmin`, so no RBAC check is repeated
-/// here.
+/// The only way to add a member: emails an invitation the recipient must
+/// accept (even if they already have a FlowERP account elsewhere) — the
+/// direct-add-by-email path this used to sit beside was removed because it
+/// attached a user to an organization with no consent step at all. Rendered
+/// inside MembersTab, which SettingsView already gates behind `isAdmin`, so
+/// no RBAC check is repeated here.
 const ROLES: MembershipRole[] = [
   'ADMIN',
   'OPERATIONS_MANAGER',
