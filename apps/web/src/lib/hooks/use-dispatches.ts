@@ -7,9 +7,10 @@ import type {
   UpdateDispatchStatusRequest,
 } from '@/lib/api/dispatches';
 import { dispatchesAPI } from '@/lib/api/dispatches';
+import { dashboardAPI } from '@/lib/api/dashboard';
 import { describeError } from '@/lib/api/describe-error';
 import { useInvalidateOperationalState } from '@/lib/api/invalidate';
-import { dispatchKeys } from '@/lib/api/query-keys';
+import { dispatchBoardKeys, dispatchKeys } from '@/lib/api/query-keys';
 
 /// Dispatch hooks — React Query (Task 8.9).
 ///
@@ -39,6 +40,23 @@ export function useDispatches(
     /// instead and leaves the cards on screen.
     refreshing: result.isFetching && !result.isPending,
     error: result.error ? describeError(result.error, 'Failed to fetch dispatches') : null,
+    refetch: result.refetch,
+  };
+}
+
+/// The Operations Center's alert data: unassigned orders, and who's free/busy
+/// (Task: dispatch board summary). A single global snapshot — no params, no
+/// pagination — so its key carries no arguments.
+export function useDispatchBoardSummary() {
+  const result = useQuery({
+    queryKey: dispatchBoardKeys.all,
+    queryFn: () => dashboardAPI.getDispatchBoard(),
+  });
+
+  return {
+    data: result.data ?? null,
+    loading: result.isPending,
+    error: result.error ? describeError(result.error, 'Failed to load board summary') : null,
     refetch: result.refetch,
   };
 }

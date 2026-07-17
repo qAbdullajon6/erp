@@ -5,6 +5,7 @@ import type { CurrentUserPayload } from "../auth/interfaces/current-user.interfa
 import { OrderWriter } from "../order-state/order-writer";
 import { aggregate } from "../order-state/projection.policy";
 import { PrismaService } from "../prisma/prisma.service";
+import { WorkflowEventService } from "../workflows/triggers/workflow-event.service";
 import { AssignmentPolicy } from "./assignment/assignment.policy";
 import { ACTIVE_DISPATCH_STATUSES } from "./assignment/assignment.queries";
 import { translateDispatchWriteError } from "./dispatch-constraints";
@@ -33,6 +34,7 @@ export class DispatchesService {
     private readonly assignmentPolicy: AssignmentPolicy,
     /// The only object permitted to write Order state (AR5).
     private readonly orderWriter: OrderWriter,
+    private readonly workflowEvents: WorkflowEventService,
   ) {}
 
   async list(organizationId: string, query: ListDispatchesQueryDto) {
@@ -140,6 +142,8 @@ export class DispatchesService {
       },
     });
 
+    this.workflowEvents.emit(organizationId, "dispatch.created", { id: dispatch.id, dispatchNumber: dispatch.dispatchNumber, orderId: dto.orderId, driverId: dto.driverId, vehicleId: dto.vehicleId });
+
     return this.toResponse(dispatch);
   }
 
@@ -218,6 +222,11 @@ export class DispatchesService {
       entityId: id,
       metadata: { from: dispatch.status, to: dto.status, note: dto.note },
     });
+
+    this.workflowEvents.emit(organizationId, "dispatch.status_changed", { id, dispatchNumber: dispatch.dispatchNumber, from: dispatch.status, to: dto.status });
+    if (dto.status === "DELIVERED") {
+      this.workflowEvents.emit(organizationId, "dispatch.completed", { id, dispatchNumber: dispatch.dispatchNumber });
+    }
 
     return this.toResponse(updated);
   }

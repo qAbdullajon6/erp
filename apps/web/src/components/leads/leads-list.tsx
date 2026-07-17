@@ -16,14 +16,11 @@ import {
   type LeadStatus,
 } from '@/lib/api/leads';
 import { useCurrentUser } from '@/lib/api/auth';
+import { formatDate } from '@/lib/format';
 import { Mail, Phone, ShieldOff } from 'lucide-react';
 
 const SELECT_CLASS =
   'h-8 rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50';
-
-function formatDate(value: string) {
-  return new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
 
 export function LeadsList() {
   const [page, setPage] = useState(1);

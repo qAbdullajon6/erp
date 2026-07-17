@@ -62,6 +62,8 @@ export interface ApiDispatch {
   deliveryDateScheduled: string;
   deliveryDateActual: string | null;
   notes?: string;
+  deliveryNotes?: string;
+  deliveryProofCount?: number;
   statusHistory?: Array<{
     id: string;
     status: string;

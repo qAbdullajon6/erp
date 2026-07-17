@@ -10,7 +10,11 @@ interface ExecutiveOverviewTabProps {
 }
 
 function ChangeBadge({ pair }: { pair?: ComparisonPair }) {
-  if (!pair || pair.changePercent === null) return null;
+  // The type says `number | null`, but a comparison period with nothing to
+  // compare against (e.g. a new org, or a date range with no prior period)
+  // can omit the field entirely — `=== null` alone let `undefined` through
+  // to `.toFixed`, crashing the whole tab.
+  if (!pair || pair.changePercent === null || pair.changePercent === undefined) return null;
   const positive = pair.changePercent >= 0;
   return (
     <span className={`text-xs font-medium ${positive ? 'text-success' : 'text-destructive'}`}>

@@ -45,9 +45,14 @@ const SELECT_CLASS =
 interface Props {
   dispatch: ApiDispatch | null;
   onClose: () => void;
+  /// Fired after a successful reassign, in addition to onClose — lets a
+  /// master-detail caller (Work Queue) fade the resolved item out and
+  /// auto-select the next one, without this dialog knowing anything about
+  /// queues.
+  onSuccess?: (dispatchId: string) => void;
 }
 
-export function DispatchReassignDialog({ dispatch, onClose }: Props) {
+export function DispatchReassignDialog({ dispatch, onClose, onSuccess }: Props) {
   const [driverId, setDriverId] = useState('');
   const [vehicleId, setVehicleId] = useState('');
   const [error, setError] = useState('');
@@ -99,6 +104,7 @@ export function DispatchReassignDialog({ dispatch, onClose }: Props) {
         ...(vehicleId ? { vehicleId } : {}),
       });
       toast.success(`${dispatch.dispatchNumber} reassigned`);
+      onSuccess?.(dispatch.id);
       close();
     } catch (err) {
       // The server's own words. An assignment conflict (409) explains itself.

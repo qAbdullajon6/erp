@@ -3,6 +3,9 @@ import { formatMoney, formatRelativeTime } from "@/lib/format";
 import type { RecentOrderRow } from "@/lib/api/dashboard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { EmptyState } from "@/components/shared/list-states";
+import { SurfaceCard, SurfaceCardHeader } from "@/components/ui/surface-card";
+import { SectionHeader } from "@/components/ui/section-header";
 import { ArrowRight, Package } from "lucide-react";
 
 interface RecentOrdersTableProps {
@@ -12,12 +15,9 @@ interface RecentOrdersTableProps {
 
 export function RecentOrdersTable({ orders, loading }: RecentOrdersTableProps) {
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50">
-      <div className="flex items-center justify-between gap-4 border-b border-brand/10 px-6 py-5">
-        <div>
-          <h3 className="text-lg font-semibold text-foreground">Recent orders</h3>
-          <p className="mt-0.5 text-sm text-muted-foreground">Latest orders across the organization</p>
-        </div>
+    <SurfaceCard className="flex h-full flex-col">
+      <SurfaceCardHeader>
+        <SectionHeader title="Recent activity" subtitle="Latest orders across the organization" />
         <Link
           to="/app/orders"
           className="flex shrink-0 items-center gap-1 text-sm font-medium text-brand hover:underline"
@@ -25,7 +25,7 @@ export function RecentOrdersTable({ orders, loading }: RecentOrdersTableProps) {
           View all
           <ArrowRight className="h-3.5 w-3.5" />
         </Link>
-      </div>
+      </SurfaceCardHeader>
 
       <div className="flex-1 divide-y divide-brand/10">
         {loading &&
@@ -36,12 +36,7 @@ export function RecentOrdersTable({ orders, loading }: RecentOrdersTableProps) {
           ))}
 
         {!loading && orders.length === 0 && (
-          <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-            <div className="rounded-full bg-muted p-3">
-              <Package className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <p className="mt-3 text-sm text-muted-foreground">No orders yet</p>
-          </div>
+          <EmptyState icon={Package} title="No orders yet" description="New orders will show up here as they come in." />
         )}
 
         {!loading &&
@@ -72,6 +67,6 @@ export function RecentOrdersTable({ orders, loading }: RecentOrdersTableProps) {
             </Link>
           ))}
       </div>
-    </div>
+    </SurfaceCard>
   );
 }

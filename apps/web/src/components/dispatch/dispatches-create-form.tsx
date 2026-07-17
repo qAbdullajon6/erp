@@ -12,6 +12,7 @@ import { PageHeader } from '@/components/shared/page-header';
 import { FormField, FormError } from '@/components/shared/form-field';
 import { DetailField } from '@/components/shared/detail-field';
 import { StatusBadge } from '@/components/shared/status-badge';
+import { formatDateTime } from '@/lib/format';
 
 /// An order that is already delivered or cancelled can never receive a new
 /// dispatch, so it is left out of the picker rather than shown and rejected
@@ -20,17 +21,6 @@ const DISPATCHABLE_ORDER_STATUSES = new Set(['DRAFT', 'PENDING', 'ASSIGNED', 'PI
 
 const SELECT_CLASS =
   'h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
-
-function formatDate(dateString?: string) {
-  if (!dateString) return '—';
-  return new Date(dateString).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
 
 export function DispatchesCreateForm() {
   const router = useRouter();
@@ -145,8 +135,8 @@ export function DispatchesCreateForm() {
                 <DetailField label="Status" value={<StatusBadge status={selectedOrder.status} />} />
                 <DetailField label="Pickup" value={selectedOrder.pickupCity} />
                 <DetailField label="Delivery" value={selectedOrder.deliveryCity} />
-                <DetailField label="Scheduled Pickup" value={formatDate(selectedOrder.pickupDate)} />
-                <DetailField label="Scheduled Delivery" value={formatDate(selectedOrder.deliveryDate)} />
+                <DetailField label="Scheduled Pickup" value={formatDateTime(selectedOrder.pickupDate)} />
+                <DetailField label="Scheduled Delivery" value={formatDateTime(selectedOrder.deliveryDate)} />
               </div>
             )}
           </CardContent>

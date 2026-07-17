@@ -13,6 +13,7 @@ import {
   isOperationalStatus,
 } from "../order-state/transition.policy";
 import { PrismaService } from "../prisma/prisma.service";
+import { WorkflowEventService } from "../workflows/triggers/workflow-event.service";
 import { AssignOrderDto } from "./dto/assign-order.dto";
 import { CancelOrderDto } from "./dto/cancel-order.dto";
 import { CreateOrderDto } from "./dto/create-order.dto";
@@ -32,6 +33,7 @@ export class OrdersService {
     /// so an order-level request is executed by moving the dispatch.
     private readonly dispatches: DispatchesService,
     private readonly assignmentPolicy: AssignmentPolicy,
+    private readonly workflowEvents: WorkflowEventService,
   ) {}
 
   async list(organizationId: string, query: ListOrdersQueryDto) {
@@ -131,6 +133,8 @@ export class OrdersService {
       metadata: { orderNumber: order.orderNumber },
     });
 
+    this.workflowEvents.emit(organizationId, "order.created", { id: order.id, orderNumber: order.orderNumber, customerId: order.customerId, status: order.status });
+
     return this.toResponse(order);
   }
 
@@ -203,6 +207,8 @@ export class OrdersService {
       entityId: id,
       metadata: { changes: dto },
     });
+
+    this.workflowEvents.emit(organizationId, "order.updated", { id, orderNumber: updated.orderNumber, customerId: updated.customerId, status: updated.status, changes: dto });
 
     return this.toResponse(updated);
   }
@@ -312,6 +318,8 @@ export class OrdersService {
       metadata: { from: order.status, to: dto.status, note: dto.note },
     });
 
+    this.workflowEvents.emit(organizationId, "order.status_changed", { id: order.id, orderNumber: order.orderNumber, from: order.status, to: dto.status });
+
     return this.toResponse(updated);
   }
 
@@ -392,6 +400,8 @@ export class OrdersService {
       entityId: id,
       metadata: { note: dto.note },
     });
+
+    this.workflowEvents.emit(organizationId, "order.cancelled", { id, orderNumber: updated.orderNumber, note: dto.note });
 
     return this.toResponse(updated);
   }

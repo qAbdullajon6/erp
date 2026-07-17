@@ -16,6 +16,7 @@ const STATUS_VARIANTS: Record<string, BadgeVariant> = {
   ARCHIVED: 'danger',
   DRAFT: 'muted',
   CANCELLED: 'danger',
+  DELAYED: 'danger',
 
   // Orders
   PENDING: 'warning',

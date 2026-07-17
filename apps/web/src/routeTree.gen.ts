@@ -9,29 +9,48 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as PortalRouteImport } from './routes/portal'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as PortalIndexRouteImport } from './routes/portal.index'
 import { Route as AppIndexRouteImport } from './routes/app.index'
+import { Route as PortalProfileRouteImport } from './routes/portal.profile'
+import { Route as PortalOrdersRouteImport } from './routes/portal.orders'
+import { Route as PortalNotificationsRouteImport } from './routes/portal.notifications'
+import { Route as PortalLoginRouteImport } from './routes/portal.login'
+import { Route as PortalInvoicesRouteImport } from './routes/portal.invoices'
+import { Route as PortalDocumentsRouteImport } from './routes/portal.documents'
+import { Route as PortalAcceptInviteRouteImport } from './routes/portal.accept-invite'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as AuthSignInRouteImport } from './routes/auth.sign-in'
 import { Route as AuthForgotPasswordRouteImport } from './routes/auth.forgot-password'
+import { Route as AppWorkflowsRouteImport } from './routes/app.workflows'
 import { Route as AppSettingsRouteImport } from './routes/app.settings'
 import { Route as AppReportsRouteImport } from './routes/app.reports'
 import { Route as AppNotificationsRouteImport } from './routes/app.notifications'
 import { Route as AppMyDeliveriesRouteImport } from './routes/app.my-deliveries'
+import { Route as AppIntegrationsRouteImport } from './routes/app.integrations'
 import { Route as AppFinanceRouteImport } from './routes/app.finance'
+import { Route as AppDeveloperRouteImport } from './routes/app.developer'
 import { Route as AppAiAssistantRouteImport } from './routes/app.ai-assistant'
 import { Route as AppVehiclesIndexRouteImport } from './routes/app.vehicles.index'
 import { Route as AppOrdersIndexRouteImport } from './routes/app.orders.index'
 import { Route as AppLeadsIndexRouteImport } from './routes/app.leads.index'
+import { Route as AppImportIndexRouteImport } from './routes/app.import.index'
 import { Route as AppDriversIndexRouteImport } from './routes/app.drivers.index'
 import { Route as AppDispatchesIndexRouteImport } from './routes/app.dispatches.index'
 import { Route as AppCustomersIndexRouteImport } from './routes/app.customers.index'
+import { Route as AppAuditLogsIndexRouteImport } from './routes/app.audit-logs.index'
+import { Route as PortalOrdersOrderIdRouteImport } from './routes/portal.orders.$orderId'
+import { Route as PortalInvoicesInvoiceIdRouteImport } from './routes/portal.invoices.$invoiceId'
 import { Route as InviteTokenAcceptRouteImport } from './routes/invite.$token_.accept'
+import { Route as AppWorkflowsWorkflowIdRouteImport } from './routes/app.workflows.$workflowId'
 import { Route as AppVehiclesCreateRouteImport } from './routes/app.vehicles.create'
 import { Route as AppVehiclesVehicleIdRouteImport } from './routes/app.vehicles.$vehicleId'
 import { Route as AppOrdersCreateRouteImport } from './routes/app.orders.create'
 import { Route as AppOrdersOrderIdRouteImport } from './routes/app.orders.$orderId'
+import { Route as AppImportHistoryRouteImport } from './routes/app.import.history'
+import { Route as AppImportSessionIdRouteImport } from './routes/app.import.$sessionId'
 import { Route as AppDriversCreateRouteImport } from './routes/app.drivers.create'
 import { Route as AppDriversDriverIdRouteImport } from './routes/app.drivers.$driverId'
 import { Route as AppDispatchesCreateRouteImport } from './routes/app.dispatches.create'
@@ -40,6 +59,11 @@ import { Route as AppDispatchesDispatchIdRouteImport } from './routes/app.dispat
 import { Route as AppCustomersCreateRouteImport } from './routes/app.customers.create'
 import { Route as AppCustomersCustomerIdRouteImport } from './routes/app.customers.$customerId'
 
+const PortalRoute = PortalRouteImport.update({
+  id: '/portal',
+  path: '/portal',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppRoute = AppRouteImport.update({
   id: '/app',
   path: '/app',
@@ -50,10 +74,50 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PortalIndexRoute = PortalIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => PortalRoute,
+} as any)
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AppRoute,
+} as any)
+const PortalProfileRoute = PortalProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalOrdersRoute = PortalOrdersRouteImport.update({
+  id: '/orders',
+  path: '/orders',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalNotificationsRoute = PortalNotificationsRouteImport.update({
+  id: '/notifications',
+  path: '/notifications',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalLoginRoute = PortalLoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalInvoicesRoute = PortalInvoicesRouteImport.update({
+  id: '/invoices',
+  path: '/invoices',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalDocumentsRoute = PortalDocumentsRouteImport.update({
+  id: '/documents',
+  path: '/documents',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalAcceptInviteRoute = PortalAcceptInviteRouteImport.update({
+  id: '/accept-invite',
+  path: '/accept-invite',
+  getParentRoute: () => PortalRoute,
 } as any)
 const InviteTokenRoute = InviteTokenRouteImport.update({
   id: '/invite/$token',
@@ -69,6 +133,11 @@ const AuthForgotPasswordRoute = AuthForgotPasswordRouteImport.update({
   id: '/auth/forgot-password',
   path: '/auth/forgot-password',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AppWorkflowsRoute = AppWorkflowsRouteImport.update({
+  id: '/workflows',
+  path: '/workflows',
+  getParentRoute: () => AppRoute,
 } as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
   id: '/settings',
@@ -90,9 +159,19 @@ const AppMyDeliveriesRoute = AppMyDeliveriesRouteImport.update({
   path: '/my-deliveries',
   getParentRoute: () => AppRoute,
 } as any)
+const AppIntegrationsRoute = AppIntegrationsRouteImport.update({
+  id: '/integrations',
+  path: '/integrations',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppFinanceRoute = AppFinanceRouteImport.update({
   id: '/finance',
   path: '/finance',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDeveloperRoute = AppDeveloperRouteImport.update({
+  id: '/developer',
+  path: '/developer',
   getParentRoute: () => AppRoute,
 } as any)
 const AppAiAssistantRoute = AppAiAssistantRouteImport.update({
@@ -115,6 +194,11 @@ const AppLeadsIndexRoute = AppLeadsIndexRouteImport.update({
   path: '/leads/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppImportIndexRoute = AppImportIndexRouteImport.update({
+  id: '/import/',
+  path: '/import/',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppDriversIndexRoute = AppDriversIndexRouteImport.update({
   id: '/drivers/',
   path: '/drivers/',
@@ -130,10 +214,30 @@ const AppCustomersIndexRoute = AppCustomersIndexRouteImport.update({
   path: '/customers/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAuditLogsIndexRoute = AppAuditLogsIndexRouteImport.update({
+  id: '/audit-logs/',
+  path: '/audit-logs/',
+  getParentRoute: () => AppRoute,
+} as any)
+const PortalOrdersOrderIdRoute = PortalOrdersOrderIdRouteImport.update({
+  id: '/$orderId',
+  path: '/$orderId',
+  getParentRoute: () => PortalOrdersRoute,
+} as any)
+const PortalInvoicesInvoiceIdRoute = PortalInvoicesInvoiceIdRouteImport.update({
+  id: '/$invoiceId',
+  path: '/$invoiceId',
+  getParentRoute: () => PortalInvoicesRoute,
+} as any)
 const InviteTokenAcceptRoute = InviteTokenAcceptRouteImport.update({
   id: '/invite/$token_/accept',
   path: '/invite/$token/accept',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AppWorkflowsWorkflowIdRoute = AppWorkflowsWorkflowIdRouteImport.update({
+  id: '/$workflowId',
+  path: '/$workflowId',
+  getParentRoute: () => AppWorkflowsRoute,
 } as any)
 const AppVehiclesCreateRoute = AppVehiclesCreateRouteImport.update({
   id: '/vehicles/create',
@@ -153,6 +257,16 @@ const AppOrdersCreateRoute = AppOrdersCreateRouteImport.update({
 const AppOrdersOrderIdRoute = AppOrdersOrderIdRouteImport.update({
   id: '/orders/$orderId',
   path: '/orders/$orderId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppImportHistoryRoute = AppImportHistoryRouteImport.update({
+  id: '/import/history',
+  path: '/import/history',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppImportSessionIdRoute = AppImportSessionIdRouteImport.update({
+  id: '/import/$sessionId',
+  path: '/import/$sessionId',
   getParentRoute: () => AppRoute,
 } as any)
 const AppDriversCreateRoute = AppDriversCreateRouteImport.update({
@@ -194,16 +308,28 @@ const AppCustomersCustomerIdRoute = AppCustomersCustomerIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
+  '/portal': typeof PortalRouteWithChildren
   '/app/ai-assistant': typeof AppAiAssistantRoute
+  '/app/developer': typeof AppDeveloperRoute
   '/app/finance': typeof AppFinanceRoute
+  '/app/integrations': typeof AppIntegrationsRoute
   '/app/my-deliveries': typeof AppMyDeliveriesRoute
   '/app/notifications': typeof AppNotificationsRoute
   '/app/reports': typeof AppReportsRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/workflows': typeof AppWorkflowsRouteWithChildren
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/sign-in': typeof AuthSignInRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/portal/accept-invite': typeof PortalAcceptInviteRoute
+  '/portal/documents': typeof PortalDocumentsRoute
+  '/portal/invoices': typeof PortalInvoicesRouteWithChildren
+  '/portal/login': typeof PortalLoginRoute
+  '/portal/notifications': typeof PortalNotificationsRoute
+  '/portal/orders': typeof PortalOrdersRouteWithChildren
+  '/portal/profile': typeof PortalProfileRoute
   '/app/': typeof AppIndexRoute
+  '/portal/': typeof PortalIndexRoute
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
   '/app/customers/create': typeof AppCustomersCreateRoute
   '/app/dispatches/$dispatchId': typeof AppDispatchesDispatchIdRoute
@@ -211,14 +337,21 @@ export interface FileRoutesByFullPath {
   '/app/dispatches/create': typeof AppDispatchesCreateRoute
   '/app/drivers/$driverId': typeof AppDriversDriverIdRoute
   '/app/drivers/create': typeof AppDriversCreateRoute
+  '/app/import/$sessionId': typeof AppImportSessionIdRoute
+  '/app/import/history': typeof AppImportHistoryRoute
   '/app/orders/$orderId': typeof AppOrdersOrderIdRoute
   '/app/orders/create': typeof AppOrdersCreateRoute
   '/app/vehicles/$vehicleId': typeof AppVehiclesVehicleIdRoute
   '/app/vehicles/create': typeof AppVehiclesCreateRoute
+  '/app/workflows/$workflowId': typeof AppWorkflowsWorkflowIdRoute
   '/invite/$token/accept': typeof InviteTokenAcceptRoute
+  '/portal/invoices/$invoiceId': typeof PortalInvoicesInvoiceIdRoute
+  '/portal/orders/$orderId': typeof PortalOrdersOrderIdRoute
+  '/app/audit-logs/': typeof AppAuditLogsIndexRoute
   '/app/customers/': typeof AppCustomersIndexRoute
   '/app/dispatches/': typeof AppDispatchesIndexRoute
   '/app/drivers/': typeof AppDriversIndexRoute
+  '/app/import/': typeof AppImportIndexRoute
   '/app/leads/': typeof AppLeadsIndexRoute
   '/app/orders/': typeof AppOrdersIndexRoute
   '/app/vehicles/': typeof AppVehiclesIndexRoute
@@ -226,15 +359,26 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/app/ai-assistant': typeof AppAiAssistantRoute
+  '/app/developer': typeof AppDeveloperRoute
   '/app/finance': typeof AppFinanceRoute
+  '/app/integrations': typeof AppIntegrationsRoute
   '/app/my-deliveries': typeof AppMyDeliveriesRoute
   '/app/notifications': typeof AppNotificationsRoute
   '/app/reports': typeof AppReportsRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/workflows': typeof AppWorkflowsRouteWithChildren
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/sign-in': typeof AuthSignInRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/portal/accept-invite': typeof PortalAcceptInviteRoute
+  '/portal/documents': typeof PortalDocumentsRoute
+  '/portal/invoices': typeof PortalInvoicesRouteWithChildren
+  '/portal/login': typeof PortalLoginRoute
+  '/portal/notifications': typeof PortalNotificationsRoute
+  '/portal/orders': typeof PortalOrdersRouteWithChildren
+  '/portal/profile': typeof PortalProfileRoute
   '/app': typeof AppIndexRoute
+  '/portal': typeof PortalIndexRoute
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
   '/app/customers/create': typeof AppCustomersCreateRoute
   '/app/dispatches/$dispatchId': typeof AppDispatchesDispatchIdRoute
@@ -242,14 +386,21 @@ export interface FileRoutesByTo {
   '/app/dispatches/create': typeof AppDispatchesCreateRoute
   '/app/drivers/$driverId': typeof AppDriversDriverIdRoute
   '/app/drivers/create': typeof AppDriversCreateRoute
+  '/app/import/$sessionId': typeof AppImportSessionIdRoute
+  '/app/import/history': typeof AppImportHistoryRoute
   '/app/orders/$orderId': typeof AppOrdersOrderIdRoute
   '/app/orders/create': typeof AppOrdersCreateRoute
   '/app/vehicles/$vehicleId': typeof AppVehiclesVehicleIdRoute
   '/app/vehicles/create': typeof AppVehiclesCreateRoute
+  '/app/workflows/$workflowId': typeof AppWorkflowsWorkflowIdRoute
   '/invite/$token/accept': typeof InviteTokenAcceptRoute
+  '/portal/invoices/$invoiceId': typeof PortalInvoicesInvoiceIdRoute
+  '/portal/orders/$orderId': typeof PortalOrdersOrderIdRoute
+  '/app/audit-logs': typeof AppAuditLogsIndexRoute
   '/app/customers': typeof AppCustomersIndexRoute
   '/app/dispatches': typeof AppDispatchesIndexRoute
   '/app/drivers': typeof AppDriversIndexRoute
+  '/app/import': typeof AppImportIndexRoute
   '/app/leads': typeof AppLeadsIndexRoute
   '/app/orders': typeof AppOrdersIndexRoute
   '/app/vehicles': typeof AppVehiclesIndexRoute
@@ -258,16 +409,28 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
+  '/portal': typeof PortalRouteWithChildren
   '/app/ai-assistant': typeof AppAiAssistantRoute
+  '/app/developer': typeof AppDeveloperRoute
   '/app/finance': typeof AppFinanceRoute
+  '/app/integrations': typeof AppIntegrationsRoute
   '/app/my-deliveries': typeof AppMyDeliveriesRoute
   '/app/notifications': typeof AppNotificationsRoute
   '/app/reports': typeof AppReportsRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/workflows': typeof AppWorkflowsRouteWithChildren
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/sign-in': typeof AuthSignInRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/portal/accept-invite': typeof PortalAcceptInviteRoute
+  '/portal/documents': typeof PortalDocumentsRoute
+  '/portal/invoices': typeof PortalInvoicesRouteWithChildren
+  '/portal/login': typeof PortalLoginRoute
+  '/portal/notifications': typeof PortalNotificationsRoute
+  '/portal/orders': typeof PortalOrdersRouteWithChildren
+  '/portal/profile': typeof PortalProfileRoute
   '/app/': typeof AppIndexRoute
+  '/portal/': typeof PortalIndexRoute
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
   '/app/customers/create': typeof AppCustomersCreateRoute
   '/app/dispatches/$dispatchId': typeof AppDispatchesDispatchIdRoute
@@ -275,14 +438,21 @@ export interface FileRoutesById {
   '/app/dispatches/create': typeof AppDispatchesCreateRoute
   '/app/drivers/$driverId': typeof AppDriversDriverIdRoute
   '/app/drivers/create': typeof AppDriversCreateRoute
+  '/app/import/$sessionId': typeof AppImportSessionIdRoute
+  '/app/import/history': typeof AppImportHistoryRoute
   '/app/orders/$orderId': typeof AppOrdersOrderIdRoute
   '/app/orders/create': typeof AppOrdersCreateRoute
   '/app/vehicles/$vehicleId': typeof AppVehiclesVehicleIdRoute
   '/app/vehicles/create': typeof AppVehiclesCreateRoute
+  '/app/workflows/$workflowId': typeof AppWorkflowsWorkflowIdRoute
   '/invite/$token_/accept': typeof InviteTokenAcceptRoute
+  '/portal/invoices/$invoiceId': typeof PortalInvoicesInvoiceIdRoute
+  '/portal/orders/$orderId': typeof PortalOrdersOrderIdRoute
+  '/app/audit-logs/': typeof AppAuditLogsIndexRoute
   '/app/customers/': typeof AppCustomersIndexRoute
   '/app/dispatches/': typeof AppDispatchesIndexRoute
   '/app/drivers/': typeof AppDriversIndexRoute
+  '/app/import/': typeof AppImportIndexRoute
   '/app/leads/': typeof AppLeadsIndexRoute
   '/app/orders/': typeof AppOrdersIndexRoute
   '/app/vehicles/': typeof AppVehiclesIndexRoute
@@ -292,16 +462,28 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/app'
+    | '/portal'
     | '/app/ai-assistant'
+    | '/app/developer'
     | '/app/finance'
+    | '/app/integrations'
     | '/app/my-deliveries'
     | '/app/notifications'
     | '/app/reports'
     | '/app/settings'
+    | '/app/workflows'
     | '/auth/forgot-password'
     | '/auth/sign-in'
     | '/invite/$token'
+    | '/portal/accept-invite'
+    | '/portal/documents'
+    | '/portal/invoices'
+    | '/portal/login'
+    | '/portal/notifications'
+    | '/portal/orders'
+    | '/portal/profile'
     | '/app/'
+    | '/portal/'
     | '/app/customers/$customerId'
     | '/app/customers/create'
     | '/app/dispatches/$dispatchId'
@@ -309,14 +491,21 @@ export interface FileRouteTypes {
     | '/app/dispatches/create'
     | '/app/drivers/$driverId'
     | '/app/drivers/create'
+    | '/app/import/$sessionId'
+    | '/app/import/history'
     | '/app/orders/$orderId'
     | '/app/orders/create'
     | '/app/vehicles/$vehicleId'
     | '/app/vehicles/create'
+    | '/app/workflows/$workflowId'
     | '/invite/$token/accept'
+    | '/portal/invoices/$invoiceId'
+    | '/portal/orders/$orderId'
+    | '/app/audit-logs/'
     | '/app/customers/'
     | '/app/dispatches/'
     | '/app/drivers/'
+    | '/app/import/'
     | '/app/leads/'
     | '/app/orders/'
     | '/app/vehicles/'
@@ -324,15 +513,26 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/app/ai-assistant'
+    | '/app/developer'
     | '/app/finance'
+    | '/app/integrations'
     | '/app/my-deliveries'
     | '/app/notifications'
     | '/app/reports'
     | '/app/settings'
+    | '/app/workflows'
     | '/auth/forgot-password'
     | '/auth/sign-in'
     | '/invite/$token'
+    | '/portal/accept-invite'
+    | '/portal/documents'
+    | '/portal/invoices'
+    | '/portal/login'
+    | '/portal/notifications'
+    | '/portal/orders'
+    | '/portal/profile'
     | '/app'
+    | '/portal'
     | '/app/customers/$customerId'
     | '/app/customers/create'
     | '/app/dispatches/$dispatchId'
@@ -340,14 +540,21 @@ export interface FileRouteTypes {
     | '/app/dispatches/create'
     | '/app/drivers/$driverId'
     | '/app/drivers/create'
+    | '/app/import/$sessionId'
+    | '/app/import/history'
     | '/app/orders/$orderId'
     | '/app/orders/create'
     | '/app/vehicles/$vehicleId'
     | '/app/vehicles/create'
+    | '/app/workflows/$workflowId'
     | '/invite/$token/accept'
+    | '/portal/invoices/$invoiceId'
+    | '/portal/orders/$orderId'
+    | '/app/audit-logs'
     | '/app/customers'
     | '/app/dispatches'
     | '/app/drivers'
+    | '/app/import'
     | '/app/leads'
     | '/app/orders'
     | '/app/vehicles'
@@ -355,16 +562,28 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/app'
+    | '/portal'
     | '/app/ai-assistant'
+    | '/app/developer'
     | '/app/finance'
+    | '/app/integrations'
     | '/app/my-deliveries'
     | '/app/notifications'
     | '/app/reports'
     | '/app/settings'
+    | '/app/workflows'
     | '/auth/forgot-password'
     | '/auth/sign-in'
     | '/invite/$token'
+    | '/portal/accept-invite'
+    | '/portal/documents'
+    | '/portal/invoices'
+    | '/portal/login'
+    | '/portal/notifications'
+    | '/portal/orders'
+    | '/portal/profile'
     | '/app/'
+    | '/portal/'
     | '/app/customers/$customerId'
     | '/app/customers/create'
     | '/app/dispatches/$dispatchId'
@@ -372,14 +591,21 @@ export interface FileRouteTypes {
     | '/app/dispatches/create'
     | '/app/drivers/$driverId'
     | '/app/drivers/create'
+    | '/app/import/$sessionId'
+    | '/app/import/history'
     | '/app/orders/$orderId'
     | '/app/orders/create'
     | '/app/vehicles/$vehicleId'
     | '/app/vehicles/create'
+    | '/app/workflows/$workflowId'
     | '/invite/$token_/accept'
+    | '/portal/invoices/$invoiceId'
+    | '/portal/orders/$orderId'
+    | '/app/audit-logs/'
     | '/app/customers/'
     | '/app/dispatches/'
     | '/app/drivers/'
+    | '/app/import/'
     | '/app/leads/'
     | '/app/orders/'
     | '/app/vehicles/'
@@ -388,6 +614,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
+  PortalRoute: typeof PortalRouteWithChildren
   AuthForgotPasswordRoute: typeof AuthForgotPasswordRoute
   AuthSignInRoute: typeof AuthSignInRoute
   InviteTokenRoute: typeof InviteTokenRoute
@@ -396,6 +623,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/portal': {
+      id: '/portal'
+      path: '/portal'
+      fullPath: '/portal'
+      preLoaderRoute: typeof PortalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/app': {
       id: '/app'
       path: '/app'
@@ -410,12 +644,68 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/portal/': {
+      id: '/portal/'
+      path: '/'
+      fullPath: '/portal/'
+      preLoaderRoute: typeof PortalIndexRouteImport
+      parentRoute: typeof PortalRoute
+    }
     '/app/': {
       id: '/app/'
       path: '/'
       fullPath: '/app/'
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/portal/profile': {
+      id: '/portal/profile'
+      path: '/profile'
+      fullPath: '/portal/profile'
+      preLoaderRoute: typeof PortalProfileRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/portal/orders': {
+      id: '/portal/orders'
+      path: '/orders'
+      fullPath: '/portal/orders'
+      preLoaderRoute: typeof PortalOrdersRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/portal/notifications': {
+      id: '/portal/notifications'
+      path: '/notifications'
+      fullPath: '/portal/notifications'
+      preLoaderRoute: typeof PortalNotificationsRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/portal/login': {
+      id: '/portal/login'
+      path: '/login'
+      fullPath: '/portal/login'
+      preLoaderRoute: typeof PortalLoginRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/portal/invoices': {
+      id: '/portal/invoices'
+      path: '/invoices'
+      fullPath: '/portal/invoices'
+      preLoaderRoute: typeof PortalInvoicesRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/portal/documents': {
+      id: '/portal/documents'
+      path: '/documents'
+      fullPath: '/portal/documents'
+      preLoaderRoute: typeof PortalDocumentsRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/portal/accept-invite': {
+      id: '/portal/accept-invite'
+      path: '/accept-invite'
+      fullPath: '/portal/accept-invite'
+      preLoaderRoute: typeof PortalAcceptInviteRouteImport
+      parentRoute: typeof PortalRoute
     }
     '/invite/$token': {
       id: '/invite/$token'
@@ -437,6 +727,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/auth/forgot-password'
       preLoaderRoute: typeof AuthForgotPasswordRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/app/workflows': {
+      id: '/app/workflows'
+      path: '/workflows'
+      fullPath: '/app/workflows'
+      preLoaderRoute: typeof AppWorkflowsRouteImport
+      parentRoute: typeof AppRoute
     }
     '/app/settings': {
       id: '/app/settings'
@@ -466,11 +763,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppMyDeliveriesRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/integrations': {
+      id: '/app/integrations'
+      path: '/integrations'
+      fullPath: '/app/integrations'
+      preLoaderRoute: typeof AppIntegrationsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/finance': {
       id: '/app/finance'
       path: '/finance'
       fullPath: '/app/finance'
       preLoaderRoute: typeof AppFinanceRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/developer': {
+      id: '/app/developer'
+      path: '/developer'
+      fullPath: '/app/developer'
+      preLoaderRoute: typeof AppDeveloperRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/ai-assistant': {
@@ -501,6 +812,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppLeadsIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/import/': {
+      id: '/app/import/'
+      path: '/import'
+      fullPath: '/app/import/'
+      preLoaderRoute: typeof AppImportIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/drivers/': {
       id: '/app/drivers/'
       path: '/drivers'
@@ -522,12 +840,40 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCustomersIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/audit-logs/': {
+      id: '/app/audit-logs/'
+      path: '/audit-logs'
+      fullPath: '/app/audit-logs/'
+      preLoaderRoute: typeof AppAuditLogsIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/portal/orders/$orderId': {
+      id: '/portal/orders/$orderId'
+      path: '/$orderId'
+      fullPath: '/portal/orders/$orderId'
+      preLoaderRoute: typeof PortalOrdersOrderIdRouteImport
+      parentRoute: typeof PortalOrdersRoute
+    }
+    '/portal/invoices/$invoiceId': {
+      id: '/portal/invoices/$invoiceId'
+      path: '/$invoiceId'
+      fullPath: '/portal/invoices/$invoiceId'
+      preLoaderRoute: typeof PortalInvoicesInvoiceIdRouteImport
+      parentRoute: typeof PortalInvoicesRoute
+    }
     '/invite/$token_/accept': {
       id: '/invite/$token_/accept'
       path: '/invite/$token/accept'
       fullPath: '/invite/$token/accept'
       preLoaderRoute: typeof InviteTokenAcceptRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/app/workflows/$workflowId': {
+      id: '/app/workflows/$workflowId'
+      path: '/$workflowId'
+      fullPath: '/app/workflows/$workflowId'
+      preLoaderRoute: typeof AppWorkflowsWorkflowIdRouteImport
+      parentRoute: typeof AppWorkflowsRoute
     }
     '/app/vehicles/create': {
       id: '/app/vehicles/create'
@@ -555,6 +901,20 @@ declare module '@tanstack/react-router' {
       path: '/orders/$orderId'
       fullPath: '/app/orders/$orderId'
       preLoaderRoute: typeof AppOrdersOrderIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/import/history': {
+      id: '/app/import/history'
+      path: '/import/history'
+      fullPath: '/app/import/history'
+      preLoaderRoute: typeof AppImportHistoryRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/import/$sessionId': {
+      id: '/app/import/$sessionId'
+      path: '/import/$sessionId'
+      fullPath: '/app/import/$sessionId'
+      preLoaderRoute: typeof AppImportSessionIdRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/drivers/create': {
@@ -609,13 +969,28 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AppWorkflowsRouteChildren {
+  AppWorkflowsWorkflowIdRoute: typeof AppWorkflowsWorkflowIdRoute
+}
+
+const AppWorkflowsRouteChildren: AppWorkflowsRouteChildren = {
+  AppWorkflowsWorkflowIdRoute: AppWorkflowsWorkflowIdRoute,
+}
+
+const AppWorkflowsRouteWithChildren = AppWorkflowsRoute._addFileChildren(
+  AppWorkflowsRouteChildren,
+)
+
 interface AppRouteChildren {
   AppAiAssistantRoute: typeof AppAiAssistantRoute
+  AppDeveloperRoute: typeof AppDeveloperRoute
   AppFinanceRoute: typeof AppFinanceRoute
+  AppIntegrationsRoute: typeof AppIntegrationsRoute
   AppMyDeliveriesRoute: typeof AppMyDeliveriesRoute
   AppNotificationsRoute: typeof AppNotificationsRoute
   AppReportsRoute: typeof AppReportsRoute
   AppSettingsRoute: typeof AppSettingsRoute
+  AppWorkflowsRoute: typeof AppWorkflowsRouteWithChildren
   AppIndexRoute: typeof AppIndexRoute
   AppCustomersCustomerIdRoute: typeof AppCustomersCustomerIdRoute
   AppCustomersCreateRoute: typeof AppCustomersCreateRoute
@@ -624,13 +999,17 @@ interface AppRouteChildren {
   AppDispatchesCreateRoute: typeof AppDispatchesCreateRoute
   AppDriversDriverIdRoute: typeof AppDriversDriverIdRoute
   AppDriversCreateRoute: typeof AppDriversCreateRoute
+  AppImportSessionIdRoute: typeof AppImportSessionIdRoute
+  AppImportHistoryRoute: typeof AppImportHistoryRoute
   AppOrdersOrderIdRoute: typeof AppOrdersOrderIdRoute
   AppOrdersCreateRoute: typeof AppOrdersCreateRoute
   AppVehiclesVehicleIdRoute: typeof AppVehiclesVehicleIdRoute
   AppVehiclesCreateRoute: typeof AppVehiclesCreateRoute
+  AppAuditLogsIndexRoute: typeof AppAuditLogsIndexRoute
   AppCustomersIndexRoute: typeof AppCustomersIndexRoute
   AppDispatchesIndexRoute: typeof AppDispatchesIndexRoute
   AppDriversIndexRoute: typeof AppDriversIndexRoute
+  AppImportIndexRoute: typeof AppImportIndexRoute
   AppLeadsIndexRoute: typeof AppLeadsIndexRoute
   AppOrdersIndexRoute: typeof AppOrdersIndexRoute
   AppVehiclesIndexRoute: typeof AppVehiclesIndexRoute
@@ -638,11 +1017,14 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppAiAssistantRoute: AppAiAssistantRoute,
+  AppDeveloperRoute: AppDeveloperRoute,
   AppFinanceRoute: AppFinanceRoute,
+  AppIntegrationsRoute: AppIntegrationsRoute,
   AppMyDeliveriesRoute: AppMyDeliveriesRoute,
   AppNotificationsRoute: AppNotificationsRoute,
   AppReportsRoute: AppReportsRoute,
   AppSettingsRoute: AppSettingsRoute,
+  AppWorkflowsRoute: AppWorkflowsRouteWithChildren,
   AppIndexRoute: AppIndexRoute,
   AppCustomersCustomerIdRoute: AppCustomersCustomerIdRoute,
   AppCustomersCreateRoute: AppCustomersCreateRoute,
@@ -651,13 +1033,17 @@ const AppRouteChildren: AppRouteChildren = {
   AppDispatchesCreateRoute: AppDispatchesCreateRoute,
   AppDriversDriverIdRoute: AppDriversDriverIdRoute,
   AppDriversCreateRoute: AppDriversCreateRoute,
+  AppImportSessionIdRoute: AppImportSessionIdRoute,
+  AppImportHistoryRoute: AppImportHistoryRoute,
   AppOrdersOrderIdRoute: AppOrdersOrderIdRoute,
   AppOrdersCreateRoute: AppOrdersCreateRoute,
   AppVehiclesVehicleIdRoute: AppVehiclesVehicleIdRoute,
   AppVehiclesCreateRoute: AppVehiclesCreateRoute,
+  AppAuditLogsIndexRoute: AppAuditLogsIndexRoute,
   AppCustomersIndexRoute: AppCustomersIndexRoute,
   AppDispatchesIndexRoute: AppDispatchesIndexRoute,
   AppDriversIndexRoute: AppDriversIndexRoute,
+  AppImportIndexRoute: AppImportIndexRoute,
   AppLeadsIndexRoute: AppLeadsIndexRoute,
   AppOrdersIndexRoute: AppOrdersIndexRoute,
   AppVehiclesIndexRoute: AppVehiclesIndexRoute,
@@ -665,9 +1051,59 @@ const AppRouteChildren: AppRouteChildren = {
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
+interface PortalInvoicesRouteChildren {
+  PortalInvoicesInvoiceIdRoute: typeof PortalInvoicesInvoiceIdRoute
+}
+
+const PortalInvoicesRouteChildren: PortalInvoicesRouteChildren = {
+  PortalInvoicesInvoiceIdRoute: PortalInvoicesInvoiceIdRoute,
+}
+
+const PortalInvoicesRouteWithChildren = PortalInvoicesRoute._addFileChildren(
+  PortalInvoicesRouteChildren,
+)
+
+interface PortalOrdersRouteChildren {
+  PortalOrdersOrderIdRoute: typeof PortalOrdersOrderIdRoute
+}
+
+const PortalOrdersRouteChildren: PortalOrdersRouteChildren = {
+  PortalOrdersOrderIdRoute: PortalOrdersOrderIdRoute,
+}
+
+const PortalOrdersRouteWithChildren = PortalOrdersRoute._addFileChildren(
+  PortalOrdersRouteChildren,
+)
+
+interface PortalRouteChildren {
+  PortalAcceptInviteRoute: typeof PortalAcceptInviteRoute
+  PortalDocumentsRoute: typeof PortalDocumentsRoute
+  PortalInvoicesRoute: typeof PortalInvoicesRouteWithChildren
+  PortalLoginRoute: typeof PortalLoginRoute
+  PortalNotificationsRoute: typeof PortalNotificationsRoute
+  PortalOrdersRoute: typeof PortalOrdersRouteWithChildren
+  PortalProfileRoute: typeof PortalProfileRoute
+  PortalIndexRoute: typeof PortalIndexRoute
+}
+
+const PortalRouteChildren: PortalRouteChildren = {
+  PortalAcceptInviteRoute: PortalAcceptInviteRoute,
+  PortalDocumentsRoute: PortalDocumentsRoute,
+  PortalInvoicesRoute: PortalInvoicesRouteWithChildren,
+  PortalLoginRoute: PortalLoginRoute,
+  PortalNotificationsRoute: PortalNotificationsRoute,
+  PortalOrdersRoute: PortalOrdersRouteWithChildren,
+  PortalProfileRoute: PortalProfileRoute,
+  PortalIndexRoute: PortalIndexRoute,
+}
+
+const PortalRouteWithChildren =
+  PortalRoute._addFileChildren(PortalRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
+  PortalRoute: PortalRouteWithChildren,
   AuthForgotPasswordRoute: AuthForgotPasswordRoute,
   AuthSignInRoute: AuthSignInRoute,
   InviteTokenRoute: InviteTokenRoute,

@@ -1,6 +1,7 @@
 import { formatMoney } from "@/lib/format";
 import type { ExecutiveOverviewTotals } from "@/lib/api/dashboard";
 import { Skeleton } from "@/components/ui/skeleton";
+import { MetricCard, type MetricTone } from "@/components/ui/metric-card";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -18,22 +19,21 @@ interface KpiCardsProps {
   loading: boolean;
 }
 
-type Tone = "good" | "warning" | "neutral";
-
 interface Kpi {
   label: string;
   value: string;
   icon: LucideIcon;
   note: string;
-  tone: Tone;
+  tone: MetricTone;
 }
 
-/// Status colour never travels alone — each note carries an icon as well, so the
-/// meaning survives colour-blindness and forced-colours mode.
-const TONE_STYLES: Record<Tone, { text: string; icon: LucideIcon }> = {
-  good: { text: "text-success", icon: TrendingUp },
-  warning: { text: "text-warning", icon: AlertTriangle },
-  neutral: { text: "text-muted-foreground", icon: Minus },
+/// Status colour never travels alone — each note carries an icon as well
+/// (MetricCard's `note` prop), so the meaning survives colour-blindness and
+/// forced-colours mode.
+const NOTE_ICON: Record<MetricTone, LucideIcon> = {
+  good: TrendingUp,
+  warning: AlertTriangle,
+  neutral: Minus,
 };
 
 export function KpiCards({ totals, fleet, loading }: KpiCardsProps) {
@@ -80,32 +80,15 @@ export function KpiCards({ totals, fleet, loading }: KpiCardsProps) {
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      {kpis.map((kpi) => {
-        const tone = TONE_STYLES[kpi.tone];
-        const NoteIcon = tone.icon;
-        return (
-          <div
-            key={kpi.label}
-            className="group relative overflow-hidden rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50 p-5 transition-all duration-200 hover:border-brand/30 hover:shadow-lg hover:shadow-brand/10"
-          >
-            <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-brand/5 blur-3xl transition-all duration-200 group-hover:bg-brand/10" />
-            <div className="relative flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-muted-foreground">{kpi.label}</p>
-                {/* Sans, not the display face: a stat-tile value is data, not a headline. */}
-                <p className="mt-2 text-3xl font-semibold leading-none text-foreground">{kpi.value}</p>
-                <p className={`mt-3 flex items-center gap-1.5 text-sm font-medium ${tone.text}`}>
-                  <NoteIcon className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate">{kpi.note}</span>
-                </p>
-              </div>
-              <span className="shrink-0 rounded-xl bg-brand/10 p-2.5 text-brand">
-                <kpi.icon className="h-5 w-5" />
-              </span>
-            </div>
-          </div>
-        );
-      })}
+      {kpis.map((kpi) => (
+        <MetricCard
+          key={kpi.label}
+          label={kpi.label}
+          value={kpi.value}
+          icon={kpi.icon}
+          note={{ icon: NOTE_ICON[kpi.tone], text: kpi.note, tone: kpi.tone }}
+        />
+      ))}
     </div>
   );
 }

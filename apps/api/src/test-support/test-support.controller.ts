@@ -1,5 +1,6 @@
 import { Controller, Delete, Get, HttpCode, NotFoundException, Param, Post } from "@nestjs/common";
 import { renderInvitationEmail } from "../mail/invitation-email.template";
+import { renderCustomerPortalInvitationEmail } from "../mail/customer-portal-invitation-email.template";
 import { MailOutbox } from "../mail/mail.outbox";
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -59,6 +60,56 @@ export class TestSupportController {
     const expiresAt = new Date(Date.now() - 1000);
 
     const result = await this.prisma.invitation.updateMany({
+      where: { id },
+      data: { expiresAt },
+    });
+    if (result.count !== 1) {
+      throw new NotFoundException("Invitation not found");
+    }
+
+    return { id, expiresAt };
+  }
+
+  /// Customer-portal invitation emails captured since the last clear, oldest
+  /// first — the same reasoning as listOutbox: the raw activation token is
+  /// unreachable from an e2e test by design (only its hash is persisted).
+  @Get("mail/customer-portal-outbox")
+  listCustomerPortalOutbox(): OutboxEmail[] {
+    return this.outbox.listCustomerPortalInvitations().map((message) => ({
+      to: message.to,
+      subject: renderCustomerPortalInvitationEmail(message).subject,
+      acceptUrl: message.acceptUrl,
+    }));
+  }
+
+  /// Empties the customer-portal outbox queue. Independent of clearOutbox
+  /// (MailOutbox.clear() empties both), for a test that only wants to reset one.
+  @Delete("mail/customer-portal-outbox")
+  @HttpCode(200)
+  clearCustomerPortalOutbox(): { cleared: true } {
+    this.outbox.clear();
+    return { cleared: true };
+  }
+
+  @Get("mail/raw-outbox")
+  listRawOutbox() {
+    return this.outbox.listRaw().map((m) => ({
+      to: m.to,
+      subject: m.subject,
+      textBody: m.textBody,
+    }));
+  }
+
+  /// Backdates a customer-portal invitation's expiry, mirroring
+  /// expireInvitation above.
+  @Post("customer-portal-invitations/:id/expire")
+  @HttpCode(200)
+  async expireCustomerPortalInvitation(
+    @Param("id") id: string,
+  ): Promise<{ id: string; expiresAt: Date }> {
+    const expiresAt = new Date(Date.now() - 1000);
+
+    const result = await this.prisma.customerPortalInvitation.updateMany({
       where: { id },
       data: { expiresAt },
     });

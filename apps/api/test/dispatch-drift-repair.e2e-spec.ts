@@ -28,7 +28,7 @@ const queries = new AssignmentQueries(prisma);
 const policy = new AssignmentPolicy(prisma, queries);
 const writer = new OrderWriter();
 const audit = { log: jest.fn().mockResolvedValue(undefined) } as unknown as AuditService;
-const dispatches = new DispatchesService(prisma, audit, policy, writer);
+const dispatches = new DispatchesService(prisma, audit, policy, writer, { emit: () => {} } as any);
 const board = new DispatchService(prisma, queries);
 
 const PICKUP = new Date("2035-02-01T08:00:00.000Z");

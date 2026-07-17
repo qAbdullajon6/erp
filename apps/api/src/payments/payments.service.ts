@@ -4,6 +4,7 @@ import { AuditService } from "../audit/audit.service";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { InvoicesService } from "../invoices/invoices.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { WorkflowEventService } from "../workflows/triggers/workflow-event.service";
 import { CreatePaymentDto } from "./dto/create-payment.dto";
 import { ListPaymentsQueryDto } from "./dto/list-payments-query.dto";
 
@@ -13,6 +14,7 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly invoicesService: InvoicesService,
+    private readonly workflowEvents: WorkflowEventService,
   ) {}
 
   async list(organizationId: string, query: ListPaymentsQueryDto) {
@@ -127,6 +129,11 @@ export class PaymentsService {
       entityId: payment.id,
       metadata: { invoiceId, amount: amount.toString(), resultingInvoiceStatus: newStatus },
     });
+
+    this.workflowEvents.emit(organizationId, "payment.received", { id: payment.id, invoiceId, amount: amount.toString(), resultingInvoiceStatus: newStatus });
+    if (newStatus === "PAID") {
+      this.workflowEvents.emit(organizationId, "invoice.paid", { id: invoiceId, invoiceNumber: updatedInvoice.invoiceNumber });
+    }
 
     return { payment: this.toResponse(payment), invoice: this.invoicesService.toResponse(updatedInvoice) };
   }

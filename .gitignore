@@ -71,8 +71,28 @@ apps/web/shots/
 apps/web/test-results/
 apps/web/e2e/auth-state.json
 
-# claude code local session state
-/.claude/
+# claude code local session state — only the personal/local override, not the
+# whole directory. The blanket `/.claude/` this used to be silently swallowed
+# `.claude/skills/**` (committed, shared project skills), which `git status`
+# and `git add` both treat as ignored with no warning.
+/.claude/settings.local.json
+
+# Local file storage for uploads (delivery-proof photos/signatures, etc.) —
+# runtime data, never source. Found untracked-but-not-ignored during a repo
+# audit: 451 files under apps/api/uploads/ had been swept into a `git stash -u`
+# because nothing here excluded them.
+apps/api/uploads/
+
+# Local code-graph index for the tokensave MCP server. A SQLite database plus
+# its write-ahead log — machine-local tooling state that is rebuilt on demand,
+# and would otherwise land in every diff as unreadable binary churn.
+/.tokensave/
+
+# Scratch output of `prisma db pull`. Introspecting the live database to
+# compare it against schema.prisma is a useful debugging move; the result is a
+# throwaway snapshot, and committing it would create a second schema file that
+# looks authoritative and silently rots.
+apps/api/prisma/schema.discovered-from-db.prisma
 
 # Database dumps written by scripts/backup-postgres.sh — never commit these.
 backups/

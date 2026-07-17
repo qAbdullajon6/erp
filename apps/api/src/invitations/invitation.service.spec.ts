@@ -232,9 +232,12 @@ function buildService(configOverrides: Partial<typeof INVITATION_CONFIG> = {}) {
   const mail = {
     sendInvitationEmail: jest.fn().mockResolvedValue(undefined),
     // Unused by InvitationService — present only so this mock satisfies the
-    // MailService shape (Milestone 12 added these two sibling methods).
+    // MailService shape (Milestone 12 added these two sibling methods, and
+    // the customer-portal milestone added the third).
     sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
     sendEmailVerificationEmail: jest.fn().mockResolvedValue(undefined),
+    sendCustomerPortalInvitationEmail: jest.fn().mockResolvedValue(undefined),
+    sendRawEmail: jest.fn().mockResolvedValue(undefined),
   };
   const config = {
     get: jest.fn().mockReturnValue({ ...INVITATION_CONFIG, ...configOverrides }),

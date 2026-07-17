@@ -45,15 +45,52 @@ export interface DelayedOrderRow {
   currency: string;
 }
 
-export interface DispatchResourceGroup {
-  available: unknown[];
-  busy: unknown[];
-  [key: string]: unknown[];
+export interface BoardOrderSummary {
+  id: string;
+  orderNumber: string;
+  pickupCity: string;
+  deliveryCity: string;
+  pickupDate: string;
+  deliveryDate: string;
+  status: string;
 }
 
+export interface BoardDriverSummary {
+  id: string;
+  employeeCode: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  status: string;
+}
+
+export interface BoardVehicleSummary {
+  id: string;
+  vehicleCode: string;
+  plateNumber: string;
+  type: string;
+  status: string;
+}
+
+/// The board endpoint returns far more than a count — `busy` carries the
+/// actual driver/vehicle plus what they're on right now (Task: dashboard
+/// "Live Dispatch"). Previously typed as `unknown[]` and only ever counted
+/// with `.length`, which silently discarded this.
 export interface DispatchBoardSummary {
-  drivers: DispatchResourceGroup;
-  vehicles: DispatchResourceGroup;
+  unassignedOrders: BoardOrderSummary[];
+  drivers: {
+    available: BoardDriverSummary[];
+    busy: Array<{ driver: BoardDriverSummary; currentOrder: BoardOrderSummary }>;
+    onLeave: BoardDriverSummary[];
+    inactive: BoardDriverSummary[];
+  };
+  vehicles: {
+    available: BoardVehicleSummary[];
+    busy: Array<{ vehicle: BoardVehicleSummary; currentOrder: BoardOrderSummary }>;
+    inUse: BoardVehicleSummary[];
+    maintenance: BoardVehicleSummary[];
+    inactive: BoardVehicleSummary[];
+  };
 }
 
 export interface RecentOrderRow {

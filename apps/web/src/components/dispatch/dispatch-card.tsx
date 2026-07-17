@@ -2,7 +2,7 @@
 
 import { memo } from 'react';
 import { useDraggable } from '@dnd-kit/core';
-import { MoreVertical, StickyNote } from 'lucide-react';
+import { MoreVertical, AlertTriangle, Clock, Truck, User } from 'lucide-react';
 import type { ApiDispatch } from '@/lib/api/dispatches';
 import { Button } from '@/components/ui/button';
 import {
@@ -12,20 +12,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { StatusBadge } from '@/components/shared/status-badge';
-
-/// One dispatch on the board.
-///
-/// R2/R5: everything here is read straight off the Dispatch. The driver and the
-/// vehicle come from `dispatch.driver` / `dispatch.vehicle` — never from the order,
-/// whose driverId is only a projection (ADR-001) and could in principle lag. The
-/// card derives nothing: no availability, no assignability, no capacity, no
-/// overlap.
+import { statusVariant } from '@/components/shared/status-badge';
 
 interface DispatchCardProps {
   dispatch: ApiDispatch;
-  /// True while a move for THIS card is in flight. The card does not move — it
-  /// waits. Nothing is faked (R3).
   pending: boolean;
   onOpen: (id: string) => void;
   onReassign: (dispatch: ApiDispatch) => void;
@@ -33,10 +23,27 @@ interface DispatchCardProps {
   onViewOrder: (orderId: string) => void;
 }
 
-function formatWindow(from: string, to: string): string {
-  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
-  return `${new Date(from).toLocaleDateString('en-US', opts)} → ${new Date(to).toLocaleDateString('en-US', opts)}`;
+function getDeliveryUrgency(deliveryDate: string): { label: string; tone: string; isUrgent: boolean } {
+  const target = new Date(deliveryDate);
+  const now = new Date();
+  const diffMs = target.getTime() - now.getTime();
+  const diffHours = diffMs / (1000 * 60 * 60);
+  const diffDays = Math.ceil(diffHours / 24);
+
+  if (diffHours < 0) return { label: `${Math.abs(diffDays)}d late`, tone: 'text-destructive', isUrgent: true };
+  if (diffHours < 12) return { label: 'Due today', tone: 'text-warning', isUrgent: true };
+  if (diffHours < 36) return { label: 'Tomorrow', tone: 'text-warning', isUrgent: false };
+  if (diffDays <= 3) return { label: `${diffDays}d left`, tone: 'text-muted-foreground', isUrgent: false };
+  return { label: `${diffDays}d`, tone: 'text-muted-foreground', isUrgent: false };
 }
+
+const ACCENT_BORDER: Record<ReturnType<typeof statusVariant>, string> = {
+  success: 'border-l-success/60',
+  warning: 'border-l-warning/60',
+  danger: 'border-l-destructive/60',
+  brand: 'border-l-brand/60',
+  muted: 'border-l-muted-foreground/20',
+};
 
 function DispatchCardImpl({
   dispatch,
@@ -49,8 +56,6 @@ function DispatchCardImpl({
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: dispatch.id,
     data: { dispatch },
-    // A terminal dispatch has nowhere to go; the server says so via an empty
-    // allowedTransitions, and we simply believe it.
     disabled: dispatch.allowedTransitions.length === 0 || pending,
   });
 
@@ -58,6 +63,8 @@ function DispatchCardImpl({
   const vehicle = dispatch.vehicle;
   const customer = dispatch.order?.customer;
   const canCancel = dispatch.allowedTransitions.includes('CANCELLED');
+  const isTerminal = dispatch.status === 'DELIVERED' || dispatch.status === 'CANCELLED';
+  const urgency = !isTerminal ? getDeliveryUrgency(dispatch.deliveryDateScheduled) : null;
 
   const style = transform
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
@@ -68,109 +75,82 @@ function DispatchCardImpl({
       ref={setNodeRef}
       style={style}
       className={[
-        'rounded-lg border border-border bg-card p-3 shadow-sm',
-        'focus-within:ring-2 focus-within:ring-ring',
-        isDragging ? 'opacity-50' : '',
+        'group relative rounded-lg border border-l-[3px] border-border bg-card p-3 transition-all',
+        ACCENT_BORDER[statusVariant(dispatch.status)],
+        'hover:bg-muted/30 hover:shadow-sm',
+        isDragging ? 'opacity-50 shadow-lg ring-2 ring-brand' : '',
         pending ? 'opacity-60 animate-pulse' : '',
+        urgency?.isUrgent ? 'ring-1 ring-destructive/20' : '',
       ].join(' ')}
-      aria-label={`Dispatch ${dispatch.dispatchNumber}, ${dispatch.status.replace(/_/g, ' ').toLowerCase()}`}
+      aria-label={`Dispatch ${dispatch.dispatchNumber}`}
       data-testid={`dispatch-card-${dispatch.dispatchNumber}`}
     >
-      <div className="flex items-start justify-between gap-2">
-        {/* The drag handle is the card's own button, so it is reachable by keyboard
-            and announces itself. dnd-kit gives it the right ARIA roles. */}
-        <button
-          type="button"
-          className="min-h-[44px] rounded text-left font-mono text-sm font-semibold text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-0"
-          onClick={() => onOpen(dispatch.id)}
-          {...listeners}
-          {...attributes}
-        >
-          {dispatch.dispatchNumber}
-        </button>
-
-        <div className="flex items-center gap-1">
-          {dispatch.notes ? (
-            <StickyNote
-              className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
-              aria-label="Has notes"
-              role="img"
-            />
-          ) : null}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              {/* 44px on touch, tighter on the desktop board where the pointer is
-                  precise and vertical space on a card is scarce. */}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-11 w-11 sm:h-7 sm:w-7"
-                aria-label={`Actions for dispatch ${dispatch.dispatchNumber}`}
-              >
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onOpen(dispatch.id)}>Open details</DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => onReassign(dispatch)}
-                disabled={dispatch.allowedTransitions.length === 0}
-              >
-                Reassign
-              </DropdownMenuItem>
-              {dispatch.order ? (
-                <DropdownMenuItem onClick={() => onViewOrder(dispatch.orderId)}>
-                  View order
-                </DropdownMenuItem>
-              ) : null}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => onCancel(dispatch)}
-                disabled={!canCancel}
-                className="text-destructive"
-              >
-                Cancel dispatch
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+      {/* Top row: dispatch number + urgency + menu */}
+      <div className="flex items-start justify-between gap-1">
+        <div className="min-w-0 flex-1">
+          <button
+            type="button"
+            className="min-h-[44px] rounded text-left font-mono text-xs font-bold text-foreground hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-0"
+            onClick={() => onOpen(dispatch.id)}
+            {...listeners}
+            {...attributes}
+          >
+            {dispatch.dispatchNumber}
+          </button>
         </div>
+
+        {urgency && (
+          <span className={`flex items-center gap-0.5 whitespace-nowrap text-[10px] font-medium ${urgency.tone}`}>
+            {urgency.isUrgent && <AlertTriangle className="h-2.5 w-2.5" />}
+            {urgency.label}
+          </span>
+        )}
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity">
+              <MoreVertical className="h-3.5 w-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => onOpen(dispatch.id)}>Open</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onReassign(dispatch)} disabled={dispatch.allowedTransitions.length === 0}>Reassign</DropdownMenuItem>
+            {dispatch.order && <DropdownMenuItem onClick={() => onViewOrder(dispatch.orderId)}>View order</DropdownMenuItem>}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => onCancel(dispatch)} disabled={!canCancel} className="text-destructive">Cancel</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
-      <p className="mt-1 truncate text-sm text-foreground">
-        {customer?.companyName ?? 'Unknown customer'}
+      {/* Route — the primary visual identifier */}
+      <div className="mt-1.5 flex items-center gap-1 text-xs">
+        <span className="truncate font-medium text-foreground">{dispatch.order?.pickupCity ?? '—'}</span>
+        <span className="text-muted-foreground">→</span>
+        <span className="truncate font-medium text-foreground">{dispatch.order?.deliveryCity ?? '—'}</span>
+      </div>
+
+      {/* Customer */}
+      <p className="mt-1 truncate text-[11px] text-muted-foreground">
+        {customer?.companyName ?? 'Unknown'}
       </p>
 
-      <p className="mt-0.5 truncate text-xs text-muted-foreground">
-        {dispatch.order?.pickupCity ?? '—'} → {dispatch.order?.deliveryCity ?? '—'}
-      </p>
-
-      <dl className="mt-2 space-y-0.5 text-xs">
-        <div className="flex gap-1">
-          <dt className="text-muted-foreground">Driver:</dt>
-          <dd className="truncate text-foreground">
-            {driver ? `${driver.firstName} ${driver.lastName}` : '—'}
-          </dd>
-        </div>
-        <div className="flex gap-1">
-          <dt className="text-muted-foreground">Vehicle:</dt>
-          <dd className="truncate font-mono text-foreground">{vehicle?.plateNumber ?? '—'}</dd>
-        </div>
-        <div className="flex gap-1">
-          <dt className="text-muted-foreground">Window:</dt>
-          <dd className="text-foreground">
-            {formatWindow(dispatch.pickupDateScheduled, dispatch.deliveryDateScheduled)}
-          </dd>
-        </div>
-      </dl>
-
-      <div className="mt-2">
-        <StatusBadge status={dispatch.status} />
+      {/* Assignment — compact row */}
+      <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground">
+        {driver && (
+          <span className="flex items-center gap-1 truncate">
+            <User className="h-3 w-3 shrink-0" />
+            <span className="truncate">{driver.firstName} {driver.lastName?.charAt(0)}.</span>
+          </span>
+        )}
+        {vehicle && (
+          <span className="flex items-center gap-1 truncate">
+            <Truck className="h-3 w-3 shrink-0" />
+            <span className="truncate font-mono">{vehicle.plateNumber}</span>
+          </span>
+        )}
       </div>
     </article>
   );
 }
 
-/// Memoised: a board of 100 cards re-renders on every drag frame otherwise. The
-/// props are primitives and a stable dispatch object from React Query's cache, so
-/// referential equality actually holds.
 export const DispatchCard = memo(DispatchCardImpl);

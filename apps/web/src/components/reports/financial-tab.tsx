@@ -99,9 +99,9 @@ export function FinancialTab({ params }: FinancialTabProps) {
         <div className="rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50 p-6">
           <div className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Avg. Days to Full Payment</div>
           <div className="mt-3 font-display text-2xl font-bold text-foreground">
-            {icp.averageDaysToFullPayment === null ? '—' : icp.averageDaysToFullPayment.toFixed(1)}
+            {icp.averageDaysToFullPayment == null ? '—' : icp.averageDaysToFullPayment.toFixed(1)}
           </div>
-          <div className="mt-2 text-sm text-muted-foreground">{icp.averageDaysToFullPayment === null ? 'no fully paid invoices yet' : 'days'}</div>
+          <div className="mt-2 text-sm text-muted-foreground">{icp.averageDaysToFullPayment == null ? 'no fully paid invoices yet' : 'days'}</div>
         </div>
       </div>
 

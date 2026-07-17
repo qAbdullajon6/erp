@@ -1,6 +1,10 @@
+import { Package } from "lucide-react";
 import type { OrdersByStatusRow } from "@/lib/api/dashboard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { statusLabel } from "@/components/shared/status-badge";
+import { SurfaceCard } from "@/components/ui/surface-card";
+import { SectionHeader } from "@/components/ui/section-header";
+import { EmptyState } from "@/components/shared/list-states";
 
 interface DeliveryStatusChartProps {
   data: OrdersByStatusRow[];
@@ -27,14 +31,13 @@ export function DeliveryStatusChart({ data, loading }: DeliveryStatusChartProps)
   const sorted = [...data].sort((a, b) => b.count - a.count);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50 p-6">
-      <div>
-        <h3 className="text-lg font-semibold text-foreground">Orders by status</h3>
-        <p className="mt-0.5 text-sm text-muted-foreground">Last 30 days</p>
-      </div>
+    <SurfaceCard className="flex h-full flex-col p-6">
+      <SectionHeader title="Orders by status" subtitle="Last 30 days" />
 
       <div className="mt-6 space-y-4">
-        {total === 0 && <p className="text-sm text-muted-foreground">No orders in this period yet.</p>}
+        {total === 0 && (
+          <EmptyState icon={Package} title="No orders in this period yet" description="New orders will show up here by status." />
+        )}
 
         {sorted.map((item) => {
           const share = total > 0 ? (item.count / total) * 100 : 0;
@@ -67,6 +70,6 @@ export function DeliveryStatusChart({ data, loading }: DeliveryStatusChartProps)
           <span className="text-2xl font-semibold leading-none text-foreground">{total}</span>
         </div>
       )}
-    </div>
+    </SurfaceCard>
   );
 }

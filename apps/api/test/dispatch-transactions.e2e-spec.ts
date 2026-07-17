@@ -32,7 +32,7 @@ const audit = { log: auditLog } as unknown as AuditService;
 // these transactions have to get right, so stubbing them would hide exactly the
 // interaction under test.
 const queries = new AssignmentQueries(prisma);
-const service = new DispatchesService(prisma, audit, new AssignmentPolicy(prisma, queries), new OrderWriter());
+const service = new DispatchesService(prisma, audit, new AssignmentPolicy(prisma, queries), new OrderWriter(), { emit: () => {} } as any);
 
 const PICKUP = new Date("2032-05-01T08:00:00.000Z");
 const DELIVERY = new Date("2032-05-03T18:00:00.000Z");

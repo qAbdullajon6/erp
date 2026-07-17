@@ -1,8 +1,14 @@
 import { Logger } from "@nestjs/common";
 import { createTransport, type Transporter } from "nodemailer";
-import { MailService, type InvitationEmailMessage } from "../mail.service";
+import {
+  MailService,
+  type CustomerPortalInvitationEmailMessage,
+  type InvitationEmailMessage,
+  type RawEmailMessage,
+} from "../mail.service";
 import { redactEmail } from "../mail.util";
 import { renderInvitationEmail } from "../invitation-email.template";
+import { renderCustomerPortalInvitationEmail } from "../customer-portal-invitation-email.template";
 
 /// Real SMTP delivery, selected whenever SMTP_URL is configured. Built on
 /// nodemailer, the only mail dependency added for this module.
@@ -38,6 +44,40 @@ export class SmtpMailService extends MailService {
       // is included. Only a redacted recipient is logged.
       this.logger.error(`Failed to deliver invitation email to ${redactEmail(message.to)}`);
       throw new Error("Failed to deliver invitation email");
+    }
+  }
+
+  async sendCustomerPortalInvitationEmail(message: CustomerPortalInvitationEmailMessage): Promise<void> {
+    const { subject, text, html } = renderCustomerPortalInvitationEmail(message);
+
+    try {
+      await this.transporter.sendMail({
+        from: this.from,
+        to: message.to,
+        subject,
+        text,
+        html,
+      });
+    } catch {
+      this.logger.error(
+        `Failed to deliver customer portal invitation email to ${redactEmail(message.to)}`,
+      );
+      throw new Error("Failed to deliver customer portal invitation email");
+    }
+  }
+
+  async sendRawEmail(message: RawEmailMessage): Promise<void> {
+    try {
+      await this.transporter.sendMail({
+        from: this.from,
+        to: message.to,
+        subject: message.subject,
+        text: message.textBody,
+        html: message.htmlBody,
+      });
+    } catch {
+      this.logger.error(`Failed to deliver email to ${redactEmail(message.to)}`);
+      throw new Error("Failed to deliver email");
     }
   }
 }
