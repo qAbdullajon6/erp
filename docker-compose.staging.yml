@@ -65,10 +65,10 @@ services:
     environment:
       NODE_ENV: production
       PORT: 4000
-      # Production-ready connection pool configuration. Prisma defaults to 10 connections
-      # (or CPU count * 2), which is insufficient under load. These parameters prevent
-      # pool exhaustion. Tune connection_limit per deploy/.env.staging.example guidance.
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-erp_staging}?schema=public&connection_limit=30&pool_timeout=10&connect_timeout=30
+      # Production-ready connection pool and query timeout configuration. Prisma defaults
+      # to 10 connections (or CPU count * 2), which is insufficient under load.
+      # statement_timeout prevents runaway queries from exhausting the pool.
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-erp_staging}?schema=public&connection_limit=30&pool_timeout=10&connect_timeout=30&statement_timeout=15000
       REDIS_URL: redis://redis:6379
       # Same-origin deployment: the browser only ever calls the site's own
       # /api/*, which Caddy strips and forwards. CORS never comes into play, but
