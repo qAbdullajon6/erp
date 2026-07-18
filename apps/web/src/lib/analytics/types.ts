@@ -59,6 +59,15 @@ export type AnalyticsEvent =
   | { name: 'pricing_click'; params: { source: string } }
   | { name: 'feature_card_click'; params: { feature_name: string } }
 
+  // Pricing events
+  | { name: 'pricing_plan_click'; params: { plan_id: string; plan_name: string; billing_cycle: string; cta_text: string } }
+  | { name: 'pricing_billing_toggle'; params: { billing_cycle: string } }
+  | { name: 'pricing_contact_click'; params: Record<string, never> }
+
+  // Integration events
+  | { name: 'integration_click'; params: { integration_id: string; integration_name: string } }
+  | { name: 'integration_docs_click'; params: { doc_type: string } }
+
   // Demo form events
   | { name: 'demo_form_started'; params: Record<string, never> }
   | { name: 'demo_form_submitted'; params: {

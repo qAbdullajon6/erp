@@ -1,14 +1,25 @@
 import { Button } from "@/components/ui/button";
 import { openDemoModal } from "@/components/site/DemoModal";
 import { ArrowRight, Truck, MapPin, Package, DollarSign } from "lucide-react";
+import { analytics } from "@/lib/analytics";
+import { useSectionVisibility } from "@/lib/analytics/hooks";
 
 export function Hero() {
+  const sectionRef = useSectionVisibility('hero');
+
   const scrollToWorkflow = () => {
+    analytics.track({ name: 'hero_cta_click', params: { cta_text: 'See How It Works' } });
     document.getElementById("workflow")?.scrollIntoView({ behavior: "smooth" });
   };
 
+  const handleDemoClick = () => {
+    analytics.track({ name: 'hero_cta_click', params: { cta_text: 'Request a Personalized Demo' } });
+    analytics.track({ name: 'book_demo_click', params: { source: 'hero' } });
+    openDemoModal();
+  };
+
   return (
-    <section className="relative overflow-hidden">
+    <section ref={sectionRef} className="relative overflow-hidden">
       <div className="pointer-events-none absolute inset-0 bg-hero-glow" />
       <div className="pointer-events-none absolute inset-0 [background-image:linear-gradient(oklch(1_0_0_/_0.03)_1px,transparent_1px),linear-gradient(90deg,oklch(1_0_0_/_0.03)_1px,transparent_1px)] [background-size:56px_56px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,black,transparent)]" />
 
@@ -31,7 +42,7 @@ export function Hero() {
 
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Button
-              onClick={openDemoModal}
+              onClick={handleDemoClick}
               size="lg"
               className="h-12 bg-gradient-brand px-6 text-brand-foreground shadow-brand hover:opacity-90"
             >

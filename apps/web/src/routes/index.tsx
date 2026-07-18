@@ -10,6 +10,8 @@ import { Footer } from "@/components/site/Footer";
 import { DemoModal } from "@/components/site/DemoModal";
 import { ProofBand } from "@/components/site/ProofBand";
 import { Faq } from "@/components/site/Faq";
+import { Pricing } from "@/components/site/Pricing";
+import { Integrations } from "@/components/site/Integrations";
 import { sessionManager } from "@/lib/api/session";
 import { useScrollDepthTracking } from "@/lib/analytics/hooks";
 import { MobileCTA } from "@/components/site/MobileCTA";
@@ -75,7 +77,9 @@ function Landing() {
         <Features />
         <HowItWorks />
         <AISection />
+        <Pricing />
         <Faq />
+        <Integrations />
         <Contact />
       </main>
       <Footer />
