@@ -3,6 +3,12 @@ export interface AppConfig {
   nodeEnv: string;
   corsOrigins: string[];
   databaseUrl: string;
+  /// Graceful shutdown timeout in milliseconds. When SIGTERM/SIGINT is received,
+  /// NestJS runs onModuleDestroy/onApplicationShutdown hooks. If they don't
+  /// complete within this time, the process force-exits to prevent hanging on
+  /// stuck SSE streams, blocked Prisma disconnects, etc. Must be shorter than
+  /// Docker's SIGKILL timeout (default 10s) to allow clean shutdown logs.
+  shutdownTimeoutMs: number;
 }
 
 export interface AuthConfig {
@@ -159,6 +165,11 @@ export default (): {
     throw new Error("AI_REQUEST_TIMEOUT_MS must be a positive integer (default 120000).");
   }
 
+  const shutdownTimeoutMs = parseInt(process.env.SHUTDOWN_TIMEOUT_MS ?? "30000", 10);
+  if (!Number.isInteger(shutdownTimeoutMs) || shutdownTimeoutMs <= 0) {
+    throw new Error("SHUTDOWN_TIMEOUT_MS must be a positive integer in milliseconds (default 30000).");
+  }
+
   return {
     ai: {
       provider: aiProvider,
@@ -188,6 +199,7 @@ export default (): {
         .map((origin) => origin.trim())
         .filter((origin) => origin.length > 0),
       databaseUrl: process.env.DATABASE_URL ?? "",
+      shutdownTimeoutMs,
     },
     auth: {
       jwtAccessSecret,

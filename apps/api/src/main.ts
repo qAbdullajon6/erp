@@ -58,6 +58,38 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService);
   const appConfig = configService.get<AppConfig>("app")!;
+  const logger = new Logger("Bootstrap");
+
+  // Graceful shutdown timeout: if onModuleDestroy hooks hang (SSE streams waiting,
+  // Prisma disconnect stuck), force-exit after the configured timeout. Must be
+  // shorter than Docker's SIGKILL timeout (default 10s) to log the forced exit.
+  let shutdownTimer: NodeJS.Timeout | undefined;
+  const signals: NodeJS.Signals[] = ["SIGTERM", "SIGINT"];
+
+  signals.forEach((signal) => {
+    process.on(signal, async () => {
+      logger.log(`${signal} received, starting graceful shutdown (timeout: ${appConfig.shutdownTimeoutMs}ms)`);
+
+      shutdownTimer = setTimeout(() => {
+        logger.error(
+          `Graceful shutdown timed out after ${appConfig.shutdownTimeoutMs}ms. ` +
+          `Force-exiting to prevent hang. Check onModuleDestroy hooks for stuck operations.`
+        );
+        process.exit(1);
+      }, appConfig.shutdownTimeoutMs);
+
+      try {
+        await app.close();
+        if (shutdownTimer) clearTimeout(shutdownTimer);
+        logger.log("Graceful shutdown complete");
+        process.exit(0);
+      } catch (error) {
+        if (shutdownTimer) clearTimeout(shutdownTimer);
+        logger.error("Error during graceful shutdown", error instanceof Error ? error.stack : error);
+        process.exit(1);
+      }
+    });
+  });
 
   await app.listen(appConfig.port);
 }
