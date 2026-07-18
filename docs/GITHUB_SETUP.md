@@ -30,7 +30,8 @@ repo-wide, so only approved deploys can read them.
 | --- | --- | --- |
 | `VPS_HOST` | deploy, rollback | VPS hostname/IP |
 | `VPS_USER` | deploy, rollback | SSH user (a deploy user, not root) |
-| `VPS_SSH_KEY` | deploy, rollback | **private** SSH key (PEM) whose public half is in the VPS user's `authorized_keys` |
+| `VPS_SSH_KEY` | deploy, rollback | **private** SSH key whose public half is in the VPS user's `authorized_keys`. Paste the whole file incl. `BEGIN`/`END` lines and a trailing newline. Not the `.pub`. |
+| `VPS_SSH_PASSPHRASE` | deploy, rollback | optional; only if `VPS_SSH_KEY` is passphrase-protected. Local `ssh -i` works via ssh-agent, but CI has no agent — an encrypted key fails auth without this. Prefer a **passphrase-less** dedicated CI key. |
 | `VPS_SSH_PORT` | deploy, rollback | optional; workflows default to `22` if unset |
 | `SLACK_WEBHOOK_URL` | deploy, rollback | optional; failure notifications. Absent → notify step is skipped, not failed |
 
