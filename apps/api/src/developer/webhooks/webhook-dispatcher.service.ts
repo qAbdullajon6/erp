@@ -214,19 +214,42 @@ export class WebhookDispatcherService implements OnModuleInit, OnModuleDestroy {
     // Circuit breaker: skip delivery if circuit is OPEN
     if (this.circuitBreaker.shouldBlock(delivery.endpointId)) {
       const circuitState = this.circuitBreaker.getState(delivery.endpointId);
-      const nextAttempt = nextBackoff(delivery.attemptCount + 1);
+      const newAttemptCount = delivery.attemptCount + 1;
+
+      // Check if we've exhausted attempts
+      if (newAttemptCount >= this.webhookConfig.maxAttempts) {
+        this.logger.warn(
+          `Circuit ${circuitState} for endpoint ${delivery.endpoint.name} (${delivery.endpointId}). ` +
+          `Delivery ${delivery.id} exhausted after ${newAttemptCount} attempts (blocked by circuit). Marking FAILED.`,
+        );
+
+        await this.prisma.webhookDelivery.update({
+          where: { id: deliveryId },
+          data: {
+            status: "FAILED",
+            attemptCount: newAttemptCount,
+            failedAt: new Date(),
+            errorMessage: `Circuit breaker ${circuitState} after ${newAttemptCount} attempts`,
+            nextAttemptAt: null,
+          },
+        });
+        return;
+      }
+
+      const nextAttempt = nextBackoff(newAttemptCount);
 
       this.logger.warn(
         `Circuit ${circuitState} for endpoint ${delivery.endpoint.name} (${delivery.endpointId}). ` +
-        `Skipping delivery ${delivery.id}, will retry at ${nextAttempt.toISOString()}`,
+        `Skipping delivery ${delivery.id}, will retry at ${nextAttempt.toISOString()} (attempt ${newAttemptCount}/${this.webhookConfig.maxAttempts})`,
       );
 
-      // Return delivery to PENDING with backoff delay
+      // Return delivery to PENDING with backoff delay and incremented attempt count
       await this.prisma.webhookDelivery.update({
         where: { id: deliveryId },
         data: {
           status: "PENDING",
           nextAttemptAt: nextAttempt,
+          attemptCount: newAttemptCount,
         },
       });
       return;

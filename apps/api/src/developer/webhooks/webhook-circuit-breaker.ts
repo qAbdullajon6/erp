@@ -42,6 +42,11 @@ export interface CircuitStatus {
   lastFailureAt: Date | null;
   openedAt: Date | null;
   halfOpenAt: Date | null;
+  /// Tracks in-flight requests during HALF_OPEN state to prevent
+  /// unlimited concurrent test requests from bypassing the halfOpenRequests limit.
+  inFlightHalfOpen: number;
+  /// Timestamp of last access for TTL-based cleanup of stale circuits.
+  lastAccessedAt: Date;
 }
 
 /// Per-endpoint circuit breaker tracking.
@@ -51,8 +56,16 @@ export interface CircuitStatus {
 export class WebhookCircuitBreaker {
   /// endpoint ID → circuit status
   private circuits = new Map<string, CircuitStatus>();
+  private cleanupInterval: NodeJS.Timeout | null = null;
 
-  constructor(private readonly config: CircuitBreakerConfig) {}
+  constructor(private readonly config: CircuitBreakerConfig) {
+    // Clean up stale circuits every 10 minutes to prevent unbounded memory growth
+    this.cleanupInterval = setInterval(() => {
+      this.cleanup();
+    }, 600_000);
+    // Don't prevent process exit
+    this.cleanupInterval.unref();
+  }
 
   /// Checks if the circuit is OPEN for this endpoint.
   ///
@@ -71,9 +84,20 @@ export class WebhookCircuitBreaker {
         circuit.state = CircuitState.HALF_OPEN;
         circuit.halfOpenAt = new Date();
         circuit.successCount = 0;
+        circuit.inFlightHalfOpen = 0;
         return false;
       }
       return true;
+    }
+
+    if (circuit.state === CircuitState.HALF_OPEN) {
+      // Block if we've already reached the in-flight limit for half-open testing
+      if (circuit.inFlightHalfOpen >= this.config.halfOpenRequests) {
+        return true;
+      }
+      // Allow this request and increment in-flight counter
+      circuit.inFlightHalfOpen++;
+      return false;
     }
 
     return false;
@@ -87,6 +111,8 @@ export class WebhookCircuitBreaker {
     const circuit = this.getCircuit(endpointId);
 
     if (circuit.state === CircuitState.HALF_OPEN) {
+      // Decrement in-flight counter
+      circuit.inFlightHalfOpen = Math.max(0, circuit.inFlightHalfOpen - 1);
       circuit.successCount++;
       if (circuit.successCount >= this.config.halfOpenRequests) {
         // Transition HALF_OPEN → CLOSED: endpoint recovered
@@ -95,6 +121,7 @@ export class WebhookCircuitBreaker {
         circuit.successCount = 0;
         circuit.openedAt = null;
         circuit.halfOpenAt = null;
+        circuit.inFlightHalfOpen = 0;
       }
     } else if (circuit.state === CircuitState.CLOSED) {
       // Reset failure count on any success
@@ -111,12 +138,15 @@ export class WebhookCircuitBreaker {
     circuit.lastFailureAt = new Date();
 
     if (circuit.state === CircuitState.HALF_OPEN) {
+      // Decrement in-flight counter
+      circuit.inFlightHalfOpen = Math.max(0, circuit.inFlightHalfOpen - 1);
       // Transition HALF_OPEN → OPEN: recovery failed, back to blocking
       circuit.state = CircuitState.OPEN;
       circuit.openedAt = new Date();
       circuit.halfOpenAt = null;
       circuit.failureCount = 0;
       circuit.successCount = 0;
+      circuit.inFlightHalfOpen = 0;
     } else if (circuit.state === CircuitState.CLOSED) {
       circuit.failureCount++;
       if (circuit.failureCount >= this.config.failureThreshold) {
@@ -142,6 +172,21 @@ export class WebhookCircuitBreaker {
     this.circuits.delete(endpointId);
   }
 
+  /// Removes stale CLOSED circuits that haven't been accessed in over 1 hour.
+  /// Prevents unbounded memory growth from deleted/unused webhook endpoints.
+  private cleanup(): void {
+    const now = Date.now();
+    const staleThreshold = 3600_000; // 1 hour
+
+    for (const [endpointId, circuit] of this.circuits.entries()) {
+      const idle = now - circuit.lastAccessedAt.getTime();
+      // Only remove CLOSED circuits (OPEN/HALF_OPEN indicate active issues)
+      if (idle > staleThreshold && circuit.state === CircuitState.CLOSED) {
+        this.circuits.delete(endpointId);
+      }
+    }
+  }
+
   private getCircuit(endpointId: string): CircuitStatus {
     let circuit = this.circuits.get(endpointId);
     if (!circuit) {
@@ -152,8 +197,13 @@ export class WebhookCircuitBreaker {
         lastFailureAt: null,
         openedAt: null,
         halfOpenAt: null,
+        inFlightHalfOpen: 0,
+        lastAccessedAt: new Date(),
       };
       this.circuits.set(endpointId, circuit);
+    } else {
+      // Update last accessed timestamp on every access
+      circuit.lastAccessedAt = new Date();
     }
     return circuit;
   }
