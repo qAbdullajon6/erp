@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString } from "class-validator";
+import { IsEnum, IsOptional, IsString, MaxLength } from "class-validator";
 import type { DispatchStatus } from "@prisma/client";
 
 export class UpdateDispatchStatusDto {
@@ -7,5 +7,6 @@ export class UpdateDispatchStatusDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(2000)
   note?: string;
 }
