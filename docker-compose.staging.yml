@@ -81,6 +81,25 @@ services:
       # Optional: empty means no SMTP transport, so the mail layer logs the link.
       SMTP_URL: ${SMTP_URL:-}
       MAIL_FROM: ${MAIL_FROM:-}
+      # Encryption secret for sensitive data (payment provider credentials, email
+      # provider credentials). Required when billing or notification email providers
+      # are configured. AES-256-CBC encryption of database-stored credentials.
+      APP_SECRET: ${APP_SECRET:-}
+      # AI Copilot configuration (optional — leave empty to disable)
+      AI_PROVIDER: ${AI_PROVIDER:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-}
+      AI_MAX_TOKENS: ${AI_MAX_TOKENS:-4096}
+      AI_TEMPERATURE: ${AI_TEMPERATURE:-0.2}
+      AI_RATE_LIMIT_PER_HOUR: ${AI_RATE_LIMIT_PER_HOUR:-120}
+      # Outbound webhook configuration
+      WEBHOOK_TIMEOUT_MS: ${WEBHOOK_TIMEOUT_MS:-10000}
+      WEBHOOK_MAX_ATTEMPTS: ${WEBHOOK_MAX_ATTEMPTS:-5}
+      # Error tracking (optional — leave SENTRY_DSN empty to disable)
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
     expose:
       - "4000"
 
