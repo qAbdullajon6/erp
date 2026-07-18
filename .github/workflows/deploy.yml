@@ -1,0 +1,98 @@
+name: Deploy (production)
+
+# Deploys a GHCR image tag to the VPS by SSHing in and running scripts/deploy.sh.
+# The workflow carries NO deploy logic of its own — build/pull, migrate, health,
+# and rollback all live in deploy.sh (single source of truth). See
+# DEPLOYMENT_PIPELINE.md and ROLLBACK_GUIDE.md.
+#
+# Triggers:
+#   - workflow_dispatch: manual deploy AND hotfix deploy (pick the image tag/ref)
+#   - release published: auto-deploy the just-released image (still gated by the
+#     `production` environment's required reviewers, if configured)
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "GHCR image tag to deploy (e.g. v1.2.3, or a hotfix tag)"
+        required: true
+        default: latest
+      ref:
+        description: "git ref checked out on the VPS for scripts/compose"
+        required: true
+        default: main
+      reason:
+        description: "Why this deploy is happening (recorded in the run)"
+        required: false
+        default: ""
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+# Never let two production deploys (or a deploy and a rollback) overlap.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    environment: production # protection gate: required reviewers + prod secrets
+    env:
+      HAS_SLACK: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
+    steps:
+      - name: Resolve tag & ref (dispatch vs. release)
+        id: cfg
+        env:
+          OWNER: ${{ github.repository_owner }}
+          EVENT: ${{ github.event_name }}
+          IN_TAG: ${{ github.event.inputs.image_tag }}
+          IN_REF: ${{ github.event.inputs.ref }}
+          REL_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [ "$EVENT" = "release" ]; then
+            TAG="$REL_TAG"; REF="$REL_TAG"
+          else
+            TAG="$IN_TAG"; REF="$IN_REF"
+          fi
+          {
+            echo "image_repo=ghcr.io/${OWNER,,}/erp-api"
+            echo "image_tag=$TAG"
+            echo "deploy_ref=$REF"
+          } >> "$GITHUB_OUTPUT"
+          echo "Deploying ghcr.io/${OWNER,,}/erp-api:$TAG (ref $REF)"
+
+      - name: Deploy over SSH (runs scripts/deploy.sh on the VPS)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || '22' }}
+          command_timeout: 20m
+          # script_stop makes any failing line abort the remote script; deploy.sh
+          # itself auto-rolls-back before it exits non-zero.
+          script_stop: true
+          envs: IMAGE_REPO,IMAGE_TAG,DEPLOY_REF
+          script: |
+            set -Eeuo pipefail
+            cd /srv/flowerp
+            git fetch --all --tags --prune
+            export API_IMAGE="${IMAGE_REPO}:${IMAGE_TAG}"
+            echo "==> deploying $API_IMAGE (ref ${DEPLOY_REF})"
+            ./scripts/deploy.sh "${DEPLOY_REF}"
+        env:
+          IMAGE_REPO: ${{ steps.cfg.outputs.image_repo }}
+          IMAGE_TAG: ${{ steps.cfg.outputs.image_tag }}
+          DEPLOY_REF: ${{ steps.cfg.outputs.deploy_ref }}
+
+      - name: Notify on failure
+        if: failure() && env.HAS_SLACK == 'true'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          curl -sf -X POST -H 'Content-type: application/json' \
+            --data "{\"text\":\":rotating_light: FlowERP production deploy FAILED for \`${{ steps.cfg.outputs.image_tag }}\` (run ${{ github.run_id }}). deploy.sh auto-rollback ran on the VPS; verify /api/health.\"}" \
+            "$SLACK_WEBHOOK_URL"

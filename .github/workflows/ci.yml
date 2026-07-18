@@ -1,0 +1,156 @@
+name: CI
+
+# Runs on every PR into main and on push to main (post-merge confirmation).
+# The blocking jobs are the ones verified green today; the API test-spec quality
+# debt (telematics *.e2e-spec.ts — supertest import + implicit any) runs
+# non-blocking so it stays visible without wedging every PR. See CI_CD_GUIDE.md.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    name: Web · typecheck · lint · unit · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck:web
+      - name: Lint
+        run: npm run lint:web
+      - name: Unit tests (vitest)
+        run: npm run test --workspace=apps/web
+      - name: Production build (vite)
+        run: npm run build:web
+
+  api-build:
+    name: API · build (compiles src via tsconfig.build.json)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - name: Prisma generate
+        run: npm run prisma:generate
+      - name: Nest build (this is the src typecheck gate)
+        run: npm run build:api
+
+  migrations:
+    name: Migrations · apply to ephemeral Postgres + status
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: erp
+          POSTGRES_PASSWORD: erp
+          POSTGRES_DB: erp_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U erp -d erp_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://erp:erp@localhost:5432/erp_ci?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - name: Prisma generate
+        run: npm run prisma:generate
+      - name: Apply migrations (the exact command the API runs on boot)
+        working-directory: apps/api
+        run: npx prisma migrate deploy
+      - name: Assert schema is in sync (no drift, no pending)
+        working-directory: apps/api
+        run: npx prisma migrate status
+
+  docker-build:
+    name: Docker · build API image (no push)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: false
+          tags: flowerp-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  api-quality:
+    name: API · lint + full typecheck (non-blocking, tracks test-spec debt)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - name: Prisma generate
+        run: npm run prisma:generate
+      - name: ESLint src (green today)
+        working-directory: apps/api
+        run: npx eslint "src/**/*.ts"
+      - name: Full typecheck incl. test/ (RED until the telematics e2e-spec debt is cleared)
+        run: npm run typecheck:api
+
+  api-tests:
+    name: API · unit tests (non-blocking until stabilised)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: erp
+          POSTGRES_PASSWORD: erp
+          POSTGRES_DB: erp_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U erp -d erp_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://erp:erp@localhost:5432/erp_test?schema=public
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - name: Prisma generate
+        run: npm run prisma:generate
+      - name: Jest (unit)
+        run: npm run test:api
