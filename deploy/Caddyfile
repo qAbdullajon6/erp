@@ -1,30 +1,21 @@
-# The VPS serves the API only. The frontend is deployed to Vercel.
+# FlowERP production edge (VPS).
 #
-# SITE_ADDRESS:
-#   VPS    staging.flowerp.uz   -> Caddy obtains and renews TLS itself
-#   local  :8080                -> plain HTTP, for testing the stack
+# The VPS serves BOTH the SSR frontend (web:3000) and the API (api:4000) behind
+# one origin at $SITE_ADDRESS. Caddy terminates TLS (ACME, auto-renewed) and
+# redirects http:// -> https:// on its own.
 #
-# The browser never talks to this box directly. It calls the Vercel origin's
-# /api/*, and Vercel's rewrite (apps/web/vercel.json) proxies that here
-# server-side — so no cross-origin request is made and no CORS preflight ever
-# happens. CORS_ORIGIN is still set on the API in case it is called directly.
+#   SITE_ADDRESS (in .env.staging, VPS-side, gitignored):
+#     production   flowerp.uz www.flowerp.uz   -> Caddy obtains/renews TLS
+#     local        :8080                        -> plain HTTP, ACME skipped
 #
-# The rewrite forwards the path unchanged, so what arrives is /api/auth/login.
-# The API mounts its routes at the root (/auth/login), exactly as the Vite dev
-# proxy assumes, so the prefix has to come off here. `handle_path` strips the
-# matched prefix; `handle` alone would forward /api/orders and 404 on every call.
+# Bring the whole stack up (frontend included) with the `web` profile:
+#   docker compose -f docker-compose.staging.yml --env-file .env.staging \
+#     --profile web up -d
 #
-# Keep this host in lockstep with the destination in apps/web/vercel.json —
-# Vercel does not expand environment variables there.
-#
-# To rehearse the whole thing locally with the frontend on the same origin, use
-# deploy/Caddyfile.local instead:
-#   CADDYFILE=./deploy/Caddyfile.local docker compose \
-#     -f docker-compose.staging.yml --env-file .env.staging --profile web up -d
+# History: the frontend was originally deployed to Vercel with this box serving
+# the API alone, but production now serves everything from the VPS (flowerp.uz
+# resolves here). deploy/Caddyfile.local mirrors this topology for local rehearsal.
 
-# When SITE_ADDRESS is a domain, Caddy terminates TLS (ACME, auto-renewed) and
-# redirects http://->https:// on its own — no redirect block is needed here. On
-# `:8080` (local) it is plain HTTP and ACME is skipped.
 {$SITE_ADDRESS::8080} {
 	encode zstd gzip
 
@@ -42,6 +33,10 @@
 		-Server
 	}
 
+	# The API mounts its routes at the root — /auth/login, /orders — not under
+	# /api. `handle_path` strips the matched prefix before proxying, exactly as
+	# the Vite dev proxy does locally. `handle` alone would forward /api/orders
+	# and 404 on every call.
 	handle_path /api/* {
 		reverse_proxy api:4000 {
 			# Polled every 5s, not every 30s: the API runs `prisma migrate
@@ -53,13 +48,10 @@
 			health_timeout 2s
 
 			# SSE (the telematics live feed, the AI copilot stream) must reach
-			# the client token-by-token. Caddy already streams text/event-stream,
-			# but -1 makes immediate flushing explicit and independent of that
-			# content-type autodetection. It also disables response buffering, so
-			# a long-lived stream is never held back. There is deliberately no
-			# response timeout on the transport — an SSE connection is meant to
-			# stay open. Uploads are unbounded (no nginx-style 1MB default), so
-			# large delivery-proof / import files pass through untouched.
+			# the client token-by-token. flush_interval -1 makes immediate
+			# flushing explicit and disables response buffering, so a long-lived
+			# stream is never held back. There is deliberately no response
+			# timeout on the transport — an SSE connection is meant to stay open.
 			flush_interval -1
 			transport http {
 				dial_timeout 5s
@@ -67,10 +59,9 @@
 		}
 	}
 
-	# Nothing else lives on this host. Say so plainly rather than letting Caddy
-	# return an empty 200 that looks like a broken frontend.
+	# Everything else is the SSR frontend.
 	handle {
-		respond "This host serves the FlowERP API under /api. The application is deployed separately." 404
+		reverse_proxy web:3000
 	}
 
 	log {
