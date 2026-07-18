@@ -14,6 +14,10 @@ export interface AppConfig {
   /// Server-Sent Events (SSE) endpoints (AI streaming, telematics live-stream)
   /// which are long-lived by design. Default 30000ms (30 seconds).
   requestTimeoutMs: number;
+  /// Prisma query timeout in milliseconds. Enforced at PostgreSQL statement
+  /// level via `statement_timeout` to prevent runaway queries from blocking
+  /// connection pool. Applied to all Prisma queries. Default 15000ms (15 seconds).
+  queryTimeoutMs: number;
 }
 
 export interface AuthConfig {
@@ -180,6 +184,11 @@ export default (): {
     throw new Error("REQUEST_TIMEOUT_MS must be a positive integer in milliseconds (default 30000).");
   }
 
+  const queryTimeoutMs = parseInt(process.env.QUERY_TIMEOUT_MS ?? "15000", 10);
+  if (!Number.isInteger(queryTimeoutMs) || queryTimeoutMs <= 0) {
+    throw new Error("QUERY_TIMEOUT_MS must be a positive integer in milliseconds (default 15000).");
+  }
+
   return {
     ai: {
       provider: aiProvider,
@@ -211,6 +220,7 @@ export default (): {
       databaseUrl: process.env.DATABASE_URL ?? "",
       shutdownTimeoutMs,
       requestTimeoutMs,
+      queryTimeoutMs,
     },
     auth: {
       jwtAccessSecret,
