@@ -36,30 +36,34 @@ const FAQS = [
 
 export function Faq() {
   return (
-    <section id="faq" className="relative border-t border-border/60 py-24">
+    <section id="faq" className="relative border-t border-border/60 py-32">
       <div className="mx-auto max-w-3xl px-6">
         <div className="text-center">
-          <p className="text-sm font-semibold uppercase tracking-widest text-brand">FAQ</p>
-          <h2 className="mt-3 font-display text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-            Questions logistics teams ask us
+          <div className="inline-flex items-center gap-2 rounded-full border border-brand/30 bg-brand/10 px-4 py-1.5 text-xs font-semibold text-brand backdrop-blur">
+            FAQ
+          </div>
+          <h2 className="mt-5 font-display text-5xl font-bold tracking-tight text-foreground md:text-6xl">
+            Questions Logistics Teams Ask
           </h2>
-          <p className="mt-4 text-muted-foreground">
+          <p className="mt-5 text-lg text-muted-foreground">
             Straight answers about roles, data, and what happens after you sign up.
           </p>
         </div>
 
-        <Accordion type="single" collapsible className="mt-12">
-          {FAQS.map((faq) => (
-            <AccordionItem key={faq.q} value={faq.q} className="border-border/60">
-              <AccordionTrigger className="text-left text-base font-medium text-foreground hover:no-underline">
-                {faq.q}
-              </AccordionTrigger>
-              <AccordionContent className="text-sm leading-relaxed text-muted-foreground">
-                {faq.a}
-              </AccordionContent>
-            </AccordionItem>
-          ))}
-        </Accordion>
+        <div className="mt-16 overflow-hidden rounded-3xl border border-border/60 bg-surface/40 p-8">
+          <Accordion type="single" collapsible className="space-y-1">
+            {FAQS.map((faq) => (
+              <AccordionItem key={faq.q} value={faq.q} className="rounded-xl border-none">
+                <AccordionTrigger className="rounded-xl px-4 py-4 text-left text-base font-semibold text-foreground transition-colors hover:bg-background/60 hover:no-underline">
+                  {faq.q}
+                </AccordionTrigger>
+                <AccordionContent className="px-4 pb-4 pt-2 text-sm leading-relaxed text-muted-foreground">
+                  {faq.a}
+                </AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
+        </div>
       </div>
     </section>
   );

@@ -23,8 +23,9 @@ const conversation = [
 
 export function AISection() {
   return (
-    <section id="ai" className="relative border-t border-border/60 py-24">
-      <div className="pointer-events-none absolute inset-0 bg-hero-glow opacity-60" />
+    <section id="ai" className="relative border-t border-border/60 py-32">
+      {/* Enhanced gradient background */}
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-brand/10 via-brand/5 to-transparent" />
       <div className="relative mx-auto max-w-7xl px-6">
         <div className="grid items-center gap-12 lg:grid-cols-2">
           <div>
@@ -32,11 +33,11 @@ export function AISection() {
               <Sparkles className="h-3.5 w-3.5" />
               AI Assistant
             </div>
-            <h2 className="mt-4 font-display text-4xl font-bold leading-tight tracking-tight sm:text-5xl">
+            <h2 className="mt-5 font-display text-5xl font-bold leading-tight tracking-tight text-foreground md:text-6xl">
               Ask Your Operations.<br />
               <span className="text-gradient-brand">Get Answers in Seconds.</span>
             </h2>
-            <p className="mt-5 text-muted-foreground">
+            <p className="mt-5 text-lg leading-relaxed text-muted-foreground">
               FlowERP AI understands your fleet, orders, drivers, and finances. Ask plain-language questions about delays, invoices, workloads, or revenue — and act on the answer in one click.
             </p>
             <ul className="mt-6 space-y-3 text-sm">

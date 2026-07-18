@@ -11,19 +11,22 @@ import { ReactNode } from "react";
 
 export function Features() {
   return (
-    <section id="features" className="relative border-t border-border/60 py-24">
+    <section id="features" className="relative border-t border-border/60 py-32">
       <div className="mx-auto max-w-7xl px-6">
-        <div className="mx-auto max-w-2xl text-center">
-          <div className="text-xs font-semibold uppercase tracking-widest text-brand">Platform</div>
-          <h2 className="mt-3 font-display text-4xl font-bold tracking-tight sm:text-5xl">
-            Everything Your Logistics Team Needs — Connected
+        <div className="mx-auto max-w-3xl text-center">
+          <div className="inline-flex items-center gap-2 rounded-full border border-brand/30 bg-brand/10 px-4 py-1.5 text-xs font-semibold text-brand backdrop-blur">
+            <Package className="h-3.5 w-3.5" />
+            Platform
+          </div>
+          <h2 className="mt-5 font-display text-5xl font-bold tracking-tight text-foreground md:text-6xl">
+            Everything Your Logistics Team Needs
           </h2>
-          <p className="mt-4 text-muted-foreground">
+          <p className="mt-5 text-lg text-muted-foreground">
             Six modules built to work as one. Real-time data flows across dispatch, tracking, finance, and AI — with no spreadsheets in between.
           </p>
         </div>
 
-        <div className="mt-14 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-20 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           <FeatureCard
             icon={Package}
             title="Order Management"
@@ -89,17 +92,21 @@ function FeatureCard({
   children: ReactNode;
 }) {
   return (
-    <div className="group relative overflow-hidden rounded-2xl border border-border/60 bg-surface/60 p-6 transition-all hover:-translate-y-0.5 hover:border-brand/40 hover:bg-surface hover:shadow-elevated">
-      <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-brand/10 opacity-0 blur-3xl transition-opacity group-hover:opacity-100" />
-      <div className="flex items-center gap-3">
-        <div className="grid h-10 w-10 place-items-center rounded-lg bg-brand/15 text-brand">
-          <Icon className="h-5 w-5" />
+    <div className="group relative flex flex-col overflow-hidden rounded-3xl border border-border/60 bg-surface/40 p-7 transition-all hover:-translate-y-1 hover:border-brand/40 hover:bg-surface hover:shadow-xl">
+      {/* Hover glow effect */}
+      <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-brand/20 opacity-0 blur-3xl transition-opacity group-hover:opacity-100" />
+
+      <div className="relative">
+        <div className="flex items-center gap-4">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand/15 text-brand transition-transform group-hover:scale-110">
+            <Icon className="h-6 w-6" />
+          </div>
+          <h3 className="font-display text-xl font-bold text-foreground">{title}</h3>
         </div>
-        <h3 className="font-display text-lg font-semibold">{title}</h3>
-      </div>
-      <p className="mt-2 text-sm text-muted-foreground">{desc}</p>
-      <div className="mt-5 overflow-hidden rounded-lg border border-border/60 bg-background/40 p-3">
-        {children}
+        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{desc}</p>
+        <div className="mt-6 overflow-hidden rounded-xl border border-border/60 bg-background/60 p-4">
+          {children}
+        </div>
       </div>
     </div>
   );

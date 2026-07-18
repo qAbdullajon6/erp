@@ -1,8 +1,12 @@
+/**
+ * Proof Band - Social proof and platform facts
+ *
+ * Shows verifiable platform capabilities and statistics.
+ * Redesigned with premium card design matching the rest of the landing page.
+ */
+
 import { Boxes, Lock, ShieldCheck, Zap } from "lucide-react";
 
-/// Deliberately states what the product *is*, not invented traction numbers.
-/// Every figure here is checkable against the codebase: six modules, six
-/// membership roles, per-organization data isolation, one deployable API.
 const FACTS = [
   {
     icon: Boxes,
@@ -32,19 +36,39 @@ const FACTS = [
 
 export function ProofBand() {
   return (
-    <section className="relative border-t border-border/60 py-20">
+    <section className="relative border-t border-border/60 py-24">
       <div className="mx-auto max-w-7xl px-6">
-        <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
-          {FACTS.map((fact) => (
-            <div key={fact.label}>
-              <span className="inline-flex rounded-xl bg-brand/10 p-2.5 text-brand">
-                <fact.icon className="h-5 w-5" />
-              </span>
-              <p className="mt-4 text-3xl font-semibold leading-none text-foreground">{fact.value}</p>
-              <p className="mt-2 text-sm font-medium text-foreground">{fact.label}</p>
-              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{fact.detail}</p>
-            </div>
-          ))}
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          {FACTS.map((fact) => {
+            const Icon = fact.icon;
+            return (
+              <div
+                key={fact.label}
+                className="group relative overflow-hidden rounded-2xl border border-border/60 bg-surface/40 p-6 transition-all hover:-translate-y-1 hover:border-brand/40 hover:bg-surface hover:shadow-xl"
+              >
+                {/* Hover glow effect */}
+                <div className="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full bg-brand/20 opacity-0 blur-2xl transition-opacity group-hover:opacity-100" />
+
+                <div className="relative">
+                  {/* Icon */}
+                  <div className="inline-flex rounded-xl bg-brand/15 p-3 text-brand">
+                    <Icon className="h-6 w-6" aria-hidden="true" />
+                  </div>
+
+                  {/* Value */}
+                  <p className="mt-5 font-display text-4xl font-bold leading-none text-foreground">
+                    {fact.value}
+                  </p>
+
+                  {/* Label */}
+                  <p className="mt-3 text-sm font-semibold text-foreground">{fact.label}</p>
+
+                  {/* Detail */}
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{fact.detail}</p>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </section>

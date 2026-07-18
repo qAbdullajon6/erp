@@ -4,22 +4,28 @@ import { openDemoModal } from "@/components/site/DemoModal";
 
 export function Contact() {
   return (
-    <section id="contact" className="relative border-t border-border/60 py-24">
-      <div className="mx-auto max-w-5xl px-6">
-        <div className="overflow-hidden rounded-3xl border border-border/60 bg-surface/70 p-10 shadow-elevated sm:p-14">
-          <div className="grid items-center gap-10 md:grid-cols-2">
+    <section id="contact" className="relative border-t border-border/60 py-32">
+      <div className="mx-auto max-w-6xl px-6">
+        <div className="relative overflow-hidden rounded-3xl border border-brand/30 bg-gradient-to-br from-brand/10 via-brand/5 to-transparent p-12 shadow-2xl sm:p-16">
+          {/* Background pattern */}
+          <div className="absolute inset-0 bg-grid-white/5 [mask-image:radial-gradient(white,transparent_70%)]" />
+
+          <div className="relative grid items-center gap-12 md:grid-cols-2">
             <div>
-              <div className="text-xs font-semibold uppercase tracking-widest text-brand">Contact</div>
-              <h2 className="mt-3 font-display text-3xl font-bold tracking-tight sm:text-4xl">
-                Talk to Our Logistics Software Team
+              <div className="inline-flex items-center gap-2 rounded-full border border-brand/30 bg-brand/15 px-4 py-1.5 text-xs font-semibold text-brand backdrop-blur">
+                Contact
+              </div>
+              <h2 className="mt-5 font-display text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
+                Talk to Our Team
               </h2>
-              <p className="mt-4 text-muted-foreground">
+              <p className="mt-4 text-lg text-muted-foreground">
                 Have questions about FlowERP AI or want to discuss your workflow? Reach us directly.
               </p>
-              <div className="mt-6">
+              <div className="mt-8">
                 <Button
                   onClick={openDemoModal}
-                  className="h-11 bg-gradient-brand px-5 text-brand-foreground hover:opacity-90"
+                  size="lg"
+                  className="h-12 bg-gradient-brand px-6 text-brand-foreground shadow-brand hover:scale-[1.02] hover:shadow-2xl"
                 >
                   Get a Demo
                 </Button>
@@ -74,14 +80,14 @@ function ContactRow({
     <li>
       <a
         href={href}
-        className="group flex items-center gap-4 rounded-xl border border-border/60 bg-background/40 px-4 py-3 transition-colors hover:border-brand/40 hover:bg-surface"
+        className="group flex items-center gap-4 rounded-2xl border border-border/60 bg-background/60 px-5 py-4 backdrop-blur transition-all hover:-translate-y-0.5 hover:border-brand/40 hover:bg-surface hover:shadow-lg"
       >
-        <div className="grid h-10 w-10 place-items-center rounded-lg bg-brand/15 text-brand">
-          <Icon className="h-4 w-4" />
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand/15 text-brand transition-transform group-hover:scale-110">
+          <Icon className="h-5 w-5" />
         </div>
         <div>
-          <div className="text-[11px] uppercase tracking-widest text-muted-foreground">{label}</div>
-          <div className="font-medium text-foreground group-hover:text-brand">{value}</div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{label}</div>
+          <div className="mt-0.5 font-semibold text-foreground group-hover:text-brand">{value}</div>
         </div>
       </a>
     </li>
