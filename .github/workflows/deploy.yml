@@ -59,10 +59,6 @@ jobs:
             REF="$IN_REF"
           fi
 
-          # Env selection: the dispatch input, else staging (safe default — the
-          # VPS's live data/secrets belong to whichever env file it already runs).
-          ENV_NAME="${IN_ENV:-staging}"
-
           {
             echo "image_repo=ghcr.io/${OWNER,,}/erp-api"
             echo "image_tag=$TAG"
@@ -70,7 +66,7 @@ jobs:
             echo "deploy_env=$ENV_NAME"
           } >> "$GITHUB_OUTPUT"
 
-          echo "Deploying ghcr.io/${OWNER,,}/erp-api:$TAG (ref $REF, env $ENV_NAME)"
+          echo "Deploying ghcr.io/${OWNER,,}/erp-api:$TAG (ref $REF)"
 
       - name: Preflight — SSH secrets check
         env:
@@ -118,7 +114,7 @@ jobs:
           command_timeout: 20m
           script_stop: true
 
-          envs: IMAGE_REPO,IMAGE_TAG,DEPLOY_REF,DEPLOY_ENV
+          envs: IMAGE_REPO,IMAGE_TAG,DEPLOY_REF
 
           script: |
             set -Eeuo pipefail
@@ -159,9 +155,7 @@ jobs:
             export API_IMAGE="${IMAGE_REPO}:${IMAGE_TAG}"
 
 
-            # DEPLOY_ENV (exported by appleboy from envs) makes deploy.sh load
-            # .env.${DEPLOY_ENV}; deploy.sh validates it exists before compose runs.
-            echo "==> deploying $API_IMAGE (ref ${DEPLOY_REF}, env ${DEPLOY_ENV})"
+            echo "==> deploying $API_IMAGE (ref ${DEPLOY_REF})"
 
 
             ./scripts/deploy.sh "${DEPLOY_REF}"
@@ -172,6 +166,7 @@ jobs:
           IMAGE_TAG: ${{ steps.cfg.outputs.image_tag }}
           DEPLOY_REF: ${{ steps.cfg.outputs.deploy_ref }}
           DEPLOY_ENV: ${{ steps.cfg.outputs.deploy_env }}
+
 
 
       - name: Notify on failure
