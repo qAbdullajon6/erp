@@ -5,6 +5,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import type { WebhookConfig } from "../../config/configuration";
 import { signWebhookPayload } from "./webhook-signature.util";
 import { assertSafeWebhookUrl, WebhookUrlError } from "./webhook-url.util";
+import { WebhookCircuitBreaker, CircuitState } from "./webhook-circuit-breaker";
 
 /// How often the drain loop looks for due work.
 const POLL_INTERVAL_MS = 5_000;
@@ -36,11 +37,19 @@ export class WebhookDispatcherService implements OnModuleInit, OnModuleDestroy {
   /// Set when a drain is requested while one is already running. Without it,
   /// that request is simply dropped — see drain().
   private drainRequested = false;
+  private circuitBreaker: WebhookCircuitBreaker;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
-  ) {}
+  ) {
+    const webhookConfig = this.config.getOrThrow<WebhookConfig>("webhook");
+    this.circuitBreaker = new WebhookCircuitBreaker({
+      failureThreshold: webhookConfig.circuitFailureThreshold,
+      resetTimeoutMs: webhookConfig.circuitResetTimeoutMs,
+      halfOpenRequests: webhookConfig.circuitHalfOpenRequests,
+    });
+  }
 
   private get webhookConfig(): WebhookConfig {
     return this.config.getOrThrow<WebhookConfig>("webhook");
@@ -202,6 +211,27 @@ export class WebhookDispatcherService implements OnModuleInit, OnModuleDestroy {
     });
     if (!delivery || !delivery.endpoint) return;
 
+    // Circuit breaker: skip delivery if circuit is OPEN
+    if (this.circuitBreaker.shouldBlock(delivery.endpointId)) {
+      const circuitState = this.circuitBreaker.getState(delivery.endpointId);
+      const nextAttempt = nextBackoff(delivery.attemptCount + 1);
+
+      this.logger.warn(
+        `Circuit ${circuitState} for endpoint ${delivery.endpoint.name} (${delivery.endpointId}). ` +
+        `Skipping delivery ${delivery.id}, will retry at ${nextAttempt.toISOString()}`,
+      );
+
+      // Return delivery to PENDING with backoff delay
+      await this.prisma.webhookDelivery.update({
+        where: { id: deliveryId },
+        data: {
+          status: "PENDING",
+          nextAttemptAt: nextAttempt,
+        },
+      });
+      return;
+    }
+
     const attemptNumber = delivery.attemptCount + 1;
     const body = JSON.stringify(delivery.payload);
     const startedAt = Date.now();
@@ -241,6 +271,9 @@ export class WebhookDispatcherService implements OnModuleInit, OnModuleDestroy {
         );
 
         if (response.ok) {
+          // Record success in circuit breaker before settling
+          this.circuitBreaker.recordSuccess(delivery.endpointId);
+
           await this.settleSuccess(delivery.id, delivery.endpointId, {
             attemptNumber,
             httpStatus: response.status,
@@ -250,6 +283,9 @@ export class WebhookDispatcherService implements OnModuleInit, OnModuleDestroy {
           });
           return;
         }
+
+        // Record failure in circuit breaker before settling
+        this.circuitBreaker.recordFailure(delivery.endpointId);
 
         await this.settleFailure(delivery, {
           attemptNumber,
@@ -272,6 +308,9 @@ export class WebhookDispatcherService implements OnModuleInit, OnModuleDestroy {
             : err instanceof Error
               ? err.message
               : String(err);
+
+      // Record failure in circuit breaker before settling
+      this.circuitBreaker.recordFailure(delivery.endpointId);
 
       await this.settleFailure(delivery, {
         attemptNumber,

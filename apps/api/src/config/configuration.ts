@@ -56,6 +56,13 @@ export interface WebhookConfig {
   timeoutMs: number;
   /// How many times a delivery is attempted in total before it is FAILED.
   maxAttempts: number;
+  /// Circuit breaker: consecutive failures before opening circuit.
+  /// When open, deliveries are skipped (not sent) and retried after reset timeout.
+  circuitFailureThreshold: number;
+  /// Circuit breaker: milliseconds before attempting half-open recovery test.
+  circuitResetTimeoutMs: number;
+  /// Circuit breaker: successful test requests before closing circuit.
+  circuitHalfOpenRequests: number;
 }
 
 export interface AiConfig {
@@ -137,6 +144,21 @@ export default (): {
     throw new Error("WEBHOOK_MAX_ATTEMPTS must be a positive integer (default 5).");
   }
 
+  const circuitFailureThreshold = parseInt(process.env.WEBHOOK_CIRCUIT_FAILURE_THRESHOLD ?? "5", 10);
+  if (!Number.isInteger(circuitFailureThreshold) || circuitFailureThreshold <= 0) {
+    throw new Error("WEBHOOK_CIRCUIT_FAILURE_THRESHOLD must be a positive integer (default 5).");
+  }
+
+  const circuitResetTimeoutMs = parseInt(process.env.WEBHOOK_CIRCUIT_RESET_TIMEOUT_MS ?? "60000", 10);
+  if (!Number.isInteger(circuitResetTimeoutMs) || circuitResetTimeoutMs <= 0) {
+    throw new Error("WEBHOOK_CIRCUIT_RESET_TIMEOUT_MS must be a positive integer in milliseconds (default 60000).");
+  }
+
+  const circuitHalfOpenRequests = parseInt(process.env.WEBHOOK_CIRCUIT_HALF_OPEN_REQUESTS ?? "3", 10);
+  if (!Number.isInteger(circuitHalfOpenRequests) || circuitHalfOpenRequests <= 0) {
+    throw new Error("WEBHOOK_CIRCUIT_HALF_OPEN_REQUESTS must be a positive integer (default 3).");
+  }
+
   const aiProvider = (process.env.AI_PROVIDER ?? "anthropic").toLowerCase();
   const KNOWN_AI_PROVIDERS = ["anthropic", "openai", "gemini", "ollama"];
   if (!KNOWN_AI_PROVIDERS.includes(aiProvider)) {
@@ -200,6 +222,9 @@ export default (): {
       allowPrivateTargets,
       timeoutMs: webhookTimeoutMs,
       maxAttempts: webhookMaxAttempts,
+      circuitFailureThreshold,
+      circuitResetTimeoutMs,
+      circuitHalfOpenRequests,
     },
     app: {
       port: parseInt(process.env.PORT ?? "4000", 10),
