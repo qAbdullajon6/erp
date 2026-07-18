@@ -1,0 +1,19 @@
+# Grafana datasources, provisioned automatically. Dashboards are intentionally
+# NOT provisioned in this milestone (stop condition: do not build dashboards).
+# With these two wired, you can already explore metrics and logs from Grafana's
+# Explore view; curated dashboards come in the monitoring milestone.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: false
