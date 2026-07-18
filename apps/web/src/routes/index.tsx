@@ -1,17 +1,18 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { Navbar } from "@/components/site/Navbar";
-import { Hero } from "@/components/site/Hero";
-import { Features } from "@/components/site/Features";
-import { HowItWorks } from "@/components/site/HowItWorks";
-import { AISection } from "@/components/site/AISection";
+import { HeroV2 } from "@/components/site/v2/HeroV2";
+import { TrustBarV2 } from "@/components/site/v2/TrustBarV2";
+import { ProblemSolutionV2 } from "@/components/site/v2/ProblemSolutionV2";
+import { ProductDemoV2 } from "@/components/site/v2/ProductDemoV2";
+import { PlatformV2 } from "@/components/site/v2/PlatformV2";
+import { TestimonialsV2 } from "@/components/site/v2/TestimonialsV2";
+import { PricingV2 } from "@/components/site/v2/PricingV2";
+import { FAQV2 } from "@/components/site/v2/FAQV2";
+import { CTAV2 } from "@/components/site/v2/CTAV2";
 import { Contact } from "@/components/site/Contact";
 import { Footer } from "@/components/site/Footer";
 import { DemoModal } from "@/components/site/DemoModal";
-import { ProofBand } from "@/components/site/ProofBand";
-import { Faq } from "@/components/site/Faq";
-import { Pricing } from "@/components/site/Pricing";
-import { Integrations } from "@/components/site/Integrations";
 import { sessionManager } from "@/lib/api/session";
 import { useScrollDepthTracking } from "@/lib/analytics/hooks";
 import { MobileCTA } from "@/components/site/MobileCTA";
@@ -72,14 +73,15 @@ function Landing() {
     <div className="min-h-screen bg-background">
       <Navbar />
       <main>
-        <Hero />
-        <ProofBand />
-        <Features />
-        <HowItWorks />
-        <AISection />
-        <Pricing />
-        <Faq />
-        <Integrations />
+        <HeroV2 />
+        <TrustBarV2 />
+        <ProblemSolutionV2 />
+        <ProductDemoV2 />
+        <PlatformV2 />
+        <TestimonialsV2 />
+        <PricingV2 />
+        <FAQV2 />
+        <CTAV2 />
         <Contact />
       </main>
       <Footer />

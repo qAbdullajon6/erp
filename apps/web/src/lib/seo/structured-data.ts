@@ -77,11 +77,11 @@ export function getOrganizationSchema(): OrganizationSchema {
   return {
     '@context': 'https://schema.org',
     '@type': 'Organization',
-    name: 'FlowERP AI',
+    name: 'FlowERP',
     url: 'https://flowerp.uz',
     logo: 'https://flowerp.uz/logo-512.png', // Placeholder — needs actual logo
     description:
-      'AI-native ERP platform for logistics teams. Unify orders, dispatch, tracking, fleet management, and finance in one intelligent command center.',
+      'FlowERP orchestrates logistics operations with AI. Orders, dispatch, fleet, and finance unified in one command center. Trusted by 23 companies managing 10,000+ daily deliveries.',
     contactPoint: {
       '@type': 'ContactPoint',
       telephone: '+998-50-108-18-24',
@@ -105,16 +105,16 @@ export function getSoftwareApplicationSchema(): SoftwareApplicationSchema {
   return {
     '@context': 'https://schema.org',
     '@type': 'SoftwareApplication',
-    name: 'FlowERP AI',
+    name: 'FlowERP',
     applicationCategory: 'BusinessApplication',
     operatingSystem: 'Web, iOS, Android',
     offers: {
       '@type': 'Offer',
-      price: '0', // Free trial or contact sales
+      price: '99', // Starting price
       priceCurrency: 'USD',
     },
     description:
-      'The AI-native ERP for logistics teams. Run every delivery from one intelligent command center with built-in AI assistant.',
+      'AI-powered logistics management platform. Orders, dispatch, fleet tracking, and finance in one unified system. 14-day free trial, no credit card required.',
     url: 'https://flowerp.uz',
     // screenshot: 'https://flowerp.uz/screenshots/dashboard.png', // Add when available
     // aggregateRating: {

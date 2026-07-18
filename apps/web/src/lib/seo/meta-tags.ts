@@ -122,22 +122,25 @@ export function generateLinkTags(seo: Pick<SEOMetaTags, 'canonical'>) {
  * Default SEO configuration for the landing page.
  */
 export const defaultSEO: SEOMetaTags = {
-  title: 'FlowERP AI — Intelligent Logistics Command Center',
+  title: 'FlowERP — Your logistics operation, orchestrated',
   description:
-    'The AI-native ERP for logistics teams. Unify orders, dispatch, tracking, fleet management, and finance in one intelligent command center. Ask your operations. Get answers in seconds.',
+    'Stop firefighting. FlowERP unifies orders, dispatch, fleet, and finance into one AI-powered command center. Ask questions, get answers, take action—instantly. 14-day free trial.',
   canonical: 'https://flowerp.uz',
   keywords: [
+    'logistics management software',
+    'fleet management system',
+    'delivery management platform',
+    'dispatch optimization software',
+    'AI logistics assistant',
+    'transport management system',
     'logistics ERP',
-    'fleet management software',
-    'delivery management system',
-    'dispatch software',
-    'AI logistics',
-    'transport management',
-    'order tracking',
-    'fleet tracking',
-    'logistics AI assistant',
+    'delivery tracking software',
+    'fleet tracking system',
+    'operations management software',
+    'logistics automation',
+    'route optimization software',
   ],
   image: 'https://flowerp.uz/og-image.png',
-  imageAlt: 'FlowERP AI - Run every delivery from one intelligent command center',
+  imageAlt: 'FlowERP - Your logistics operation, orchestrated by AI',
   type: 'website',
 };
