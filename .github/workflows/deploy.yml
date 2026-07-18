@@ -1,14 +1,5 @@
 name: Deploy (production)
 
-# Deploys a GHCR image tag to the VPS by SSHing in and running scripts/deploy.sh.
-# The workflow carries NO deploy logic of its own — build/pull, migrate, health,
-# and rollback all live in deploy.sh (single source of truth). See
-# DEPLOYMENT_PIPELINE.md and ROLLBACK_GUIDE.md.
-#
-# Triggers:
-#   - workflow_dispatch: manual deploy AND hotfix deploy (pick the image tag/ref)
-#   - release published: auto-deploy the just-released image (still gated by the
-#     `production` environment's required reviewers, if configured)
 on:
   workflow_dispatch:
     inputs:
@@ -30,7 +21,6 @@ on:
 permissions:
   contents: read
 
-# Never let two production deploys (or a deploy and a rollback) overlap.
 concurrency:
   group: deploy-production
   cancel-in-progress: false
@@ -39,11 +29,13 @@ jobs:
   deploy:
     name: Deploy to VPS
     runs-on: ubuntu-latest
-    environment: production # protection gate: required reviewers + prod secrets
+    environment: production
+
     env:
       HAS_SLACK: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
+
     steps:
-      - name: Resolve tag & ref (dispatch vs. release)
+      - name: Resolve tag & ref
         id: cfg
         env:
           OWNER: ${{ github.repository_owner }}
@@ -53,75 +45,129 @@ jobs:
           REL_TAG: ${{ github.event.release.tag_name }}
         run: |
           if [ "$EVENT" = "release" ]; then
-            TAG="$REL_TAG"; REF="$REL_TAG"
+            TAG="$REL_TAG"
+            REF="$REL_TAG"
           else
-            TAG="$IN_TAG"; REF="$IN_REF"
+            TAG="$IN_TAG"
+            REF="$IN_REF"
           fi
+
           {
             echo "image_repo=ghcr.io/${OWNER,,}/erp-api"
             echo "image_tag=$TAG"
             echo "deploy_ref=$REF"
           } >> "$GITHUB_OUTPUT"
+
           echo "Deploying ghcr.io/${OWNER,,}/erp-api:$TAG (ref $REF)"
 
-      # Turns the cryptic "unable to authenticate, [none publickey]" into a clear
-      # message when the cause is a missing/empty secret or a public key pasted
-      # in place of the private key. Prints presence/shape only — never the value
-      # (and GitHub masks secrets in logs regardless).
-      - name: Preflight — required SSH secrets present & well-formed
+      - name: Preflight — SSH secrets check
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
         run: |
           fail=0
-          [ -n "$VPS_HOST" ] || { echo "::error::VPS_HOST secret is empty/unset"; fail=1; }
-          [ -n "$VPS_USER" ] || { echo "::error::VPS_USER secret is empty/unset"; fail=1; }
+
+          [ -n "$VPS_HOST" ] || {
+            echo "::error::VPS_HOST missing"
+            fail=1
+          }
+
+          [ -n "$VPS_USER" ] || {
+            echo "::error::VPS_USER missing"
+            fail=1
+          }
+
           if [ -z "$VPS_SSH_KEY" ]; then
-            echo "::error::VPS_SSH_KEY secret is empty/unset"; fail=1
+            echo "::error::VPS_SSH_KEY missing"
+            fail=1
           else
             case "$VPS_SSH_KEY" in
-              *"PRIVATE KEY"*) : ;;
-              *) echo "::error::VPS_SSH_KEY has no 'PRIVATE KEY' header — you likely pasted the PUBLIC key (.pub). Store the PRIVATE key (id_ed25519), full BEGIN/END + trailing newline."; fail=1 ;;
+              *"PRIVATE KEY"*) ;;
+              *)
+                echo "::error::SSH key is not private key"
+                fail=1
+                ;;
             esac
           fi
-          [ "$fail" = 0 ] && echo "required SSH secrets present and key looks like a private key"
+
           exit "$fail"
 
-      - name: Deploy over SSH (runs scripts/deploy.sh on the VPS)
+      - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.0
+
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          # Needed ONLY if the private key is passphrase-protected. Local
-          # `ssh -i` works without it because ssh-agent holds the passphrase;
-          # CI has no agent, so an encrypted key fails auth unless this is set.
-          # Empty secret = no passphrase = harmless.
           passphrase: ${{ secrets.VPS_SSH_PASSPHRASE }}
           port: ${{ secrets.VPS_SSH_PORT || '22' }}
+
           command_timeout: 20m
-          # script_stop makes any failing line abort the remote script; deploy.sh
-          # itself auto-rolls-back before it exits non-zero.
           script_stop: true
+
           envs: IMAGE_REPO,IMAGE_TAG,DEPLOY_REF
+
           script: |
             set -Eeuo pipefail
+
             cd /opt/flowerp
-            git fetch --all --tags --prune
+
+            echo "==> Sync repository"
+
+            git fetch --all --tags --prune --force
+
+            git checkout -f "${DEPLOY_REF}"
+
+            if git show-ref --verify --quiet "refs/remotes/origin/${DEPLOY_REF}"; then
+              git reset --hard "origin/${DEPLOY_REF}"
+            else
+              git reset --hard "${DEPLOY_REF}"
+            fi
+
+            git submodule update --init --recursive
+
+
+            echo "==> Repository state"
+
+            pwd
+            git rev-parse HEAD
+            ls -la
+            ls -la scripts
+
+
+            echo "==> Fix permissions"
+
+            chmod +x \
+              scripts/deploy.sh \
+              scripts/rollback.sh \
+              scripts/lib.sh
+
+
             export API_IMAGE="${IMAGE_REPO}:${IMAGE_TAG}"
+
+
             echo "==> deploying $API_IMAGE (ref ${DEPLOY_REF})"
+
+
             ./scripts/deploy.sh "${DEPLOY_REF}"
+
+
         env:
           IMAGE_REPO: ${{ steps.cfg.outputs.image_repo }}
           IMAGE_TAG: ${{ steps.cfg.outputs.image_tag }}
           DEPLOY_REF: ${{ steps.cfg.outputs.deploy_ref }}
 
+
       - name: Notify on failure
         if: failure() && env.HAS_SLACK == 'true'
+
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
         run: |
-          curl -sf -X POST -H 'Content-type: application/json' \
-            --data "{\"text\":\":rotating_light: FlowERP production deploy FAILED for \`${{ steps.cfg.outputs.image_tag }}\` (run ${{ github.run_id }}). deploy.sh auto-rollback ran on the VPS; verify /api/health.\"}" \
-            "$SLACK_WEBHOOK_URL"
+          curl -sf \
+          -X POST \
+          -H 'Content-type: application/json' \
+          --data "{\"text\":\":rotating_light: FlowERP production deploy FAILED for \`${{ steps.cfg.outputs.image_tag }}\`\"}" \
+          "$SLACK_WEBHOOK_URL"
