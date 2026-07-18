@@ -108,7 +108,33 @@ jobs:
           script: |
             set -Eeuo pipefail
             cd /opt/flowerp
-            git fetch --all --tags --prune
+
+            # Make the working tree deterministically match the requested ref
+            # BEFORE calling deploy.sh. A `git fetch` alone updates remote refs
+            # but leaves the working tree on a stale commit that may not contain
+            # scripts/deploy.sh at all — the "No such file or directory" failure.
+            # reset --hard/checkout only touch TRACKED files, so the git-ignored
+            # .env.staging and backups/ are preserved (no `git clean`).
+            git fetch --all --tags --prune --force
+            git checkout -f "${DEPLOY_REF}"
+            # Hard-reset to the fetched ref: a branch resolves to origin/<ref>;
+            # a tag or SHA (release deploys) resolves to the ref itself.
+            if git show-ref --verify --quiet "refs/remotes/origin/${DEPLOY_REF}"; then
+              git reset --hard "origin/${DEPLOY_REF}"
+            else
+              git reset --hard "${DEPLOY_REF}"
+            fi
+            git submodule update --init --recursive
+
+            echo "==> repository state after checkout of ${DEPLOY_REF}:"
+            pwd
+            ls -la
+            ls -la scripts
+
+            # Guarantee the entrypoint scripts are executable regardless of the
+            # checkout's recorded file mode.
+            chmod +x scripts/deploy.sh scripts/rollback.sh scripts/lib.sh
+
             export API_IMAGE="${IMAGE_REPO}:${IMAGE_TAG}"
             echo "==> deploying $API_IMAGE (ref ${DEPLOY_REF})"
             ./scripts/deploy.sh "${DEPLOY_REF}"
