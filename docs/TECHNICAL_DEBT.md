@@ -215,6 +215,35 @@ evaluation becomes a measured bottleneck at scale.
 
 ---
 
+## TD-TELEMATICS-11 — SSE connection limits are enforced per instance, not globally
+
+**Status:** OPEN, low severity, accepted.
+**Found:** Production readiness audit HIGH-5, 2026-07-18.
+
+`TelematicsRealtimeService` caps concurrent live-stream (SSE) connections with
+`TELEMATICS_SSE_MAX_CONNECTIONS_PER_ORG` and
+`TELEMATICS_SSE_MAX_CONNECTIONS_GLOBAL`, but the counters are an in-process
+`Map`/tally. With N application instances behind a load balancer the effective
+capacity is N times each limit — an org capped at 20 per instance can hold up to
+20N streams across the fleet, and the global ceiling is likewise per instance.
+
+**Why not fixed now:** the SSE registry itself is already per-instance by design
+(a Response object only exists on the instance that terminated its connection),
+so the cap is correct relative to the resource it protects — the memory and file
+descriptors of *this* process. The per-instance ceiling is exactly what defends
+against local OOM / FD exhaustion, which is the actual HIGH-5 risk. A global cap
+would need shared state.
+
+**Fix when triggered:** back the counters with Redis (INCR/DECR keyed by org and
+a global key, decremented on `close`), the same shared-state step deferred for
+the webhook dispatcher and import engine — see TD-018 / TD-019. Do it once,
+alongside those, rather than standing up Redis coordination for one consumer.
+
+**Payoff point:** first multi-instance deployment where a global SSE ceiling
+(not just a per-instance one) becomes an operational requirement.
+
+---
+
 ## TD-021 — Concurrent imports into one organization can collide on generated codes
 
 **Status:** OPEN, low severity, accepted.

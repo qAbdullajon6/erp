@@ -1,6 +1,8 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import type { Response } from "express";
 import Redis from "ioredis";
+import type { TelematicsConfig } from "../../config/configuration";
 
 /// The realtime fan-out for telematics via Server-Sent Events (SSE).
 ///
@@ -55,8 +57,19 @@ const CHANNEL = "telematics:events";
 export class TelematicsRealtimeService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TelematicsRealtimeService.name);
   private readonly clients = new Map<Response, ClientContext>();
+  /// Per-organization active-connection tally, kept in lockstep with `clients`.
+  /// The global count is `clients.size` itself (the Map is the single source of
+  /// truth, so global admission can never desync or go negative). Per-org needs
+  /// its own tally because the Map is keyed by Response, not by org.
+  private readonly orgCounts = new Map<string, number>();
   private publisher: Redis | null = null;
   private subscriber: Redis | null = null;
+
+  constructor(private readonly config: ConfigService) {}
+
+  private get limits(): TelematicsConfig {
+    return this.config.getOrThrow<TelematicsConfig>("telematics");
+  }
 
   onModuleInit() {
     const url = process.env.REDIS_URL;
@@ -92,16 +105,54 @@ export class TelematicsRealtimeService implements OnModuleInit, OnModuleDestroy 
     await this.subscriber?.quit().catch(() => undefined);
   }
 
-  registerClient(res: Response, context: ClientContext): void {
+  /// Admission-controlled registration. Returns false (and registers nothing)
+  /// when admitting the client would exceed the global process ceiling or the
+  /// caller's per-organization fairness limit. The caller MUST reject the
+  /// request (HTTP 429) without opening an SSE stream when this returns false.
+  ///
+  /// Increment here is paired with the decrement in detach()/removeClient(); the
+  /// two are the only paths that mutate the client registry, so the counters
+  /// stay symmetric.
+  tryRegisterClient(res: Response, context: ClientContext): boolean {
+    // Global process-safety ceiling. `clients.size` is the authoritative global
+    // count, so this check can never be fooled by a drifting counter.
+    if (this.clients.size >= this.limits.sseMaxConnectionsGlobal) {
+      return false;
+    }
+    // Per-organization fairness limit.
+    const current = this.orgCounts.get(context.organizationId) ?? 0;
+    if (current >= this.limits.sseMaxConnectionsPerOrg) {
+      return false;
+    }
     this.clients.set(res, context);
+    this.orgCounts.set(context.organizationId, current + 1);
+    return true;
   }
 
   removeClient(res: Response): void {
-    this.clients.delete(res);
+    this.detach(res);
   }
 
   clientCount(): number {
     return this.clients.size;
+  }
+
+  /// The single de-registration path: removes the client from the registry and
+  /// decrements its org tally. Idempotent — a Response already gone is a no-op,
+  /// so a double-remove (e.g. res 'close' racing a fan-out write failure) can
+  /// never drive a counter negative. Every place that drops a client routes
+  /// through here so the per-org tally can never leak or desync.
+  private detach(res: Response): void {
+    const context = this.clients.get(res);
+    if (!context) return;
+    this.clients.delete(res);
+    const current = this.orgCounts.get(context.organizationId) ?? 0;
+    const next = current - 1;
+    if (next <= 0) {
+      this.orgCounts.delete(context.organizationId);
+    } else {
+      this.orgCounts.set(context.organizationId, next);
+    }
   }
 
   /// Publishes an event to every socket of the given organization, across all
@@ -137,11 +188,11 @@ export class TelematicsRealtimeService implements OnModuleInit, OnModuleDestroy 
           res.write(sseData);
         } catch (err) {
           this.logger.warn(`Failed to send to a client, dropping it: ${err instanceof Error ? err.message : err}`);
-          this.clients.delete(res);
+          this.detach(res);
         }
       } else {
         // Client disconnected, remove from registry
-        this.clients.delete(res);
+        this.detach(res);
       }
     }
   }

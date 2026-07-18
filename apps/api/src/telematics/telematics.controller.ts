@@ -56,6 +56,27 @@ export class TelematicsController {
     @Query("vehicleIds") vehicleIdsParam: string | undefined,
     @Res() res: Response,
   ): Promise<void> {
+    const vehicleIds = vehicleIdsParam
+      ? new Set(vehicleIdsParam.split(",").map((id) => id.trim()).filter(Boolean))
+      : undefined;
+
+    // Admission control BEFORE any SSE header is written. Once headers are
+    // flushed the response is committed to a 200 event-stream and a clean HTTP
+    // status is no longer possible — so an over-limit client must be rejected
+    // here, with 429 + Retry-After, before opening the stream or arming timers.
+    const admitted = this.realtime.tryRegisterClient(res, {
+      organizationId: user.organizationId,
+      vehicleIds,
+    });
+    if (!admitted) {
+      res.setHeader("Retry-After", "30");
+      res.status(429).json({
+        statusCode: 429,
+        message: "Too many active telematics streams. Please retry shortly.",
+      });
+      return;
+    }
+
     res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
     res.setHeader("Cache-Control", "no-cache, no-transform");
     res.setHeader("Connection", "keep-alive");
@@ -63,15 +84,6 @@ export class TelematicsController {
     // until the stream ended and make streaming pointless in production.
     res.setHeader("X-Accel-Buffering", "no");
     res.flushHeaders();
-
-    const vehicleIds = vehicleIdsParam
-      ? new Set(vehicleIdsParam.split(",").map((id) => id.trim()).filter(Boolean))
-      : undefined;
-
-    this.realtime.registerClient(res, {
-      organizationId: user.organizationId,
-      vehicleIds,
-    });
 
     // The client vanishing (tab closed, navigated away) must remove them from
     // the registry, otherwise we keep trying to write to a dead stream.

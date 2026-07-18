@@ -93,12 +93,23 @@ export interface AiConfig {
   rateLimitPerHour: number;
 }
 
+export interface TelematicsConfig {
+  /// Max concurrent SSE (live-stream) connections a single organization may hold
+  /// on this instance. A fairness limit: one org (or a leaky frontend opening a
+  /// stream per navigation) cannot exhaust the whole process. Default 20.
+  sseMaxConnectionsPerOrg: number;
+  /// Max concurrent SSE connections across all organizations on this instance.
+  /// A process-safety ceiling against memory / file-descriptor exhaustion. Default 500.
+  sseMaxConnectionsGlobal: number;
+}
+
 export default (): {
   app: AppConfig;
   auth: AuthConfig;
   invitation: InvitationConfig;
   webhook: WebhookConfig;
   ai: AiConfig;
+  telematics: TelematicsConfig;
 } => {
   const nodeEnv = process.env.NODE_ENV ?? "development";
   const jwtAccessSecret = process.env.JWT_ACCESS_SECRET ?? "";
@@ -202,6 +213,16 @@ export default (): {
     throw new Error("REQUEST_TIMEOUT_MS must be a positive integer in milliseconds (default 30000).");
   }
 
+  const telematicsSseMaxPerOrg = parseInt(process.env.TELEMATICS_SSE_MAX_CONNECTIONS_PER_ORG ?? "20", 10);
+  if (!Number.isInteger(telematicsSseMaxPerOrg) || telematicsSseMaxPerOrg <= 0) {
+    throw new Error("TELEMATICS_SSE_MAX_CONNECTIONS_PER_ORG must be a positive integer (default 20).");
+  }
+
+  const telematicsSseMaxGlobal = parseInt(process.env.TELEMATICS_SSE_MAX_CONNECTIONS_GLOBAL ?? "500", 10);
+  if (!Number.isInteger(telematicsSseMaxGlobal) || telematicsSseMaxGlobal <= 0) {
+    throw new Error("TELEMATICS_SSE_MAX_CONNECTIONS_GLOBAL must be a positive integer (default 500).");
+  }
+
   return {
     ai: {
       provider: aiProvider,
@@ -225,6 +246,10 @@ export default (): {
       circuitFailureThreshold,
       circuitResetTimeoutMs,
       circuitHalfOpenRequests,
+    },
+    telematics: {
+      sseMaxConnectionsPerOrg: telematicsSseMaxPerOrg,
+      sseMaxConnectionsGlobal: telematicsSseMaxGlobal,
     },
     app: {
       port: parseInt(process.env.PORT ?? "4000", 10),
