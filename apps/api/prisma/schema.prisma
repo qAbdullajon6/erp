@@ -181,6 +181,7 @@ enum NotificationCategory {
   FINANCE
   CUSTOMERS
   FLEET
+  BILLING
 }
 
 /// A tenant. Every other business entity in the system will eventually hang
@@ -234,6 +235,22 @@ model Organization {
   aiConversations           AiConversation[]
   aiMemories                AiMemory[]
   aiKnowledgeDocs           AiKnowledgeDoc[]
+  telematicsDevices         TelematicsDevice[]
+  gpsPositions              GpsPosition[]
+  vehicleTelematicsStates   VehicleTelematicsState[]
+  trips                     Trip[]
+  geofences                 Geofence[]
+  geofenceEvents            GeofenceEvent[]
+  telematicsAlerts          TelematicsAlert[]
+  vehicleHealthSnapshots    VehicleHealthSnapshot[]
+  telematicsSettings        TelematicsSettings?
+  notificationTemplates     NotificationTemplate[]
+  emailProviders            EmailProvider[]
+  deliveryQueue             NotificationDeliveryQueue[]
+  subscription              OrganizationSubscription?
+  usageRecords              UsageRecord[]
+  usageSnapshots            UsageSnapshot[]
+  paymentProviderConfigs    PaymentProviderConfig[]
 
   @@map("organizations")
 }
@@ -286,11 +303,15 @@ model User {
   workflowsCreated              Workflow[]                 @relation("WorkflowCreatedBy")
   workflowVersionsPublished     WorkflowVersion[]          @relation("WorkflowVersionPublishedBy")
   apiKeysCreated                ApiKey[]                   @relation("ApiKeyCreatedBy")
+  subscriptionHistoryActions    SubscriptionHistory[]      @relation("SubscriptionHistoryActor")
   webhookEndpointsCreated       WebhookEndpoint[]          @relation("WebhookEndpointCreatedBy")
   importSessionsUploaded        ImportSession[]            @relation("ImportSessionUploadedBy")
   importMappingsCreated         ImportMapping[]            @relation("ImportMappingCreatedBy")
   aiConversations               AiConversation[]           @relation("AiConversationUser")
   aiMemories                    AiMemory[]                 @relation("AiMemoryUser")
+  telematicsAlertsAcknowledged  TelematicsAlert[]          @relation("TelematicsAlertAckBy")
+  telematicsAlertsResolved      TelematicsAlert[]          @relation("TelematicsAlertResolvedBy")
+  notificationPreferences       NotificationPreferences?
 
   @@map("users")
 }
@@ -584,12 +605,17 @@ model Driver {
   /// managing the driver record. Most Driver rows have no linked User.
   userId         String?      @unique
 
-  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user                User?                @relation(fields: [userId], references: [id])
-  orders              Order[]
-  dispatches          Dispatch[]
-  dispatchAssignments DispatchAssignment[]
-  expenses            Expense[]
+  organization            Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user                    User?                    @relation(fields: [userId], references: [id])
+  orders                  Order[]
+  dispatches              Dispatch[]
+  dispatchAssignments     DispatchAssignment[]
+  expenses                Expense[]
+  gpsPositions            GpsPosition[]
+  vehicleTelematicsStates VehicleTelematicsState[]
+  trips                   Trip[]
+  geofenceEvents          GeofenceEvent[]
+  telematicsAlerts        TelematicsAlert[]
 
   @@unique([organizationId, employeeCode])
   @@index([organizationId])
@@ -618,11 +644,18 @@ model Vehicle {
   /// Soft-archive marker — there is no hard-delete endpoint for vehicles.
   archivedAt       DateTime?
 
-  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization        Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   orders              Order[]
   dispatches          Dispatch[]
   dispatchAssignments DispatchAssignment[]
   expenses            Expense[]
+  telematicsDevices   TelematicsDevice[]
+  gpsPositions        GpsPosition[]
+  telematicsState     VehicleTelematicsState?
+  trips               Trip[]
+  geofenceEvents      GeofenceEvent[]
+  telematicsAlerts    TelematicsAlert[]
+  healthSnapshots     VehicleHealthSnapshot[]
 
   @@unique([organizationId, vehicleCode])
   @@index([organizationId])
@@ -669,6 +702,7 @@ model Order {
   dispatches    Dispatch[]
   invoices      Invoice[]
   expenses      Expense[]
+  trips         Trip[]
 
   @@unique([organizationId, orderNumber])
   @@index([organizationId])
@@ -734,6 +768,7 @@ model Dispatch {
   createdByUser User?                   @relation("CreatedDispatches", fields: [createdByUserId], references: [id], onDelete: SetNull)
   statusHistory DispatchStatusHistory[]
   assignments   DispatchAssignment[]
+  trips         Trip[]
 
   @@unique([organizationId, dispatchNumber])
   @@index([organizationId])
@@ -972,7 +1007,8 @@ model Notification {
   createdAt      DateTime             @default(now())
   metadata       Json?
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization  Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  deliveryQueue NotificationDeliveryQueue[]
 
   @@index([organizationId])
   @@index([organizationId, isArchived, isRead])
@@ -1054,6 +1090,303 @@ enum LeadStatus {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// BILLING & SUBSCRIPTION PLATFORM
+// ──────────────────────────────────────────────────────────────────────────────
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+  CANCELLED
+}
+
+enum SubscriptionEventType {
+  CREATED
+  UPGRADED
+  DOWNGRADED
+  RENEWED
+  SUSPENDED
+  REACTIVATED
+  CANCELLED
+  EXPIRED
+  SEATS_ADDED
+  SEATS_REMOVED
+  PAYMENT_FAILED
+  TRIAL_STARTED
+  TRIAL_ENDED
+}
+
+enum PaymentProviderType {
+  STRIPE
+  CLICK
+  PAYME
+}
+
+enum UsageMetricType {
+  API_REQUESTS
+  AI_CREDITS
+  STORAGE_GB
+  ORDERS
+  WEBHOOKS
+  USERS
+  VEHICLES
+  DRIVERS
+  CUSTOMERS
+}
+
+/// Subscription plan definitions (Free, Starter, Professional, Enterprise).
+/// System-wide data, not org-scoped. Created by platform admin or seed script.
+/// Each plan defines feature limits as structured JSON (users, vehicles, API
+/// requests, AI credits, storage, etc.). Frontend pricing page and Admin UI read
+/// from this single source of truth.
+model SubscriptionPlan {
+  id          String   @id @default(uuid())
+  name        String   @unique /// "Free", "Starter", "Professional", "Enterprise"
+  slug        String   @unique /// "free", "starter", "professional", "enterprise"
+  description String?
+  /// Monthly price in cents (e.g. 2900 = $29.00). Zero for free plan.
+  price       Int      @default(0)
+  /// Annual price in cents. Null if annual billing not offered for this plan.
+  annualPrice Int?
+  currency    String   @default("USD")
+  /// JSON structure defining all plan limits. Schema:
+  /// {
+  ///   "users": 5,
+  ///   "vehicles": 10,
+  ///   "drivers": 10,
+  ///   "customers": 100,
+  ///   "orders_per_month": 500,
+  ///   "api_requests_per_day": 1000,
+  ///   "ai_credits_per_month": 100,
+  ///   "storage_gb": 10,
+  ///   "integrations": ["basic"],
+  ///   "webhooks_per_month": 5000,
+  ///   "reports": ["standard"],
+  ///   "custom_branding": false,
+  ///   "sso": false,
+  ///   "audit_retention_days": 90
+  /// }
+  /// Null values in features JSON mean unlimited for that resource.
+  features    Json
+  /// Display order on pricing page. Lower numbers appear first.
+  sortOrder   Int      @default(0)
+  /// False = hidden from public pricing page (custom enterprise plans).
+  isActive    Boolean  @default(true)
+  /// True = featured/recommended plan (shown with badge on pricing page).
+  isFeatured  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  organizationSubscriptions OrganizationSubscription[]
+  historyAsFromPlan         SubscriptionHistory[]      @relation("HistoryFromPlan")
+  historyAsToPlan           SubscriptionHistory[]      @relation("HistoryToPlan")
+
+  @@map("subscription_plans")
+}
+
+/// Active subscription for an organization. One-to-one with Organization (each
+/// org has at most one active subscription at a time). Tracks billing period,
+/// seat count, trial state, and cancellation intent. When a subscription is
+/// cancelled/expired, a new row is NOT created on reactivation — the existing
+/// row's status changes back to ACTIVE (audit trail preserved in
+/// SubscriptionHistory).
+model OrganizationSubscription {
+  id                 String             @id @default(uuid())
+  organizationId     String             @unique
+  planId             String
+  /// Lifecycle: TRIAL -> ACTIVE -> {SUSPENDED, CANCELLED, EXPIRED}
+  /// SUSPENDED: payment failed, in grace period
+  /// CANCELLED: user requested cancellation, still active until period end
+  /// EXPIRED: subscription ended, no longer active
+  status             SubscriptionStatus @default(TRIAL)
+  /// Number of seats purchased (for seat-based billing). Null = not seat-based.
+  /// Seats control active user count via BillingSeatsService enforcement.
+  seats              Int?
+  /// When the current billing period started. Renewed on each successful charge.
+  currentPeriodStart DateTime           @default(now())
+  /// When the current billing period ends. Next invoice generated at this date.
+  currentPeriodEnd   DateTime
+  /// Trial expiry date. Null if not in trial or trial already ended.
+  trialEndsAt        DateTime?
+  /// When subscription will be cancelled. Null if no cancellation scheduled.
+  /// Subscription remains ACTIVE until this date, then becomes CANCELLED.
+  cancelAt           DateTime?
+  /// When subscription was actually cancelled (status changed to CANCELLED).
+  cancelledAt        DateTime?
+  /// Reason for cancellation (user-supplied or system-generated).
+  cancellationReason String?
+  /// True = automatically renew at period end. False = expire at period end.
+  autoRenew          Boolean            @default(true)
+  /// Payment provider customer ID (e.g. Stripe customer ID). Used for charging.
+  paymentCustomerId  String?
+  /// JSON metadata: payment method last4, brand, grace period end date, etc.
+  metadata           Json?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan         SubscriptionPlan      @relation(fields: [planId], references: [id], onDelete: Restrict)
+  history      SubscriptionHistory[]
+  usageRecords UsageRecord[]
+
+  @@index([status])
+  @@index([currentPeriodEnd])
+  @@index([trialEndsAt])
+  @@map("organization_subscriptions")
+}
+
+/// Append-only audit trail of subscription lifecycle events (created, upgraded,
+/// downgraded, renewed, suspended, cancelled, expired). Every state change
+/// creates one row. Used for billing reconciliation, support investigations, and
+/// analytics (MRR/churn tracking). Never updated or deleted.
+model SubscriptionHistory {
+  id             String                @id @default(uuid())
+  subscriptionId String
+  organizationId String
+  eventType      SubscriptionEventType
+  /// Plan the subscription was on before this event. Null for CREATED event.
+  fromPlanId     String?
+  /// Plan the subscription moved to. Null for CANCELLED/EXPIRED events.
+  toPlanId       String?
+  /// When the event takes effect. For scheduled downgrades, this is the period
+  /// end date, not the date the user requested it.
+  effectiveDate  DateTime
+  /// User who triggered the event (for manual actions). Null for system events.
+  actorUserId    String?
+  /// Why the event happened: "user_requested", "payment_failed", "trial_ended",
+  /// "admin_action", "system_renewal".
+  reason         String?
+  /// Event-specific data: seats changed, payment failure details, cancellation
+  /// survey response, etc.
+  metadata       Json?
+  createdAt      DateTime              @default(now())
+
+  subscription OrganizationSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  fromPlan     SubscriptionPlan?        @relation("HistoryFromPlan", fields: [fromPlanId], references: [id], onDelete: SetNull)
+  toPlan       SubscriptionPlan?        @relation("HistoryToPlan", fields: [toPlanId], references: [id], onDelete: SetNull)
+  actor        User?                    @relation("SubscriptionHistoryActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([subscriptionId, createdAt])
+  @@index([organizationId, eventType, createdAt])
+  @@map("subscription_history")
+}
+
+/// Real-time usage tracking for metered resources (API requests, AI credits,
+/// storage, orders, webhooks). Written on every tracked event (e.g. each API
+/// call, each AI message). Aggregated daily/monthly by UsageSnapshot rollups for
+/// quota enforcement. Partitioned by organization for efficient org-scoped
+/// queries. Retention: 90 days of raw records, indefinite snapshots.
+model UsageRecord {
+  id             String          @id @default(uuid())
+  organizationId String
+  subscriptionId String?
+  metricType     UsageMetricType
+  /// Quantity consumed in this record (e.g. 1 API request, 0.05 GB storage).
+  value          Decimal         @db.Decimal(18, 6)
+  unit           String /// "requests", "credits", "gb", "count"
+  /// When the usage occurred (not when the record was written).
+  recordedAt     DateTime        @default(now())
+  /// The billing period this usage applies to.
+  periodStart    DateTime
+  periodEnd      DateTime
+  /// Event-specific context: endpoint, AI model used, storage bucket, etc.
+  metadata       Json?
+  createdAt      DateTime        @default(now())
+
+  organization Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subscription OrganizationSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, metricType, recordedAt])
+  @@index([organizationId, periodStart, periodEnd])
+  @@map("usage_records")
+}
+
+/// Daily/monthly rolled-up usage totals. Generated by a background job that
+/// aggregates UsageRecord rows. Used for quota enforcement (faster than summing
+/// raw records on every API call). One row per org per metric per day/month.
+/// Immutable once written (corrections append a new row, never update).
+model UsageSnapshot {
+  id             String          @id @default(uuid())
+  organizationId String
+  planId         String?
+  metricType     UsageMetricType
+  /// Total value for this metric in this time period.
+  value          Decimal         @db.Decimal(18, 6)
+  unit           String
+  /// Snapshot granularity: "daily" or "monthly"
+  period         String
+  /// Start of the period this snapshot covers (midnight UTC of day/month).
+  periodStart    DateTime
+  /// End of the period (exclusive).
+  periodEnd      DateTime
+  createdAt      DateTime        @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, metricType, period, periodStart])
+  @@index([organizationId, metricType, periodStart])
+  @@map("usage_snapshots")
+}
+
+/// Payment provider configuration (Stripe, Click, Payme). Supports org-level
+/// providers (custom enterprise accounts) and system-level fallback (shared
+/// FlowERP account). Credentials stored encrypted (AES-256-CBC with APP_SECRET),
+/// same pattern as EmailProvider. Only one active primary provider per org at a
+/// time. Follows email provider abstraction pattern exactly.
+model PaymentProviderConfig {
+  id             String              @id @default(uuid())
+  /// Null = system-level provider (fallback for orgs with no custom provider).
+  organizationId String?
+  providerType   PaymentProviderType
+  /// Encrypted JSON credentials. Schema varies by provider:
+  /// STRIPE: { apiKey, webhookSecret }
+  /// CLICK: { merchantId, secretKey, serviceId }
+  /// PAYME: { merchantId, secretKey }
+  config         String /// Encrypted with AES-256-CBC
+  /// False = provider disabled, won't be used even if primary.
+  isActive       Boolean             @default(true)
+  /// True = default provider for this org. Only one primary per org at a time.
+  isPrimary      Boolean             @default(false)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, providerType])
+  @@index([organizationId, isActive, isPrimary])
+  @@map("payment_provider_configs")
+}
+
+/// Payment webhook delivery tracking for idempotency and audit. Prevents
+/// duplicate processing via unique constraint on provider + externalEventId.
+/// Status tracks processing lifecycle (PENDING → PROCESSING → PROCESSED/FAILED/CANCELLED).
+model PaymentWebhookDelivery {
+  id              String   @id @default(uuid())
+  /// Payment provider: "stripe", "click", "payme"
+  provider        String
+  /// Provider's event/transaction ID (unique per provider)
+  externalEventId String
+  /// Event type: "payment_intent.succeeded", "prepare", "complete", "CreateTransaction", etc.
+  eventType       String
+  /// Full webhook payload (JSON) for audit/replay/debugging
+  payload         Json
+  /// Processing status (PENDING uses existing enum value)
+  status          WebhookDeliveryStatus @default(PENDING)
+  /// When webhook was successfully processed
+  processedAt     DateTime?
+  /// Error message if processing failed
+  errorMessage    String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@unique([provider, externalEventId, eventType])
+  @@index([provider, externalEventId])
+  @@index([status, createdAt])
+  @@map("payment_webhook_deliveries")
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // WORKFLOW ENGINE
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -1084,28 +1417,28 @@ enum WorkflowStepStatus {
 }
 
 model Workflow {
-  id             String         @id @default(uuid())
-  organizationId String
-  name           String
-  description    String?
-  status         WorkflowStatus @default(DRAFT)
-  active         Boolean        @default(false)
+  id              String         @id @default(uuid())
+  organizationId  String
+  name            String
+  description     String?
+  status          WorkflowStatus @default(DRAFT)
+  active          Boolean        @default(false)
   /// JSON: trigger, conditions, actions, variables — the full definition
-  config         Json
+  config          Json
   /// Monotonically increasing per-workflow, bumped on each publish
-  version        Int            @default(1)
+  version         Int            @default(1)
   /// For optimistic locking
-  updatedSeq     Int            @default(0)
+  updatedSeq      Int            @default(0)
   createdByUserId String
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
-  organization   Organization   @relation(fields: [organizationId], references: [id])
-  createdBy      User           @relation("WorkflowCreatedBy", fields: [createdByUserId], references: [id])
-  versions       WorkflowVersion[]
-  executions     WorkflowExecution[]
-  schedules      WorkflowSchedule[]
-  webhooks       WorkflowWebhook[]
+  organization Organization        @relation(fields: [organizationId], references: [id])
+  createdBy    User                @relation("WorkflowCreatedBy", fields: [createdByUserId], references: [id])
+  versions     WorkflowVersion[]
+  executions   WorkflowExecution[]
+  schedules    WorkflowSchedule[]
+  webhooks     WorkflowWebhook[]
 
   @@index([organizationId, status])
   @@index([organizationId, active])
@@ -1113,18 +1446,18 @@ model Workflow {
 }
 
 model WorkflowVersion {
-  id             String         @id @default(uuid())
-  workflowId     String
-  organizationId String
-  version        Int
-  config         Json
-  publishedAt    DateTime       @default(now())
+  id                String   @id @default(uuid())
+  workflowId        String
+  organizationId    String
+  version           Int
+  config            Json
+  publishedAt       DateTime @default(now())
   publishedByUserId String
 
-  workflow       Workflow        @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-  organization   Organization   @relation(fields: [organizationId], references: [id])
-  publishedBy    User           @relation("WorkflowVersionPublishedBy", fields: [publishedByUserId], references: [id])
-  executions     WorkflowExecution[]
+  workflow     Workflow            @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  organization Organization        @relation(fields: [organizationId], references: [id])
+  publishedBy  User                @relation("WorkflowVersionPublishedBy", fields: [publishedByUserId], references: [id])
+  executions   WorkflowExecution[]
 
   @@unique([workflowId, version])
   @@index([organizationId])
@@ -1151,11 +1484,11 @@ model WorkflowExecution {
   /// Idempotency key to prevent duplicate executions
   idempotencyKey String?
 
-  workflow       Workflow                @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-  version        WorkflowVersion?       @relation(fields: [versionId], references: [id])
-  organization   Organization           @relation(fields: [organizationId], references: [id])
-  steps          WorkflowExecutionStep[]
-  logs           WorkflowLog[]
+  workflow     Workflow                @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  version      WorkflowVersion?        @relation(fields: [versionId], references: [id])
+  organization Organization            @relation(fields: [organizationId], references: [id])
+  steps        WorkflowExecutionStep[]
+  logs         WorkflowLog[]
 
   @@unique([organizationId, idempotencyKey])
   @@index([workflowId, status])
@@ -1178,7 +1511,7 @@ model WorkflowExecutionStep {
   completedAt  DateTime?
   retryCount   Int                @default(0)
 
-  execution    WorkflowExecution  @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  execution WorkflowExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
 
   @@index([executionId, stepIndex])
   @@map("workflow_execution_steps")
@@ -1193,7 +1526,7 @@ model WorkflowLog {
   details     Json?
   createdAt   DateTime @default(now())
 
-  execution   WorkflowExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  execution WorkflowExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
 
   @@index([executionId, createdAt])
   @@map("workflow_logs")
@@ -1214,19 +1547,19 @@ model WorkflowTemplate {
 }
 
 model WorkflowSchedule {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   workflowId     String
   organizationId String
   cronExpression String
-  timezone       String   @default("UTC")
-  active         Boolean  @default(true)
+  timezone       String    @default("UTC")
+  active         Boolean   @default(true)
   lastRunAt      DateTime?
   nextRunAt      DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  workflow       Workflow  @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-  organization   Organization @relation(fields: [organizationId], references: [id])
+  workflow     Workflow     @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id])
 
   @@index([active, nextRunAt])
   @@index([organizationId])
@@ -1234,20 +1567,20 @@ model WorkflowSchedule {
 }
 
 model WorkflowWebhook {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   workflowId     String
   organizationId String
   /// URL path segment used to route incoming webhooks
   path           String
   /// SHA-256 hash of the secret used to verify webhook signatures
   secretHash     String
-  active         Boolean  @default(true)
+  active         Boolean   @default(true)
   lastCalledAt   DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  workflow       Workflow  @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-  organization   Organization @relation(fields: [organizationId], references: [id])
+  workflow     Workflow     @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id])
 
   @@unique([organizationId, path])
   @@index([active])
@@ -1281,29 +1614,29 @@ enum WebhookAttemptStatus {
 /// high-entropy random, so a fast digest is the right primitive, not bcrypt).
 /// The raw value is returned exactly once — at create and at rotate.
 model ApiKey {
-  id             String       @id @default(uuid())
-  organizationId String
-  name           String
+  id                 String       @id @default(uuid())
+  organizationId     String
+  name               String
   /// Human-identifiable leading segment (e.g. "flowerp_live_a1b2c3d4"), safe
   /// to display and index. Never enough on its own to authenticate.
-  keyPrefix      String
+  keyPrefix          String
   /// SHA-256 hex digest of the raw key. The only stored form of the secret.
-  keyHash        String       @unique
-  scopes         String[]     @default([])
-  status         ApiKeyStatus @default(ACTIVE)
+  keyHash            String       @unique
+  scopes             String[]     @default([])
+  status             ApiKeyStatus @default(ACTIVE)
   /// Null means the key never expires.
-  expiresAt      DateTime?
-  lastUsedAt     DateTime?
+  expiresAt          DateTime?
+  lastUsedAt         DateTime?
   /// Per-key request ceiling within a rolling 60-second window.
-  rateLimitPerMinute Int      @default(120)
-  revokedAt      DateTime?
-  createdByUserId String
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  rateLimitPerMinute Int          @default(120)
+  revokedAt          DateTime?
+  createdByUserId    String
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  createdBy      User         @relation("ApiKeyCreatedBy", fields: [createdByUserId], references: [id])
-  usageRecords   ApiUsageRecord[]
+  organization Organization     @relation(fields: [organizationId], references: [id])
+  createdBy    User             @relation("ApiKeyCreatedBy", fields: [createdByUserId], references: [id])
+  usageRecords ApiUsageRecord[]
 
   @@index([organizationId, status])
   @@index([keyHash])
@@ -1316,27 +1649,27 @@ model ApiKey {
 /// for signing. It is stored encrypted-at-rest via the app's secret, not
 /// hashed. See WebhookDispatcherService.sign().
 model WebhookEndpoint {
-  id             String   @id @default(uuid())
-  organizationId String
-  name           String
-  url            String
+  id                String    @id @default(uuid())
+  organizationId    String
+  name              String
+  url               String
   /// Raw HMAC signing secret. Shown to the user at create and at rotate.
-  secret         String
-  events         String[] @default([])
-  isActive       Boolean  @default(true)
-  description    String?
+  secret            String
+  events            String[]  @default([])
+  isActive          Boolean   @default(true)
+  description       String?
   /// Bumped on each secret rotation so a delivery records which secret signed it.
-  version        Int      @default(1)
-  lastSuccessAt  DateTime?
-  lastFailureAt  DateTime?
+  version           Int       @default(1)
+  lastSuccessAt     DateTime?
+  lastFailureAt     DateTime?
   lastFailureReason String?
-  createdByUserId String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdByUserId   String
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  createdBy      User         @relation("WebhookEndpointCreatedBy", fields: [createdByUserId], references: [id])
-  deliveries     WebhookDelivery[]
+  organization Organization      @relation(fields: [organizationId], references: [id])
+  createdBy    User              @relation("WebhookEndpointCreatedBy", fields: [createdByUserId], references: [id])
+  deliveries   WebhookDelivery[]
 
   @@index([organizationId, isActive])
   @@map("webhook_endpoints")
@@ -1369,10 +1702,10 @@ model WebhookDelivery {
   completedAt    DateTime?
   failedAt       DateTime?
 
-  endpoint       WebhookEndpoint       @relation(fields: [endpointId], references: [id], onDelete: Cascade)
-  organization   Organization          @relation(fields: [organizationId], references: [id])
-  replayOf       WebhookDelivery?      @relation("DeliveryReplay", fields: [replayOfId], references: [id], onDelete: SetNull)
-  replays        WebhookDelivery[]     @relation("DeliveryReplay")
+  endpoint         WebhookEndpoint          @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  organization     Organization             @relation(fields: [organizationId], references: [id])
+  replayOf         WebhookDelivery?         @relation("DeliveryReplay", fields: [replayOfId], references: [id], onDelete: SetNull)
+  replays          WebhookDelivery[]        @relation("DeliveryReplay")
   deliveryAttempts WebhookDeliveryAttempt[]
 
   @@unique([organizationId, idempotencyKey])
@@ -1386,18 +1719,18 @@ model WebhookDelivery {
 /// from WebhookDelivery so the full retry history is inspectable rather than
 /// overwritten by the last attempt.
 model WebhookDeliveryAttempt {
-  id             String               @id @default(uuid())
-  deliveryId     String
-  attemptNumber  Int
-  status         WebhookAttemptStatus
-  httpStatus     Int?
-  responseBody   String?
+  id              String               @id @default(uuid())
+  deliveryId      String
+  attemptNumber   Int
+  status          WebhookAttemptStatus
+  httpStatus      Int?
+  responseBody    String?
   responseHeaders Json?
-  durationMs     Int?
-  errorMessage   String?
-  createdAt      DateTime             @default(now())
+  durationMs      Int?
+  errorMessage    String?
+  createdAt       DateTime             @default(now())
 
-  delivery       WebhookDelivery      @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  delivery WebhookDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
 
   @@index([deliveryId, attemptNumber])
   @@map("webhook_delivery_attempts")
@@ -1418,8 +1751,8 @@ model ApiUsageRecord {
   durationMs     Int
   createdAt      DateTime @default(now())
 
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  apiKey         ApiKey?      @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
+  organization Organization @relation(fields: [organizationId], references: [id])
+  apiKey       ApiKey?      @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, createdAt])
   @@index([apiKeyId, createdAt])
@@ -1468,25 +1801,25 @@ enum ImportRowStatus {
 /// One upload and everything that happened to it. Long-lived: the row is the
 /// audit record of a migration, so it outlives the file itself.
 model ImportSession {
-  id             String       @id @default(uuid())
-  organizationId String
-  uploadedByUserId String
+  id                String                  @id @default(uuid())
+  organizationId    String
+  uploadedByUserId  String
   /// Which entity is being imported ("Customer", "Order", ...). A string, not
   /// an enum, so a new entity type is a registry entry (see
   /// import/registry/entity-registry.ts) rather than a migration.
-  entityType     String
-  status         ImportStatus @default(PENDING)
-  fileName       String
+  entityType        String
+  status            ImportStatus            @default(PENDING)
+  fileName          String
   /// "csv" | "xlsx", detected from content, never trusted from the extension.
-  format         String
-  fileSizeBytes  Int
+  format            String
+  fileSizeBytes     Int
   duplicateStrategy ImportDuplicateStrategy @default(SKIP)
 
   /// The header row exactly as it appeared in the file.
-  headers        Json
+  headers       Json
   /// Column index -> entity field name. Null until the user confirms a mapping;
   /// the auto-detected default is offered but not persisted until chosen.
-  columnMapping  Json?
+  columnMapping Json?
 
   totalRows      Int @default(0)
   validRows      Int @default(0)
@@ -1502,17 +1835,17 @@ model ImportSession {
   /// or roll back as a unit.
   cancelRequested Boolean @default(false)
   /// Free-text reason a session as a whole failed (not a per-row error).
-  errorMessage   String?
+  errorMessage    String?
 
-  startedAt      DateTime?
-  completedAt    DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  uploadedBy     User         @relation("ImportSessionUploadedBy", fields: [uploadedByUserId], references: [id])
-  rows           ImportRow[]
-  errors         ImportError[]
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  uploadedBy   User          @relation("ImportSessionUploadedBy", fields: [uploadedByUserId], references: [id])
+  rows         ImportRow[]
+  errors       ImportError[]
 
   @@index([organizationId, createdAt])
   @@index([organizationId, entityType])
@@ -1547,8 +1880,8 @@ model ImportRow {
   processedAt    DateTime?
   createdAt      DateTime        @default(now())
 
-  session        ImportSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  session      ImportSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([sessionId, rowNumber])
   @@index([sessionId, status])
@@ -1576,8 +1909,8 @@ model ImportError {
   severity       String   @default("ERROR")
   createdAt      DateTime @default(now())
 
-  session        ImportSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  session      ImportSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, rowNumber])
   @@index([sessionId, severity])
@@ -1591,19 +1924,19 @@ model ImportError {
 /// re-mapping 30 columns by hand on each upload is where the wizard would
 /// otherwise lose its value.
 model ImportMapping {
-  id             String   @id @default(uuid())
-  organizationId String
-  entityType     String
-  name           String
+  id              String   @id @default(uuid())
+  organizationId  String
+  entityType      String
+  name            String
   /// Source column header -> entity field name. Keyed by HEADER, not index,
   /// so a template survives a file whose columns moved.
-  mapping        Json
+  mapping         Json
   createdByUserId String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy      User         @relation("ImportMappingCreatedBy", fields: [createdByUserId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation("ImportMappingCreatedBy", fields: [createdByUserId], references: [id])
 
   @@unique([organizationId, entityType, name])
   @@index([organizationId, entityType])
@@ -1654,40 +1987,40 @@ enum AiMemoryKind {
 /// private to the person who had it, because it can contain anything they were
 /// allowed to ask about, and their colleague may not be allowed to see it.
 model AiConversation {
-  id             String               @id @default(uuid())
-  organizationId String
-  userId         String
-  title          String
-  status         AiConversationStatus @default(ACTIVE)
+  id               String               @id @default(uuid())
+  organizationId   String
+  userId           String
+  title            String
+  status           AiConversationStatus @default(ACTIVE)
   /// Pinned to the top of the user's list. Distinct from AiMemoryKind.PINNED,
   /// which pins a FACT inside a conversation.
-  pinned         Boolean              @default(false)
+  pinned           Boolean              @default(false)
   /// The provider/model this thread has been using, so a reopened conversation
   /// continues with the same model rather than silently switching.
-  provider       String
-  model          String
+  provider         String
+  model            String
   /// Running totals across every message. Denormalised deliberately: the
   /// conversation list shows cost per thread, and summing messages for each
   /// row would be an N+1 over the whole list.
-  promptTokens     Int @default(0)
-  completionTokens Int @default(0)
+  promptTokens     Int                  @default(0)
+  completionTokens Int                  @default(0)
   /// Soft delete — an AI conversation is an audit record of what someone asked
   /// the system to do, so it is never hard-deleted from under an investigation.
-  deletedAt      DateTime?
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
+  deletedAt        DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
   /// Sort key for the list. Distinct from updatedAt, which also moves when a
   /// title is renamed or the thread is pinned.
-  lastMessageAt  DateTime             @default(now())
+  lastMessageAt    DateTime             @default(now())
   /// When true, mutating tools are not offered to the model — the conversation
   /// is observation-only. Set at creation time; immutable thereafter so the
   /// audit trail is clear about what a thread WAS allowed to do.
-  readOnly       Boolean              @default(false)
+  readOnly         Boolean              @default(false)
 
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user           User          @relation("AiConversationUser", fields: [userId], references: [id], onDelete: Cascade)
-  messages       AiMessage[]
-  memories       AiMemory[]
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation("AiConversationUser", fields: [userId], references: [id], onDelete: Cascade)
+  messages     AiMessage[]
+  memories     AiMemory[]
 
   @@index([organizationId, userId, lastMessageAt])
   @@index([organizationId, userId, status])
@@ -1695,30 +2028,30 @@ model AiConversation {
 }
 
 model AiMessage {
-  id             String        @id @default(uuid())
-  conversationId String
-  organizationId String
-  role           AiMessageRole
+  id               String        @id @default(uuid())
+  conversationId   String
+  organizationId   String
+  role             AiMessageRole
   /// Null for an assistant turn that only called tools and produced no prose.
-  content        String?
+  content          String?
   /// Set on a TOOL message: which call this is the result of.
-  toolCallId     String?
-  promptTokens     Int? 
+  toolCallId       String?
+  promptTokens     Int?
   completionTokens Int?
   /// Milliseconds the provider took. Null for USER messages.
-  latencyMs      Int?
+  latencyMs        Int?
   /// Which model produced this turn. Recorded per message, not just per
   /// conversation, because the user may switch models mid-thread.
-  model          String?
+  model            String?
   /// Set when the run stopped early: "cancelled", "max_depth", "error".
-  finishReason   String?
+  finishReason     String?
   /// True when the security layer rewrote or withheld part of this turn, so an
   /// auditor can find every filtered response.
-  filtered       Boolean       @default(false)
-  createdAt      DateTime      @default(now())
+  filtered         Boolean       @default(false)
+  createdAt        DateTime      @default(now())
 
-  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  toolCalls      AiToolCall[]
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  toolCalls    AiToolCall[]
 
   @@index([conversationId, createdAt])
   @@index([organizationId, createdAt])
@@ -1742,7 +2075,7 @@ model AiToolCall {
   durationMs     Int?
   createdAt      DateTime         @default(now())
 
-  message        AiMessage        @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  message AiMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
   @@index([messageId])
   @@index([organizationId, toolName, createdAt])
@@ -1769,9 +2102,9 @@ model AiMemory {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user           User            @relation("AiMemoryUser", fields: [userId], references: [id], onDelete: Cascade)
-  conversation   AiConversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User            @relation("AiMemoryUser", fields: [userId], references: [id], onDelete: Cascade)
+  conversation AiConversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, userId, kind])
   @@index([conversationId, kind])
@@ -1800,8 +2133,632 @@ model AiKnowledgeDoc {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, source])
   @@map("ai_knowledge_docs")
+}
+
+// ===========================================================================
+// Fleet Telematics & GPS Tracking
+//
+// The live-operations layer: where every vehicle is right now, where it has
+// been, and what it did on the way. Ingestion is provider-agnostic (see
+// TelematicsDevice.provider) so a Traccar unit, a Samsara webhook or a manual
+// driver-app ping all land in the same GpsPosition stream and drive the same
+// derived state, trips, geofence events and alerts.
+//
+// Design notes carried by these models:
+//   - GpsPosition is the append-only raw stream (high volume). Everything else
+//     is DERIVED from it and can be recomputed. Retention is bounded by
+//     TelematicsSettings.retentionDays and enforced by the sweeper worker.
+//   - VehicleTelematicsState is a single denormalised row per vehicle — the
+//     live-map read model, so the map is one indexed query, not a scan of the
+//     position stream.
+//   - Money/for-the-record aggregates (distance, fuel) are Decimal; physical
+//     sensor readings (speed, heading, temperature) are Float — they are
+//     measurements, never summed into an invoice.
+// ===========================================================================
+
+/// How a device's positions reach us. Adding a vendor is a new normalizer
+/// behind TelematicsProvider, never a new ingestion path — see
+/// apps/api/src/telematics/providers.
+enum TelematicsProviderType {
+  /// Driver mobile app or dispatcher hand-entry — positions POSTed directly.
+  MANUAL
+  /// Traccar-compatible device (OsmAnd / Traccar Client protocol).
+  TRACCAR
+  /// Samsara fleet platform webhook.
+  SAMSARA
+  /// Geotab MyGeotab feed.
+  GEOTAB
+  /// Any other source posting the generic normalized shape.
+  GENERIC_WEBHOOK
+}
+
+/// Coarse motion classification derived per-ping by the movement detector, and
+/// the thing the live map colours a vehicle by. OFFLINE means "no fresh ping"
+/// (older than TelematicsSettings.offlineThresholdSec), not "ignition off".
+enum MovementState {
+  MOVING
+  IDLING
+  STOPPED
+  OFFLINE
+  UNKNOWN
+}
+
+enum TripStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum GeofenceType {
+  CIRCLE
+  POLYGON
+}
+
+enum GeofenceEventType {
+  ENTER
+  EXIT
+  /// Stayed inside past the geofence's dwell threshold.
+  DWELL
+}
+
+enum TelematicsAlertType {
+  SPEEDING
+  GEOFENCE_ENTER
+  GEOFENCE_EXIT
+  GEOFENCE_DWELL
+  IDLE
+  STOP
+  HARSH_ACCEL
+  HARSH_BRAKE
+  HARSH_CORNER
+  SIGNAL_LOST
+  DEVICE_OFFLINE
+  LOW_FUEL
+  UNAUTHORIZED_MOVEMENT
+  CHECK_ENGINE
+}
+
+/// OPEN -> ACKNOWLEDGED -> RESOLVED, forward-only. An alert can also go
+/// OPEN -> RESOLVED (auto-resolved by the engine when the condition clears,
+/// e.g. the vehicle drops back below the speed limit).
+enum TelematicsAlertStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+/// A tracked GPS unit and its binding to a vehicle. The provider abstraction
+/// lives here: `provider` selects the normalizer, `externalId` is the id that
+/// source uses for the unit, and `ingestSecretHash` authenticates its webhook
+/// posts (Argon2id hash — the plaintext secret is shown once at creation and
+/// never stored, exactly like ApiKey).
+model TelematicsDevice {
+  id               String                 @id @default(uuid())
+  organizationId   String
+  vehicleId        String?
+  provider         TelematicsProviderType @default(MANUAL)
+  /// The unit's id in the provider's system. Unique per (org, provider).
+  externalId       String
+  name             String
+  /// Argon2id hash of the ingestion secret; null for MANUAL devices that
+  /// authenticate with a session/API-key instead of a per-device secret.
+  ingestSecretHash String?
+  active           Boolean                @default(true)
+  /// Free-form provider tuning (poll interval, unit mapping). Never trusted as
+  /// a security boundary.
+  config           Json?
+  lastSeenAt       DateTime?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  archivedAt       DateTime?
+
+  organization    Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  vehicle         Vehicle?                @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  positions       GpsPosition[]
+  healthSnapshots VehicleHealthSnapshot[]
+
+  @@unique([organizationId, provider, externalId])
+  @@index([organizationId])
+  @@index([organizationId, vehicleId])
+  @@map("telematics_devices")
+}
+
+/// The append-only raw position stream. High-volume, derived-from-nothing:
+/// speed/heading may be device-reported or computed at ingest, but the row is
+/// never mutated after insert. `recordedAt` is device time (what the ping
+/// claims), `receivedAt` is server time — they differ when a device buffers
+/// offline and flushes a backlog, which the ingestion pipeline handles by
+/// ordering on recordedAt.
+model GpsPosition {
+  id                String        @id @default(uuid())
+  organizationId    String
+  deviceId          String?
+  vehicleId         String
+  driverId          String?
+  tripId            String?
+  recordedAt        DateTime
+  receivedAt        DateTime      @default(now())
+  latitude          Float
+  longitude         Float
+  altitudeM         Float?
+  /// Ground speed in km/h. Computed from the previous fix when the device does
+  /// not report it.
+  speedKph          Float?
+  /// Degrees clockwise from true north, 0–360.
+  heading           Float?
+  accuracyM         Float?
+  ignitionOn        Boolean?
+  odometerKm        Float?
+  fuelLevelPct      Float?
+  satellites        Int?
+  /// Straight-line metres from the previous fix, persisted so distance rollups
+  /// never re-walk the whole stream.
+  distanceFromPrevM Float?
+  /// The vehicle's motion classification AT this fix.
+  movementState     MovementState @default(UNKNOWN)
+  raw               Json?
+  createdAt         DateTime      @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  device       TelematicsDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  vehicle      Vehicle           @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  driver       Driver?           @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  trip         Trip?             @relation(fields: [tripId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, vehicleId, recordedAt])
+  @@index([tripId, recordedAt])
+  @@index([organizationId, recordedAt])
+  @@map("gps_positions")
+}
+
+/// The live-map read model — exactly one row per vehicle, overwritten on every
+/// ping. Denormalised on purpose: rendering the fleet is a single indexed scan
+/// of this table, never an aggregate over gps_positions.
+model VehicleTelematicsState {
+  id              String        @id @default(uuid())
+  organizationId  String
+  vehicleId       String        @unique
+  driverId        String?
+  tripId          String?
+  latitude        Float?
+  longitude       Float?
+  speedKph        Float?
+  heading         Float?
+  ignitionOn      Boolean?
+  odometerKm      Float?
+  fuelLevelPct    Float?
+  movementState   MovementState @default(UNKNOWN)
+  /// Last time the vehicle was classified MOVING — the baseline idle/stop
+  /// durations are measured from.
+  lastMovingAt    DateTime?
+  /// When the vehicle first went non-moving in its current stationary spell.
+  stationarySince DateTime?
+  lastRecordedAt  DateTime?
+  lastReceivedAt  DateTime?
+  updatedAt       DateTime      @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  vehicle      Vehicle      @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  driver       Driver?      @relation(fields: [driverId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, movementState])
+  @@map("vehicle_telematics_states")
+}
+
+/// A single journey. Opened when a stationary vehicle starts moving (or a
+/// dispatch goes EN_ROUTE), closed when it has been stationary past the
+/// auto-close threshold or the dispatch is delivered. Aggregates are rolled up
+/// incrementally at ingest so a finished trip needs no recompute to report on.
+model Trip {
+  id               String     @id @default(uuid())
+  organizationId   String
+  vehicleId        String
+  driverId         String?
+  dispatchId       String?
+  orderId          String?
+  status           TripStatus @default(ACTIVE)
+  startedAt        DateTime
+  endedAt          DateTime?
+  startLat         Float?
+  startLng         Float?
+  endLat           Float?
+  endLng           Float?
+  distanceKm       Decimal    @default(0) @db.Decimal(12, 3)
+  durationSec      Int        @default(0)
+  movingSec        Int        @default(0)
+  idleSec          Int        @default(0)
+  stopCount        Int        @default(0)
+  maxSpeedKph      Float      @default(0)
+  avgSpeedKph      Float      @default(0)
+  harshAccelCount  Int        @default(0)
+  harshBrakeCount  Int        @default(0)
+  harshCornerCount Int        @default(0)
+  speedingCount    Int        @default(0)
+  fuelConsumedL    Decimal?   @db.Decimal(12, 3)
+  startOdometerKm  Float?
+  endOdometerKm    Float?
+  pointCount       Int        @default(0)
+  /// True when the sweeper closed it on inactivity rather than an explicit end.
+  autoClosed       Boolean    @default(false)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  vehicle        Vehicle           @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  driver         Driver?           @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  dispatch       Dispatch?         @relation(fields: [dispatchId], references: [id], onDelete: SetNull)
+  order          Order?            @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  positions      GpsPosition[]
+  geofenceEvents GeofenceEvent[]
+  alerts         TelematicsAlert[]
+
+  @@index([organizationId, vehicleId, startedAt])
+  @@index([organizationId, status])
+  @@index([dispatchId])
+  @@index([driverId])
+  @@map("trips")
+}
+
+/// A named area on the map — a circle (center + radius) or a polygon (ring of
+/// points). `linkedCustomerId` is a SOFT reference (no FK) so a geofence can be
+/// tagged to a customer depot without coupling the telematics schema to a hard
+/// delete of Customer; customers are soft-archived here anyway.
+model Geofence {
+  id                String       @id @default(uuid())
+  organizationId    String
+  name              String
+  type              GeofenceType
+  active            Boolean      @default(true)
+  /// Populated for CIRCLE.
+  centerLat         Float?
+  centerLng         Float?
+  radiusM           Float?
+  /// Populated for POLYGON: an ordered array of { lat, lng } vertices.
+  polygon           Json?
+  /// UI hint only; free text, e.g. "#2563eb".
+  color             String?
+  /// Free-form classification: "DEPOT" | "CUSTOMER" | "RESTRICTED" | ...
+  category          String?
+  linkedCustomerId  String?
+  alertOnEnter      Boolean      @default(false)
+  alertOnExit       Boolean      @default(false)
+  /// Seconds a vehicle may dwell inside before a DWELL event/alert fires. Null
+  /// disables dwell detection for this fence.
+  dwellThresholdSec Int?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  archivedAt        DateTime?
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  events       GeofenceEvent[]
+  alerts       TelematicsAlert[]
+
+  @@index([organizationId, active])
+  @@map("geofences")
+}
+
+/// Append-only arrival/departure/dwell trail. One row per boundary crossing,
+/// so "when did truck 7 reach the ACME depot" is a lookup, not a replay.
+model GeofenceEvent {
+  id             String            @id @default(uuid())
+  organizationId String
+  geofenceId     String
+  vehicleId      String
+  driverId       String?
+  tripId         String?
+  type           GeofenceEventType
+  occurredAt     DateTime
+  latitude       Float
+  longitude      Float
+  /// For DWELL/EXIT: seconds spent inside at the moment of the event.
+  dwellSec       Int?
+  createdAt      DateTime          @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  geofence     Geofence     @relation(fields: [geofenceId], references: [id], onDelete: Cascade)
+  vehicle      Vehicle      @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  driver       Driver?      @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  trip         Trip?        @relation(fields: [tripId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, geofenceId, occurredAt])
+  @@index([organizationId, vehicleId, occurredAt])
+  @@map("geofence_events")
+}
+
+/// The alert engine's output — a persisted, ack/resolve-able record, distinct
+/// from the generic Notification stream (which surfaces the OPEN critical ones
+/// as FLEET notifications via NotificationsService's reconcile rules). Kept
+/// separate because a telematics alert has its own lifecycle (acknowledge,
+/// resolve, auto-resolve) and its own geographic payload.
+model TelematicsAlert {
+  id                   String                @id @default(uuid())
+  organizationId       String
+  type                 TelematicsAlertType
+  severity             NotificationSeverity
+  status               TelematicsAlertStatus @default(OPEN)
+  vehicleId            String?
+  driverId             String?
+  tripId               String?
+  geofenceId           String?
+  title                String
+  message              String
+  latitude             Float?
+  longitude            Float?
+  /// The observed value that tripped the rule (e.g. 104 km/h).
+  value                Float?
+  /// The threshold it breached (e.g. 90 km/h).
+  threshold            Float?
+  occurredAt           DateTime
+  acknowledgedAt       DateTime?
+  acknowledgedByUserId String?
+  resolvedAt           DateTime?
+  resolvedByUserId     String?
+  /// Dedupe key so a sustained condition (still speeding, still offline) does
+  /// not create a new row every ping — the engine updates the open one instead.
+  dedupeKey            String?
+  metadata             Json?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  vehicle            Vehicle?     @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  driver             Driver?      @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  trip               Trip?        @relation(fields: [tripId], references: [id], onDelete: SetNull)
+  geofence           Geofence?    @relation(fields: [geofenceId], references: [id], onDelete: SetNull)
+  acknowledgedByUser User?        @relation("TelematicsAlertAckBy", fields: [acknowledgedByUserId], references: [id], onDelete: SetNull)
+  resolvedByUser     User?        @relation("TelematicsAlertResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, dedupeKey])
+  @@index([organizationId, status, occurredAt])
+  @@index([organizationId, vehicleId, occurredAt])
+  @@index([organizationId, type, occurredAt])
+  @@map("telematics_alerts")
+}
+
+/// Point-in-time vehicle diagnostics (odometer, fuel, battery, engine temp,
+/// DTC fault codes). Fed by devices that report OBD/CAN data; drives the
+/// vehicle-health surface and CHECK_ENGINE / LOW_FUEL alerts.
+model VehicleHealthSnapshot {
+  id             String   @id @default(uuid())
+  organizationId String
+  vehicleId      String
+  deviceId       String?
+  recordedAt     DateTime
+  odometerKm     Float?
+  engineHours    Float?
+  fuelLevelPct   Float?
+  batteryVoltage Float?
+  coolantTempC   Float?
+  engineTempC    Float?
+  checkEngineOn  Boolean?
+  /// Array of active diagnostic trouble codes, e.g. ["P0301","P0420"].
+  dtcCodes       Json?
+  /// Array of per-axle/tyre pressures if reported.
+  tirePressures  Json?
+  raw            Json?
+  createdAt      DateTime @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  vehicle      Vehicle           @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  device       TelematicsDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, vehicleId, recordedAt])
+  @@map("vehicle_health_snapshots")
+}
+
+/// Per-organization telematics tuning. One row per org, lazily created with
+/// defaults on first access (same pattern as NotificationSettings). Every
+/// threshold the movement detector and alert engine read lives here so an
+/// operations manager can tune sensitivity without a deploy.
+model TelematicsSettings {
+  id                        String   @id @default(uuid())
+  organizationId            String   @unique
+  /// Default speed limit (km/h) used when a position has no road-specific
+  /// limit. Speeding fires above this + tolerance.
+  speedLimitKph             Int      @default(90)
+  speedingToleranceKph      Int      @default(10)
+  /// Ignition on but stationary this long -> IDLING, and an IDLE alert.
+  idleThresholdSec          Int      @default(300)
+  /// Stationary (ignition off / no movement) this long -> a STOP event.
+  stopThresholdSec          Int      @default(180)
+  /// No fresh ping for this long -> the vehicle is OFFLINE and a DEVICE_OFFLINE
+  /// alert fires.
+  offlineThresholdSec       Int      @default(600)
+  /// Acceleration magnitudes (m/s^2) above which a harsh-driving event fires.
+  harshAccelMs2             Float    @default(3.5)
+  harshBrakeMs2             Float    @default(3.5)
+  harshCornerMs2            Float    @default(3.0)
+  /// Stationary this long auto-closes the ACTIVE trip.
+  tripAutoCloseSec          Int      @default(600)
+  /// Fuel percentage below which LOW_FUEL fires. 0 disables.
+  lowFuelThresholdPct       Int      @default(15)
+  /// Raw positions older than this are pruned by the sweeper. 0 disables
+  /// pruning (keep forever).
+  retentionDays             Int      @default(90)
+  /// Master switches so an org can silence a whole alert family.
+  speedingAlertsEnabled     Boolean  @default(true)
+  idleAlertsEnabled         Boolean  @default(true)
+  geofenceAlertsEnabled     Boolean  @default(true)
+  harshDrivingAlertsEnabled Boolean  @default(true)
+  offlineAlertsEnabled      Boolean  @default(true)
+  healthAlertsEnabled       Boolean  @default(true)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("telematics_settings")
+}
+
+// ============================================================================
+// NOTIFICATION CENTER + EMAIL INFRASTRUCTURE
+// ============================================================================
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  SMS
+  PUSH
+  WEBHOOK
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+  DEAD_LETTER
+}
+
+enum EmailProviderType {
+  SMTP
+  RESEND
+  SENDGRID
+  AWS_SES
+}
+
+/// Customizable notification templates with version history. System templates
+/// (organizationId null) provide defaults; orgs can override with custom versions.
+model NotificationTemplate {
+  id             String              @id @default(uuid())
+  organizationId String?
+  key            String
+  name           String
+  description    String?
+  channel        NotificationChannel
+  subject        String?
+  bodyHtml       String?
+  bodyText       String
+  variables      Json
+  isActive       Boolean             @default(true)
+  version        Int                 @default(1)
+  locale         String              @default("en")
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  createdBy      String?
+
+  organization Organization?                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  history      NotificationTemplateVersion[]
+
+  @@unique([organizationId, key, channel, locale])
+  @@index([organizationId, isActive])
+  @@index([key, channel, isActive])
+  @@map("notification_templates")
+}
+
+/// Version history for notification templates (immutable audit trail).
+model NotificationTemplateVersion {
+  id         String   @id @default(uuid())
+  templateId String
+  version    Int
+  subject    String?
+  bodyHtml   String?
+  bodyText   String
+  variables  Json
+  createdAt  DateTime @default(now())
+  createdBy  String?
+
+  template NotificationTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, version])
+  @@index([templateId, createdAt])
+  @@map("notification_template_versions")
+}
+
+/// Multi-channel notification delivery queue with priority, retry, and dead-letter handling.
+model NotificationDeliveryQueue {
+  id             String              @id @default(uuid())
+  organizationId String
+  notificationId String?
+  userId         String
+  channel        NotificationChannel
+  priority       Int                 @default(5)
+  scheduledFor   DateTime            @default(now())
+  status         DeliveryStatus      @default(PENDING)
+  attempts       Int                 @default(0)
+  maxAttempts    Int                 @default(3)
+  lastError      String?
+  payload        Json
+  sentAt         DateTime?
+  createdAt      DateTime            @default(now())
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  notification Notification?  @relation(fields: [notificationId], references: [id], onDelete: SetNull)
+  tracking     EmailTracking?
+
+  @@index([status, scheduledFor, priority])
+  @@index([organizationId, userId, channel])
+  @@index([organizationId, status])
+  @@map("notification_delivery_queue")
+}
+
+/// Per-user notification preferences (channel toggles, quiet hours, digest mode).
+model NotificationPreferences {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  emailEnabled    Boolean  @default(true)
+  smsEnabled      Boolean  @default(false)
+  pushEnabled     Boolean  @default(false)
+  webhookEnabled  Boolean  @default(false)
+  digestMode      Boolean  @default(false)
+  digestTime      Int?     @default(9)
+  quietHoursStart Int?
+  quietHoursEnd   Int?
+  timezone        String   @default("UTC")
+  categoryPrefs   Json
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
+}
+
+/// Email provider configuration with encrypted credentials (SMTP, Resend, SendGrid, SES).
+model EmailProvider {
+  id             String            @id @default(uuid())
+  organizationId String?
+  providerType   EmailProviderType
+  name           String
+  isActive       Boolean           @default(true)
+  isPrimary      Boolean           @default(false)
+  fromEmail      String
+  fromName       String
+  replyToEmail   String?
+  config         String
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, isPrimary])
+  @@index([organizationId, isActive, isPrimary])
+  @@index([providerType, isActive])
+  @@map("email_providers")
+}
+
+/// Email tracking (opens, clicks, bounces) for delivery analytics.
+model EmailTracking {
+  id              String    @id @default(uuid())
+  deliveryQueueId String    @unique
+  messageId       String?
+  openCount       Int       @default(0)
+  clickCount      Int       @default(0)
+  firstOpenedAt   DateTime?
+  lastOpenedAt    DateTime?
+  firstClickedAt  DateTime?
+  lastClickedAt   DateTime?
+  bounced         Boolean   @default(false)
+  bouncedAt       DateTime?
+  bounceReason    String?
+
+  deliveryQueue NotificationDeliveryQueue @relation(fields: [deliveryQueueId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@index([deliveryQueueId])
+  @@map("email_tracking")
 }

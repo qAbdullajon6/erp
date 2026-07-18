@@ -32,8 +32,13 @@
     "seed:test-org": "npm run seed:test-org --workspace=apps/api"
   },
   "dependencies": {
+    "@aws-sdk/client-ses": "^3.1090.0",
+    "@nestjs/schedule": "^6.1.3",
+    "@sendgrid/mail": "^8.1.6",
+    "isomorphic-dompurify": "^3.19.0",
     "pnpm": "^11.11.0",
     "react-hook-form": "^7.81.0",
+    "resend": "^6.17.2",
     "sonner": "^2.0.7"
   }
 }
