@@ -5,8 +5,18 @@
 # deploy and rollback speak to the stack in exactly one way — there is no second,
 # subtly-different copy of the deploy logic to drift out of sync.
 
-# Defaults are overridable by the caller's environment (e.g. ENV_FILE=.env.prod).
-ENV_FILE="${ENV_FILE:-.env.staging}"
+# --- Environment selection -------------------------------------------------
+# DEPLOY_ENV picks the conventional per-environment file `.env.<DEPLOY_ENV>`
+# (e.g. staging -> .env.staging, production -> .env.production). It defaults to
+# `staging`, so existing behaviour is unchanged. ENV_FILE, if set, overrides the
+# derived name outright. The chosen file is handed to docker compose by the
+# single `compose()` wrapper below via --env-file, so EVERY compose command
+# (build/pull/up/exec/…) interpolates the right variables — there is no second,
+# un-env'd docker compose invocation anywhere in deploy.sh or rollback.sh.
+DEPLOY_ENV="${DEPLOY_ENV:-staging}"
+ENV_FILE="${ENV_FILE:-.env.${DEPLOY_ENV}}"
+# The canonical stack file is shared across environments; only the env file
+# differs. Override COMPOSE_FILE if an environment ever needs its own.
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.staging.yml}"
 HEALTH_RETRIES="${HEALTH_RETRIES:-30}"     # x HEALTH_INTERVAL = max wait for the API
 HEALTH_INTERVAL="${HEALTH_INTERVAL:-2}"
@@ -15,6 +25,14 @@ compose() { docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"; }
 
 log() { echo "==> $*"; }
 die() { echo "error: $*" >&2; exit 1; }
+
+# Resolve, validate, and announce the env file BEFORE any compose command runs.
+# Fails early with a clear message instead of letting compose die with a cryptic
+# "VAR is required" when the selected file is missing.
+require_env_file() {
+  [[ -f "$ENV_FILE" ]] || die "env file '$ENV_FILE' not found (DEPLOY_ENV=$DEPLOY_ENV). Create it at the repo root, or set DEPLOY_ENV / ENV_FILE."
+  log "environment: $DEPLOY_ENV → loading $ENV_FILE (compose: $COMPOSE_FILE)"
+}
 
 # Liveness/readiness probe from inside the api container against its own port —
 # works whether or not Caddy is up, and needs no published port.

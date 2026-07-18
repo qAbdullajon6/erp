@@ -25,7 +25,7 @@ source "$(dirname "$0")/lib.sh"
 AUTO=0
 [[ "${1:-}" == "--auto" ]] && AUTO=1
 
-[[ -f "$ENV_FILE" ]] || die "$ENV_FILE not found"
+require_env_file
 
 LIVE_REF="$(api_live_ref || true)"
 [[ -n "$LIVE_REF" ]] || die "no running api container — nothing to roll back"

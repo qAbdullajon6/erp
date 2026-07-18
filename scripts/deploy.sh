@@ -43,7 +43,9 @@ source "$(dirname "$0")/lib.sh"  # compose(), log(), die(), wait_healthy(), api_
 API_IMAGE="${API_IMAGE:-}"       # set -> pull a prebuilt image; unset -> build locally
 GIT_REF="${1:-}"
 
-[[ -f "$ENV_FILE" ]] || die "$ENV_FILE not found"
+# Select, validate, and load the correct env file before any docker compose call
+# (compose() carries it as --env-file). DEPLOY_ENV chooses staging vs production.
+require_env_file
 
 # --- 1. optional git ref -----------------------------------------------------
 if [[ -n "$GIT_REF" ]]; then
