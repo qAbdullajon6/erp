@@ -62,7 +62,7 @@ jobs:
           script_stop: true
           script: |
             set -Eeuo pipefail
-            cd /srv/flowerp
+            cd /opt/flowerp
             # CONFIRM gates the manual (non --auto) path in rollback.sh.
             CONFIRM=ROLLBACK ./scripts/rollback.sh
 

@@ -107,7 +107,7 @@ jobs:
           envs: IMAGE_REPO,IMAGE_TAG,DEPLOY_REF
           script: |
             set -Eeuo pipefail
-            cd /srv/flowerp
+            cd /opt/flowerp
             git fetch --all --tags --prune
             export API_IMAGE="${IMAGE_REPO}:${IMAGE_TAG}"
             echo "==> deploying $API_IMAGE (ref ${DEPLOY_REF})"
