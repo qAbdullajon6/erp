@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../../mail/mail.service';
+import { NotificationDispatcherService } from '../../notifications/dispatcher/notification-dispatcher.service';
 import type { ExecutionContext } from '../engine/workflow-engine.service';
 
 const BLOCKED_IP_RANGES = [
@@ -22,6 +23,7 @@ export class ActionExecutor {
   constructor(
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
+    private readonly notificationDispatcher: NotificationDispatcherService,
   ) {}
 
   private validateWebhookUrl(url: string): void {
@@ -52,6 +54,8 @@ export class ActionExecutor {
         return this.executeSendEmail(config, context);
       case 'send_notification':
         return this.executeSendNotification(config, context);
+      case 'dispatch_notification':
+        return this.executeDispatchNotification(config, context);
       case 'webhook':
         return this.executeWebhook(config, context);
       case 'change_status':
@@ -102,20 +106,71 @@ export class ActionExecutor {
   ): Promise<Record<string, unknown>> {
     const title = this.interpolate(String(config.title ?? 'Workflow Notification'), context);
     const message = this.interpolate(String(config.message ?? ''), context);
+    const category = String(config.category ?? 'OPERATIONS');
+    const severity = String(config.severity ?? 'MEDIUM');
 
     const notification = await this.prisma.notification.create({
       data: {
         organizationId: context.organizationId,
         type: 'workflow',
-        category: 'OPERATIONS',
-        severity: 'MEDIUM',
+        category: category as any,
+        severity: severity as any,
         title,
         message,
-        metadata: { workflowId: context.workflowId, executionId: context.executionId },
+        metadata: {
+          workflowId: context.workflowId,
+          executionId: context.executionId,
+        },
       },
     });
 
-    return { notificationId: notification.id, title };
+    return { notificationId: notification.id, title, dispatched: false };
+  }
+
+  private async executeDispatchNotification(
+    config: Record<string, unknown>,
+    context: ExecutionContext,
+  ): Promise<Record<string, unknown>> {
+    const title = this.interpolate(String(config.title ?? 'Workflow Notification'), context);
+    const message = this.interpolate(String(config.message ?? ''), context);
+    const category = String(config.category ?? 'OPERATIONS');
+    const severity = String(config.severity ?? 'MEDIUM');
+    const entityType = config.entityType ? String(config.entityType) : undefined;
+    const entityId = config.entityId ? this.interpolate(String(config.entityId), context) : undefined;
+
+    const notification = await this.prisma.notification.create({
+      data: {
+        organizationId: context.organizationId,
+        type: 'workflow',
+        category: category as any,
+        severity: severity as any,
+        title,
+        message,
+        entityType,
+        entityId,
+        metadata: {
+          workflowId: context.workflowId,
+          executionId: context.executionId,
+        },
+      },
+    });
+
+    await this.notificationDispatcher.dispatch({
+      organizationId: context.organizationId,
+      notificationId: notification.id,
+      type: 'workflow',
+      category: category as any,
+      title,
+      message,
+      entityType,
+      entityId,
+      metadata: {
+        workflowId: context.workflowId,
+        executionId: context.executionId,
+      },
+    });
+
+    return { notificationId: notification.id, title, dispatched: true };
   }
 
   private async executeWebhook(

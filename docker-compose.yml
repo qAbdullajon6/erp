@@ -1,8 +1,21 @@
-# Local PostgreSQL only — for apps/api development. Does not containerize
+# Local PostgreSQL + Traccar — for apps/api development. Does not containerize
 # the frontend or the API itself; see docs/BACKEND_FOUNDATION.md.
 services:
   postgres:
-    image: postgres:16-alpine
+    # postgis/postgis:16-3.4 — PostgreSQL 16 with PostGIS 3.4 extension.
+    #
+    # The Fleet Telematics module currently uses native PostgreSQL with
+    # haversine distance calculations and in-memory point-in-polygon testing.
+    # PostGIS is available but not yet enabled (see TD-TELEMATICS-10).
+    #
+    # PostGIS will be activated when:
+    # 1. Spatial-range queries are needed ("find all vehicles within 5km")
+    # 2. Geofence evaluation becomes a performance bottleneck
+    # 3. Advanced spatial ops are required (buffer zones, route corridors)
+    #
+    # Current implementation is correct and performant; PostGIS is a future
+    # optimization, not a requirement.
+    image: postgis/postgis:16-3.4
     restart: unless-stopped
     environment:
       POSTGRES_USER: erp
@@ -22,5 +35,42 @@ services:
       timeout: 5s
       retries: 5
 
+  # Traccar — the GPS server the telematics module integrates against.
+  #
+  # A real open-source telematics platform speaking 2000+ device protocols, not
+  # a stand-in for one. It owns the device-facing side (a tracker connects to it
+  # over its own protocol on one of the ports below); FlowERP reads positions
+  # from its REST API. That split is deliberate: writing GPS protocol decoders
+  # is not this product's job, and Traccar has done it for a decade.
+  #
+  # Verifiable without buying hardware: Traccar's own phone app posts real GPS
+  # from a real device to port 5055, which is how this integration gets
+  # exercised end-to-end locally.
+  traccar:
+    image: traccar/traccar:6.4-alpine
+    restart: unless-stopped
+    ports:
+      # Web UI + REST API. FlowERP talks to this one.
+      - "8082:8082"
+      # OsmAnd/Traccar Client protocol — plain HTTP, what the phone app posts to.
+      - "5055:5055"
+      # Teltonika, the most common hardware tracker protocol.
+      - "5027:5027/tcp"
+    volumes:
+      - traccar_data:/opt/traccar/data
+      - traccar_logs:/opt/traccar/logs
+    healthcheck:
+      # Traccar has no dedicated health endpoint; the server root answering is
+      # the signal that it has finished booting its embedded Jetty.
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8082/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      # Slower than Postgres: Traccar boots a JVM and initialises its own
+      # embedded database on first run.
+      retries: 12
+      start_period: 30s
+
 volumes:
   postgres_data:
+  traccar_data:
+  traccar_logs:

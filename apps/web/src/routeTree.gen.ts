@@ -30,8 +30,10 @@ import { Route as AppReportsRouteImport } from './routes/app.reports'
 import { Route as AppNotificationsRouteImport } from './routes/app.notifications'
 import { Route as AppMyDeliveriesRouteImport } from './routes/app.my-deliveries'
 import { Route as AppIntegrationsRouteImport } from './routes/app.integrations'
+import { Route as AppFleetTrackingRouteImport } from './routes/app.fleet-tracking'
 import { Route as AppFinanceRouteImport } from './routes/app.finance'
 import { Route as AppDeveloperRouteImport } from './routes/app.developer'
+import { Route as AppBillingRouteImport } from './routes/app.billing'
 import { Route as AppAiAssistantRouteImport } from './routes/app.ai-assistant'
 import { Route as AppVehiclesIndexRouteImport } from './routes/app.vehicles.index'
 import { Route as AppOrdersIndexRouteImport } from './routes/app.orders.index'
@@ -164,6 +166,11 @@ const AppIntegrationsRoute = AppIntegrationsRouteImport.update({
   path: '/integrations',
   getParentRoute: () => AppRoute,
 } as any)
+const AppFleetTrackingRoute = AppFleetTrackingRouteImport.update({
+  id: '/fleet-tracking',
+  path: '/fleet-tracking',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppFinanceRoute = AppFinanceRouteImport.update({
   id: '/finance',
   path: '/finance',
@@ -172,6 +179,11 @@ const AppFinanceRoute = AppFinanceRouteImport.update({
 const AppDeveloperRoute = AppDeveloperRouteImport.update({
   id: '/developer',
   path: '/developer',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppBillingRoute = AppBillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
   getParentRoute: () => AppRoute,
 } as any)
 const AppAiAssistantRoute = AppAiAssistantRouteImport.update({
@@ -310,8 +322,10 @@ export interface FileRoutesByFullPath {
   '/app': typeof AppRouteWithChildren
   '/portal': typeof PortalRouteWithChildren
   '/app/ai-assistant': typeof AppAiAssistantRoute
+  '/app/billing': typeof AppBillingRoute
   '/app/developer': typeof AppDeveloperRoute
   '/app/finance': typeof AppFinanceRoute
+  '/app/fleet-tracking': typeof AppFleetTrackingRoute
   '/app/integrations': typeof AppIntegrationsRoute
   '/app/my-deliveries': typeof AppMyDeliveriesRoute
   '/app/notifications': typeof AppNotificationsRoute
@@ -359,8 +373,10 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/app/ai-assistant': typeof AppAiAssistantRoute
+  '/app/billing': typeof AppBillingRoute
   '/app/developer': typeof AppDeveloperRoute
   '/app/finance': typeof AppFinanceRoute
+  '/app/fleet-tracking': typeof AppFleetTrackingRoute
   '/app/integrations': typeof AppIntegrationsRoute
   '/app/my-deliveries': typeof AppMyDeliveriesRoute
   '/app/notifications': typeof AppNotificationsRoute
@@ -411,8 +427,10 @@ export interface FileRoutesById {
   '/app': typeof AppRouteWithChildren
   '/portal': typeof PortalRouteWithChildren
   '/app/ai-assistant': typeof AppAiAssistantRoute
+  '/app/billing': typeof AppBillingRoute
   '/app/developer': typeof AppDeveloperRoute
   '/app/finance': typeof AppFinanceRoute
+  '/app/fleet-tracking': typeof AppFleetTrackingRoute
   '/app/integrations': typeof AppIntegrationsRoute
   '/app/my-deliveries': typeof AppMyDeliveriesRoute
   '/app/notifications': typeof AppNotificationsRoute
@@ -464,8 +482,10 @@ export interface FileRouteTypes {
     | '/app'
     | '/portal'
     | '/app/ai-assistant'
+    | '/app/billing'
     | '/app/developer'
     | '/app/finance'
+    | '/app/fleet-tracking'
     | '/app/integrations'
     | '/app/my-deliveries'
     | '/app/notifications'
@@ -513,8 +533,10 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/app/ai-assistant'
+    | '/app/billing'
     | '/app/developer'
     | '/app/finance'
+    | '/app/fleet-tracking'
     | '/app/integrations'
     | '/app/my-deliveries'
     | '/app/notifications'
@@ -564,8 +586,10 @@ export interface FileRouteTypes {
     | '/app'
     | '/portal'
     | '/app/ai-assistant'
+    | '/app/billing'
     | '/app/developer'
     | '/app/finance'
+    | '/app/fleet-tracking'
     | '/app/integrations'
     | '/app/my-deliveries'
     | '/app/notifications'
@@ -770,6 +794,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIntegrationsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/fleet-tracking': {
+      id: '/app/fleet-tracking'
+      path: '/fleet-tracking'
+      fullPath: '/app/fleet-tracking'
+      preLoaderRoute: typeof AppFleetTrackingRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/finance': {
       id: '/app/finance'
       path: '/finance'
@@ -782,6 +813,13 @@ declare module '@tanstack/react-router' {
       path: '/developer'
       fullPath: '/app/developer'
       preLoaderRoute: typeof AppDeveloperRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/billing': {
+      id: '/app/billing'
+      path: '/billing'
+      fullPath: '/app/billing'
+      preLoaderRoute: typeof AppBillingRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/ai-assistant': {
@@ -983,8 +1021,10 @@ const AppWorkflowsRouteWithChildren = AppWorkflowsRoute._addFileChildren(
 
 interface AppRouteChildren {
   AppAiAssistantRoute: typeof AppAiAssistantRoute
+  AppBillingRoute: typeof AppBillingRoute
   AppDeveloperRoute: typeof AppDeveloperRoute
   AppFinanceRoute: typeof AppFinanceRoute
+  AppFleetTrackingRoute: typeof AppFleetTrackingRoute
   AppIntegrationsRoute: typeof AppIntegrationsRoute
   AppMyDeliveriesRoute: typeof AppMyDeliveriesRoute
   AppNotificationsRoute: typeof AppNotificationsRoute
@@ -1017,8 +1057,10 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppAiAssistantRoute: AppAiAssistantRoute,
+  AppBillingRoute: AppBillingRoute,
   AppDeveloperRoute: AppDeveloperRoute,
   AppFinanceRoute: AppFinanceRoute,
+  AppFleetTrackingRoute: AppFleetTrackingRoute,
   AppIntegrationsRoute: AppIntegrationsRoute,
   AppMyDeliveriesRoute: AppMyDeliveriesRoute,
   AppNotificationsRoute: AppNotificationsRoute,

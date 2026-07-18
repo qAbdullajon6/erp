@@ -4,6 +4,7 @@ import { OrdersModule } from "../orders/orders.module";
 import { CustomersModule } from "../customers/customers.module";
 import { DriversModule } from "../drivers/drivers.module";
 import { VehiclesModule } from "../vehicles/vehicles.module";
+import { TelematicsModule } from "../telematics/telematics.module";
 import { PublicApiController } from "./public-api.controller";
 
 /// The /v1 third-party surface.
@@ -19,7 +20,7 @@ import { PublicApiController } from "./public-api.controller";
 /// Keeping the public surface in its own leaf module that depends on both
 /// sides keeps every arrow pointing one way. Nothing imports this module.
 @Module({
-  imports: [DeveloperModule, OrdersModule, CustomersModule, DriversModule, VehiclesModule],
+  imports: [DeveloperModule, OrdersModule, CustomersModule, DriversModule, VehiclesModule, TelematicsModule],
   controllers: [PublicApiController],
 })
 export class PublicApiModule {}

@@ -13,6 +13,8 @@ import { FinanceModule } from "../finance/finance.module";
 import { WorkflowsModule } from "../workflows/workflows.module";
 import { DeveloperModule } from "../developer/developer.module";
 import { ImportModule } from "../import/import.module";
+import { TelematicsModule } from "../telematics/telematics.module";
+import { BillingModule } from "../billing/billing.module";
 
 import { AiController } from "./ai.controller";
 import { AiService } from "./ai.service";
@@ -26,6 +28,9 @@ import { ToolExecutor } from "./tools/tool-executor";
 import { ReadTools } from "./tools/read.tools";
 import { WriteTools } from "./tools/write.tools";
 import { AnalyticsTools } from "./tools/analytics.tools";
+import { TelematicsAiTools } from "./tools/telematics.tools";
+import { NotificationAiTools } from "./tools/notification.tools";
+import { BillingTools } from "./tools/billing.tools";
 import { ProviderFactory } from "./providers/provider.factory";
 import { AnthropicProvider } from "./providers/anthropic.provider";
 import { OpenAiProvider } from "./providers/openai.provider";
@@ -67,6 +72,8 @@ import { KnowledgeSeeder } from "./rag/knowledge-seeder";
     WorkflowsModule,
     DeveloperModule,
     ImportModule,
+    TelematicsModule,
+    BillingModule,
   ],
   controllers: [AiController],
   providers: [
@@ -82,6 +89,9 @@ import { KnowledgeSeeder } from "./rag/knowledge-seeder";
     ReadTools,
     WriteTools,
     AnalyticsTools,
+    TelematicsAiTools,
+    NotificationAiTools,
+    BillingTools,
     ProviderFactory,
     AnthropicProvider,
     OpenAiProvider,

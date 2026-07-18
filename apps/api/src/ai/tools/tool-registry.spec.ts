@@ -3,6 +3,7 @@ import type { AiTool } from "./tool.interface";
 import type { ReadTools } from "./read.tools";
 import type { WriteTools } from "./write.tools";
 import type { AnalyticsTools } from "./analytics.tools";
+import type { TelematicsAiTools } from "./telematics.tools";
 import type { CurrentUserPayload } from "../../auth/interfaces/current-user.interface";
 
 function makeTool(overrides: Partial<AiTool> = {}): AiTool {
@@ -21,7 +22,10 @@ function makeRegistry(tools: AiTool[]): ToolRegistry {
   const readTools = { all: () => tools } as unknown as ReadTools;
   const writeTools = { all: () => [] } as unknown as WriteTools;
   const analyticsTools = { all: () => [] } as unknown as AnalyticsTools;
-  return new ToolRegistry(readTools, writeTools, analyticsTools);
+  const telematicsTools = { all: () => [] } as unknown as TelematicsAiTools;
+  const billingTools = { getTools: () => [] } as unknown as any;
+  const notificationTools = { all: () => [] } as unknown as any;
+  return new ToolRegistry(readTools, writeTools, analyticsTools, telematicsTools, notificationTools, billingTools);
 }
 
 const ADMIN_ACTOR: CurrentUserPayload = {

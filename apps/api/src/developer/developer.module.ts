@@ -1,6 +1,7 @@
 import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
 import { PrismaModule } from "../prisma/prisma.module";
 import { AuditModule } from "../audit/audit.module";
+import { BillingModule } from "../billing/billing.module";
 import { ApiKeysController } from "./api-keys/api-keys.controller";
 import { ApiKeysService } from "./api-keys/api-keys.service";
 import { WebhooksController } from "./webhooks/webhooks.controller";
@@ -12,6 +13,8 @@ import { UsageService } from "./usage/usage.service";
 import { ApiKeyGuard } from "./guards/api-key.guard";
 import { ApiKeyRateLimitGuard } from "./guards/api-key-rate-limit.guard";
 import { ApiUsageMiddleware } from "./usage/api-usage.middleware";
+import { SubscriptionService } from "./subscription/subscription.service";
+import { SubscriptionController } from "./subscription/subscription.controller";
 
 /// The Developer Portal: the surface third parties integrate against, and the
 /// screens an admin uses to manage that integration.
@@ -25,8 +28,13 @@ import { ApiUsageMiddleware } from "./usage/api-usage.middleware";
 /// The guards are exported so any module can protect a route with API-key auth
 /// without depending on this module's internals.
 @Module({
-  imports: [PrismaModule, AuditModule],
-  controllers: [ApiKeysController, WebhooksController, UsageController],
+  imports: [PrismaModule, AuditModule, BillingModule],
+  controllers: [
+    ApiKeysController,
+    WebhooksController,
+    UsageController,
+    SubscriptionController,
+  ],
   providers: [
     ApiKeysService,
     WebhooksService,
@@ -35,8 +43,9 @@ import { ApiUsageMiddleware } from "./usage/api-usage.middleware";
     UsageService,
     ApiKeyGuard,
     ApiKeyRateLimitGuard,
+    SubscriptionService,
   ],
-  exports: [WebhookEventService, ApiKeyGuard, ApiKeyRateLimitGuard],
+  exports: [WebhookEventService, ApiKeyGuard, ApiKeyRateLimitGuard, UsageService],
 })
 export class DeveloperModule implements NestModule {
   /// Metering is applied to the whole /v1 surface here rather than per

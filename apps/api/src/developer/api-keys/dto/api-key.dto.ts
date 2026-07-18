@@ -25,6 +25,7 @@ export const API_KEY_SCOPES = [
   "customers:write",
   "drivers:read",
   "vehicles:read",
+  "telematics:read",
   "finance:read",
   "webhooks:admin",
 ] as const;

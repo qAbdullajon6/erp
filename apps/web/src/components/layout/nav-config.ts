@@ -17,6 +17,7 @@ import {
   Zap,
   Code2,
   Plug,
+  CreditCard,
 } from "lucide-react";
 import type { MembershipRole } from "@/lib/api/organizations";
 
@@ -67,8 +68,13 @@ export const DEFAULT_NAV: NavItem[] = [
   // Vehicles had routes, a list, a detail page and a create form, and no way
   // in: nothing anywhere linked to /app/vehicles.
   { icon: Truck, label: "Vehicles", path: "/app/vehicles", roles: FLEET_ROLES, group: "Operations" },
+  { icon: MapPin, label: "Fleet Tracking", path: "/app/fleet-tracking", roles: FLEET_ROLES, group: "Operations" },
   { icon: Wallet, label: "Finance", path: "/app/finance", group: "Finance" },
   { icon: BarChart3, label: "Reports", path: "/app/reports", group: "Finance" },
+  // Billing management (subscription, plans, usage) is ADMIN-only —
+  // SubscriptionsController and PlansController's admin routes both
+  // @Roles("ADMIN"), so OPERATIONS_MANAGER is excluded to avoid a link that 403s.
+  { icon: CreditCard, label: "Billing", path: "/app/billing", roles: ["ADMIN"], group: "Finance" },
   // Demo requests from the marketing site. They belong to FlowERP, not to any
   // customer organization, so no MembershipRole can reach them.
   { icon: Inbox, label: "Leads", path: "/app/leads", platformAdminOnly: true, group: "Workspace" },
