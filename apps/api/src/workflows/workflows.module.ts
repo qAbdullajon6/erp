@@ -26,6 +26,6 @@ import { WorkflowSchedulerService } from './triggers/workflow-scheduler.service'
     WorkflowEventService,
     WorkflowSchedulerService,
   ],
-  exports: [WorkflowEventService, WorkflowEngineService],
+  exports: [WorkflowsService, WorkflowEventService, WorkflowEngineService],
 })
 export class WorkflowsModule {}

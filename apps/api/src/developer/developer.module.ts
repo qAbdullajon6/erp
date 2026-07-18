@@ -36,7 +36,7 @@ import { ApiUsageMiddleware } from "./usage/api-usage.middleware";
     ApiKeyGuard,
     ApiKeyRateLimitGuard,
   ],
-  exports: [WebhookEventService, ApiKeyGuard, ApiKeyRateLimitGuard],
+  exports: [WebhookEventService, ApiKeyGuard, ApiKeyRateLimitGuard, UsageService],
 })
 export class DeveloperModule implements NestModule {
   /// Metering is applied to the whole /v1 surface here rather than per
