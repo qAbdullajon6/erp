@@ -49,7 +49,7 @@ and runs `rollback.sh` with `CONFIRM=ROLLBACK`.
 **On the VPS directly (break-glass):**
 
 ```bash
-cd /srv/flowerp
+cd /opt/flowerp
 CONFIRM=ROLLBACK ./scripts/rollback.sh
 ```
 

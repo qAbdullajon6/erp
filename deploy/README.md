@@ -47,7 +47,7 @@ emptied.
 ## First deploy
 
 ```bash
-git clone <repo> /srv/flowerp && cd /srv/flowerp
+git clone <repo> /opt/flowerp && cd /opt/flowerp
 cp deploy/.env.staging.example .env.staging
 ```
 
@@ -144,7 +144,7 @@ Install it as a cron job and set `OFFSITE_COMMAND`, or the dumps only exist on t
 are backing up:
 
 ```cron
-17 3 * * * cd /srv/flowerp && OFFSITE_COMMAND='rclone copy' ./scripts/backup-postgres.sh >> /var/log/flowerp-backup.log 2>&1
+17 3 * * * cd /opt/flowerp && OFFSITE_COMMAND='rclone copy' ./scripts/backup-postgres.sh >> /var/log/flowerp-backup.log 2>&1
 ```
 
 **Rehearse the restore.** A backup that has never been restored is a guess. Restore into a

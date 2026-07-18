@@ -27,18 +27,42 @@ jobs:
     env:
       HAS_SLACK: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
     steps:
+      # See deploy.yml for the rationale — clear message on a missing/empty
+      # secret or a public key pasted where the private key belongs.
+      - name: Preflight — required SSH secrets present & well-formed
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          fail=0
+          [ -n "$VPS_HOST" ] || { echo "::error::VPS_HOST secret is empty/unset"; fail=1; }
+          [ -n "$VPS_USER" ] || { echo "::error::VPS_USER secret is empty/unset"; fail=1; }
+          if [ -z "$VPS_SSH_KEY" ]; then
+            echo "::error::VPS_SSH_KEY secret is empty/unset"; fail=1
+          else
+            case "$VPS_SSH_KEY" in
+              *"PRIVATE KEY"*) : ;;
+              *) echo "::error::VPS_SSH_KEY has no 'PRIVATE KEY' header — you likely pasted the PUBLIC key (.pub). Store the PRIVATE key, full BEGIN/END + trailing newline."; fail=1 ;;
+            esac
+          fi
+          [ "$fail" = 0 ] && echo "required SSH secrets present and key looks like a private key"
+          exit "$fail"
+
       - name: Rollback over SSH (runs scripts/rollback.sh on the VPS)
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          # Only needed if the private key is passphrase-protected (see deploy.yml).
+          passphrase: ${{ secrets.VPS_SSH_PASSPHRASE }}
           port: ${{ secrets.VPS_SSH_PORT || '22' }}
           command_timeout: 15m
           script_stop: true
           script: |
             set -Eeuo pipefail
-            cd /srv/flowerp
+            cd /opt/flowerp
             # CONFIRM gates the manual (non --auto) path in rollback.sh.
             CONFIRM=ROLLBACK ./scripts/rollback.sh
 

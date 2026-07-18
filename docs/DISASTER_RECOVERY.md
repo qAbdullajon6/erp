@@ -49,7 +49,7 @@ verifies the gzip stream is complete before trusting it, prunes dumps older than
 off the box. Install it as cron:
 
 ```cron
-17 3 * * * cd /srv/flowerp && OFFSITE_COMMAND='rclone copy' ./scripts/backup-postgres.sh >> /var/log/flowerp-backup.log 2>&1
+17 3 * * * cd /opt/flowerp && OFFSITE_COMMAND='rclone copy' ./scripts/backup-postgres.sh >> /var/log/flowerp-backup.log 2>&1
 ```
 
 **`OFFSITE_COMMAND` is not optional for real DR.** A dump that only exists on the
@@ -118,7 +118,7 @@ This is why the dump and the secrets both have to live off the box.
    challenge succeeds and it gets a real certificate.
 3. Recover code and secrets:
    ```bash
-   git clone <repo> /srv/flowerp && cd /srv/flowerp
+   git clone <repo> /opt/flowerp && cd /opt/flowerp
    # restore .env.staging from your secret store — it is NOT in the DB backup
    ```
 4. Pull the latest offsite dump into `./backups/`.

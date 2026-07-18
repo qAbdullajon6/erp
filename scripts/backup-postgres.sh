@@ -6,7 +6,7 @@
 #
 # Install as a cron job, e.g. 03:17 daily (an odd minute, so it does not land on
 # the same second as every other cron on the box):
-#   17 3 * * * cd /srv/flowerp && ./scripts/backup-postgres.sh >> /var/log/flowerp-backup.log 2>&1
+#   17 3 * * * cd /opt/flowerp && ./scripts/backup-postgres.sh >> /var/log/flowerp-backup.log 2>&1
 #
 # A backup that has never been restored is a guess. See RESTORE below.
 

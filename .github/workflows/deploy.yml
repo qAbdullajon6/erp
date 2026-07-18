@@ -64,12 +64,41 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Deploying ghcr.io/${OWNER,,}/erp-api:$TAG (ref $REF)"
 
+      # Turns the cryptic "unable to authenticate, [none publickey]" into a clear
+      # message when the cause is a missing/empty secret or a public key pasted
+      # in place of the private key. Prints presence/shape only — never the value
+      # (and GitHub masks secrets in logs regardless).
+      - name: Preflight — required SSH secrets present & well-formed
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          fail=0
+          [ -n "$VPS_HOST" ] || { echo "::error::VPS_HOST secret is empty/unset"; fail=1; }
+          [ -n "$VPS_USER" ] || { echo "::error::VPS_USER secret is empty/unset"; fail=1; }
+          if [ -z "$VPS_SSH_KEY" ]; then
+            echo "::error::VPS_SSH_KEY secret is empty/unset"; fail=1
+          else
+            case "$VPS_SSH_KEY" in
+              *"PRIVATE KEY"*) : ;;
+              *) echo "::error::VPS_SSH_KEY has no 'PRIVATE KEY' header — you likely pasted the PUBLIC key (.pub). Store the PRIVATE key (id_ed25519), full BEGIN/END + trailing newline."; fail=1 ;;
+            esac
+          fi
+          [ "$fail" = 0 ] && echo "required SSH secrets present and key looks like a private key"
+          exit "$fail"
+
       - name: Deploy over SSH (runs scripts/deploy.sh on the VPS)
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          # Needed ONLY if the private key is passphrase-protected. Local
+          # `ssh -i` works without it because ssh-agent holds the passphrase;
+          # CI has no agent, so an encrypted key fails auth unless this is set.
+          # Empty secret = no passphrase = harmless.
+          passphrase: ${{ secrets.VPS_SSH_PASSPHRASE }}
           port: ${{ secrets.VPS_SSH_PORT || '22' }}
           command_timeout: 20m
           # script_stop makes any failing line abort the remote script; deploy.sh
@@ -78,7 +107,7 @@ jobs:
           envs: IMAGE_REPO,IMAGE_TAG,DEPLOY_REF
           script: |
             set -Eeuo pipefail
-            cd /srv/flowerp
+            cd /opt/flowerp
             git fetch --all --tags --prune
             export API_IMAGE="${IMAGE_REPO}:${IMAGE_TAG}"
             echo "==> deploying $API_IMAGE (ref ${DEPLOY_REF})"
