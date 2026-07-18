@@ -3,6 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import { Reflector } from "@nestjs/core";
 import { AllExceptionsFilter } from "./common/filters/http-exception.filter";
 import { TransformInterceptor } from "./common/interceptors/transform.interceptor";
+import { TimeoutInterceptor } from "./common/interceptors/timeout.interceptor";
 import type { AppConfig } from "./config/configuration";
 
 /// Shared between main.ts's real bootstrap and e2e tests, so tests exercise
@@ -28,5 +29,8 @@ export function configureApp(app: INestApplication): void {
   app.useGlobalFilters(new AllExceptionsFilter());
   // The Reflector comes from the container rather than `new Reflector()` so the
   // interceptor reads the same metadata registry the decorators wrote to.
-  app.useGlobalInterceptors(new TransformInterceptor(app.get(Reflector)));
+  app.useGlobalInterceptors(
+    new TimeoutInterceptor(app.get(Reflector), configService),
+    new TransformInterceptor(app.get(Reflector)),
+  );
 }

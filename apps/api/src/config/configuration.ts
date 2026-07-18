@@ -9,6 +9,11 @@ export interface AppConfig {
   /// stuck SSE streams, blocked Prisma disconnects, etc. Must be shorter than
   /// Docker's SIGKILL timeout (default 10s) to allow clean shutdown logs.
   shutdownTimeoutMs: number;
+  /// Global HTTP request timeout in milliseconds. Prevents slow queries or
+  /// hanging operations from blocking workers indefinitely. Does NOT apply to
+  /// Server-Sent Events (SSE) endpoints (AI streaming, telematics live-stream)
+  /// which are long-lived by design. Default 30000ms (30 seconds).
+  requestTimeoutMs: number;
 }
 
 export interface AuthConfig {
@@ -170,6 +175,11 @@ export default (): {
     throw new Error("SHUTDOWN_TIMEOUT_MS must be a positive integer in milliseconds (default 30000).");
   }
 
+  const requestTimeoutMs = parseInt(process.env.REQUEST_TIMEOUT_MS ?? "30000", 10);
+  if (!Number.isInteger(requestTimeoutMs) || requestTimeoutMs <= 0) {
+    throw new Error("REQUEST_TIMEOUT_MS must be a positive integer in milliseconds (default 30000).");
+  }
+
   return {
     ai: {
       provider: aiProvider,
@@ -200,6 +210,7 @@ export default (): {
         .filter((origin) => origin.length > 0),
       databaseUrl: process.env.DATABASE_URL ?? "",
       shutdownTimeoutMs,
+      requestTimeoutMs,
     },
     auth: {
       jwtAccessSecret,
