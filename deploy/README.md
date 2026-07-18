@@ -72,6 +72,11 @@ PUBLIC_ORIGIN=https://<your-project>.vercel.app
 #   openssl rand -base64 48 | tr '+/' '-_' | tr -d '='   # JWT_ACCESS_SECRET
 POSTGRES_PASSWORD=...
 JWT_ACCESS_SECRET=...
+
+# Database connection pool: docker-compose.staging.yml includes production-ready
+# pool parameters (connection_limit=30, pool_timeout=10, connect_timeout=30).
+# The POSTGRES_* variables above are interpolated into DATABASE_URL automatically.
+# Tune connection_limit if running multiple instances — see .env.staging.example.
 ```
 
 Then:
