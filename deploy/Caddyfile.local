@@ -23,6 +23,14 @@
 			health_uri /health
 			health_interval 5s
 			health_timeout 2s
+
+			# Match production: stream SSE immediately (telematics live feed, AI
+			# copilot) and never buffer or time out a long-lived stream, so a
+			# local rehearsal exercises the same streaming path the VPS does.
+			flush_interval -1
+			transport http {
+				dial_timeout 5s
+			}
 		}
 	}
 

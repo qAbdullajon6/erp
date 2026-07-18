@@ -4,6 +4,7 @@ import { AuditService } from "../audit/audit.service";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { isValidEntityCode } from "../common/sequential-code.util";
 import { PrismaService } from "../prisma/prisma.service";
+import { WorkflowEventService } from "../workflows/triggers/workflow-event.service";
 import { CreateInvoiceDto } from "./dto/create-invoice.dto";
 import { ListInvoicesQueryDto } from "./dto/list-invoices-query.dto";
 import { UpdateInvoiceDto } from "./dto/update-invoice.dto";
@@ -16,6 +17,7 @@ export class InvoicesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly workflowEvents: WorkflowEventService,
   ) {}
 
   async list(organizationId: string, query: ListInvoicesQueryDto) {
@@ -122,6 +124,8 @@ export class InvoicesService {
       metadata: { invoiceNumber, totalAmount: totalAmount.toString() },
     });
 
+    this.workflowEvents.emit(organizationId, "invoice.created", { id: invoice.id, invoiceNumber, customerId: invoice.customerId, totalAmount: totalAmount.toString() });
+
     return this.toResponse(invoice);
   }
 
@@ -161,6 +165,8 @@ export class InvoicesService {
       entityId: invoice.id,
       metadata: { orderId, invoiceNumber },
     });
+
+    this.workflowEvents.emit(organizationId, "invoice.created", { id: invoice.id, invoiceNumber, orderId, customerId: order.customerId, totalAmount: totalAmount.toString() });
 
     return this.toResponse(invoice);
   }

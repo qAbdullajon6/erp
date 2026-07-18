@@ -1,0 +1,157 @@
+# Opt-in observability stack for the FlowERP VPS. NOT started by the app deploy.
+# Bring it up separately, on the same box, once you want metrics/logs/alerts:
+#
+#   docker compose -f deploy/monitoring/docker-compose.monitoring.yml \
+#     --env-file .env.staging up -d
+#
+# It attaches to the application stack's network (external, below) so the
+# exporters can reach Postgres and Redis by their compose service names. That is
+# why the app stack must be up first.
+#
+# What works the moment this is up, with NO application code change:
+#   - host + per-container CPU/memory/network/disk   (cAdvisor, node-exporter)
+#   - PostgreSQL internals                            (postgres-exporter)
+#   - Redis internals                                 (redis-exporter)
+#   - every container's stdout logs, searchable       (promtail -> Loki)
+#   - alerting on all of the above                    (Alertmanager)
+#
+# What is deferred to the monitoring milestone (documented, not faked here):
+#   - APPLICATION metrics (request rate/latency, queue depth, cron outcomes).
+#     These need a /metrics endpoint on the API (prom-client). The Prometheus
+#     scrape job for it is present but commented out — see prometheus/prometheus.yml.
+#   - Grafana DASHBOARDS. Datasources are provisioned; dashboards are intentionally
+#     left empty per this milestone's stop conditions.
+#   - Sentry is SaaS (or self-hosted separately); it is wired by env var, not by
+#     this compose — see SENTRY_DSN in apps/api/.env.example.
+name: flowerp-monitoring
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    expose:
+      - "9090"
+    networks: [monitoring, flowerp]
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    expose:
+      - "9093"
+    networks: [monitoring]
+
+  # Host metrics (CPU, memory, disk, filesystem, load).
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    restart: unless-stopped
+    command:
+      - --path.rootfs=/host
+    pid: host
+    volumes:
+      - /:/host:ro,rslave
+    expose:
+      - "9100"
+    networks: [monitoring]
+
+  # Per-container resource usage.
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    expose:
+      - "8080"
+    networks: [monitoring]
+
+  # PostgreSQL internals. Reaches the app DB over the shared network by service
+  # name; credentials come from the same .env the app stack uses.
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.16.0
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-erp_staging}?sslmode=disable"
+    expose:
+      - "9187"
+    networks: [monitoring, flowerp]
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.62.0
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+    expose:
+      - "9121"
+    networks: [monitoring, flowerp]
+
+  # Log aggregation. Promtail tails every container's stdout and ships it to Loki.
+  loki:
+    image: grafana/loki:3.1.1
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki_data:/loki
+    expose:
+      - "3100"
+    networks: [monitoring]
+
+  promtail:
+    image: grafana/promtail:3.1.1
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+      - ./promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [monitoring]
+
+  # Datasources are provisioned (Prometheus + Loki). Dashboards are intentionally
+  # NOT provisioned in this milestone. Put Grafana behind the app's Caddy or an
+  # SSH tunnel — do not publish 3000 to the internet with the default admin login.
+  grafana:
+    image: grafana/grafana:11.2.0
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3001}
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      # Bound to loopback only: reach it via SSH tunnel (ssh -L 3001:localhost:3001).
+      - "127.0.0.1:3001:3000"
+    depends_on: [prometheus, loki]
+    networks: [monitoring]
+
+volumes:
+  prometheus_data:
+  alertmanager_data:
+  loki_data:
+  grafana_data:
+
+networks:
+  monitoring:
+  # The application stack's network, created by docker-compose.staging.yml
+  # (project name flowerp-staging). Lets the exporters resolve `postgres` and
+  # `redis`. If your app project name differs, change this to match.
+  flowerp:
+    external: true
+    name: flowerp-staging_default

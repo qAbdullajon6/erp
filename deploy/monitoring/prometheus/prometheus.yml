@@ -1,0 +1,59 @@
+# Prometheus scrape configuration for the FlowERP VPS.
+# Every target here is reachable the moment the monitoring stack is up — no
+# application change required — EXCEPT the commented `api` job at the bottom,
+# which awaits a /metrics endpoint on the API (see the note there).
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    stack: flowerp
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Host CPU/memory/disk/filesystem.
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]
+
+  # Per-container resource usage (maps to the app containers by name label).
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+
+  # PostgreSQL — connections, transactions, locks, replication lag, db size.
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+
+  # Redis — memory, keyspace, connected clients, evictions.
+  - job_name: redis
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+
+  # ---------------------------------------------------------------------------
+  # APPLICATION metrics — DEFERRED to the monitoring milestone, not faked here.
+  #
+  # Uncomment once the API exposes Prometheus metrics. The intended shape:
+  #   - add `prom-client` and a MetricsModule exposing GET /metrics (guarded so
+  #     it is internal-only, or scraped over the compose network as below).
+  #   - @SkipThrottle() on it, like /health, so scraping never trips the limiter.
+  # This gives request rate/latency, the notification delivery-queue depth, and
+  # cron run outcomes (billing renewal, usage snapshot) — the signals the
+  # infra-level exporters above cannot see.
+  #
+  # - job_name: flowerp-api
+  #   metrics_path: /metrics
+  #   static_configs:
+  #     - targets: ["api:4000"]

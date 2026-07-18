@@ -108,7 +108,7 @@ export function NotificationBell() {
             )}
           </div>
 
-          <div className="flex-1 space-y-2 overflow-y-auto px-4 py-4">
+          <div className="flex-1 space-y-2 overflow-y-auto scrollbar-thin px-4 py-4">
             {isLoading &&
               Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
 

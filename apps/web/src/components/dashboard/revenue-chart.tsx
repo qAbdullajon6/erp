@@ -1,7 +1,13 @@
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
+import { TrendingUp } from "lucide-react";
 import { formatMoney } from "@/lib/format";
 import type { RevenueBucket } from "@/lib/api/dashboard";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { revenueExpensesChartConfig, chartAxisTickStyle } from "@/lib/chart-theme";
+import { SurfaceCard } from "@/components/ui/surface-card";
+import { SectionHeader } from "@/components/ui/section-header";
+import { EmptyState } from "@/components/shared/list-states";
 
 interface RevenueChartProps {
   data: RevenueBucket[];
@@ -25,12 +31,9 @@ export function RevenueChart({ data, totalRevenue, loading }: RevenueChartProps)
   const hasData = data.length > 0 && data.some((d) => d.revenue > 0 || d.expenses > 0);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50 p-6">
+    <SurfaceCard className="flex h-full flex-col p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h3 className="text-lg font-semibold text-foreground">Revenue vs expenses</h3>
-          <p className="mt-0.5 text-sm text-muted-foreground">Last 30 days</p>
-        </div>
+        <SectionHeader title="Revenue vs expenses" subtitle="Last 30 days" />
         <div className="text-right">
           {/* Sans, not the display face — this is a figure, not a headline. */}
           <div className="text-2xl font-semibold leading-none text-foreground">
@@ -51,7 +54,7 @@ export function RevenueChart({ data, totalRevenue, loading }: RevenueChartProps)
 
       <div className="mt-4 h-64 flex-1">
         {hasData ? (
-          <ResponsiveContainer width="100%" height="100%">
+          <ChartContainer config={revenueExpensesChartConfig} className="aspect-auto h-full w-full">
             <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="revenueFill" x1="0" y1="0" x2="0" y2="1">
@@ -64,46 +67,45 @@ export function RevenueChart({ data, totalRevenue, loading }: RevenueChartProps)
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" opacity={0.4} />
-              <XAxis
-                dataKey="bucket"
-                tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }}
-                tickLine={false}
-                axisLine={false}
-                minTickGap={24}
-              />
+              <XAxis dataKey="bucket" tick={chartAxisTickStyle} tickLine={false} axisLine={false} minTickGap={24} />
               <YAxis
-                tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }}
+                tick={chartAxisTickStyle}
                 tickLine={false}
                 axisLine={false}
                 width={48}
                 tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : `${v}`)}
               />
-              <Tooltip
-                formatter={(value: number, name: string) => [
-                  formatMoney(value),
-                  SERIES.find((s) => s.key === name)?.label ?? name,
-                ]}
-                contentStyle={{
-                  background: "var(--color-surface)",
-                  border: "1px solid var(--color-border)",
-                  borderRadius: 12,
-                  fontSize: 12,
-                }}
+              <ChartTooltip
+                content={
+                  <ChartTooltipContent
+                    formatter={(value, name) => (
+                      <div className="flex flex-1 items-center justify-between gap-3">
+                        <span className="text-muted-foreground">
+                          {revenueExpensesChartConfig[name as string]?.label ?? name}
+                        </span>
+                        <span className="font-mono font-medium tabular-nums text-foreground">
+                          {formatMoney(value as number)}
+                        </span>
+                      </div>
+                    )}
+                  />
+                }
               />
               {SERIES.map((s) => (
                 <Area key={s.key} type="monotone" dataKey={s.key} stroke={s.color} fill={s.fill} strokeWidth={2} />
               ))}
             </AreaChart>
-          </ResponsiveContainer>
+          </ChartContainer>
         ) : (
-          <div className="flex h-full items-center justify-center rounded-xl bg-background/40 text-muted-foreground">
-            <div className="text-center">
-              <div className="text-sm">No revenue recorded yet</div>
-              <div className="mt-2 text-xs text-muted-foreground/70">Delivered orders will appear here</div>
-            </div>
+          <div className="flex h-full items-center justify-center rounded-xl bg-background/40">
+            <EmptyState
+              icon={TrendingUp}
+              title="No revenue recorded yet"
+              description="Delivered orders will appear here as revenue and expenses come in."
+            />
           </div>
         )}
       </div>
-    </div>
+    </SurfaceCard>
   );
 }

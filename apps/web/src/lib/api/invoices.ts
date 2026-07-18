@@ -160,10 +160,11 @@ export const invoiceKeys = {
   detail: (id: string) => [...invoiceKeys.details(), id] as const,
 };
 
-export function useInvoicesQuery(params: ListInvoicesParams = {}) {
+export function useInvoicesQuery(params: ListInvoicesParams = {}, enabled: boolean = true) {
   return useQuery({
     queryKey: invoiceKeys.list(params),
     queryFn: () => invoicesAPI.list(params),
+    enabled,
   });
 }
 

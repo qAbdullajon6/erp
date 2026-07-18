@@ -65,30 +65,41 @@ test('RC3: customer -> order -> dispatch -> invoice -> payments -> report', asyn
     .data.items;
   if (!drivers.length || !vehicles.length) fail('P1', 'no ACTIVE driver or AVAILABLE vehicle to dispatch with');
 
-  const dispRes = await request.post(`${API}/dispatches`, {
-    headers: auth,
-    data: { orderId: order.id, driverId: drivers[0].id, vehicleId: vehicles[0].id },
-  });
-  console.log(`[RC3] create dispatch: ${dispRes.status()}`);
-  if (dispRes.status() !== 201) fail('P0', `dispatch create returned ${dispRes.status()} ${await dispRes.text()}`);
-
   // Only a DELIVERED order can be invoiced, so walk the order to the end of its
-  // forward-only status machine. ASSIGNED comes from /assign, not /status.
+  // forward-only status machine.
   const pending = await request.post(`${API}/orders/${order.id}/status`, { headers: auth, data: { status: 'PENDING' } });
   console.log(`[RC3] order -> PENDING: ${pending.status()}`);
   if (pending.status() !== 201 && pending.status() !== 200) fail('P0', `order PENDING returned ${pending.status()}`);
 
+  // Assigning IS creating the dispatch (ADR-001). This test used to POST /dispatches
+  // *and* /assign, which left a stray DRAFT dispatch alongside the real one — a
+  // habit from the world where the two were independent records. They are not: an
+  // order has one dispatch, and /assign is how it gets one.
   const assign = await request.post(`${API}/orders/${order.id}/assign`, {
     headers: auth,
     data: { driverId: drivers[0].id, vehicleId: vehicles[0].id },
   });
-  console.log(`[RC3] order -> ASSIGNED (assign): ${assign.status()}`);
+  console.log(`[RC3] order -> ASSIGNED (assign creates the dispatch): ${assign.status()}`);
   if (assign.status() >= 400) fail('P0', `order assign returned ${assign.status()} ${await assign.text()}`);
 
-  for (const status of ['PICKED_UP', 'IN_TRANSIT', 'DELIVERED']) {
-    const step = await request.post(`${API}/orders/${order.id}/status`, { headers: auth, data: { status } });
-    console.log(`[RC3] order -> ${status}: ${step.status()}`);
-    if (step.status() >= 400) fail('P0', `order ${status} returned ${step.status()} ${await step.text()}`);
+  const dispatches = (
+    await (await request.get(`${API}/dispatches?orderId=${order.id}`, { headers: auth })).json()
+  ).data.items as { dispatchNumber: string; status: string }[];
+  console.log(`[RC3] dispatches for the order: ${dispatches.map((d) => `${d.dispatchNumber}:${d.status}`).join(', ')}`);
+  if (dispatches.length !== 1) fail('P1', `assign produced ${dispatches.length} dispatches, expected exactly 1`);
+
+  // Walk the order using the transitions the SERVER offers, rather than a hard-coded
+  // chain. A copy of the rule here would rot silently the day the rule changes.
+  for (let guard = 0; guard < 10; guard += 1) {
+    const current = (await (await request.get(`${API}/orders/${order.id}`, { headers: auth })).json()).data as {
+      status: string;
+      allowedTransitions: string[];
+    };
+    const next = current.allowedTransitions[0];
+    if (!next) break;
+    const step = await request.post(`${API}/orders/${order.id}/status`, { headers: auth, data: { status: next } });
+    console.log(`[RC3] order -> ${next}: ${step.status()}`);
+    if (step.status() >= 400) fail('P0', `order ${next} returned ${step.status()} ${await step.text()}`);
   }
 
   // Invoice from the order

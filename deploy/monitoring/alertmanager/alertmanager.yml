@@ -1,0 +1,33 @@
+# Alertmanager routing. The receiver is intentionally a template: fill in your
+# own Slack webhook / email / PagerDuty before relying on it. Until then alerts
+# fire and are grouped here but go nowhere — that is by design, not an oversight.
+route:
+  group_by: ["alertname", "job"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: default
+  routes:
+    - matchers: [severity="critical"]
+      receiver: critical
+      repeat_interval: 1h
+
+receivers:
+  - name: default
+    # Replace with a real target. Example (Slack):
+    # slack_configs:
+    #   - api_url: ${SLACK_WEBHOOK_URL}
+    #     channel: "#flowerp-alerts"
+    #     send_resolved: true
+
+  - name: critical
+    # A separate, louder channel for critical severity (e.g. PagerDuty).
+    # pagerduty_configs:
+    #   - routing_key: ${PAGERDUTY_ROUTING_KEY}
+
+inhibit_rules:
+  # A blanket TargetDown shouldn't also page for every saturation metric that
+  # went missing because the exporter itself is down.
+  - source_matchers: [alertname="TargetDown"]
+    target_matchers: [severity="warning"]
+    equal: ["instance"]

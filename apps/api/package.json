@@ -18,7 +18,9 @@
     "prisma:studio": "prisma studio",
     "seed": "ts-node prisma/seed.ts",
     "seed:test-org": "ts-node prisma/seed-test-org.ts",
-    "seed:development-company": "ts-node src/seeds/development-company.ts"
+    "seed:development-company": "ts-node src/seeds/development-company.ts",
+    "backfill:dispatches": "ts-node -r tsconfig-paths/register src/order-state/backfill.cli.ts",
+    "repair:dispatches": "ts-node -r tsconfig-paths/register src/order-state/repair.cli.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
@@ -54,7 +56,10 @@
     "argon2": "^0.41.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
+    "exceljs": "^4.4.0",
     "ioredis": "^5.11.1",
+    "nodemailer": "^9.0.3",
+    "papaparse": "^5.5.4",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "reflect-metadata": "^0.2.2",
@@ -67,7 +72,10 @@
     "@nestjs/testing": "^11.0.0",
     "@types/express": "^5.0.0",
     "@types/jest": "^29.5.14",
+    "@types/multer": "^2.2.0",
     "@types/node": "^20",
+    "@types/nodemailer": "^8.0.1",
+    "@types/papaparse": "^5.5.2",
     "@types/passport-jwt": "^4.0.1",
     "@types/supertest": "^6.0.2",
     "eslint": "^9",

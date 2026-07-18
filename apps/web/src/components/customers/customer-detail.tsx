@@ -5,6 +5,10 @@ import { useNavigate } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useCustomerDetail, useUpdateCustomer, useArchiveCustomer, useRestoreCustomer, CustomerPaymentTerms, UpdateCustomerInput } from '@/lib/api/customers';
+import { useCurrentUser } from '@/lib/api/auth';
+import { CUSTOMER_WRITE_ROLES } from '@/lib/role-access';
+import type { MembershipRole } from '@/lib/api/organizations';
+import { PortalAccessPanel } from './portal-access-panel';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { ArrowLeft, Edit2, Archive, RotateCcw } from 'lucide-react';
@@ -17,6 +21,10 @@ export function CustomerDetail({ customerId }: { customerId: string }) {
   const { update, loading: updating } = useUpdateCustomer();
   const { archive, loading: archiving } = useArchiveCustomer();
   const { restore, loading: restoring } = useRestoreCustomer();
+  const { data: currentUser } = useCurrentUser();
+  const canManagePortalAccess = Boolean(
+    currentUser && CUSTOMER_WRITE_ROLES.includes(currentUser.membership.role as MembershipRole),
+  );
 
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<UpdateCustomerInput>({});
@@ -410,6 +418,10 @@ export function CustomerDetail({ customerId }: { customerId: string }) {
             </div>
           </div>
         </div>
+      )}
+
+      {canManagePortalAccess && customer.status !== 'ARCHIVED' && (
+        <PortalAccessPanel customerId={customerId} />
       )}
 
       {customer.deliveryNotes && (

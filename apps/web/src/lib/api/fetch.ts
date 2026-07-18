@@ -1,4 +1,4 @@
-import { sessionManager } from './session';
+import { sessionManager, notifySessionExpired } from './session';
 
 export interface FetchOptions extends RequestInit {
   skipAuth?: boolean;
@@ -49,8 +49,20 @@ function refreshSessionOnce(): Promise<boolean> {
   return inFlightRefresh;
 }
 
-function buildHeaders(customHeaders: HeadersInit | undefined, skipAuth: boolean): Record<string, string> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+function buildHeaders(
+  customHeaders: HeadersInit | undefined,
+  skipAuth: boolean,
+  isFormData: boolean,
+): Record<string, string> {
+  // A FormData body needs the browser's own auto-generated
+  // `multipart/form-data; boundary=...` header — callers (delivery-proof
+  // photo/signature upload) used to pass `headers: {}` hoping to suppress
+  // the default below, but Object.assign onto an object that already has
+  // Content-Type set doesn't remove it, so every multipart upload actually
+  // went out as `Content-Type: application/json` with a multipart body
+  // inside it. The server read that as unparseable JSON and 400'd with "no
+  // file provided" — uploads never worked through the real app at all.
+  const headers: Record<string, string> = isFormData ? {} : { 'Content-Type': 'application/json' };
 
   if (customHeaders && typeof customHeaders === 'object' && !Array.isArray(customHeaders)) {
     Object.assign(headers, customHeaders as Record<string, string>);
@@ -66,10 +78,11 @@ function buildHeaders(customHeaders: HeadersInit | undefined, skipAuth: boolean)
 
 export async function apiFetch(url: string, options: FetchOptions = {}): Promise<Response> {
   const { skipAuth = false, headers: customHeaders, ...restOptions } = options;
+  const isFormData = restOptions.body instanceof FormData;
 
   const response = await fetch(url, {
     ...restOptions,
-    headers: buildHeaders(customHeaders, skipAuth),
+    headers: buildHeaders(customHeaders, skipAuth, isFormData),
   });
 
   if (response.status !== 401 || skipAuth) {
@@ -79,18 +92,20 @@ export async function apiFetch(url: string, options: FetchOptions = {}): Promise
   // Refreshing a refresh would recurse.
   if (url.includes('/auth/refresh')) {
     sessionManager.clearTokens();
+    notifySessionExpired();
     return response;
   }
 
   const refreshed = await refreshSessionOnce();
   if (!refreshed) {
     sessionManager.clearTokens();
+    notifySessionExpired();
     return response;
   }
 
   // Replay the original request with the newly minted access token.
   return fetch(url, {
     ...restOptions,
-    headers: buildHeaders(customHeaders, skipAuth),
+    headers: buildHeaders(customHeaders, skipAuth, isFormData),
   });
 }

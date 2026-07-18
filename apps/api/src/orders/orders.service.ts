@@ -1,51 +1,39 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
-import { Customer, Order, OrderStatus, Prisma, Vehicle } from "@prisma/client";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { Order, OrderStatus, Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { isValidEntityCode } from "../common/sequential-code.util";
+import { AssignmentPolicy } from "../dispatch/assignment/assignment.policy";
+import { DispatchesService } from "../dispatch/dispatches.service";
+import { OrderWriter } from "../order-state/order-writer";
+import { dispatchPath, dispatchStateFor } from "../order-state/projection.policy";
+import {
+  allowedOrderTransitions,
+  assertOrderStatusTransition,
+  isOperationalStatus,
+} from "../order-state/transition.policy";
 import { PrismaService } from "../prisma/prisma.service";
+import { WorkflowEventService } from "../workflows/triggers/workflow-event.service";
 import { AssignOrderDto } from "./dto/assign-order.dto";
 import { CancelOrderDto } from "./dto/cancel-order.dto";
 import { CreateOrderDto } from "./dto/create-order.dto";
-import { ListMyOrdersQueryDto } from "./dto/list-my-orders-query.dto";
 import { ListOrdersQueryDto } from "./dto/list-orders-query.dto";
 import { UpdateOrderDto } from "./dto/update-order.dto";
 import { UpdateOrderStatusDto } from "./dto/update-order-status.dto";
 import { generateUniqueOrderNumber } from "./order-number.util";
-
-/// The only statuses a DRIVER can move an order to via /orders/my/:id/status
-/// — always a forward step from ASSIGNED/PICKED_UP/IN_TRANSIT, matching
-/// ALLOWED_TRANSITIONS exactly. Never ASSIGNED (that requires the /assign
-/// action) and never CANCELLED (a dispatch decision, not the driver's).
-const DRIVER_ALLOWED_STATUSES: OrderStatus[] = ["PICKED_UP", "IN_TRANSIT", "DELIVERED"];
-
-/// Forward-only, one-step-at-a-time — see the OrderStatus enum's comment in
-/// schema.prisma. ASSIGNED is reachable from here in principle, but
-/// OrdersService.updateStatus additionally requires a driver+vehicle to
-/// already be set (normally true only after assign()), so in practice
-/// PENDING -> ASSIGNED happens via /orders/:id/assign, not this map.
-/// DELIVERED and CANCELLED are terminal — nothing transitions out of them.
-const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  DRAFT: ["PENDING"],
-  PENDING: ["ASSIGNED"],
-  ASSIGNED: ["PICKED_UP"],
-  PICKED_UP: ["IN_TRANSIT"],
-  IN_TRANSIT: ["DELIVERED"],
-  DELIVERED: [],
-  CANCELLED: [],
-};
-
-/// Orders whose driver/vehicle assignment is still "live" for the purposes
-/// of double-booking — DRAFT/PENDING orders have no assignment yet by
-/// definition, and DELIVERED/CANCELLED orders are finished, so neither
-/// blocks a new assignment.
-const ACTIVE_ASSIGNMENT_STATUSES: OrderStatus[] = ["ASSIGNED", "PICKED_UP", "IN_TRANSIT"];
 
 @Injectable()
 export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    /// Order state is written ONLY through these two policies (AR5).
+    private readonly orderWriter: OrderWriter,
+    /// Operational state is not set here — it is projected from a dispatch (R3),
+    /// so an order-level request is executed by moving the dispatch.
+    private readonly dispatches: DispatchesService,
+    private readonly assignmentPolicy: AssignmentPolicy,
+    private readonly workflowEvents: WorkflowEventService,
   ) {}
 
   async list(organizationId: string, query: ListOrdersQueryDto) {
@@ -108,7 +96,8 @@ export class OrdersService {
 
     const orderNumber = await this.resolveOrderNumberForCreate(organizationId, dto.orderNumber, pickupDate);
 
-    const order = await this.prisma.order.create({
+    const order = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.order.create({
       data: {
         organizationId,
         orderNumber,
@@ -127,9 +116,14 @@ export class OrdersService {
         notes: dto.notes,
         deliveryNotes: dto.deliveryNotes,
       },
+      });
+      // The order and its opening history row are one fact (AR2). An order is
+      // BORN in DRAFT — this is a creation, not a transition, so no policy governs
+      // it; but the history row still goes through the single Order writer (AR5).
+      await this.orderWriter.recordCreated(tx, organizationId, created.id, actor);
+      return created;
     });
 
-    await this.recordStatusChange(organizationId, order.id, "DRAFT", actor, "Order created");
     await this.auditService.log({
       organizationId,
       actorUserId: actor.userId,
@@ -138,6 +132,8 @@ export class OrdersService {
       entityId: order.id,
       metadata: { orderNumber: order.orderNumber },
     });
+
+    this.workflowEvents.emit(organizationId, "order.created", { id: order.id, orderNumber: order.orderNumber, customerId: order.customerId, status: order.status });
 
     return this.toResponse(order);
   }
@@ -163,18 +159,23 @@ export class OrdersService {
     const deliveryDate = dto.deliveryDate ? new Date(dto.deliveryDate) : existing.deliveryDate;
     this.assertValidDateRange(pickupDate, deliveryDate);
 
-    if (existing.driverId && (dto.pickupDate || dto.deliveryDate)) {
-      await this.assertNoOverlap(organizationId, "driverId", existing.driverId, pickupDate, deliveryDate, id);
-    }
-    if (existing.vehicleId && (dto.pickupDate || dto.deliveryDate)) {
-      await this.assertNoOverlap(organizationId, "vehicleId", existing.vehicleId, pickupDate, deliveryDate, id);
-    }
-
-    if (existing.vehicleId && (dto.cargoWeightKg !== undefined || dto.cargoVolumeM3 !== undefined)) {
-      const vehicle = await this.prisma.vehicle.findUnique({ where: { id: existing.vehicleId } });
-      const weightKg = dto.cargoWeightKg !== undefined ? new Prisma.Decimal(dto.cargoWeightKg) : existing.cargoWeightKg;
-      const volumeM3 = dto.cargoVolumeM3 !== undefined ? new Prisma.Decimal(dto.cargoVolumeM3) : existing.cargoVolumeM3;
-      if (vehicle) this.assertCapacity(vehicle, weightKg, volumeM3);
+    // Moving the dates or the cargo of an ALREADY-ASSIGNED order can invalidate
+    // the assignment: the driver may now clash with another trip, or the cargo may
+    // no longer fit. That is the same question AssignmentPolicy answers everywhere
+    // else, so it is asked here too rather than re-implemented (AR1, AR4).
+    const windowMoved = Boolean(dto.pickupDate || dto.deliveryDate);
+    const cargoChanged = dto.cargoWeightKg !== undefined || dto.cargoVolumeM3 !== undefined;
+    if (existing.driverId && existing.vehicleId && (windowMoved || cargoChanged)) {
+      await this.assignmentPolicy.assertAssignable({
+        organizationId,
+        driverId: existing.driverId,
+        vehicleId: existing.vehicleId,
+        window: { pickupDate, deliveryDate },
+        cargoWeightKg: dto.cargoWeightKg !== undefined ? new Prisma.Decimal(dto.cargoWeightKg) : existing.cargoWeightKg,
+        cargoVolumeM3: dto.cargoVolumeM3 !== undefined ? new Prisma.Decimal(dto.cargoVolumeM3) : existing.cargoVolumeM3,
+        // The order's own commitment (and its dispatch) is not a competing one.
+        exclude: { orderId: id },
+      });
     }
 
     const updated = await this.prisma.order.update({
@@ -207,6 +208,8 @@ export class OrdersService {
       metadata: { changes: dto },
     });
 
+    this.workflowEvents.emit(organizationId, "order.updated", { id, orderNumber: updated.orderNumber, customerId: updated.customerId, status: updated.status, changes: dto });
+
     return this.toResponse(updated);
   }
 
@@ -219,40 +222,59 @@ export class OrdersService {
       );
     }
 
-    const driver = await this.prisma.driver.findFirst({ where: { id: dto.driverId, organizationId } });
-    if (!driver) {
-      throw new NotFoundException("Driver not found");
-    }
-    if (driver.status !== "ACTIVE" || driver.archivedAt) {
-      throw new ConflictException("Only active drivers can be assigned");
-    }
-
-    const vehicle = await this.prisma.vehicle.findFirst({ where: { id: dto.vehicleId, organizationId } });
-    if (!vehicle) {
-      throw new NotFoundException("Vehicle not found");
-    }
-    if (vehicle.status !== "AVAILABLE" || vehicle.archivedAt) {
-      throw new ConflictException("Only available vehicles can be assigned");
-    }
-
-    this.assertCapacity(vehicle, order.cargoWeightKg, order.cargoVolumeM3);
-
-    await this.assertNoOverlap(organizationId, "driverId", dto.driverId, order.pickupDate, order.deliveryDate, id);
-    await this.assertNoOverlap(organizationId, "vehicleId", dto.vehicleId, order.pickupDate, order.deliveryDate, id);
-
     const wasPending = order.status === "PENDING";
-    const updated = await this.prisma.order.update({
-      where: { id },
-      data: {
-        driverId: dto.driverId,
-        vehicleId: dto.vehicleId,
-        status: wasPending ? "ASSIGNED" : order.status,
-      },
-    });
 
-    if (wasPending) {
-      await this.recordStatusChange(organizationId, id, "ASSIGNED", actor, "Driver and vehicle assigned");
-    }
+    // Assigning an order IS creating a dispatch and committing it (R3). Nothing
+    // here writes Order.driverId, Order.vehicleId or Order.status: the dispatch is
+    // created and activated, and ProjectionPolicy derives the order from it. Every
+    // rule that governs whether this assignment may happen — eligibility, capacity,
+    // double-booking — is AssignmentPolicy's, reached through createInTx (AR1, AR4).
+    //
+    // This is the shape Task 8.7 will lift wholesale into a wrapper; the only thing
+    // left in this method is the commercial precondition and the audit line.
+    const updated = await this.dispatches.inTransaction(async (tx) => {
+      const live = await this.dispatches.activeDispatchForOrder(tx, organizationId, id);
+
+      if (live) {
+        // The order already has a dispatch, so this is a REASSIGNMENT — and there
+        // is exactly one implementation of that (AR1). It closes the open
+        // DispatchAssignment and opens a new one, keeping the dispatch itself and
+        // its whole status history intact.
+        await this.dispatches.reassignInTx(
+          tx,
+          organizationId,
+          live,
+          { driverId: dto.driverId, vehicleId: dto.vehicleId },
+          actor,
+          "Reassigned via order",
+        );
+      } else {
+        // First assignment: create the dispatch and commit it. ASSIGNED is what
+        // "this order has a driver" MEANS under ADR-001 (R3).
+        const created = await this.dispatches.createInTx(
+          tx,
+          organizationId,
+          { orderId: id, driverId: dto.driverId, vehicleId: dto.vehicleId },
+          actor,
+        );
+        await this.dispatches.transitionInTx(
+          tx,
+          organizationId,
+          created,
+          "ASSIGNED",
+          actor,
+          "Driver and vehicle assigned",
+        );
+      }
+
+      return this.orderWriter.project(
+        tx,
+        organizationId,
+        id,
+        actor,
+        "Driver and vehicle assigned",
+      );
+    });
 
     await this.auditService.log({
       organizationId,
@@ -271,55 +293,22 @@ export class OrdersService {
     return this.applyStatusTransition(organizationId, order, dto, actor);
   }
 
-  /// Driver-scoped variant of updateStatus: only reachable for an order
-  /// actually assigned to the caller's own linked Driver profile (driverId
-  /// is always resolved server-side from the caller's userId — see
-  /// resolveOwnDriverId — never accepted as client input), and only to the
-  /// driver-safe subset of statuses. Everything else (the transition-graph
-  /// check, deliveredAt, status-history recording, audit log) is identical
-  /// to the dispatcher path via the shared applyStatusTransition — one
-  /// source of truth for what a valid transition is.
-  async updateStatusAsDriver(
-    organizationId: string,
-    userId: string,
-    id: string,
-    dto: UpdateOrderStatusDto,
-    actor: CurrentUserPayload,
-  ) {
-    if (!DRIVER_ALLOWED_STATUSES.includes(dto.status)) {
-      throw new ForbiddenException("Drivers can only move an order to PICKED_UP, IN_TRANSIT, or DELIVERED");
-    }
-    const driverId = await this.resolveOwnDriverId(organizationId, userId);
-    const order = await this.prisma.order.findFirst({ where: { id, organizationId, driverId } });
-    if (!order) {
-      throw new NotFoundException("Order not found");
-    }
-    return this.applyStatusTransition(organizationId, order, dto, actor);
-  }
-
   private async applyStatusTransition(
     organizationId: string,
     order: Order,
     dto: UpdateOrderStatusDto,
     actor: CurrentUserPayload,
   ) {
-    const allowed = ALLOWED_TRANSITIONS[order.status];
-    if (!allowed.includes(dto.status)) {
-      throw new ConflictException(`Cannot transition an order from ${order.status} to ${dto.status}`);
-    }
+    // Rejected up front, before any dispatch is touched, with the message this
+    // endpoint has always used. The rule lives in the policy, not here (AR3).
+    assertOrderStatusTransition(order.status, dto.status);
 
-    if (dto.status === "ASSIGNED" && (!order.driverId || !order.vehicleId)) {
-      throw new ConflictException("Assign a driver and vehicle (POST /orders/:id/assign) before moving to ASSIGNED");
-    }
+    const updated = await this.dispatches.inTransaction(async (tx) =>
+      isOperationalStatus(dto.status)
+        ? this.advanceThroughDispatch(tx, organizationId, order, dto, actor)
+        : this.orderWriter.applyCommercial(tx, organizationId, order, dto.status, actor, dto.note),
+    );
 
-    const data: Prisma.OrderUpdateInput = { status: dto.status };
-    if (dto.status === "DELIVERED") {
-      data.deliveredAt = new Date();
-    }
-
-    const updated = await this.prisma.order.update({ where: { id: order.id }, data });
-
-    await this.recordStatusChange(organizationId, order.id, dto.status, actor, dto.note);
     await this.auditService.log({
       organizationId,
       actorUserId: actor.userId,
@@ -329,53 +318,56 @@ export class OrdersService {
       metadata: { from: order.status, to: dto.status, note: dto.note },
     });
 
+    this.workflowEvents.emit(organizationId, "order.status_changed", { id: order.id, orderNumber: order.orderNumber, from: order.status, to: dto.status });
+
     return this.toResponse(updated);
   }
 
-  /// The caller's own assigned orders, hard-scoped by driverId server-side
-  /// — driverId is resolved from the caller's own userId via
-  /// resolveOwnDriverId, never accepted as a query param. Embeds a minimal
-  /// customer/vehicle summary directly (rather than opening up
-  /// CustomersController/VehiclesController to DRIVER, which has no access
-  /// to either) so the frontend needs no extra calls.
-  async listMine(organizationId: string, userId: string, query: ListMyOrdersQueryDto) {
-    const driverId = await this.resolveOwnDriverId(organizationId, userId);
-    const where: Prisma.OrderWhereInput = {
-      organizationId,
-      driverId,
-      ...(query.status ? { status: query.status } : {}),
-    };
-    const rows = await this.prisma.order.findMany({
-      where,
-      orderBy: { deliveryDate: "asc" },
-      include: { customer: true, vehicle: true },
-    });
-    return rows.map((row) => this.toDriverResponse(row));
-  }
-
-  async getMyOrderById(organizationId: string, userId: string, id: string) {
-    const driverId = await this.resolveOwnDriverId(organizationId, userId);
-    const order = await this.prisma.order.findFirst({
-      where: { id, organizationId, driverId },
-      include: { customer: true, vehicle: true, statusHistory: { orderBy: { createdAt: "asc" } } },
-    });
-    if (!order) {
-      throw new NotFoundException("Order not found");
+  /// Executes an OPERATIONAL order request by moving the dispatch that governs the
+  /// order, then re-deriving the order from it (R3).
+  ///
+  /// One order step can be several dispatch steps: an order going ASSIGNED ->
+  /// PICKED_UP means the dispatch must walk ASSIGNED -> EN_ROUTE_TO_PICKUP ->
+  /// AT_PICKUP, because R13 forbids the dispatch from skipping a state. Every one
+  /// of those steps is a real transition with its own dispatch history row — the
+  /// intermediate states are traversed, not faked.
+  private async advanceThroughDispatch(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    order: Order,
+    dto: UpdateOrderStatusDto,
+    actor: CurrentUserPayload,
+  ): Promise<Order> {
+    const target = dispatchStateFor(dto.status);
+    if (!target) {
+      // Unreachable: isOperationalStatus() gated this. Belt and braces.
+      throw new ConflictException(`${dto.status} is not an operational status`);
     }
-    return this.toDriverResponse(order);
-  }
 
-  /// Shared by every /orders/my* method — resolves the caller's own linked
-  /// Driver row (Driver.userId) within THIS organization. 404s (not a
-  /// silent empty result) when the DRIVER-role user has no linked driver
-  /// profile yet, so the frontend can show a clear "not linked" state
-  /// rather than an empty list that looks like "no deliveries."
-  private async resolveOwnDriverId(organizationId: string, userId: string): Promise<string> {
-    const driver = await this.prisma.driver.findFirst({ where: { organizationId, userId } });
-    if (!driver) {
-      throw new NotFoundException("No driver profile is linked to your account yet");
+    let dispatch = await this.dispatches.drivableDispatchForOrder(tx, organizationId, order.id);
+    if (!dispatch) {
+      // Without a dispatch there is nothing to derive the order from. This is the
+      // same 409 the endpoint returned before, for the same reason: an order with
+      // no driver and vehicle cannot become ASSIGNED.
+      throw new ConflictException(
+        "Assign a driver and vehicle (POST /orders/:id/assign) before moving to ASSIGNED",
+      );
     }
-    return driver.id;
+
+    for (const step of dispatchPath(dispatch.status, target)) {
+      // Each step returns the dispatch it just wrote, so the next step's
+      // compare-and-set compares against reality rather than a stale read.
+      dispatch = await this.dispatches.transitionInTx(
+        tx,
+        organizationId,
+        dispatch,
+        step,
+        actor,
+        dto.note,
+      );
+    }
+
+    return this.orderWriter.project(tx, organizationId, order.id, actor, dto.note);
   }
 
   async cancel(organizationId: string, id: string, dto: CancelOrderDto, actor: CurrentUserPayload) {
@@ -385,12 +377,21 @@ export class OrdersService {
       throw new ConflictException(`Cannot cancel an order with status ${order.status}`);
     }
 
-    const updated = await this.prisma.order.update({
-      where: { id },
-      data: { status: "CANCELLED", cancelledAt: new Date() },
+    const updated = await this.dispatches.inTransaction(async (tx) => {
+      // A dead order must not keep a driver and a truck reserved, so its dispatch
+      // dies with it. Note this does NOT project afterwards: projecting a
+      // fully-cancelled order would read "all dispatches cancelled -> PENDING" and
+      // resurrect the very order we are killing. The commercial write is the last
+      // word, and ProjectionPolicy refuses to overwrite CANCELLED anyway — belt
+      // and braces, in the two places that each independently prevent it.
+      const live = await this.dispatches.activeDispatchForOrder(tx, organizationId, id);
+      if (live) {
+        await this.dispatches.cancelInTx(tx, organizationId, live.id, actor, "Order cancelled");
+      }
+
+      return this.orderWriter.applyCommercial(tx, organizationId, order, "CANCELLED", actor, dto.note);
     });
 
-    await this.recordStatusChange(organizationId, id, "CANCELLED", actor, dto.note);
     await this.auditService.log({
       organizationId,
       actorUserId: actor.userId,
@@ -399,6 +400,8 @@ export class OrdersService {
       entityId: id,
       metadata: { note: dto.note },
     });
+
+    this.workflowEvents.emit(organizationId, "order.cancelled", { id, orderNumber: updated.orderNumber, note: dto.note });
 
     return this.toResponse(updated);
   }
@@ -421,76 +424,6 @@ export class OrdersService {
     if (customer.status !== "ACTIVE") {
       throw new ConflictException("Only active customers can be selected for a new order");
     }
-  }
-
-  /// Capacity is only checked when BOTH the vehicle's capacity field and the
-  /// order's corresponding cargo field are present — there's nothing to
-  /// validate against when either is missing (see spec: "when values
-  /// exist").
-  private assertCapacity(
-    vehicle: Vehicle,
-    cargoWeightKg: Prisma.Decimal | null,
-    cargoVolumeM3: Prisma.Decimal | null,
-  ): void {
-    if (vehicle.capacityKg && cargoWeightKg && cargoWeightKg.gt(vehicle.capacityKg)) {
-      throw new BadRequestException(
-        `Cargo weight (${cargoWeightKg.toString()}kg) exceeds vehicle capacity (${vehicle.capacityKg.toString()}kg)`,
-      );
-    }
-    if (vehicle.capacityM3 && cargoVolumeM3 && cargoVolumeM3.gt(vehicle.capacityM3)) {
-      throw new BadRequestException(
-        `Cargo volume (${cargoVolumeM3.toString()}m3) exceeds vehicle capacity (${vehicle.capacityM3.toString()}m3)`,
-      );
-    }
-  }
-
-  /// Double-booking check: a driver/vehicle cannot be assigned to two
-  /// orders whose [pickupDate, deliveryDate] ranges overlap, considering
-  /// only orders in an "active assignment" status (ASSIGNED/PICKED_UP/
-  /// IN_TRANSIT — see ACTIVE_ASSIGNMENT_STATUSES). Overlap is the standard
-  /// inclusive interval test: existing.pickupDate <= new.deliveryDate AND
-  /// existing.deliveryDate >= new.pickupDate. This is deliberately
-  /// conservative at the boundary — an order ending exactly when another
-  /// begins (e.g. a driver's drop-off and next pickup on the same calendar
-  /// day) counts as overlapping and is blocked, rather than assuming the
-  /// driver/vehicle is free the instant one leg ends. `excludeOrderId`
-  /// leaves the order being assigned/updated out of its own check.
-  private async assertNoOverlap(
-    organizationId: string,
-    field: "driverId" | "vehicleId",
-    entityId: string,
-    pickupDate: Date,
-    deliveryDate: Date,
-    excludeOrderId: string,
-  ): Promise<void> {
-    const conflict = await this.prisma.order.findFirst({
-      where: {
-        organizationId,
-        [field]: entityId,
-        id: { not: excludeOrderId },
-        status: { in: ACTIVE_ASSIGNMENT_STATUSES },
-        pickupDate: { lte: deliveryDate },
-        deliveryDate: { gte: pickupDate },
-      },
-    });
-    if (conflict) {
-      const label = field === "driverId" ? "driver" : "vehicle";
-      throw new ConflictException(
-        `This ${label} is already assigned to an overlapping order (${conflict.orderNumber})`,
-      );
-    }
-  }
-
-  private async recordStatusChange(
-    organizationId: string,
-    orderId: string,
-    status: OrderStatus,
-    actor: CurrentUserPayload,
-    note?: string,
-  ): Promise<void> {
-    await this.prisma.orderStatusHistory.create({
-      data: { organizationId, orderId, status, changedByUserId: actor.userId, note },
-    });
   }
 
   private async resolveOrderNumberForCreate(
@@ -550,6 +483,14 @@ export class OrdersService {
       price: order.price.toString(),
       currency: order.currency,
       status: order.status,
+      /// Read-only, derived, additive (TD-006). Computed from the single order
+      /// transition table in TransitionPolicy — so the client is told THE rule, not
+      /// a second version of it (AR1). Empty means terminal.
+      ///
+      /// This is the dispatcher's view. A DRIVER no longer reads orders at all —
+      /// they execute a dispatch (Task 8.12), and get their own narrowed list from
+      /// DriverDispatchService.
+      allowedTransitions: allowedOrderTransitions(order.status),
       isDelayed,
       driverId: order.driverId,
       vehicleId: order.vehicleId,
@@ -573,34 +514,4 @@ export class OrdersService {
     };
   }
 
-  /// Used only by the /orders/my* driver-scoped endpoints — embeds a
-  /// minimal customer/vehicle summary (never the full records) directly
-  /// into the order response, since DRIVER has no access to
-  /// CustomersController/VehiclesController at all.
-  private toDriverResponse(
-    order: Order & {
-      customer: Customer;
-      vehicle: Vehicle | null;
-      statusHistory?: { id: string; status: OrderStatus; changedByUserId: string | null; note: string | null; createdAt: Date }[];
-    },
-  ) {
-    return {
-      ...this.toResponse(order),
-      customer: {
-        id: order.customer.id,
-        companyName: order.customer.companyName,
-        contactName: order.customer.contactName,
-        phone: order.customer.phone,
-        deliveryNotes: order.customer.deliveryNotes,
-      },
-      vehicle: order.vehicle
-        ? {
-            id: order.vehicle.id,
-            vehicleCode: order.vehicle.vehicleCode,
-            plateNumber: order.vehicle.plateNumber,
-            type: order.vehicle.type,
-          }
-        : null,
-    };
-  }
 }

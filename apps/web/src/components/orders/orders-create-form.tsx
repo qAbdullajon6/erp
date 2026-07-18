@@ -1,11 +1,18 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { useCreateOrder, type CreateOrderInput } from '@/lib/api/orders';
-import { customersAPI, type Customer } from '@/lib/api/customers';
+import { useCustomersList } from '@/lib/api/customers';
+import { PageHeader } from '@/components/shared/page-header';
+import { FormField, FormError } from '@/components/shared/form-field';
+import { SurfaceCard } from '@/components/ui/surface-card';
+import { SectionHeader } from '@/components/ui/section-header';
+import { formatMoney } from '@/lib/format';
+import { ArrowRight, Package, MapPin, Wallet, StickyNote } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface FormErrors {
@@ -16,8 +23,13 @@ export function OrdersCreateForm() {
   const navigate = useNavigate();
   const { create, loading, error: createError } = useCreateOrder();
 
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [customersLoading, setCustomersLoading] = useState(true);
+  // Same list every other screen uses (orders-list.tsx, dispatches-create-form.tsx)
+  // instead of a page-local fetch+useState duplicate of it.
+  const { data: customers, loading: customersLoading, error: customersError } = useCustomersList({
+    status: 'ACTIVE',
+    limit: 100,
+  });
+
   const [formData, setFormData] = useState<CreateOrderInput>({
     customerId: '',
     pickupAddress: '',
@@ -32,28 +44,9 @@ export function OrdersCreateForm() {
   });
 
   const [validationErrors, setValidationErrors] = useState<FormErrors>({});
-  const [isDirty, setIsDirty] = useState(false);
-
-  // Load active customers
-  useEffect(() => {
-    const loadCustomers = async () => {
-      try {
-        const response = await customersAPI.list({ status: 'ACTIVE', limit: 100 });
-        setCustomers(response.items);
-      } catch (err) {
-        console.error('Failed to load customers:', err);
-        toast.error('Failed to load customers');
-      } finally {
-        setCustomersLoading(false);
-      }
-    };
-
-    loadCustomers();
-  }, []);
 
   const handleChange = (field: string, value: string | number) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
-    setIsDirty(true);
     // Clear error for this field when user starts typing
     setValidationErrors((prev) => {
       const newErrors = { ...prev };
@@ -155,308 +148,320 @@ export function OrdersCreateForm() {
       const result = await create(formData);
       toast.success('Order created successfully');
       navigate({ to: `/app/orders/${result.id}` });
-    } catch (err) {
+    } catch {
       // Error is already set in hook
       toast.error(createError || 'Failed to create order');
     }
   };
 
-  const getInputClass = (fieldName: string) => {
-    const baseClass = 'mt-1';
-    return validationErrors[fieldName] ? `${baseClass} border-red-500` : baseClass;
-  };
+  const selectedCustomer = customers.find((c) => c.id === formData.customerId);
+  const hasRoute = formData.pickupCity && formData.deliveryCity;
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="mb-6">
-        <h1 className="font-display text-3xl font-bold text-foreground">Create Order</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Fill in the order details below</p>
-      </div>
+    <div className="mx-auto max-w-6xl space-y-6">
+      <PageHeader title="Create Order" subtitle="Fill in the shipment details below" />
 
-      <form onSubmit={handleSubmit} className="space-y-8 rounded-lg border border-brand/10 bg-surface p-6">
-        {/* Customer Selection */}
-        <div className="space-y-4 pb-6 border-b border-brand/10">
-          <h2 className="font-semibold text-foreground">Customer</h2>
-          <div>
-            <label className="text-sm font-medium text-foreground">Customer *</label>
-            <select
-              value={formData.customerId}
-              onChange={(e) => handleChange('customerId', e.target.value)}
-              disabled={customersLoading}
-              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              data-testid="orders-customer-select"
-            >
-              <option value="">Select a customer</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.companyName} ({c.contactName})
-                </option>
-              ))}
-            </select>
-            {validationErrors.customerId && (
-              <p className="mt-1 text-sm text-red-500">{validationErrors.customerId}</p>
-            )}
-          </div>
+      <form onSubmit={handleSubmit} className="grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
+        {/* Main form — left, two-thirds width on desktop */}
+        <div className="space-y-6 lg:col-span-2">
+          <SurfaceCard className="p-6">
+            <SectionHeader title="Customer" />
+            {customersError && <FormError message={customersError} />}
+            <div className="mt-4">
+              <FormField id="customerId" label="Customer" required error={validationErrors.customerId}>
+                <select
+                  id="customerId"
+                  value={formData.customerId}
+                  onChange={(e) => handleChange('customerId', e.target.value)}
+                  disabled={customersLoading}
+                  className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  data-testid="orders-customer-select"
+                >
+                  <option value="">Select a customer</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.companyName} ({c.contactName})
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+            </div>
+          </SurfaceCard>
+
+          {/* Shipment — pickup and delivery side by side with a route
+              connector, so the two ends of the trip read as one shipment
+              rather than two disconnected sections. */}
+          <SurfaceCard className="p-6">
+            <SectionHeader title="Shipment" subtitle="Pickup and delivery" />
+            <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand/10 text-brand">
+                    <MapPin className="h-3.5 w-3.5" />
+                  </span>
+                  Pickup
+                </div>
+                <FormField id="pickupAddress" label="Address" required error={validationErrors.pickupAddress}>
+                  <Input
+                    id="pickupAddress"
+                    type="text"
+                    placeholder="123 Main St"
+                    value={formData.pickupAddress}
+                    onChange={(e) => handleChange('pickupAddress', e.target.value)}
+                    maxLength={300}
+                    data-testid="orders-pickup-address"
+                  />
+                </FormField>
+                <FormField id="pickupCity" label="City" required error={validationErrors.pickupCity}>
+                  <Input
+                    id="pickupCity"
+                    type="text"
+                    placeholder="New York"
+                    value={formData.pickupCity}
+                    onChange={(e) => handleChange('pickupCity', e.target.value)}
+                    maxLength={100}
+                    data-testid="orders-pickup-city"
+                  />
+                </FormField>
+                <FormField id="pickupDate" label="Date" required error={validationErrors.pickupDate}>
+                  <Input
+                    id="pickupDate"
+                    type="date"
+                    value={formData.pickupDate}
+                    onChange={(e) => handleChange('pickupDate', e.target.value)}
+                    data-testid="orders-pickup-date"
+                  />
+                </FormField>
+              </div>
+
+              <div className="space-y-4 border-t border-brand/10 pt-4 sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0">
+                <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-success/10 text-success">
+                    <MapPin className="h-3.5 w-3.5" />
+                  </span>
+                  Delivery
+                </div>
+                <FormField id="deliveryAddress" label="Address" required error={validationErrors.deliveryAddress}>
+                  <Input
+                    id="deliveryAddress"
+                    type="text"
+                    placeholder="456 Oak Ave"
+                    value={formData.deliveryAddress}
+                    onChange={(e) => handleChange('deliveryAddress', e.target.value)}
+                    maxLength={300}
+                    data-testid="orders-delivery-address"
+                  />
+                </FormField>
+                <FormField id="deliveryCity" label="City" required error={validationErrors.deliveryCity}>
+                  <Input
+                    id="deliveryCity"
+                    type="text"
+                    placeholder="Los Angeles"
+                    value={formData.deliveryCity}
+                    onChange={(e) => handleChange('deliveryCity', e.target.value)}
+                    maxLength={100}
+                    data-testid="orders-delivery-city"
+                  />
+                </FormField>
+                <FormField id="deliveryDate" label="Date" required error={validationErrors.deliveryDate}>
+                  <Input
+                    id="deliveryDate"
+                    type="date"
+                    value={formData.deliveryDate}
+                    onChange={(e) => handleChange('deliveryDate', e.target.value)}
+                    data-testid="orders-delivery-date"
+                  />
+                </FormField>
+              </div>
+            </div>
+          </SurfaceCard>
+
+          <SurfaceCard className="p-6">
+            <SectionHeader title="Cargo" />
+            <div className="mt-4 space-y-4">
+              <FormField id="cargoDescription" label="Description" required error={validationErrors.cargoDescription}>
+                <Textarea
+                  id="cargoDescription"
+                  placeholder="Describe the cargo to be transported"
+                  value={formData.cargoDescription}
+                  onChange={(e) => handleChange('cargoDescription', e.target.value)}
+                  maxLength={2000}
+                  rows={3}
+                  data-testid="orders-cargo-description"
+                />
+              </FormField>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FormField id="cargoWeightKg" label="Weight (kg)" error={validationErrors.cargoWeightKg}>
+                  <Input
+                    id="cargoWeightKg"
+                    type="number"
+                    placeholder="0.00"
+                    value={formData.cargoWeightKg || ''}
+                    onChange={(e) => handleChange('cargoWeightKg', e.target.value ? parseFloat(e.target.value) : 0)}
+                    step="0.01"
+                    min="0"
+                    data-testid="orders-cargo-weight"
+                  />
+                </FormField>
+                <FormField id="cargoVolumeM3" label="Volume (m³)" error={validationErrors.cargoVolumeM3}>
+                  <Input
+                    id="cargoVolumeM3"
+                    type="number"
+                    placeholder="0.00"
+                    value={formData.cargoVolumeM3 || ''}
+                    onChange={(e) => handleChange('cargoVolumeM3', e.target.value ? parseFloat(e.target.value) : 0)}
+                    step="0.01"
+                    min="0"
+                    data-testid="orders-cargo-volume"
+                  />
+                </FormField>
+              </div>
+            </div>
+          </SurfaceCard>
+
+          <SurfaceCard className="p-6">
+            <SectionHeader title="Pricing" />
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <FormField id="price" label="Price" required error={validationErrors.price}>
+                <Input
+                  id="price"
+                  type="number"
+                  placeholder="0.00"
+                  value={formData.price}
+                  onChange={(e) => handleChange('price', e.target.value ? parseFloat(e.target.value) : 0)}
+                  step="0.01"
+                  min="0"
+                  data-testid="orders-price"
+                />
+              </FormField>
+              <FormField id="currency" label="Currency" error={validationErrors.currency}>
+                <Input
+                  id="currency"
+                  type="text"
+                  placeholder="USD"
+                  value={formData.currency}
+                  onChange={(e) => handleChange('currency', e.target.value)}
+                  maxLength={3}
+                  data-testid="orders-currency"
+                />
+              </FormField>
+            </div>
+          </SurfaceCard>
+
+          <SurfaceCard className="p-6">
+            <SectionHeader title="Notes" subtitle="Optional" />
+            <div className="mt-4 space-y-4">
+              <FormField id="notes" label="Notes" error={validationErrors.notes}>
+                <Textarea
+                  id="notes"
+                  placeholder="Any additional notes for this order"
+                  value={formData.notes || ''}
+                  onChange={(e) => handleChange('notes', e.target.value)}
+                  maxLength={2000}
+                  rows={2}
+                  data-testid="orders-notes"
+                />
+              </FormField>
+              <FormField id="deliveryNotes" label="Delivery Notes" error={validationErrors.deliveryNotes}>
+                <Textarea
+                  id="deliveryNotes"
+                  placeholder="Special instructions for delivery"
+                  value={formData.deliveryNotes || ''}
+                  onChange={(e) => handleChange('deliveryNotes', e.target.value)}
+                  maxLength={2000}
+                  rows={2}
+                  data-testid="orders-delivery-notes"
+                />
+              </FormField>
+            </div>
+          </SurfaceCard>
         </div>
 
-        {/* Pickup Information */}
-        <div className="space-y-4 pb-6 border-b border-brand/10">
-          <h2 className="font-semibold text-foreground">Pickup Details</h2>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="text-sm font-medium text-foreground">Address *</label>
-              <Input
-                type="text"
-                placeholder="123 Main St"
-                value={formData.pickupAddress}
-                onChange={(e) => handleChange('pickupAddress', e.target.value)}
-                maxLength={300}
-                className={getInputClass('pickupAddress')}
-                data-testid="orders-pickup-address"
-              />
-              {validationErrors.pickupAddress && (
-                <p className="mt-1 text-sm text-red-500">{validationErrors.pickupAddress}</p>
+        {/* Order Summary — right sidebar, sticky so the submit action stays
+            reachable without scrolling back down a long form. Every value
+            here is read straight from formData; nothing computed that isn't
+            already an input (no invented profit/margin — there's no cost
+            data yet at creation time). */}
+        <div className="lg:sticky lg:top-6">
+          <SurfaceCard className="p-6">
+            <SectionHeader title="Order Summary" />
+
+            <div className="mt-4 space-y-4 text-sm">
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
+                  <Package className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">Customer</p>
+                  <p className="truncate font-medium text-foreground">
+                    {selectedCustomer?.companyName ?? 'Not selected yet'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
+                  <MapPin className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">Route</p>
+                  {hasRoute ? (
+                    <p className="flex items-center gap-1.5 font-medium text-foreground">
+                      <span className="truncate">{formData.pickupCity}</span>
+                      <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+                      <span className="truncate">{formData.deliveryCity}</span>
+                    </p>
+                  ) : (
+                    <p className="text-muted-foreground">Not set yet</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
+                  <Wallet className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">Order Value</p>
+                  <p className="font-semibold text-foreground">
+                    {formData.price ? formatMoney(formData.price, formData.currency || 'USD') : '—'}
+                  </p>
+                </div>
+              </div>
+
+              {(formData.notes || formData.deliveryNotes) && (
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
+                    <StickyNote className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-xs text-muted-foreground">Notes</p>
+                    <p className="line-clamp-2 text-muted-foreground">{formData.notes || formData.deliveryNotes}</p>
+                  </div>
+                </div>
               )}
             </div>
-            <div>
-              <label className="text-sm font-medium text-foreground">City *</label>
-              <Input
-                type="text"
-                placeholder="New York"
-                value={formData.pickupCity}
-                onChange={(e) => handleChange('pickupCity', e.target.value)}
-                maxLength={100}
-                className={getInputClass('pickupCity')}
-                data-testid="orders-pickup-city"
-              />
-              {validationErrors.pickupCity && (
-                <p className="mt-1 text-sm text-red-500">{validationErrors.pickupCity}</p>
-              )}
-            </div>
-          </div>
-          <div>
-            <label className="text-sm font-medium text-foreground">Date *</label>
-            <Input
-              type="date"
-              value={formData.pickupDate}
-              onChange={(e) => handleChange('pickupDate', e.target.value)}
-              className={getInputClass('pickupDate')}
-              data-testid="orders-pickup-date"
-            />
-            {validationErrors.pickupDate && (
-              <p className="mt-1 text-sm text-red-500">{validationErrors.pickupDate}</p>
+
+            {createError && (
+              <div className="mt-4">
+                <FormError message={createError} />
+              </div>
             )}
-          </div>
-        </div>
 
-        {/* Delivery Information */}
-        <div className="space-y-4 pb-6 border-b border-brand/10">
-          <h2 className="font-semibold text-foreground">Delivery Details</h2>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="text-sm font-medium text-foreground">Address *</label>
-              <Input
-                type="text"
-                placeholder="456 Oak Ave"
-                value={formData.deliveryAddress}
-                onChange={(e) => handleChange('deliveryAddress', e.target.value)}
-                maxLength={300}
-                className={getInputClass('deliveryAddress')}
-                data-testid="orders-delivery-address"
-              />
-              {validationErrors.deliveryAddress && (
-                <p className="mt-1 text-sm text-red-500">{validationErrors.deliveryAddress}</p>
-              )}
+            <div className="mt-6 flex flex-col gap-2 border-t border-brand/10 pt-6">
+              <Button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-gradient-brand text-brand-foreground hover:opacity-90"
+                data-testid="orders-submit-button"
+              >
+                {loading ? 'Creating...' : 'Create Order'}
+              </Button>
+              <Button type="button" variant="outline" className="w-full" onClick={() => navigate({ to: '/app/orders' })} disabled={loading}>
+                Cancel
+              </Button>
             </div>
-            <div>
-              <label className="text-sm font-medium text-foreground">City *</label>
-              <Input
-                type="text"
-                placeholder="Los Angeles"
-                value={formData.deliveryCity}
-                onChange={(e) => handleChange('deliveryCity', e.target.value)}
-                maxLength={100}
-                className={getInputClass('deliveryCity')}
-                data-testid="orders-delivery-city"
-              />
-              {validationErrors.deliveryCity && (
-                <p className="mt-1 text-sm text-red-500">{validationErrors.deliveryCity}</p>
-              )}
-            </div>
-          </div>
-          <div>
-            <label className="text-sm font-medium text-foreground">Date *</label>
-            <Input
-              type="date"
-              value={formData.deliveryDate}
-              onChange={(e) => handleChange('deliveryDate', e.target.value)}
-              className={getInputClass('deliveryDate')}
-              data-testid="orders-delivery-date"
-            />
-            {validationErrors.deliveryDate && (
-              <p className="mt-1 text-sm text-red-500">{validationErrors.deliveryDate}</p>
-            )}
-          </div>
-        </div>
-
-        {/* Cargo Information */}
-        <div className="space-y-4 pb-6 border-b border-brand/10">
-          <h2 className="font-semibold text-foreground">Cargo Details</h2>
-          <div>
-            <label className="text-sm font-medium text-foreground">Description *</label>
-            <textarea
-              placeholder="Describe the cargo to be transported"
-              value={formData.cargoDescription}
-              onChange={(e) => handleChange('cargoDescription', e.target.value)}
-              maxLength={2000}
-              rows={3}
-              className={`mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ${
-                validationErrors.cargoDescription ? 'border-red-500' : ''
-              }`}
-              data-testid="orders-cargo-description"
-            />
-            {validationErrors.cargoDescription && (
-              <p className="mt-1 text-sm text-red-500">{validationErrors.cargoDescription}</p>
-            )}
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="text-sm font-medium text-foreground">Weight (kg)</label>
-              <Input
-                type="number"
-                placeholder="0.00"
-                value={formData.cargoWeightKg || ''}
-                onChange={(e) => handleChange('cargoWeightKg', e.target.value ? parseFloat(e.target.value) : 0)}
-                step="0.01"
-                min="0"
-                className={getInputClass('cargoWeightKg')}
-                data-testid="orders-cargo-weight"
-              />
-              {validationErrors.cargoWeightKg && (
-                <p className="mt-1 text-sm text-red-500">{validationErrors.cargoWeightKg}</p>
-              )}
-            </div>
-            <div>
-              <label className="text-sm font-medium text-foreground">Volume (m³)</label>
-              <Input
-                type="number"
-                placeholder="0.00"
-                value={formData.cargoVolumeM3 || ''}
-                onChange={(e) => handleChange('cargoVolumeM3', e.target.value ? parseFloat(e.target.value) : 0)}
-                step="0.01"
-                min="0"
-                className={getInputClass('cargoVolumeM3')}
-                data-testid="orders-cargo-volume"
-              />
-              {validationErrors.cargoVolumeM3 && (
-                <p className="mt-1 text-sm text-red-500">{validationErrors.cargoVolumeM3}</p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Pricing */}
-        <div className="space-y-4 pb-6 border-b border-brand/10">
-          <h2 className="font-semibold text-foreground">Pricing</h2>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="text-sm font-medium text-foreground">Price *</label>
-              <Input
-                type="number"
-                placeholder="0.00"
-                value={formData.price}
-                onChange={(e) => handleChange('price', e.target.value ? parseFloat(e.target.value) : 0)}
-                step="0.01"
-                min="0"
-                className={getInputClass('price')}
-                data-testid="orders-price"
-              />
-              {validationErrors.price && (
-                <p className="mt-1 text-sm text-red-500">{validationErrors.price}</p>
-              )}
-            </div>
-            <div>
-              <label className="text-sm font-medium text-foreground">Currency</label>
-              <Input
-                type="text"
-                placeholder="USD"
-                value={formData.currency}
-                onChange={(e) => handleChange('currency', e.target.value)}
-                maxLength={3}
-                className={getInputClass('currency')}
-                data-testid="orders-currency"
-              />
-              {validationErrors.currency && (
-                <p className="mt-1 text-sm text-red-500">{validationErrors.currency}</p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Notes */}
-        <div className="space-y-4">
-          <h2 className="font-semibold text-foreground">Additional Information</h2>
-          <div>
-            <label className="text-sm font-medium text-foreground">Notes</label>
-            <textarea
-              placeholder="Any additional notes for this order"
-              value={formData.notes || ''}
-              onChange={(e) => handleChange('notes', e.target.value)}
-              maxLength={2000}
-              rows={2}
-              className={`mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ${
-                validationErrors.notes ? 'border-red-500' : ''
-              }`}
-              data-testid="orders-notes"
-            />
-            {validationErrors.notes && (
-              <p className="mt-1 text-sm text-red-500">{validationErrors.notes}</p>
-            )}
-          </div>
-          <div>
-            <label className="text-sm font-medium text-foreground">Delivery Notes</label>
-            <textarea
-              placeholder="Special instructions for delivery"
-              value={formData.deliveryNotes || ''}
-              onChange={(e) => handleChange('deliveryNotes', e.target.value)}
-              maxLength={2000}
-              rows={2}
-              className={`mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ${
-                validationErrors.deliveryNotes ? 'border-red-500' : ''
-              }`}
-              data-testid="orders-delivery-notes"
-            />
-            {validationErrors.deliveryNotes && (
-              <p className="mt-1 text-sm text-red-500">{validationErrors.deliveryNotes}</p>
-            )}
-          </div>
-        </div>
-
-        {/* Form Error */}
-        {createError && (
-          <div className="rounded-lg bg-destructive/10 p-4 text-sm text-destructive">
-            {createError}
-          </div>
-        )}
-
-        {/* Actions */}
-        <div className="flex gap-3 pt-6 border-t border-brand/10">
-          <Button
-            type="submit"
-            disabled={loading}
-            className="bg-gradient-brand text-brand-foreground hover:opacity-90"
-            data-testid="orders-submit-button"
-          >
-            {loading ? 'Creating...' : 'Create Order'}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => navigate({ to: '/app/orders' })}
-            disabled={loading}
-          >
-            Cancel
-          </Button>
+          </SurfaceCard>
         </div>
       </form>
     </div>

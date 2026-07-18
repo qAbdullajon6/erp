@@ -1,5 +1,6 @@
 import { Injectable, Logger, NestMiddleware } from "@nestjs/common";
 import type { NextFunction, Request, Response } from "express";
+import { redactUrlForLog } from "../log-redaction.util";
 
 /// Implemented as middleware rather than an interceptor: `res.on("finish")`
 /// fires after the exception filter has already set the final status code,
@@ -15,7 +16,11 @@ export class LoggingMiddleware implements NestMiddleware {
 
     res.on("finish", () => {
       const duration = Date.now() - start;
-      this.logger.log(`${req.method} ${req.originalUrl} ${res.statusCode} +${duration}ms`);
+      // Redact bearer secrets (the invitation token in /invite/:token) before
+      // logging — see redactUrlForLog.
+      this.logger.log(
+        `${req.method} ${redactUrlForLog(req.originalUrl)} ${res.statusCode} +${duration}ms`,
+      );
     });
 
     next();

@@ -6,6 +6,7 @@ import { ThrottlerStorageRedisService } from "@nest-lab/throttler-storage-redis"
 import configuration from "./config/configuration";
 import { PrismaModule } from "./prisma/prisma.module";
 import { AuditModule } from "./audit/audit.module";
+import { MailModule } from "./mail/mail.module";
 import { HealthModule } from "./health/health.module";
 import { AuthModule } from "./auth/auth.module";
 import { OrganizationsModule } from "./organizations/organizations.module";
@@ -22,6 +23,14 @@ import { ReportsModule } from "./reports/reports.module";
 import { NotificationsModule } from "./notifications/notifications.module";
 import { LeadsModule } from "./leads/leads.module";
 import { OnboardingModule } from "./onboarding/onboarding.module";
+import { InvitationModule } from "./invitations/invitation.module";
+import { CustomerPortalModule } from "./customer-portal/customer-portal.module";
+import { WorkflowsModule } from "./workflows/workflows.module";
+import { DeveloperModule } from "./developer/developer.module";
+import { PublicApiModule } from "./public-api/public-api.module";
+import { ImportModule } from "./import/import.module";
+import { AiModule } from "./ai/ai.module";
+import { testSupportImports } from "./test-support/test-support.module";
 import { LoggingMiddleware } from "./common/middleware/logging.middleware";
 
 @Module({
@@ -49,6 +58,7 @@ import { LoggingMiddleware } from "./common/middleware/logging.middleware";
     }),
     PrismaModule,
     AuditModule,
+    MailModule,
     HealthModule,
     AuthModule,
     OrganizationsModule,
@@ -65,6 +75,18 @@ import { LoggingMiddleware } from "./common/middleware/logging.middleware";
     NotificationsModule,
     OnboardingModule,
     LeadsModule,
+    InvitationModule,
+    CustomerPortalModule,
+    WorkflowsModule,
+    DeveloperModule,
+    PublicApiModule,
+    ImportModule,
+    AiModule,
+    // TEST-ONLY. Yields TestSupportModule under NODE_ENV=test and an empty list
+    // everywhere else, so a production build registers zero extra routes and
+    // zero extra providers. The e2e suite needs it because a raw invitation
+    // token is never persisted — only its hash — so it is otherwise unreachable.
+    ...testSupportImports(),
   ],
   providers: [
     // Disabled under NODE_ENV=test: e2e tests deliberately make many rapid

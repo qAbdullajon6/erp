@@ -48,6 +48,11 @@ services:
       retries: 10
 
   api:
+    # API_IMAGE lets a deploy PULL a prebuilt image (CI built it and pushed it to
+    # GHCR) instead of building on the box. Unset, it falls back to this local tag
+    # and the `build:` below runs — the original single-VPS behaviour, unchanged.
+    # deploy.sh chooses pull vs. build from whether API_IMAGE is set.
+    image: ${API_IMAGE:-flowerp-staging-api:local}
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -69,6 +74,13 @@ services:
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET is required}
       JWT_ACCESS_EXPIRES_IN_SECONDS: ${JWT_ACCESS_EXPIRES_IN_SECONDS:-900}
       REFRESH_TOKEN_EXPIRES_IN_DAYS: ${REFRESH_TOKEN_EXPIRES_IN_DAYS:-30}
+      # Frontend origin the invite link points at (the Vercel origin the browser
+      # loads). NODE_ENV is production here, so the API requires it to boot.
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:?APP_PUBLIC_URL is required, e.g. https://staging.flowerp.uz}
+      INVITATION_EXPIRES_IN_DAYS: ${INVITATION_EXPIRES_IN_DAYS:-7}
+      # Optional: empty means no SMTP transport, so the mail layer logs the link.
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-}
     expose:
       - "4000"
 

@@ -4,6 +4,7 @@ import { AuditService } from "../audit/audit.service";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { isValidEntityCode } from "../common/sequential-code.util";
 import { PrismaService } from "../prisma/prisma.service";
+import { WorkflowEventService } from "../workflows/triggers/workflow-event.service";
 import { generateUniqueDriverCode } from "./driver-code.util";
 import { CreateDriverDto } from "./dto/create-driver.dto";
 import { ListDriversQueryDto } from "./dto/list-drivers-query.dto";
@@ -14,6 +15,7 @@ export class DriversService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly workflowEvents: WorkflowEventService,
   ) {}
 
   async list(organizationId: string, query: ListDriversQueryDto) {
@@ -98,6 +100,8 @@ export class DriversService {
       entityId: driver.id,
       metadata: { employeeCode: driver.employeeCode },
     });
+
+    this.workflowEvents.emit(organizationId, "driver.created", { id: driver.id, employeeCode: driver.employeeCode, firstName: driver.firstName, lastName: driver.lastName });
 
     return this.toResponse(driver);
   }

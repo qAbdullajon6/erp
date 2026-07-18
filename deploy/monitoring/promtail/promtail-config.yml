@@ -1,0 +1,36 @@
+# Promtail tails every Docker container's JSON log file and ships it to Loki,
+# labelled by container name so you can filter to the API, web, Caddy, Postgres
+# or Redis. No application change needed — they all already log to stdout.
+server:
+  http_listen_port: 9080
+  log_level: warn
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 15s
+    relabel_configs:
+      # Human-readable container name -> `container` label.
+      - source_labels: ["__meta_docker_container_name"]
+        regex: "/(.*)"
+        target_label: container
+      # Compose service + project, when present.
+      - source_labels: ["__meta_docker_container_label_com_docker_compose_service"]
+        target_label: compose_service
+      - source_labels: ["__meta_docker_container_label_com_docker_compose_project"]
+        target_label: compose_project
+    pipeline_stages:
+      # The API and Caddy emit structured lines; keep them intact. Drop the noisy
+      # per-request health-poll lines so the log volume stays about real events.
+      - match:
+          selector: '{container=~".*caddy.*"}'
+          stages:
+            - drop:
+                expression: ".*/health.*"

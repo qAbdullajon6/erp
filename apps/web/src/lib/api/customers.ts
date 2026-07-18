@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { unwrapResponse } from './error';
 import { apiFetch } from './fetch';
 
 // Types matching backend contract exactly
@@ -103,12 +104,7 @@ class CustomersAPI {
 
       const response = await apiFetch(url, { method: 'GET' });
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch customers: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      return result.data;
+      return unwrapResponse(response, 'Failed to fetch customers');
     } catch (error) {
       console.error('Error fetching customers:', error);
       throw error;
@@ -119,12 +115,7 @@ class CustomersAPI {
     try {
       const response = await apiFetch(`${this.baseUrl}/customers/${id}`, { method: 'GET' });
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch customer: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      return result.data;
+      return unwrapResponse(response, 'Failed to fetch customer');
     } catch (error) {
       console.error('Error fetching customer:', error);
       throw error;
@@ -138,13 +129,7 @@ class CustomersAPI {
         body: JSON.stringify(data),
       });
 
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: { message: 'Failed to create customer' } }));
-        throw new Error(error.error?.message || 'Failed to create customer');
-      }
-
-      const result = await response.json();
-      return result.data;
+      return unwrapResponse(response, 'Failed to create customer');
     } catch (error) {
       console.error('Error creating customer:', error);
       throw error;
@@ -158,13 +143,7 @@ class CustomersAPI {
         body: JSON.stringify(data),
       });
 
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: { message: 'Failed to update customer' } }));
-        throw new Error(error.error?.message || 'Failed to update customer');
-      }
-
-      const result = await response.json();
-      return result.data;
+      return unwrapResponse(response, 'Failed to update customer');
     } catch (error) {
       console.error('Error updating customer:', error);
       throw error;
@@ -177,12 +156,7 @@ class CustomersAPI {
         method: 'POST',
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to archive customer');
-      }
-
-      const result = await response.json();
-      return result.data;
+      return unwrapResponse(response, 'Failed to archive customer');
     } catch (error) {
       console.error('Error archiving customer:', error);
       throw error;
@@ -195,12 +169,7 @@ class CustomersAPI {
         method: 'POST',
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to restore customer');
-      }
-
-      const result = await response.json();
-      return result.data;
+      return unwrapResponse(response, 'Failed to restore customer');
     } catch (error) {
       console.error('Error restoring customer:', error);
       throw error;

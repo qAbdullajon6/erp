@@ -4,6 +4,7 @@ import { AuditService } from "../audit/audit.service";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { isValidEntityCode } from "../common/sequential-code.util";
 import { PrismaService } from "../prisma/prisma.service";
+import { WorkflowEventService } from "../workflows/triggers/workflow-event.service";
 import { CreateVehicleDto } from "./dto/create-vehicle.dto";
 import { ListVehiclesQueryDto } from "./dto/list-vehicles-query.dto";
 import { UpdateVehicleDto } from "./dto/update-vehicle.dto";
@@ -14,6 +15,7 @@ export class VehiclesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly workflowEvents: WorkflowEventService,
   ) {}
 
   async list(organizationId: string, query: ListVehiclesQueryDto) {
@@ -87,6 +89,8 @@ export class VehiclesService {
       entityId: vehicle.id,
       metadata: { vehicleCode: vehicle.vehicleCode, plateNumber: vehicle.plateNumber },
     });
+
+    this.workflowEvents.emit(organizationId, "vehicle.created", { id: vehicle.id, vehicleCode: vehicle.vehicleCode, plateNumber: vehicle.plateNumber });
 
     return this.toResponse(vehicle);
   }

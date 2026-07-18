@@ -1,3 +1,4 @@
+import { unwrapResponse } from './error';
 import { apiFetch } from './fetch';
 import { useState, useCallback, useEffect } from 'react';
 
@@ -82,22 +83,12 @@ class VehiclesAPI {
       `/api/vehicles${params.size > 0 ? `?${params.toString()}` : ''}`,
       { method: 'GET' }
     );
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || `Failed to fetch vehicles: ${response.statusText}`);
-    }
-    const result = await response.json();
-    return result.data || result;
+    return unwrapResponse(response, 'Failed to fetch vehicles');
   }
 
   async getById(id: string): Promise<Vehicle> {
     const response = await apiFetch(`/api/vehicles/${id}`, { method: 'GET' });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || `Failed to fetch vehicle: ${response.statusText}`);
-    }
-    const result = await response.json();
-    return result.data || result;
+    return unwrapResponse(response, 'Failed to fetch vehicle');
   }
 
   async create(input: CreateVehicleInput): Promise<Vehicle> {
@@ -106,12 +97,7 @@ class VehiclesAPI {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
     });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || 'Failed to create vehicle');
-    }
-    const result = await response.json();
-    return result.data || result;
+    return unwrapResponse(response, 'Failed to create vehicle');
   }
 
   async update(id: string, input: UpdateVehicleInput): Promise<Vehicle> {
@@ -120,32 +106,17 @@ class VehiclesAPI {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
     });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || 'Failed to update vehicle');
-    }
-    const result = await response.json();
-    return result.data || result;
+    return unwrapResponse(response, 'Failed to update vehicle');
   }
 
   async archive(id: string): Promise<Vehicle> {
     const response = await apiFetch(`/api/vehicles/${id}/archive`, { method: 'POST' });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || 'Failed to archive vehicle');
-    }
-    const result = await response.json();
-    return result.data || result;
+    return unwrapResponse(response, 'Failed to archive vehicle');
   }
 
   async restore(id: string): Promise<Vehicle> {
     const response = await apiFetch(`/api/vehicles/${id}/restore`, { method: 'POST' });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || 'Failed to restore vehicle');
-    }
-    const result = await response.json();
-    return result.data || result;
+    return unwrapResponse(response, 'Failed to restore vehicle');
   }
 }
 

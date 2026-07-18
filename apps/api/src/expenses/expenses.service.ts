@@ -4,6 +4,7 @@ import { AuditService } from "../audit/audit.service";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { isValidEntityCode } from "../common/sequential-code.util";
 import { PrismaService } from "../prisma/prisma.service";
+import { WorkflowEventService } from "../workflows/triggers/workflow-event.service";
 import { CreateExpenseDto } from "./dto/create-expense.dto";
 import { ListExpensesQueryDto } from "./dto/list-expenses-query.dto";
 import { RejectExpenseDto } from "./dto/reject-expense.dto";
@@ -15,6 +16,7 @@ export class ExpensesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly workflowEvents: WorkflowEventService,
   ) {}
 
   async list(organizationId: string, query: ListExpensesQueryDto) {
@@ -101,6 +103,8 @@ export class ExpensesService {
       metadata: { expenseNumber, amount: expense.amount.toString() },
     });
 
+    this.workflowEvents.emit(organizationId, "expense.created", { id: expense.id, expenseNumber, amount: expense.amount.toString() });
+
     return this.toResponse(expense);
   }
 
@@ -163,6 +167,8 @@ export class ExpensesService {
       entityType: "Expense",
       entityId: id,
     });
+
+    this.workflowEvents.emit(organizationId, "expense.approved", { id, expenseNumber: expense.expenseNumber, amount: expense.amount.toString() });
 
     return this.toResponse(expense);
   }

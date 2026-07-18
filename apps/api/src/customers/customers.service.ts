@@ -3,6 +3,7 @@ import { Customer, Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { PrismaService } from "../prisma/prisma.service";
+import { WorkflowEventService } from "../workflows/triggers/workflow-event.service";
 import { generateUniqueCustomerCode, isValidCustomerCode } from "./customer-code.util";
 import { CreateCustomerDto } from "./dto/create-customer.dto";
 import { ListCustomersQueryDto } from "./dto/list-customers-query.dto";
@@ -13,6 +14,7 @@ export class CustomersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly workflowEvents: WorkflowEventService,
   ) {}
 
   async list(organizationId: string, query: ListCustomersQueryDto) {
@@ -91,6 +93,8 @@ export class CustomersService {
       metadata: { customerCode: customer.customerCode, companyName: customer.companyName },
     });
 
+    this.workflowEvents.emit(organizationId, "customer.created", { id: customer.id, customerCode: customer.customerCode, companyName: customer.companyName });
+
     return this.toResponse(customer);
   }
 
@@ -133,6 +137,8 @@ export class CustomersService {
       entityId: id,
       metadata: { changes: dto },
     });
+
+    this.workflowEvents.emit(organizationId, "customer.updated", { id, companyName: updated.companyName, changes: dto });
 
     return this.toResponse(updated);
   }

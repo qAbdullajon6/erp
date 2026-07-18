@@ -15,7 +15,74 @@ export interface AuthConfig {
   refreshTokenExpiresInDays: number;
 }
 
-export default (): { app: AppConfig; auth: AuthConfig } => {
+export interface InvitationConfig {
+  /// Base URL of the frontend (the origin the browser loads), used later to
+  /// build the invitation accept link, e.g.
+  /// `${appPublicUrl}/auth/accept-invite?token=...`. Required in production —
+  /// an empty value there produces dead invite links.
+  appPublicUrl: string;
+  /// How long an invitation stays valid, in days. A positive integer; expiry
+  /// (Invitation.expiresAt) is derived from this when an invite is sent.
+  expiresInDays: number;
+  /// Optional SMTP transport placeholders, wired up in the mail phase. Absent
+  /// (undefined) means no real transport is configured, so the mail layer
+  /// falls back to logging the link in development. SMTP_URL may embed
+  /// credentials — it is read here but never logged.
+  smtpUrl?: string;
+  mailFrom?: string;
+}
+
+export interface WebhookConfig {
+  /// Whether outbound webhooks may target private/loopback addresses.
+  ///
+  /// Exists so a developer can point a webhook at a local receiver
+  /// (http://localhost:9000/hook) while the SSRF guard still blocks those
+  /// everywhere real. Forced to false in production regardless of the
+  /// environment variable — see the check in the factory below: a
+  /// misconfigured deploy must not be able to switch SSRF protection off.
+  allowPrivateTargets: boolean;
+  /// Per-attempt HTTP timeout, milliseconds.
+  timeoutMs: number;
+  /// How many times a delivery is attempted in total before it is FAILED.
+  maxAttempts: number;
+}
+
+export interface AiConfig {
+  /// Which vendor serves the Copilot: "anthropic" | "openai" | "gemini" |
+  /// "ollama". Switching is configuration only — see ProviderFactory.
+  provider: string;
+  /// Explicit model id. Empty means "the active provider's default".
+  model: string;
+  /// Absent means that provider is unconfigured, and the factory refuses to
+  /// select it rather than failing on a user's first message.
+  anthropicApiKey?: string;
+  openaiApiKey?: string;
+  geminiApiKey?: string;
+  /// Overridable so an OpenAI-compatible gateway (LiteLLM, Azure) can be used
+  /// without a new adapter.
+  openaiBaseUrl: string;
+  ollamaBaseUrl: string;
+  /// Ceiling on a single completion.
+  maxTokens: number;
+  temperature: number;
+  /// How many times the agent loop may round-trip to the model within one user
+  /// turn. Bounds both cost and runaway tool recursion.
+  maxToolIterations: number;
+  /// Wall-clock ceiling for one user turn, milliseconds.
+  requestTimeoutMs: number;
+  /// Per-user ceiling on Copilot turns per hour. The Copilot spends real money
+  /// per call, so this is a cost control as much as an abuse control.
+  rateLimitPerHour: number;
+}
+
+export default (): {
+  app: AppConfig;
+  auth: AuthConfig;
+  invitation: InvitationConfig;
+  webhook: WebhookConfig;
+  ai: AiConfig;
+} => {
+  const nodeEnv = process.env.NODE_ENV ?? "development";
   const jwtAccessSecret = process.env.JWT_ACCESS_SECRET ?? "";
 
   // Fail fast and loudly rather than boot with an empty/guessable JWT
@@ -26,10 +93,96 @@ export default (): { app: AppConfig; auth: AuthConfig } => {
     );
   }
 
+  // Only required in production: locally and in tests the browser loads the web
+  // app from Vite on :3000, and no invitation email is actually sent.
+  const appPublicUrl = process.env.APP_PUBLIC_URL ?? "";
+  if (nodeEnv === "production" && !appPublicUrl) {
+    throw new Error(
+      "APP_PUBLIC_URL is not set. It is required in production to build invitation links, e.g. https://app.flowerp.uz",
+    );
+  }
+
+  const invitationExpiresInDays = parseInt(process.env.INVITATION_EXPIRES_IN_DAYS ?? "7", 10);
+  if (!Number.isInteger(invitationExpiresInDays) || invitationExpiresInDays <= 0) {
+    throw new Error(
+      "INVITATION_EXPIRES_IN_DAYS must be a positive integer number of days (default 7).",
+    );
+  }
+
+  // SSRF protection is not negotiable in production. Reading the flag and
+  // then ANDing it with the environment (rather than trusting the variable)
+  // means the only way to disable the guard in prod is to change this line
+  // in review — not to set a variable on a box.
+  const allowPrivateTargets =
+    nodeEnv !== "production" && process.env.WEBHOOK_ALLOW_PRIVATE_TARGETS === "true";
+
+  const webhookTimeoutMs = parseInt(process.env.WEBHOOK_TIMEOUT_MS ?? "10000", 10);
+  if (!Number.isInteger(webhookTimeoutMs) || webhookTimeoutMs <= 0) {
+    throw new Error("WEBHOOK_TIMEOUT_MS must be a positive integer number of milliseconds (default 10000).");
+  }
+
+  const webhookMaxAttempts = parseInt(process.env.WEBHOOK_MAX_ATTEMPTS ?? "5", 10);
+  if (!Number.isInteger(webhookMaxAttempts) || webhookMaxAttempts <= 0) {
+    throw new Error("WEBHOOK_MAX_ATTEMPTS must be a positive integer (default 5).");
+  }
+
+  const aiProvider = (process.env.AI_PROVIDER ?? "anthropic").toLowerCase();
+  const KNOWN_AI_PROVIDERS = ["anthropic", "openai", "gemini", "ollama"];
+  if (!KNOWN_AI_PROVIDERS.includes(aiProvider)) {
+    throw new Error(
+      `AI_PROVIDER must be one of: ${KNOWN_AI_PROVIDERS.join(", ")} (got "${aiProvider}").`,
+    );
+  }
+
+  const aiMaxTokens = parseInt(process.env.AI_MAX_TOKENS ?? "4096", 10);
+  if (!Number.isInteger(aiMaxTokens) || aiMaxTokens <= 0) {
+    throw new Error("AI_MAX_TOKENS must be a positive integer (default 4096).");
+  }
+
+  const aiTemperature = Number.parseFloat(process.env.AI_TEMPERATURE ?? "0.2");
+  if (!Number.isFinite(aiTemperature) || aiTemperature < 0 || aiTemperature > 2) {
+    throw new Error("AI_TEMPERATURE must be between 0 and 2 (default 0.2).");
+  }
+
+  const aiMaxToolIterations = parseInt(process.env.AI_MAX_TOOL_ITERATIONS ?? "8", 10);
+  if (!Number.isInteger(aiMaxToolIterations) || aiMaxToolIterations <= 0) {
+    throw new Error("AI_MAX_TOOL_ITERATIONS must be a positive integer (default 8).");
+  }
+
+  const aiRateLimitPerHour = parseInt(process.env.AI_RATE_LIMIT_PER_HOUR ?? "120", 10);
+  if (!Number.isInteger(aiRateLimitPerHour) || aiRateLimitPerHour <= 0) {
+    throw new Error("AI_RATE_LIMIT_PER_HOUR must be a positive integer (default 120).");
+  }
+
+  const aiRequestTimeoutMs = parseInt(process.env.AI_REQUEST_TIMEOUT_MS ?? "120000", 10);
+  if (!Number.isInteger(aiRequestTimeoutMs) || aiRequestTimeoutMs <= 0) {
+    throw new Error("AI_REQUEST_TIMEOUT_MS must be a positive integer (default 120000).");
+  }
+
   return {
+    ai: {
+      provider: aiProvider,
+      model: process.env.AI_MODEL ?? "",
+      // Empty string -> undefined, so "configured" is a simple presence check.
+      anthropicApiKey: process.env.ANTHROPIC_API_KEY || undefined,
+      openaiApiKey: process.env.OPENAI_API_KEY || undefined,
+      geminiApiKey: process.env.GEMINI_API_KEY || undefined,
+      openaiBaseUrl: process.env.AI_OPENAI_BASE_URL ?? "https://api.openai.com/v1",
+      ollamaBaseUrl: process.env.AI_OLLAMA_BASE_URL ?? "http://127.0.0.1:11434",
+      maxTokens: aiMaxTokens,
+      temperature: aiTemperature,
+      maxToolIterations: aiMaxToolIterations,
+      requestTimeoutMs: aiRequestTimeoutMs,
+      rateLimitPerHour: aiRateLimitPerHour,
+    },
+    webhook: {
+      allowPrivateTargets,
+      timeoutMs: webhookTimeoutMs,
+      maxAttempts: webhookMaxAttempts,
+    },
     app: {
       port: parseInt(process.env.PORT ?? "4000", 10),
-      nodeEnv: process.env.NODE_ENV ?? "development",
+      nodeEnv,
       corsOrigins: (process.env.CORS_ORIGIN ?? "")
         .split(",")
         .map((origin) => origin.trim())
@@ -40,6 +193,14 @@ export default (): { app: AppConfig; auth: AuthConfig } => {
       jwtAccessSecret,
       jwtAccessExpiresInSeconds: parseInt(process.env.JWT_ACCESS_EXPIRES_IN_SECONDS ?? "900", 10),
       refreshTokenExpiresInDays: parseInt(process.env.REFRESH_TOKEN_EXPIRES_IN_DAYS ?? "30", 10),
+    },
+    invitation: {
+      appPublicUrl,
+      expiresInDays: invitationExpiresInDays,
+      // Empty string -> undefined, so the mail layer can treat "no transport
+      // configured" as a simple presence check.
+      smtpUrl: process.env.SMTP_URL || undefined,
+      mailFrom: process.env.MAIL_FROM || undefined,
     },
   };
 };

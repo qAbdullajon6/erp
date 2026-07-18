@@ -20,11 +20,24 @@ RUN npm run build
 FROM node:24-alpine AS runtime
 WORKDIR /app
 
+# Real init: forwards SIGTERM to the Nitro server and reaps zombies, so
+# `docker stop` shuts the SSR server down cleanly instead of SIGKILLing it.
+RUN apk add --no-cache tini
+
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOST=0.0.0.0
 
-COPY --from=build /repo/apps/web/.output ./.output
+# Owned by the unprivileged `node` user (uid 1000, ships with the image); the
+# SSR server only reads its own bundle.
+COPY --from=build --chown=node:node /repo/apps/web/.output ./.output
 
+USER node
 EXPOSE 3000
+
+# The SSR root answers 200; a failed check restarts the container.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD wget -q --spider http://127.0.0.1:3000/ || exit 1
+
+ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", ".output/server/index.mjs"]

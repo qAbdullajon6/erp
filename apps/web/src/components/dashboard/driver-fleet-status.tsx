@@ -1,5 +1,7 @@
 import type { DispatchBoardSummary } from "@/lib/api/dashboard";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SurfaceCard } from "@/components/ui/surface-card";
+import { SectionHeader } from "@/components/ui/section-header";
 
 interface DriverFleetStatusProps {
   board: DispatchBoardSummary | null;
@@ -13,21 +15,21 @@ export function DriverFleetStatus({ board, loading }: DriverFleetStatusProps) {
 
   if (!board) {
     return (
-      <div className="overflow-hidden rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50 p-6">
-        <h3 className="font-display text-lg font-bold text-foreground">Fleet Status</h3>
+      <SurfaceCard className="p-6">
+        <SectionHeader title="Fleet Status" />
         <p className="mt-3 text-sm text-muted-foreground">Fleet status isn't available for your role.</p>
-      </div>
+      </SurfaceCard>
     );
   }
 
   const driversAvailable = board.drivers.available.length;
   const driversBusy = board.drivers.busy.length;
-  const driversOnLeave = (board.drivers.onLeave as unknown[] | undefined)?.length ?? 0;
+  const driversOnLeave = board.drivers.onLeave.length;
   const totalDrivers = driversAvailable + driversBusy + driversOnLeave;
 
   const vehiclesAvailable = board.vehicles.available.length;
   const vehiclesBusy = board.vehicles.busy.length;
-  const vehiclesMaintenance = (board.vehicles.maintenance as unknown[] | undefined)?.length ?? 0;
+  const vehiclesMaintenance = board.vehicles.maintenance.length;
   const totalVehicles = vehiclesAvailable + vehiclesBusy + vehiclesMaintenance;
 
   const fleet = [
@@ -38,11 +40,8 @@ export function DriverFleetStatus({ board, loading }: DriverFleetStatusProps) {
   ];
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50 p-6">
-      <h3 className="font-display text-lg font-bold text-foreground">Fleet Status</h3>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {totalDrivers} drivers · {totalVehicles} vehicles
-      </p>
+    <SurfaceCard className="p-6">
+      <SectionHeader title="Fleet Status" subtitle={`${totalDrivers} drivers · ${totalVehicles} vehicles`} />
       <div className="mt-6 space-y-4">
         {fleet.map((item) => (
           <div key={item.label}>
@@ -61,6 +60,6 @@ export function DriverFleetStatus({ board, loading }: DriverFleetStatusProps) {
           </div>
         ))}
       </div>
-    </div>
+    </SurfaceCard>
   );
 }

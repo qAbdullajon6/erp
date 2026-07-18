@@ -1,8 +1,8 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, Inbox } from 'lucide-react';
+import { AlertCircle, Inbox, type LucideProps } from 'lucide-react';
 
 /// The three states every list screen goes through before it can show rows.
 /// Previously each module hand-rolled these with hardcoded greys and reds,
@@ -39,18 +39,23 @@ export function EmptyState({
   title,
   description,
   action,
+  icon: Icon = Inbox,
 }: {
   title: string;
   description?: string;
   action?: ReactNode;
+  /// Defaults to the generic Inbox glyph every list screen already used —
+  /// pass a fitting icon (TrendingUp, PackageCheck, ...) for a context that
+  /// warrants one, rather than reaching for a new empty-state component.
+  icon?: ComponentType<LucideProps>;
 }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
-      <div className="rounded-full bg-muted p-3">
-        <Inbox className="h-6 w-6 text-muted-foreground" />
+      <div className="rounded-full bg-muted p-4">
+        <Icon className="h-7 w-7 text-muted-foreground" />
       </div>
       <p className="mt-4 font-medium text-foreground">{title}</p>
-      {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
+      {description ? <p className="mx-auto mt-1 max-w-xs text-sm text-muted-foreground">{description}</p> : null}
       {action ? <div className="mt-4">{action}</div> : null}
     </div>
   );

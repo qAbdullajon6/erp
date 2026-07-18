@@ -2,12 +2,11 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft, Phone, MapPin } from 'lucide-react';
-import { formatMoney } from '@/lib/format';
+import { describeError } from '@/lib/api/describe-error';
 import {
   useMyDeliveryQuery,
   useUpdateMyDeliveryStatusMutation,
   type DriverActionableStatus,
-  type DriverOrderStatus,
 } from '@/lib/api/my-deliveries';
 
 interface DeliveryDetailProps {
@@ -15,21 +14,29 @@ interface DeliveryDetailProps {
   onBack: () => void;
 }
 
+/// Wording, not rules — the DISPATCH's stages, as a driver would say them.
 const STATUS_LABELS: Record<string, string> = {
   ASSIGNED: 'Assigned',
-  PICKED_UP: 'Picked Up',
-  IN_TRANSIT: 'In Transit',
+  EN_ROUTE_TO_PICKUP: 'On the way to pickup',
+  AT_PICKUP: 'At pickup',
+  IN_TRANSIT: 'In transit',
   DELIVERED: 'Delivered',
   CANCELLED: 'Cancelled',
 };
 
-// Mirrors the backend's ALLOWED_TRANSITIONS + DRIVER_ALLOWED_STATUSES
-// exactly (see OrdersService) — ASSIGNED and CANCELLED are never reachable
-// from here, only the forward driver-safe path.
-const NEXT_STATUS: Partial<Record<DriverOrderStatus, { status: DriverActionableStatus; label: string }>> = {
-  ASSIGNED: { status: 'PICKED_UP', label: 'Mark as Picked Up' },
-  PICKED_UP: { status: 'IN_TRANSIT', label: 'Mark as In Transit' },
-  IN_TRANSIT: { status: 'DELIVERED', label: 'Mark as Delivered' },
+/// What each driver-safe move is CALLED on the button. Which of them is actually
+/// OFFERED comes from the server, on the dispatch itself (Task 8.12). This file used
+/// to mirror two backend tables at once; now it mirrors none.
+///
+/// EN_ROUTE_TO_PICKUP is new here. A driver could not previously record setting off —
+/// the state existed on the dispatch, but only the order API was reachable, and it
+/// walked through EN_ROUTE_TO_PICKUP silently on their behalf when they finally
+/// arrived, stamping it with the wrong time.
+const ACTION_LABEL: Record<DriverActionableStatus, string> = {
+  EN_ROUTE_TO_PICKUP: 'On my way to pickup',
+  AT_PICKUP: 'Arrived at pickup',
+  IN_TRANSIT: 'Loaded — on the road',
+  DELIVERED: 'Mark as Delivered',
 };
 
 function mapLink(address: string, city: string): string | null {
@@ -47,7 +54,7 @@ export function DeliveryDetail({ deliveryId, onBack }: DeliveryDetailProps) {
       await mutateAsync({ status: next });
       toast.success(`Marked as ${STATUS_LABELS[next]}`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update status');
+      toast.error(describeError(err, 'Failed to update status'));
     }
   };
 
@@ -79,26 +86,27 @@ export function DeliveryDetail({ deliveryId, onBack }: DeliveryDetailProps) {
         <div className="space-y-4">
           <div className="rounded-xl border border-brand/10 bg-surface p-5">
             <div className="flex items-center justify-between">
-              <h1 className="font-display text-xl font-bold text-foreground">{delivery.orderNumber}</h1>
+              <h1 className="font-display text-xl font-bold text-foreground">
+                {delivery.dispatchNumber}
+              </h1>
               <span className="rounded-full bg-brand/10 px-3 py-1 text-sm font-medium text-brand">
                 {STATUS_LABELS[delivery.status] ?? delivery.status}
               </span>
             </div>
-            {delivery.isDelayed && (
-              <p className="mt-2 text-sm font-medium text-destructive">This delivery is running late.</p>
-            )}
-            <p className="mt-3 text-2xl font-bold text-foreground">{formatMoney(delivery.price, delivery.currency)}</p>
+            <p className="mt-2 font-mono text-sm text-muted-foreground">
+              {delivery.order.orderNumber}
+            </p>
           </div>
 
           <div className="rounded-xl border border-brand/10 bg-surface p-5">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Pickup</h2>
             <p className="mt-2 font-medium text-foreground">
-              {delivery.pickupAddress}, {delivery.pickupCity}
+              {delivery.order.pickupAddress}, {delivery.order.pickupCity}
             </p>
-            <p className="mt-1 text-sm text-muted-foreground">{new Date(delivery.pickupDate).toLocaleString()}</p>
-            {mapLink(delivery.pickupAddress, delivery.pickupCity) && (
+            <p className="mt-1 text-sm text-muted-foreground">{new Date(delivery.pickupDateScheduled).toLocaleString()}</p>
+            {mapLink(delivery.order.pickupAddress, delivery.order.pickupCity) && (
               <a
-                href={mapLink(delivery.pickupAddress, delivery.pickupCity)!}
+                href={mapLink(delivery.order.pickupAddress, delivery.order.pickupCity)!}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="mt-3 inline-flex items-center gap-2 rounded-lg bg-brand/10 px-4 py-2 text-sm font-medium text-brand"
@@ -112,13 +120,13 @@ export function DeliveryDetail({ deliveryId, onBack }: DeliveryDetailProps) {
           <div className="rounded-xl border border-brand/10 bg-surface p-5">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Delivery</h2>
             <p className="mt-2 font-medium text-foreground">
-              {delivery.deliveryAddress}, {delivery.deliveryCity}
+              {delivery.order.deliveryAddress}, {delivery.order.deliveryCity}
             </p>
-            <p className="mt-1 text-sm text-muted-foreground">{new Date(delivery.deliveryDate).toLocaleString()}</p>
-            {delivery.deliveryNotes && <p className="mt-2 text-sm text-muted-foreground">Note: {delivery.deliveryNotes}</p>}
-            {mapLink(delivery.deliveryAddress, delivery.deliveryCity) && (
+            <p className="mt-1 text-sm text-muted-foreground">{new Date(delivery.deliveryDateScheduled).toLocaleString()}</p>
+            {delivery.order.deliveryNotes && <p className="mt-2 text-sm text-muted-foreground">Note: {delivery.order.deliveryNotes}</p>}
+            {mapLink(delivery.order.deliveryAddress, delivery.order.deliveryCity) && (
               <a
-                href={mapLink(delivery.deliveryAddress, delivery.deliveryCity)!}
+                href={mapLink(delivery.order.deliveryAddress, delivery.order.deliveryCity)!}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="mt-3 inline-flex items-center gap-2 rounded-lg bg-brand/10 px-4 py-2 text-sm font-medium text-brand"
@@ -149,16 +157,13 @@ export function DeliveryDetail({ deliveryId, onBack }: DeliveryDetailProps) {
 
           <div className="rounded-xl border border-brand/10 bg-surface p-5">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Cargo</h2>
-            <p className="mt-2 text-foreground">{delivery.cargoDescription}</p>
+            <p className="mt-2 text-foreground">{delivery.order.cargoDescription}</p>
             <div className="mt-2 flex gap-4 text-sm text-muted-foreground">
-              {delivery.cargoWeightKg && <span>{delivery.cargoWeightKg} kg</span>}
-              {delivery.cargoVolumeM3 && <span>{delivery.cargoVolumeM3} m³</span>}
+              {delivery.order.cargoWeightKg && <span>{delivery.order.cargoWeightKg} kg</span>}
             </div>
-            {delivery.vehicle && (
-              <p className="mt-2 text-sm text-muted-foreground">
-                Vehicle: {delivery.vehicle.plateNumber} ({delivery.vehicle.type})
-              </p>
-            )}
+            <p className="mt-2 text-sm text-muted-foreground">
+              Vehicle: {delivery.vehicle.plateNumber} ({delivery.vehicle.type})
+            </p>
             {delivery.notes && <p className="mt-2 text-sm text-muted-foreground">Note: {delivery.notes}</p>}
           </div>
 
@@ -176,16 +181,19 @@ export function DeliveryDetail({ deliveryId, onBack }: DeliveryDetailProps) {
             </div>
           )}
 
-          {NEXT_STATUS[delivery.status] && (
+          {/* The server already narrowed this to what a DRIVER may do from here, so
+              there is nothing to filter and nothing to decide (TD-006). */}
+          {delivery.allowedTransitions.map((next) => (
             <Button
+              key={next}
               size="lg"
-              onClick={() => handleAdvanceStatus(NEXT_STATUS[delivery.status]!.status)}
+              onClick={() => handleAdvanceStatus(next)}
               disabled={isPending}
               className="w-full gap-2 bg-gradient-brand py-6 text-base text-brand-foreground hover:opacity-90"
             >
-              {isPending ? 'Updating...' : NEXT_STATUS[delivery.status]!.label}
+              {isPending ? 'Updating...' : ACTION_LABEL[next]}
             </Button>
-          )}
+          ))}
         </div>
       )}
     </div>

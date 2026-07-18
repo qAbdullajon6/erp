@@ -1,4 +1,4 @@
-import { PrismaService } from "../prisma/prisma.service";
+import { Prisma } from "@prisma/client";
 import { nextSequentialCode } from "../common/sequential-code.util";
 
 const CODE_PREFIX = "DSP-";
@@ -8,7 +8,7 @@ const CODE_PAD_LENGTH = 6;
 /// for an organization — see common/sequential-code.util.ts for the
 /// numeric-suffix algorithm this delegates to.
 export async function generateUniqueDispatchNumber(
-  prisma: PrismaService,
+  prisma: Prisma.TransactionClient,
   organizationId: string,
 ): Promise<string> {
   const existing = await prisma.dispatch.findMany({

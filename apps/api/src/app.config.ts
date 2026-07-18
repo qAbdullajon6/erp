@@ -1,5 +1,6 @@
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { Reflector } from "@nestjs/core";
 import { AllExceptionsFilter } from "./common/filters/http-exception.filter";
 import { TransformInterceptor } from "./common/interceptors/transform.interceptor";
 import type { AppConfig } from "./config/configuration";
@@ -25,5 +26,7 @@ export function configureApp(app: INestApplication): void {
     }),
   );
   app.useGlobalFilters(new AllExceptionsFilter());
-  app.useGlobalInterceptors(new TransformInterceptor());
+  // The Reflector comes from the container rather than `new Reflector()` so the
+  // interceptor reads the same metadata registry the decorators wrote to.
+  app.useGlobalInterceptors(new TransformInterceptor(app.get(Reflector)));
 }

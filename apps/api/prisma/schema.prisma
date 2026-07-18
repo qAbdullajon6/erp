@@ -48,6 +48,28 @@ enum MembershipStatus {
   REMOVED
 }
 
+/// Lifecycle of a staff invitation. There is deliberately no EXPIRED value —
+/// expiry is derived from `Invitation.expiresAt` at read time by the service
+/// layer (the same lazy pattern InvoiceStatus.OVERDUE uses), so no background
+/// job is needed to keep a stored status honest.
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+}
+
+enum CustomerPortalInvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+}
+
+enum CustomerPortalAccountStatus {
+  ACTIVE
+  SUSPENDED
+  DISABLED
+}
+
 enum CustomerPaymentTerms {
   DUE_ON_RECEIPT
   NET_15
@@ -175,22 +197,43 @@ model Organization {
   /// Soft-delete marker — an archived organization is never hard-deleted.
   deletedAt       DateTime?
 
-  memberships             Membership[]
-  auditLogs               AuditLog[]
-  refreshTokens           RefreshToken[]
-  customers               Customer[]
-  drivers                 Driver[]
-  vehicles                Vehicle[]
-  orders                  Order[]
-  orderStatusHistories    OrderStatusHistory[]
-  invoices                Invoice[]
-  payments                Payment[]
-  expenses                Expense[]
-  dispatches              Dispatch[]
-  dispatchStatusHistories DispatchStatusHistory[]
-  notifications           Notification[]
-  notificationSettings    NotificationSettings?
-  onboardingProgress      OnboardingProgress?
+  memberships               Membership[]
+  auditLogs                 AuditLog[]
+  refreshTokens             RefreshToken[]
+  customers                 Customer[]
+  drivers                   Driver[]
+  vehicles                  Vehicle[]
+  orders                    Order[]
+  orderStatusHistories      OrderStatusHistory[]
+  invoices                  Invoice[]
+  payments                  Payment[]
+  expenses                  Expense[]
+  dispatches                Dispatch[]
+  dispatchStatusHistories   DispatchStatusHistory[]
+  dispatchAssignments       DispatchAssignment[]
+  notifications             Notification[]
+  notificationSettings      NotificationSettings?
+  onboardingProgress        OnboardingProgress?
+  invitations               Invitation[]
+  customerPortalAccounts    CustomerPortalAccount[]
+  customerRefreshTokens     CustomerRefreshToken[]
+  customerPortalInvitations CustomerPortalInvitation[]
+  workflows                 Workflow[]
+  workflowVersions          WorkflowVersion[]
+  workflowExecutions        WorkflowExecution[]
+  workflowSchedules         WorkflowSchedule[]
+  workflowWebhooks          WorkflowWebhook[]
+  apiKeys                   ApiKey[]
+  webhookEndpoints          WebhookEndpoint[]
+  webhookDeliveries         WebhookDelivery[]
+  apiUsageRecords           ApiUsageRecord[]
+  importSessions            ImportSession[]
+  importRows                ImportRow[]
+  importErrors              ImportError[]
+  importMappings            ImportMapping[]
+  aiConversations           AiConversation[]
+  aiMemories                AiMemory[]
+  aiKnowledgeDocs           AiKnowledgeDoc[]
 
   @@map("organizations")
 }
@@ -199,39 +242,55 @@ model Organization {
 /// Organization (e.g. a consultant working with several logistics
 /// companies), each membership carrying its own role.
 model User {
-  id           String     @id @default(uuid())
-  email        String     @unique
-  firstName    String
-  lastName     String
+  id              String     @id @default(uuid())
+  email           String     @unique
+  firstName       String
+  lastName        String
   /// Argon2id hash — never the plaintext password, never returned by any
   /// endpoint. Nullable because a User can exist (invited into an
   /// organization by an admin) before ever setting a password.
-  passwordHash String?
-  status       UserStatus @default(ACTIVE)
+  passwordHash    String?
+  status          UserStatus @default(ACTIVE)
   /// FlowERP staff, not a customer. Grants access to platform-wide data that
   /// belongs to no organization — currently the Lead pipeline captured from
   /// the marketing site. Deliberately separate from MembershipRole.ADMIN,
   /// which only ever means "admin of one customer organization": a customer's
   /// admin must never see another company's demo request. Nothing in the
   /// product grants this flag; it is set by seed or by hand.
-  isPlatformAdmin Boolean @default(false)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  isPlatformAdmin Boolean    @default(false)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
   /// Soft-delete marker — see Organization.deletedAt.
-  deletedAt    DateTime?
+  deletedAt       DateTime?
 
-  memberships           Membership[]
-  refreshTokens         RefreshToken[]
-  auditLogEntries       AuditLog[]              @relation("AuditLogActor")
-  orderStatusChanges    OrderStatusHistory[]    @relation("OrderStatusChangedBy")
-  dispatchStatusChanges DispatchStatusHistory[] @relation("DispatchStatusChangedBy")
-  approvedExpenses      Expense[]               @relation("ExpenseApprovedBy")
-  createdDispatches     Dispatch[]              @relation("CreatedDispatches")
+  memberships                   Membership[]
+  refreshTokens                 RefreshToken[]
+  auditLogEntries               AuditLog[]                 @relation("AuditLogActor")
+  orderStatusChanges            OrderStatusHistory[]       @relation("OrderStatusChangedBy")
+  dispatchStatusChanges         DispatchStatusHistory[]    @relation("DispatchStatusChangedBy")
+  approvedExpenses              Expense[]                  @relation("ExpenseApprovedBy")
+  createdDispatches             Dispatch[]                 @relation("CreatedDispatches")
+  dispatchAssignmentChanges     DispatchAssignment[]       @relation("DispatchAssignmentChangedBy")
   /// Set when this login account belongs to a fleet driver, letting a
   /// DRIVER-role membership resolve "my deliveries" without ever accepting
   /// a client-supplied driverId. Most Users have no linked Driver at all
   /// (dispatchers/admins/etc. never get one) — see Driver.userId.
-  driverProfile         Driver?
+  driverProfile                 Driver?
+  /// Invitations this user sent as an org admin. Named relation for
+  /// consistency with the other nullable actor links above (AuditLogActor,
+  /// CreatedDispatches, ...), all of which SetNull when the actor is removed.
+  invitationsSent               Invitation[]               @relation("InvitationInvitedBy")
+  /// Customer-portal invitations this staff member sent. Named for
+  /// consistency with invitationsSent above; same SetNull-on-removal rule.
+  customerPortalInvitationsSent CustomerPortalInvitation[] @relation("CustomerPortalInvitationInvitedBy")
+  workflowsCreated              Workflow[]                 @relation("WorkflowCreatedBy")
+  workflowVersionsPublished     WorkflowVersion[]          @relation("WorkflowVersionPublishedBy")
+  apiKeysCreated                ApiKey[]                   @relation("ApiKeyCreatedBy")
+  webhookEndpointsCreated       WebhookEndpoint[]          @relation("WebhookEndpointCreatedBy")
+  importSessionsUploaded        ImportSession[]            @relation("ImportSessionUploadedBy")
+  importMappingsCreated         ImportMapping[]            @relation("ImportMappingCreatedBy")
+  aiConversations               AiConversation[]           @relation("AiConversationUser")
+  aiMemories                    AiMemory[]                 @relation("AiMemoryUser")
 
   @@map("users")
 }
@@ -282,6 +341,143 @@ model RefreshToken {
   @@index([userId])
   @@index([organizationId])
   @@map("refresh_tokens")
+}
+
+/// A pending invitation for a person to join one Organization with a given
+/// role. Deliberately separate from User/Membership: the invitee may not have
+/// a User row yet, so there is nothing to hang a Membership on until they
+/// accept — creating the User + Membership is the single transactional step
+/// that acceptance performs. Like RefreshToken, only the SHA-256 `tokenHash`
+/// is stored; the raw token lives only in the emailed link and is never
+/// persisted. A partial unique index (added by raw SQL in this model's
+/// migration, since Prisma's DSL can't express `WHERE ... IS NULL` or
+/// `lower(email)`) enforces "at most one open invitation per organization +
+/// email" — an open invite being one that is neither accepted nor revoked —
+/// so a resend rotates the token in place rather than stacking rows.
+model Invitation {
+  id              String           @id @default(uuid())
+  organizationId  String
+  /// Stored lowercase by the service layer; the partial unique index also
+  /// applies lower() so casing can never split "one open invite per email".
+  email           String
+  role            MembershipRole
+  tokenHash       String           @unique
+  status          InvitationStatus @default(PENDING)
+  invitedByUserId String?
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy    User?        @relation("InvitationInvitedBy", fields: [invitedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@map("invitations")
+}
+
+/// A pending invitation for a Customer's contact to gain portal access.
+/// Mirrors Invitation exactly (same token/hash/partial-unique-index/status
+/// pattern) but targets a Customer rather than granting a Membership+role —
+/// accepting one creates exactly one CustomerPortalAccount, never a User or
+/// Membership. A partial unique index (raw SQL in this model's migration,
+/// same reason as Invitation's) enforces "at most one open invitation per
+/// customer" — an open invite being one that is neither accepted nor
+/// revoked — so re-inviting rotates the token in place rather than
+/// stacking rows.
+model CustomerPortalInvitation {
+  id              String                         @id @default(uuid())
+  organizationId  String
+  customerId      String
+  /// Stored lowercase by the service layer, matching Invitation.email.
+  email           String
+  tokenHash       String                         @unique
+  status          CustomerPortalInvitationStatus @default(PENDING)
+  invitedByUserId String?
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime                       @default(now())
+  updatedAt       DateTime                       @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  invitedBy    User?        @relation("CustomerPortalInvitationInvitedBy", fields: [invitedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([customerId])
+  @@map("customer_portal_invitations")
+}
+
+/// A customer contact's portal login. Distinct from User/Membership: this is
+/// a different principal type entirely (a customer, not staff), authenticated
+/// by a separate JWT strategy against this table alone — see
+/// customer-portal/auth/strategies/customer-jwt.strategy.ts. One per Customer
+/// (customerId is unique); created only by CustomerPortalInvitation
+/// acceptance, never directly.
+model CustomerPortalAccount {
+  id             String                      @id @default(uuid())
+  organizationId String
+  customerId     String                      @unique
+  email          String
+  /// Argon2id hash via the shared PasswordService — same algorithm as
+  /// User.passwordHash, never the plaintext.
+  passwordHash   String
+  status         CustomerPortalAccountStatus @default(ACTIVE)
+  lastLoginAt    DateTime?
+  createdAt      DateTime                    @default(now())
+  updatedAt      DateTime                    @updatedAt
+
+  organization      Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer          Customer                   @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  refreshTokens     CustomerRefreshToken[]
+  notificationReads CustomerNotificationRead[]
+
+  @@unique([organizationId, email])
+  @@index([customerId])
+  @@index([organizationId])
+  @@map("customer_portal_accounts")
+}
+
+/// One refresh token = one customer-portal session. Mirrors RefreshToken
+/// exactly (opaque token, SHA-256 hash only, rotate-on-refresh) but scoped to
+/// a CustomerPortalAccount instead of a User.
+model CustomerRefreshToken {
+  id             String    @id @default(uuid())
+  accountId      String
+  organizationId String
+  tokenHash      String    @unique
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  account      CustomerPortalAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@index([organizationId])
+  @@map("customer_refresh_tokens")
+}
+
+/// Tracks which synthesized notification "keys" (see
+/// CustomerNotificationsService — the feed itself is assembled from Order/
+/// Invoice state, not stored) a portal account has marked read. No
+/// organizationId: an account can only ever mark its own notifications
+/// read, and accountId already scopes every query to one tenant.
+model CustomerNotificationRead {
+  id        String   @id @default(uuid())
+  accountId String
+  key       String
+  createdAt DateTime @default(now())
+
+  account CustomerPortalAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, key])
+  @@map("customer_notification_reads")
 }
 
 /// Append-only audit trail. `organizationId` is nullable specifically for
@@ -344,9 +540,18 @@ model Customer {
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  orders       Order[]
-  invoices     Invoice[]
+  organization      Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orders            Order[]
+  invoices          Invoice[]
+  /// The customer's single portal login, if the staff has enabled portal
+  /// access. Nullable: most Customer rows have no portal account at all —
+  /// creation only happens via CustomerPortalInvitation acceptance, never
+  /// as a side effect of creating the Customer itself.
+  portalAccount     CustomerPortalAccount?
+  /// History of portal-access invitations sent for this customer (usually
+  /// zero or one open at a time — see CustomerPortalInvitation's partial
+  /// unique index — but old accepted/revoked rows are kept, not deleted).
+  portalInvitations CustomerPortalInvitation[]
 
   @@unique([organizationId, customerCode])
   @@index([organizationId])
@@ -379,11 +584,12 @@ model Driver {
   /// managing the driver record. Most Driver rows have no linked User.
   userId         String?      @unique
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User?        @relation(fields: [userId], references: [id])
-  orders       Order[]
-  dispatches   Dispatch[]
-  expenses     Expense[]
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user                User?                @relation(fields: [userId], references: [id])
+  orders              Order[]
+  dispatches          Dispatch[]
+  dispatchAssignments DispatchAssignment[]
+  expenses            Expense[]
 
   @@unique([organizationId, employeeCode])
   @@index([organizationId])
@@ -412,10 +618,11 @@ model Vehicle {
   /// Soft-archive marker — there is no hard-delete endpoint for vehicles.
   archivedAt       DateTime?
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  orders       Order[]
-  dispatches   Dispatch[]
-  expenses     Expense[]
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orders              Order[]
+  dispatches          Dispatch[]
+  dispatchAssignments DispatchAssignment[]
+  expenses            Expense[]
 
   @@unique([organizationId, vehicleCode])
   @@index([organizationId])
@@ -526,6 +733,7 @@ model Dispatch {
   vehicle       Vehicle                 @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
   createdByUser User?                   @relation("CreatedDispatches", fields: [createdByUserId], references: [id], onDelete: SetNull)
   statusHistory DispatchStatusHistory[]
+  assignments   DispatchAssignment[]
 
   @@unique([organizationId, dispatchNumber])
   @@index([organizationId])
@@ -534,6 +742,55 @@ model Dispatch {
   @@index([driverId])
   @@index([vehicleId])
   @@map("dispatches")
+}
+
+/// Append-only assignment history for a dispatch (ADR-001 R9). The dispatch
+/// keeps its identity — and its number — across driver/vehicle replacement:
+/// each reassignment CLOSES the open row (stamps `unassignedAt`) and OPENS a new
+/// one. Nothing is ever overwritten, so "who drove what, when" survives.
+///
+/// This table is HISTORY, not the reservation. The reservation that makes
+/// double-booking impossible lives on Dispatch itself, as two GiST EXCLUDE
+/// constraints added by this model's migration (R1/R5) — a range-overlap rule
+/// Prisma's DSL cannot express.
+///
+/// Two database invariants are enforced by raw SQL in that migration, for the
+/// same reason:
+///   - at most one OPEN assignment per dispatch (partial unique on dispatchId
+///     WHERE unassignedAt IS NULL) — this is what makes "close, then open"
+///     the only legal way to reassign;
+///   - the driver/vehicle overlap exclusions on `dispatches`.
+model DispatchAssignment {
+  id              String    @id @default(uuid())
+  organizationId  String
+  dispatchId      String
+  driverId        String
+  vehicleId       String
+  assignedAt      DateTime  @default(now())
+  /// Null while this is the dispatch's CURRENT assignment. Exactly one open row
+  /// per dispatch is permitted (see the partial unique index).
+  unassignedAt    DateTime?
+  /// Nullable for system-initiated changes, and for consistency with the other
+  /// actor links (AuditLog.actorUserId, Dispatch.createdByUserId).
+  changedByUserId String?
+  /// Why the driver/vehicle was replaced. Free text; never parsed.
+  reason          String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  dispatch      Dispatch     @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+  /// Restrict, exactly like Dispatch.driver/vehicle: a driver or vehicle that
+  /// has ever been assigned must not be hard-deleted out from under the history.
+  driver        Driver       @relation(fields: [driverId], references: [id], onDelete: Restrict)
+  vehicle       Vehicle      @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  changedByUser User?        @relation("DispatchAssignmentChangedBy", fields: [changedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([dispatchId])
+  @@index([driverId])
+  @@index([vehicleId])
+  @@map("dispatch_assignments")
 }
 
 /// Append-only dispatch status history, similar to OrderStatusHistory.
@@ -794,4 +1051,757 @@ enum LeadStatus {
   CONTACTED
   QUALIFIED
   CLOSED
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// WORKFLOW ENGINE
+// ──────────────────────────────────────────────────────────────────────────────
+
+enum WorkflowStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum WorkflowExecutionStatus {
+  PENDING
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+  TIMED_OUT
+}
+
+enum WorkflowStepStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  SKIPPED
+  CANCELLED
+  WAITING
+}
+
+model Workflow {
+  id             String         @id @default(uuid())
+  organizationId String
+  name           String
+  description    String?
+  status         WorkflowStatus @default(DRAFT)
+  active         Boolean        @default(false)
+  /// JSON: trigger, conditions, actions, variables — the full definition
+  config         Json
+  /// Monotonically increasing per-workflow, bumped on each publish
+  version        Int            @default(1)
+  /// For optimistic locking
+  updatedSeq     Int            @default(0)
+  createdByUserId String
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organization   Organization   @relation(fields: [organizationId], references: [id])
+  createdBy      User           @relation("WorkflowCreatedBy", fields: [createdByUserId], references: [id])
+  versions       WorkflowVersion[]
+  executions     WorkflowExecution[]
+  schedules      WorkflowSchedule[]
+  webhooks       WorkflowWebhook[]
+
+  @@index([organizationId, status])
+  @@index([organizationId, active])
+  @@map("workflows")
+}
+
+model WorkflowVersion {
+  id             String         @id @default(uuid())
+  workflowId     String
+  organizationId String
+  version        Int
+  config         Json
+  publishedAt    DateTime       @default(now())
+  publishedByUserId String
+
+  workflow       Workflow        @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  organization   Organization   @relation(fields: [organizationId], references: [id])
+  publishedBy    User           @relation("WorkflowVersionPublishedBy", fields: [publishedByUserId], references: [id])
+  executions     WorkflowExecution[]
+
+  @@unique([workflowId, version])
+  @@index([organizationId])
+  @@map("workflow_versions")
+}
+
+model WorkflowExecution {
+  id             String                  @id @default(uuid())
+  workflowId     String
+  versionId      String?
+  organizationId String
+  trigger        String
+  eventPayload   Json?
+  status         WorkflowExecutionStatus @default(PENDING)
+  /// Execution context: variables accumulated during the run
+  context        Json?
+  startedAt      DateTime                @default(now())
+  completedAt    DateTime?
+  error          String?
+  /// Max duration in ms before timeout
+  timeoutMs      Int                     @default(300000)
+  /// Number of retries attempted
+  retryCount     Int                     @default(0)
+  /// Idempotency key to prevent duplicate executions
+  idempotencyKey String?
+
+  workflow       Workflow                @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  version        WorkflowVersion?       @relation(fields: [versionId], references: [id])
+  organization   Organization           @relation(fields: [organizationId], references: [id])
+  steps          WorkflowExecutionStep[]
+  logs           WorkflowLog[]
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([workflowId, status])
+  @@index([organizationId, status])
+  @@index([status, startedAt])
+  @@map("workflow_executions")
+}
+
+model WorkflowExecutionStep {
+  id           String             @id @default(uuid())
+  executionId  String
+  stepIndex    Int
+  actionType   String
+  actionConfig Json
+  status       WorkflowStepStatus @default(PENDING)
+  input        Json?
+  output       Json?
+  error        String?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  retryCount   Int                @default(0)
+
+  execution    WorkflowExecution  @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@index([executionId, stepIndex])
+  @@map("workflow_execution_steps")
+}
+
+model WorkflowLog {
+  id          String   @id @default(uuid())
+  executionId String
+  level       String   @default("INFO")
+  step        String?
+  message     String
+  details     Json?
+  createdAt   DateTime @default(now())
+
+  execution   WorkflowExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@index([executionId, createdAt])
+  @@map("workflow_logs")
+}
+
+model WorkflowTemplate {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  category    String   @default("general")
+  config      Json
+  builtIn     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+  @@map("workflow_templates")
+}
+
+model WorkflowSchedule {
+  id             String   @id @default(uuid())
+  workflowId     String
+  organizationId String
+  cronExpression String
+  timezone       String   @default("UTC")
+  active         Boolean  @default(true)
+  lastRunAt      DateTime?
+  nextRunAt      DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workflow       Workflow  @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([active, nextRunAt])
+  @@index([organizationId])
+  @@map("workflow_schedules")
+}
+
+model WorkflowWebhook {
+  id             String   @id @default(uuid())
+  workflowId     String
+  organizationId String
+  /// URL path segment used to route incoming webhooks
+  path           String
+  /// SHA-256 hash of the secret used to verify webhook signatures
+  secretHash     String
+  active         Boolean  @default(true)
+  lastCalledAt   DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workflow       Workflow  @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, path])
+  @@index([active])
+  @@map("workflow_webhooks")
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Developer Portal — API keys, webhooks, deliveries, usage
+// ─────────────────────────────────────────────────────────────────────
+
+enum ApiKeyStatus {
+  ACTIVE
+  DISABLED
+  REVOKED
+}
+
+enum WebhookDeliveryStatus {
+  PENDING
+  DELIVERING
+  DELIVERED
+  FAILED
+}
+
+enum WebhookAttemptStatus {
+  SUCCESS
+  FAILED
+}
+
+/// A third-party integration credential. Only the SHA-256 hash of the raw key
+/// is stored (same reasoning as RefreshToken/Invitation: the key is already
+/// high-entropy random, so a fast digest is the right primitive, not bcrypt).
+/// The raw value is returned exactly once — at create and at rotate.
+model ApiKey {
+  id             String       @id @default(uuid())
+  organizationId String
+  name           String
+  /// Human-identifiable leading segment (e.g. "flowerp_live_a1b2c3d4"), safe
+  /// to display and index. Never enough on its own to authenticate.
+  keyPrefix      String
+  /// SHA-256 hex digest of the raw key. The only stored form of the secret.
+  keyHash        String       @unique
+  scopes         String[]     @default([])
+  status         ApiKeyStatus @default(ACTIVE)
+  /// Null means the key never expires.
+  expiresAt      DateTime?
+  lastUsedAt     DateTime?
+  /// Per-key request ceiling within a rolling 60-second window.
+  rateLimitPerMinute Int      @default(120)
+  revokedAt      DateTime?
+  createdByUserId String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdBy      User         @relation("ApiKeyCreatedBy", fields: [createdByUserId], references: [id])
+  usageRecords   ApiUsageRecord[]
+
+  @@index([organizationId, status])
+  @@index([keyHash])
+  @@map("api_keys")
+}
+
+/// A customer-registered HTTP endpoint that receives event notifications.
+/// `secretHash` verifies nothing inbound — it is the HMAC key used to SIGN
+/// outbound payloads, so unlike an API key the raw value must be recoverable
+/// for signing. It is stored encrypted-at-rest via the app's secret, not
+/// hashed. See WebhookDispatcherService.sign().
+model WebhookEndpoint {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  url            String
+  /// Raw HMAC signing secret. Shown to the user at create and at rotate.
+  secret         String
+  events         String[] @default([])
+  isActive       Boolean  @default(true)
+  description    String?
+  /// Bumped on each secret rotation so a delivery records which secret signed it.
+  version        Int      @default(1)
+  lastSuccessAt  DateTime?
+  lastFailureAt  DateTime?
+  lastFailureReason String?
+  createdByUserId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdBy      User         @relation("WebhookEndpointCreatedBy", fields: [createdByUserId], references: [id])
+  deliveries     WebhookDelivery[]
+
+  @@index([organizationId, isActive])
+  @@map("webhook_endpoints")
+}
+
+/// One logical attempt to notify an endpoint of one event. Survives process
+/// restarts: a PENDING row is the queue, and the dispatcher picks it back up.
+model WebhookDelivery {
+  id             String                @id @default(uuid())
+  endpointId     String
+  organizationId String
+  event          String
+  /// The exact JSON body sent (or to be sent), frozen at enqueue time so a
+  /// replay reproduces the original payload rather than re-deriving it.
+  payload        Json
+  requestHeaders Json?
+  status         WebhookDeliveryStatus @default(PENDING)
+  httpStatus     Int?
+  responseBody   String?
+  errorMessage   String?
+  durationMs     Int?
+  attemptCount   Int                   @default(0)
+  /// When the dispatcher should next try. Exponential backoff sets this.
+  nextAttemptAt  DateTime?
+  /// Set when this delivery was created by replaying another one.
+  replayOfId     String?
+  /// Caller-supplied de-duplication key; a repeat within the same org is a no-op.
+  idempotencyKey String?
+  createdAt      DateTime              @default(now())
+  completedAt    DateTime?
+  failedAt       DateTime?
+
+  endpoint       WebhookEndpoint       @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  organization   Organization          @relation(fields: [organizationId], references: [id])
+  replayOf       WebhookDelivery?      @relation("DeliveryReplay", fields: [replayOfId], references: [id], onDelete: SetNull)
+  replays        WebhookDelivery[]     @relation("DeliveryReplay")
+  deliveryAttempts WebhookDeliveryAttempt[]
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([endpointId, createdAt])
+  @@index([status, nextAttemptAt])
+  @@index([organizationId, event])
+  @@map("webhook_deliveries")
+}
+
+/// One physical HTTP request within a delivery's retry sequence. Kept separate
+/// from WebhookDelivery so the full retry history is inspectable rather than
+/// overwritten by the last attempt.
+model WebhookDeliveryAttempt {
+  id             String               @id @default(uuid())
+  deliveryId     String
+  attemptNumber  Int
+  status         WebhookAttemptStatus
+  httpStatus     Int?
+  responseBody   String?
+  responseHeaders Json?
+  durationMs     Int?
+  errorMessage   String?
+  createdAt      DateTime             @default(now())
+
+  delivery       WebhookDelivery      @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@index([deliveryId, attemptNumber])
+  @@map("webhook_delivery_attempts")
+}
+
+/// One authenticated API request, recorded for usage analytics. Written on the
+/// response path by ApiUsageInterceptor and never read by request handling —
+/// so a write failure here can never fail a customer's API call.
+model ApiUsageRecord {
+  id             String   @id @default(uuid())
+  organizationId String
+  apiKeyId       String?
+  /// Route template (e.g. "/orders/:id"), not the concrete path — keeps
+  /// cardinality bounded and avoids recording ids in analytics.
+  endpoint       String
+  method         String
+  statusCode     Int
+  durationMs     Int
+  createdAt      DateTime @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  apiKey         ApiKey?      @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([apiKeyId, createdAt])
+  @@map("api_usage_records")
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Import Wizard — bulk data migration
+// ─────────────────────────────────────────────────────────────────────
+
+/// Mirrors the wizard's steps. The frontend's ImportStatus union
+/// (apps/web/src/lib/api/imports.ts) is the contract for the first six;
+/// CANCELLED is added for the cancel/resume path.
+enum ImportStatus {
+  PENDING
+  VALIDATING
+  VALIDATED
+  EXECUTING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+/// What to do when an incoming row matches an existing record on its natural
+/// key. Chosen by the user before execution, never inferred.
+enum ImportDuplicateStrategy {
+  /// Leave the existing record alone; count the row as skipped.
+  SKIP
+  /// Overwrite the existing record's mapped fields.
+  UPDATE
+  /// Abort the whole import on the first duplicate.
+  ERROR
+}
+
+/// Per-row outcome. Distinct from ImportStatus, which is per-session.
+enum ImportRowStatus {
+  PENDING
+  VALID
+  INVALID
+  IMPORTED
+  UPDATED
+  SKIPPED
+  FAILED
+}
+
+/// One upload and everything that happened to it. Long-lived: the row is the
+/// audit record of a migration, so it outlives the file itself.
+model ImportSession {
+  id             String       @id @default(uuid())
+  organizationId String
+  uploadedByUserId String
+  /// Which entity is being imported ("Customer", "Order", ...). A string, not
+  /// an enum, so a new entity type is a registry entry (see
+  /// import/registry/entity-registry.ts) rather than a migration.
+  entityType     String
+  status         ImportStatus @default(PENDING)
+  fileName       String
+  /// "csv" | "xlsx", detected from content, never trusted from the extension.
+  format         String
+  fileSizeBytes  Int
+  duplicateStrategy ImportDuplicateStrategy @default(SKIP)
+
+  /// The header row exactly as it appeared in the file.
+  headers        Json
+  /// Column index -> entity field name. Null until the user confirms a mapping;
+  /// the auto-detected default is offered but not persisted until chosen.
+  columnMapping  Json?
+
+  totalRows      Int @default(0)
+  validRows      Int @default(0)
+  invalidRows    Int @default(0)
+  processedRows  Int @default(0)
+  successfulRows Int @default(0)
+  updatedRows    Int @default(0)
+  failedRows     Int @default(0)
+  skippedRows    Int @default(0)
+
+  /// Set when the user asks to cancel. The engine checks it between batches
+  /// and stops — cooperative, because a half-written batch must still commit
+  /// or roll back as a unit.
+  cancelRequested Boolean @default(false)
+  /// Free-text reason a session as a whole failed (not a per-row error).
+  errorMessage   String?
+
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  uploadedBy     User         @relation("ImportSessionUploadedBy", fields: [uploadedByUserId], references: [id])
+  rows           ImportRow[]
+  errors         ImportError[]
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, entityType])
+  @@index([status])
+  @@map("import_sessions")
+}
+
+/// One row of the uploaded file, persisted at parse time.
+///
+/// Persisting every row is what makes the pipeline resumable and retryable:
+/// the file is gone after the request ends, so a session that is resumed or
+/// whose failed rows are retried reads from here, not from a re-upload. It is
+/// also what keeps memory flat on a 50k-row import — rows are streamed in and
+/// processed in batches, never all held at once.
+model ImportRow {
+  id             String          @id @default(uuid())
+  sessionId      String
+  organizationId String
+  /// 1-based line number as the user sees it in their spreadsheet, so an error
+  /// message points at the row they can actually find.
+  rowNumber      Int
+  /// The raw cells, keyed by header. Frozen at parse time so a retry replays
+  /// exactly what was uploaded.
+  rawData        Json
+  /// rawData after mapping + coercion. Null until validation runs.
+  mappedData     Json?
+  status         ImportRowStatus @default(PENDING)
+  /// Set once the row produced (or matched) a record, so a retry is idempotent
+  /// and the audit trail can point at what was written.
+  entityId       String?
+  errorMessage   String?
+  processedAt    DateTime?
+  createdAt      DateTime        @default(now())
+
+  session        ImportSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, rowNumber])
+  @@index([sessionId, status])
+  @@map("import_rows")
+}
+
+/// One validation or execution failure, at cell granularity.
+///
+/// Separate from ImportRow.errorMessage because a single row can fail several
+/// columns at once, and the user needs all of them to fix the file in one
+/// pass rather than discovering them one upload at a time.
+model ImportError {
+  id             String   @id @default(uuid())
+  sessionId      String
+  organizationId String
+  rowNumber      Int
+  /// The entity field (or source column) at fault. Empty for row-level errors
+  /// that belong to no single column, e.g. a duplicate natural key.
+  column         String
+  message        String
+  /// The offending value, truncated. Stored so the error report is actionable
+  /// without the user re-opening the source file.
+  value          String?
+  /// WARNING rows do not block the import; ERROR rows do.
+  severity       String   @default("ERROR")
+  createdAt      DateTime @default(now())
+
+  session        ImportSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, rowNumber])
+  @@index([sessionId, severity])
+  @@map("import_errors")
+}
+
+/// A reusable column mapping, saved per organization and entity type.
+///
+/// Exists because a migration is rarely one file: a company exporting from
+/// their old system produces the same column layout every time, and
+/// re-mapping 30 columns by hand on each upload is where the wizard would
+/// otherwise lose its value.
+model ImportMapping {
+  id             String   @id @default(uuid())
+  organizationId String
+  entityType     String
+  name           String
+  /// Source column header -> entity field name. Keyed by HEADER, not index,
+  /// so a template survives a file whose columns moved.
+  mapping        Json
+  createdByUserId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy      User         @relation("ImportMappingCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@unique([organizationId, entityType, name])
+  @@index([organizationId, entityType])
+  @@map("import_mappings")
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// AI Copilot
+// ─────────────────────────────────────────────────────────────────────
+
+enum AiMessageRole {
+  SYSTEM
+  USER
+  ASSISTANT
+  TOOL
+}
+
+enum AiConversationStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum AiToolCallStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  DENIED
+  /// The tool was identified as a dangerous action and is waiting for the user
+  /// to confirm before execution proceeds.
+  AWAITING_CONFIRMATION
+}
+
+/// What kind of thing a remembered fact is. Drives how the context builder
+/// weighs it — a PINNED fact is always included, a PREFERENCE only when the
+/// budget allows.
+enum AiMemoryKind {
+  /// Explicitly pinned by the user; always in context.
+  PINNED
+  /// A durable user preference ("always show amounts in EUR").
+  PREFERENCE
+  /// An entity the conversation has been about, so "assign him to it" resolves.
+  ENTITY_REFERENCE
+  /// A distilled summary of older turns, so a long conversation stays in budget.
+  SUMMARY
+}
+
+/// One chat thread. Scoped to an organization AND a user: a conversation is
+/// private to the person who had it, because it can contain anything they were
+/// allowed to ask about, and their colleague may not be allowed to see it.
+model AiConversation {
+  id             String               @id @default(uuid())
+  organizationId String
+  userId         String
+  title          String
+  status         AiConversationStatus @default(ACTIVE)
+  /// Pinned to the top of the user's list. Distinct from AiMemoryKind.PINNED,
+  /// which pins a FACT inside a conversation.
+  pinned         Boolean              @default(false)
+  /// The provider/model this thread has been using, so a reopened conversation
+  /// continues with the same model rather than silently switching.
+  provider       String
+  model          String
+  /// Running totals across every message. Denormalised deliberately: the
+  /// conversation list shows cost per thread, and summing messages for each
+  /// row would be an N+1 over the whole list.
+  promptTokens     Int @default(0)
+  completionTokens Int @default(0)
+  /// Soft delete — an AI conversation is an audit record of what someone asked
+  /// the system to do, so it is never hard-deleted from under an investigation.
+  deletedAt      DateTime?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  /// Sort key for the list. Distinct from updatedAt, which also moves when a
+  /// title is renamed or the thread is pinned.
+  lastMessageAt  DateTime             @default(now())
+  /// When true, mutating tools are not offered to the model — the conversation
+  /// is observation-only. Set at creation time; immutable thereafter so the
+  /// audit trail is clear about what a thread WAS allowed to do.
+  readOnly       Boolean              @default(false)
+
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User          @relation("AiConversationUser", fields: [userId], references: [id], onDelete: Cascade)
+  messages       AiMessage[]
+  memories       AiMemory[]
+
+  @@index([organizationId, userId, lastMessageAt])
+  @@index([organizationId, userId, status])
+  @@map("ai_conversations")
+}
+
+model AiMessage {
+  id             String        @id @default(uuid())
+  conversationId String
+  organizationId String
+  role           AiMessageRole
+  /// Null for an assistant turn that only called tools and produced no prose.
+  content        String?
+  /// Set on a TOOL message: which call this is the result of.
+  toolCallId     String?
+  promptTokens     Int? 
+  completionTokens Int?
+  /// Milliseconds the provider took. Null for USER messages.
+  latencyMs      Int?
+  /// Which model produced this turn. Recorded per message, not just per
+  /// conversation, because the user may switch models mid-thread.
+  model          String?
+  /// Set when the run stopped early: "cancelled", "max_depth", "error".
+  finishReason   String?
+  /// True when the security layer rewrote or withheld part of this turn, so an
+  /// auditor can find every filtered response.
+  filtered       Boolean       @default(false)
+  createdAt      DateTime      @default(now())
+
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  toolCalls      AiToolCall[]
+
+  @@index([conversationId, createdAt])
+  @@index([organizationId, createdAt])
+  @@map("ai_messages")
+}
+
+/// One tool invocation. Persisted separately from the message so the audit
+/// trail answers "what did the AI actually DO", not merely what it said.
+model AiToolCall {
+  id             String           @id @default(uuid())
+  messageId      String
+  organizationId String
+  toolName       String
+  /// Arguments the model produced, before validation.
+  arguments      Json
+  /// What the tool returned, truncated. Null when it failed or was denied.
+  result         Json?
+  status         AiToolCallStatus @default(PENDING)
+  /// Why it failed, or which permission denied it.
+  error          String?
+  durationMs     Int?
+  createdAt      DateTime         @default(now())
+
+  message        AiMessage        @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@index([organizationId, toolName, createdAt])
+  @@map("ai_tool_calls")
+}
+
+/// A durable fact the assistant should carry between turns.
+///
+/// Scoped by organization AND user, never global: one person's "my usual
+/// customer is ACME" must not leak into a colleague's context.
+model AiMemory {
+  id             String       @id @default(uuid())
+  organizationId String
+  userId         String
+  /// Null for a memory that spans every conversation (a preference); set for a
+  /// fact that only makes sense inside one thread.
+  conversationId String?
+  kind           AiMemoryKind
+  /// Short, self-contained statement — this goes into the prompt verbatim.
+  content        String
+  /// For ENTITY_REFERENCE: what it points at, so "assign him" can resolve.
+  entityType     String?
+  entityId       String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User            @relation("AiMemoryUser", fields: [userId], references: [id], onDelete: Cascade)
+  conversation   AiConversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, userId, kind])
+  @@index([conversationId, kind])
+  @@map("ai_memories")
+}
+
+/// A retrievable knowledge chunk for RAG.
+///
+/// Seeded from the repo's own docs/ and from per-organization policy text. Held
+/// in Postgres with full-text search rather than a vector database: the corpus
+/// is thousands of chunks, not millions, and adding a second datastore to this
+/// deployment would cost more than it buys. See TD note in TECHNICAL_DEBT.md.
+model AiKnowledgeDoc {
+  id             String   @id @default(uuid())
+  /// Null for built-in product documentation, which every organization shares.
+  /// Set for a customer's own uploaded policy, which only they may retrieve.
+  organizationId String?
+  /// "documentation" | "policy" | "workflow_template"
+  source         String
+  title          String
+  /// The chunk itself. Chunked at ingest so retrieval returns something that
+  /// fits in a prompt rather than a whole document.
+  content        String
+  /// Where it came from, e.g. "docs/AI_COPILOT_API.md#streaming".
+  reference      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, source])
+  @@map("ai_knowledge_docs")
 }

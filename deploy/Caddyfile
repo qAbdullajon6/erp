@@ -22,8 +22,25 @@
 #   CADDYFILE=./deploy/Caddyfile.local docker compose \
 #     -f docker-compose.staging.yml --env-file .env.staging --profile web up -d
 
+# When SITE_ADDRESS is a domain, Caddy terminates TLS (ACME, auto-renewed) and
+# redirects http://->https:// on its own — no redirect block is needed here. On
+# `:8080` (local) it is plain HTTP and ACME is skipped.
 {$SITE_ADDRESS::8080} {
 	encode zstd gzip
+
+	# Security headers set at the TLS-terminating edge. HSTS in particular
+	# belongs here, not on the API: the API only ever sees Caddy's internal HTTP
+	# hop, so helmet cannot reliably know the public request was HTTPS. Caddy's
+	# `header` replaces rather than appends, so where helmet already sets one of
+	# these on an /api response there is no duplicate — the edge value wins.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# Don't advertise the server software.
+		-Server
+	}
 
 	handle_path /api/* {
 		reverse_proxy api:4000 {
@@ -34,6 +51,19 @@
 			health_uri /health
 			health_interval 5s
 			health_timeout 2s
+
+			# SSE (the telematics live feed, the AI copilot stream) must reach
+			# the client token-by-token. Caddy already streams text/event-stream,
+			# but -1 makes immediate flushing explicit and independent of that
+			# content-type autodetection. It also disables response buffering, so
+			# a long-lived stream is never held back. There is deliberately no
+			# response timeout on the transport — an SSE connection is meant to
+			# stay open. Uploads are unbounded (no nginx-style 1MB default), so
+			# large delivery-proof / import files pass through untouched.
+			flush_interval -1
+			transport http {
+				dial_timeout 5s
+			}
 		}
 	}
 

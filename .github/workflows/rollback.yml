@@ -1,0 +1,52 @@
+name: Rollback (production)
+
+# Manual, deliberate rollback of the API to its previous image on the VPS. Runs
+# scripts/rollback.sh (the single rollback implementation deploy.sh also calls).
+# Use this to undo a deploy that is healthy but wrong; a deploy that fails its
+# health check has already auto-rolled-back. See ROLLBACK_GUIDE.md.
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Why we are rolling back (required, recorded in the run)"
+        required: true
+
+permissions:
+  contents: read
+
+# Shares the deploy lock so a rollback can never race a deploy.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    name: Roll back API on VPS
+    runs-on: ubuntu-latest
+    environment: production # same protection gate as deploy
+    env:
+      HAS_SLACK: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
+    steps:
+      - name: Rollback over SSH (runs scripts/rollback.sh on the VPS)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || '22' }}
+          command_timeout: 15m
+          script_stop: true
+          script: |
+            set -Eeuo pipefail
+            cd /srv/flowerp
+            # CONFIRM gates the manual (non --auto) path in rollback.sh.
+            CONFIRM=ROLLBACK ./scripts/rollback.sh
+
+      - name: Notify on failure
+        if: failure() && env.HAS_SLACK == 'true'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          curl -sf -X POST -H 'Content-type: application/json' \
+            --data "{\"text\":\":rotating_light: FlowERP production ROLLBACK failed (run ${{ github.run_id }}). Manual intervention required on the VPS.\"}" \
+            "$SLACK_WEBHOOK_URL"

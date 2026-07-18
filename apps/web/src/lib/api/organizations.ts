@@ -32,11 +32,6 @@ export interface UpdateOrganizationInput {
   timezone?: string;
 }
 
-export interface AddMemberInput {
-  email: string;
-  role: MembershipRole;
-}
-
 export interface UpdateMemberInput {
   role?: MembershipRole;
   status?: MembershipStatus;
@@ -65,11 +60,6 @@ class OrganizationsAPI {
   async listMembers(): Promise<Member[]> {
     const response = await apiFetch('/api/organizations/current/members', { method: 'GET' });
     return unwrap(response, 'Failed to fetch members');
-  }
-
-  async addMember(input: AddMemberInput): Promise<Member> {
-    const response = await apiFetch('/api/organizations/current/members', { method: 'POST', body: JSON.stringify(input) });
-    return unwrap(response, 'Failed to add member');
   }
 
   async updateMember(membershipId: string, input: UpdateMemberInput): Promise<Member> {
@@ -102,14 +92,6 @@ export function useUpdateOrganizationMutation() {
 
 export function useMembersQuery(enabled = true) {
   return useQuery({ queryKey: ['organization-members'], queryFn: () => organizationsAPI.listMembers(), enabled });
-}
-
-export function useAddMemberMutation() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (input: AddMemberInput) => organizationsAPI.addMember(input),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['organization-members'] }),
-  });
 }
 
 export function useUpdateMemberMutation() {
