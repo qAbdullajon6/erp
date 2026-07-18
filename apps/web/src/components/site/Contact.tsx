@@ -21,7 +21,7 @@ export function Contact() {
                   onClick={openDemoModal}
                   className="h-11 bg-gradient-brand px-5 text-brand-foreground hover:opacity-90"
                 >
-                  Request a Personalized Demo
+                  Get a Demo
                 </Button>
               </div>
             </div>

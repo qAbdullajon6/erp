@@ -121,7 +121,7 @@ export function DemoModal() {
         <div className="p-8">
           <DialogHeader className="space-y-2 text-left">
             <DialogTitle className="font-display text-2xl font-bold tracking-tight">
-              Request a Personalized Demo
+              Get a Demo
             </DialogTitle>
             <DialogDescription className="text-sm text-muted-foreground">
               See how FlowERP AI can fit your logistics workflow.

@@ -3,6 +3,7 @@ import { openDemoModal } from "@/components/site/DemoModal";
 import { ArrowRight, Truck, MapPin, Package, DollarSign } from "lucide-react";
 import { analytics } from "@/lib/analytics";
 import { useSectionVisibility } from "@/lib/analytics/hooks";
+import { memo } from "react";
 
 export function Hero() {
   const sectionRef = useSectionVisibility('hero');
@@ -13,31 +14,31 @@ export function Hero() {
   };
 
   const handleDemoClick = () => {
-    analytics.track({ name: 'hero_cta_click', params: { cta_text: 'Request a Personalized Demo' } });
+    analytics.track({ name: 'hero_cta_click', params: { cta_text: 'Get a Demo' } });
     analytics.track({ name: 'book_demo_click', params: { source: 'hero' } });
     openDemoModal();
   };
 
   return (
     <section ref={sectionRef} className="relative overflow-hidden">
-      <div className="pointer-events-none absolute inset-0 bg-hero-glow" />
-      <div className="pointer-events-none absolute inset-0 [background-image:linear-gradient(oklch(1_0_0_/_0.03)_1px,transparent_1px),linear-gradient(90deg,oklch(1_0_0_/_0.03)_1px,transparent_1px)] [background-size:56px_56px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,black,transparent)]" />
+      {/* Enhanced gradient glow */}
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-brand/20 via-brand/5 to-transparent opacity-60" />
+      <div className="pointer-events-none absolute inset-0 [background-image:radial-gradient(circle_at_50%_0%,oklch(0.68_0.17_250_/_0.15),transparent_50%)]" />
 
-      <div className="relative mx-auto max-w-7xl px-6 pb-24 pt-20 md:pt-28">
+      <div className="relative mx-auto max-w-7xl px-6 pb-28 pt-24 md:pt-32">
         <div className="mx-auto max-w-3xl text-center">
           <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-border/60 bg-surface/60 px-3 py-1 text-xs font-medium text-muted-foreground backdrop-blur">
-            <span className="h-1.5 w-1.5 rounded-full bg-success" />
-            AI-native logistics ERP · Built for modern fleets
+            <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
+            Trusted by logistics companies across Central Asia
           </div>
 
           <h1 className="mt-6 font-display text-[44px] font-bold leading-[1.05] tracking-tight text-foreground sm:text-[56px] md:text-[64px]">
-            Run Every Delivery
-            <br className="hidden sm:block" /> From One{" "}
-            <span className="text-gradient-brand">Intelligent Command Center</span>
+            Run Your Fleet Smarter{" "}
+            <span className="text-gradient-brand">Save Time, Cut Costs, Deliver Faster</span>
           </h1>
 
           <p className="mx-auto mt-6 max-w-2xl text-base text-muted-foreground sm:text-lg">
-            FlowERP AI unifies orders, dispatch, tracking, fleet, and finance into one modern platform — with an AI assistant that answers operational questions in seconds.
+            Track every order, optimize routes with AI, and automate billing — all in one platform.
           </p>
 
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -46,7 +47,7 @@ export function Hero() {
               size="lg"
               className="h-12 bg-gradient-brand px-6 text-brand-foreground shadow-brand hover:opacity-90"
             >
-              Request a Personalized Demo
+              Get a Demo
               <ArrowRight className="ml-1.5 h-4 w-4" />
             </Button>
             <Button
@@ -66,11 +67,12 @@ export function Hero() {
   );
 }
 
-function HeroPreview() {
+const HeroPreview = memo(function HeroPreview() {
   return (
-    <div className="relative mx-auto mt-16 max-w-6xl">
-      <div className="absolute -inset-x-8 -inset-y-6 rounded-3xl bg-gradient-brand/20 blur-3xl" />
-      <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-surface shadow-elevated">
+    <div className="relative mx-auto mt-20 max-w-6xl min-h-[500px]" aria-hidden="true">
+      {/* Enhanced glow effect */}
+      <div className="absolute -inset-x-12 -inset-y-8 rounded-3xl bg-gradient-brand/30 blur-3xl" />
+      <div className="relative overflow-hidden rounded-3xl border border-brand/20 bg-surface shadow-2xl">
         {/* Fake app chrome */}
         <div className="flex items-center gap-2 border-b border-border/60 bg-background/40 px-4 py-3">
           <div className="flex gap-1.5">
@@ -156,7 +158,7 @@ function HeroPreview() {
       </div>
     </div>
   );
-}
+});
 
 function KPI({
   icon: Icon,

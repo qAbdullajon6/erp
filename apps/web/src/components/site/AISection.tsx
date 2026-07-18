@@ -57,7 +57,7 @@ export function AISection() {
                 size="lg"
                 className="h-12 bg-gradient-brand px-6 text-brand-foreground hover:opacity-90"
               >
-                Request a Personalized Demo
+                Get a Demo
               </Button>
             </div>
           </div>
