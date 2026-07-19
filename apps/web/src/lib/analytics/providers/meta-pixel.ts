@@ -50,7 +50,7 @@ export class MetaPixelProvider {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const fbq: any = function (...args: any[]) {
       if (fbq.callMethod) {
-        fbq.callMethod.apply(fbq, args);
+        fbq.callMethod(...args);
       } else {
         fbq.queue.push(args);
       }
