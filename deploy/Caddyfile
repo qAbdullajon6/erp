@@ -1,17 +1,22 @@
 # FlowERP production edge (VPS).
 #
+#   https://www.flowerp.uz  → 301 → https://flowerp.uz{uri}
 #   https://flowerp.uz      → SSR web (web:3000)
-#   https://api.flowerp.uz → NestJS API (api:4000)
+#   https://api.flowerp.uz  → NestJS API (api:4000)
 #
 # Env (in .env.production on the VPS):
-#   SITE_ADDRESS=flowerp.uz
+#   SITE_ADDRESS is unused for the site block (canonical host is flowerp.uz).
 #   API_ADDRESS=api.flowerp.uz
 #
 # Local rehearsal of the production build uses deploy/Caddyfile.local instead:
 #   CADDYFILE=./deploy/Caddyfile.local HTTP_PORT=8080 HTTPS_PORT=8443 \
 #     SITE_ADDRESS=:8080 docker compose --env-file .env.production up -d --build
 
-{$SITE_ADDRESS:flowerp.uz} {
+www.flowerp.uz {
+	redir https://flowerp.uz{uri} permanent
+}
+
+flowerp.uz {
 	encode zstd gzip
 
 	header {
