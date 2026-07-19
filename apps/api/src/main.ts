@@ -1,12 +1,49 @@
 import "reflect-metadata";
 import { ConfigService } from "@nestjs/config";
+import { Logger } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
+import helmet from "helmet";
 import { AppModule } from "./app.module";
 import { configureApp } from "./app.config";
 import type { AppConfig } from "./config/configuration";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Apply Helmet security headers before other middleware
+  // Production-grade security headers: CSP, X-Frame-Options, HSTS, etc.
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        // Allow inline styles for Tailwind/dynamic styling in UI
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        // Allow scripts from self only
+        scriptSrc: ["'self'"],
+        // Allow images from self, data URIs (for charts), and HTTPS sources
+        imgSrc: ["'self'", 'data:', 'https:'],
+        // Allow fonts from self and data URIs
+        fontSrc: ["'self'", 'data:'],
+        // Allow connections to self (API calls)
+        connectSrc: ["'self'"],
+        // Block all plugins (Flash, Java, etc.)
+        objectSrc: ["'none'"],
+        // Require trusted types for DOM injection
+        requireTrustedTypesFor: ["'script'"],
+      },
+    },
+    // Enable HSTS (HTTP Strict Transport Security) for HTTPS enforcement
+    hsts: {
+      maxAge: 31536000, // 1 year
+      includeSubDomains: true,
+      preload: true,
+    },
+    // Prevent MIME type sniffing
+    noSniff: true,
+    // Disable X-Powered-By header
+    hidePoweredBy: true,
+  }));
+
   configureApp(app);
 
   // Graceful shutdown: on SIGTERM/SIGINT (what `docker stop` and a rolling
@@ -21,8 +58,49 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService);
   const appConfig = configService.get<AppConfig>("app")!;
+  const logger = new Logger("Bootstrap");
+
+  // Graceful shutdown timeout: if onModuleDestroy hooks hang (SSE streams waiting,
+  // Prisma disconnect stuck), force-exit after the configured timeout. Must be
+  // shorter than Docker's SIGKILL timeout (default 10s) to log the forced exit.
+  let shutdownTimer: NodeJS.Timeout | undefined;
+  const signals: NodeJS.Signals[] = ["SIGTERM", "SIGINT"];
+
+  signals.forEach((signal) => {
+    process.on(signal, async () => {
+      logger.log(`${signal} received, starting graceful shutdown (timeout: ${appConfig.shutdownTimeoutMs}ms)`);
+
+      shutdownTimer = setTimeout(() => {
+        logger.error(
+          `Graceful shutdown timed out after ${appConfig.shutdownTimeoutMs}ms. ` +
+          `Force-exiting to prevent hang. Check onModuleDestroy hooks for stuck operations.`
+        );
+        process.exit(1);
+      }, appConfig.shutdownTimeoutMs);
+
+      try {
+        await app.close();
+        if (shutdownTimer) clearTimeout(shutdownTimer);
+        logger.log("Graceful shutdown complete");
+        process.exit(0);
+      } catch (error) {
+        if (shutdownTimer) clearTimeout(shutdownTimer);
+        logger.error("Error during graceful shutdown", error instanceof Error ? error.stack : error);
+        process.exit(1);
+      }
+    });
+  });
 
   await app.listen(appConfig.port);
 }
 
-void bootstrap();
+// Wrap bootstrap in error handler to ensure startup failures are never silent.
+// Without this, unhandled rejections during boot (port in use, config
+// validation failure, Prisma schema mismatch) exit with cryptic
+// "ExperimentalWarning" or no output, making deployment failures impossible
+// to diagnose. This guarantees a structured log and explicit exit code.
+bootstrap().catch((error) => {
+  const logger = new Logger('Bootstrap');
+  logger.error('FATAL: Application failed to start', error instanceof Error ? error.stack : error);
+  process.exit(1);
+});

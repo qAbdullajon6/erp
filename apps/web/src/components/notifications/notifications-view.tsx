@@ -1,66 +1,138 @@
-import { useEffect } from 'react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Button } from '@/components/ui/button';
-import { useCurrentUser } from '@/lib/api/auth';
-import { NotificationsList } from './notifications-list';
-import { NotificationPreferences } from './notification-preferences';
+'use client';
 
-const NO_ACCESS_ROLES = new Set(['DRIVER']);
+import { useState } from 'react';
+import { Bell } from 'lucide-react';
+import { PageHeader } from '@/components/shared/page-header';
+import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-states';
+import { Button } from '@/components/ui/button';
+import { useNotifications, useMarkAllAsRead } from '@/lib/api/notification-center';
+import { NotificationFilters } from './notification-filters';
+import { NotificationList } from './notification-list';
+import { NotificationActions } from './notification-actions';
+import type { NotificationCategory, NotificationSeverity } from '@/lib/api/notifications';
 
 export function NotificationsView() {
-  const { data: currentUser, loading, error, refetch } = useCurrentUser();
+  const [search, setSearch] = useState('');
+  const [category, setCategory] = useState<NotificationCategory | undefined>();
+  const [severity, setSeverity] = useState<NotificationSeverity | undefined>();
+  const [isRead, setIsRead] = useState<boolean | undefined>();
+  const [isArchived, setIsArchived] = useState(false);
+  const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
+  const { data, isLoading, error, refetch } = useNotifications({
+    search: search || undefined,
+    category,
+    severity,
+    isRead,
+    isArchived,
+    page,
+    limit: 20,
+  });
 
-  if (loading) {
-    return <Skeleton className="h-96 rounded-lg" />;
-  }
+  const markAllAsReadMutation = useMarkAllAsRead();
 
-  if (error || !currentUser) {
+  const handleMarkAllAsRead = async () => {
+    await markAllAsReadMutation.mutateAsync();
+    setSelectedIds(new Set());
+  };
+
+  const handleSelectAll = () => {
+    if (!data?.notifications) return;
+    if (selectedIds.size === data.notifications.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(data.notifications.map((n) => n.id)));
+    }
+  };
+
+  const handleToggleSelect = (id: string) => {
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedIds(newSelected);
+  };
+
+  if (isLoading) {
     return (
-      <div className="rounded-lg bg-destructive/10 p-6 text-sm text-destructive">
-        {error || 'Failed to load your account'}
-        <Button onClick={() => refetch()} variant="ghost" size="sm" className="ml-4">
-          Retry
-        </Button>
+      <div className="space-y-6">
+        <PageHeader title="Notifications" />
+        <LoadingState label="Loading notifications..." />
       </div>
     );
   }
 
-  if (NO_ACCESS_ROLES.has(currentUser.membership.role)) {
+  if (error) {
     return (
-      <div className="rounded-lg border border-brand/10 bg-surface p-8 text-center text-sm text-muted-foreground">
-        Notifications aren't available for your role.
+      <div className="space-y-6">
+        <PageHeader title="Notifications" />
+        <ErrorState
+          message={error instanceof Error ? error.message : 'Failed to load notifications'}
+          onRetry={() => refetch()}
+        />
       </div>
     );
   }
 
-  const isAdmin = currentUser.membership.role === 'ADMIN';
+  const notifications = data?.notifications ?? [];
+  const pagination = data?.pagination;
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="font-display text-3xl font-bold text-foreground">Notifications</h1>
-        <p className="mt-2 text-muted-foreground">Stay on top of delayed orders, overdue invoices, and fleet alerts</p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Notifications"
+        subtitle={`${pagination?.total ?? 0} notification${pagination?.total === 1 ? '' : 's'}`}
+        action={
+          <Button onClick={handleMarkAllAsRead} variant="outline" size="sm">
+            Mark All as Read
+          </Button>
+        }
+      />
 
-      <Tabs defaultValue="notifications">
-        <TabsList>
-          <TabsTrigger value="notifications">Notifications</TabsTrigger>
-          {isAdmin && <TabsTrigger value="preferences">Preferences</TabsTrigger>}
-        </TabsList>
-        <TabsContent value="notifications" className="pt-4">
-          <NotificationsList />
-        </TabsContent>
-        {isAdmin && (
-          <TabsContent value="preferences" className="pt-4">
-            <NotificationPreferences />
-          </TabsContent>
-        )}
-      </Tabs>
+      <NotificationFilters
+        search={search}
+        category={category}
+        severity={severity}
+        isRead={isRead}
+        isArchived={isArchived}
+        onSearchChange={setSearch}
+        onCategoryChange={setCategory}
+        onSeverityChange={setSeverity}
+        onIsReadChange={setIsRead}
+        onIsArchivedChange={setIsArchived}
+      />
+
+      {selectedIds.size > 0 && (
+        <NotificationActions
+          selectedCount={selectedIds.size}
+          selectedIds={Array.from(selectedIds)}
+          onClearSelection={() => setSelectedIds(new Set())}
+        />
+      )}
+
+      {notifications.length === 0 ? (
+        <EmptyState
+          title={isArchived ? 'No archived notifications' : 'No notifications'}
+          description={
+            search || category || severity !== undefined || isRead !== undefined
+              ? 'Try adjusting your filters'
+              : 'You have no notifications yet'
+          }
+          icon={Bell}
+        />
+      ) : (
+        <NotificationList
+          notifications={notifications}
+          selectedIds={selectedIds}
+          onSelectAll={handleSelectAll}
+          onToggleSelect={handleToggleSelect}
+          pagination={pagination}
+          onPageChange={setPage}
+        />
+      )}
     </div>
   );
 }

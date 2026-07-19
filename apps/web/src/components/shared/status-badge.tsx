@@ -57,6 +57,13 @@ const STATUS_VARIANTS: Record<string, BadgeVariant> = {
   SENT: 'brand',
   APPROVED: 'success',
   REJECTED: 'danger',
+
+  // Billing / subscriptions — ACTIVE/CANCELLED already covered above under
+  // lifecycle. TRIAL is in-flight (brand), a suspended plan is a warning the
+  // operator must act on, an expired one is terminal-bad.
+  TRIAL: 'brand',
+  SUSPENDED: 'warning',
+  EXPIRED: 'danger',
 };
 
 export function statusVariant(status: string): BadgeVariant {

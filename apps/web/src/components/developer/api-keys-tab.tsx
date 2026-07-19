@@ -29,6 +29,7 @@ const AVAILABLE_SCOPES = [
   'customers:write',
   'drivers:read',
   'vehicles:read',
+  'telematics:read',
   'finance:read',
   'webhooks:admin',
 ];

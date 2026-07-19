@@ -1,65 +1,33 @@
-# The VPS serves the API only. The frontend is deployed to Vercel.
+# FlowERP production edge (VPS).
 #
-# SITE_ADDRESS:
-#   VPS    staging.flowerp.uz   -> Caddy obtains and renews TLS itself
-#   local  :8080                -> plain HTTP, for testing the stack
+#   https://flowerp.uz      → SSR web (web:3000)
+#   https://api.flowerp.uz → NestJS API (api:4000)
 #
-# The browser never talks to this box directly. It calls the Vercel origin's
-# /api/*, and Vercel's rewrite (apps/web/vercel.json) proxies that here
-# server-side — so no cross-origin request is made and no CORS preflight ever
-# happens. CORS_ORIGIN is still set on the API in case it is called directly.
+# Env (in .env.production on the VPS):
+#   SITE_ADDRESS=flowerp.uz
+#   API_ADDRESS=api.flowerp.uz
 #
-# The rewrite forwards the path unchanged, so what arrives is /api/auth/login.
-# The API mounts its routes at the root (/auth/login), exactly as the Vite dev
-# proxy assumes, so the prefix has to come off here. `handle_path` strips the
-# matched prefix; `handle` alone would forward /api/orders and 404 on every call.
-#
-# Keep this host in lockstep with the destination in apps/web/vercel.json —
-# Vercel does not expand environment variables there.
-#
-# To rehearse the whole thing locally with the frontend on the same origin, use
-# deploy/Caddyfile.local instead:
-#   CADDYFILE=./deploy/Caddyfile.local docker compose \
-#     -f docker-compose.staging.yml --env-file .env.staging --profile web up -d
+# Local rehearsal of the production build uses deploy/Caddyfile.local instead:
+#   CADDYFILE=./deploy/Caddyfile.local HTTP_PORT=8080 HTTPS_PORT=8443 \
+#     SITE_ADDRESS=:8080 docker compose --env-file .env.production up -d --build
 
-# When SITE_ADDRESS is a domain, Caddy terminates TLS (ACME, auto-renewed) and
-# redirects http://->https:// on its own — no redirect block is needed here. On
-# `:8080` (local) it is plain HTTP and ACME is skipped.
-{$SITE_ADDRESS::8080} {
+{$SITE_ADDRESS:flowerp.uz} {
 	encode zstd gzip
 
-	# Security headers set at the TLS-terminating edge. HSTS in particular
-	# belongs here, not on the API: the API only ever sees Caddy's internal HTTP
-	# hop, so helmet cannot reliably know the public request was HTTPS. Caddy's
-	# `header` replaces rather than appends, so where helmet already sets one of
-	# these on an /api response there is no duplicate — the edge value wins.
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
-		# Don't advertise the server software.
 		-Server
 	}
 
+	# Same-origin /api/* for browsers that call the marketing origin.
 	handle_path /api/* {
 		reverse_proxy api:4000 {
-			# Polled every 5s, not every 30s: the API runs `prisma migrate
-			# deploy` before it listens, so after a deploy Caddy would otherwise
-			# keep answering 503 for up to half a minute after the API was
-			# already serving.
 			health_uri /health
 			health_interval 5s
 			health_timeout 2s
-
-			# SSE (the telematics live feed, the AI copilot stream) must reach
-			# the client token-by-token. Caddy already streams text/event-stream,
-			# but -1 makes immediate flushing explicit and independent of that
-			# content-type autodetection. It also disables response buffering, so
-			# a long-lived stream is never held back. There is deliberately no
-			# response timeout on the transport — an SSE connection is meant to
-			# stay open. Uploads are unbounded (no nginx-style 1MB default), so
-			# large delivery-proof / import files pass through untouched.
 			flush_interval -1
 			transport http {
 				dial_timeout 5s
@@ -67,10 +35,35 @@
 		}
 	}
 
-	# Nothing else lives on this host. Say so plainly rather than letting Caddy
-	# return an empty 200 that looks like a broken frontend.
 	handle {
-		respond "This host serves the FlowERP API under /api. The application is deployed separately." 404
+		reverse_proxy web:3000
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}
+
+{$API_ADDRESS:api.flowerp.uz} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	reverse_proxy api:4000 {
+		health_uri /health
+		health_interval 5s
+		health_timeout 2s
+		flush_interval -1
+		transport http {
+			dial_timeout 5s
+		}
 	}
 
 	log {

@@ -6,5 +6,8 @@
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
   },
+  "moduleNameMapper": {
+    "^isomorphic-dompurify$": "<rootDir>/mocks/isomorphic-dompurify.js"
+  },
   "testTimeout": 30000
 }

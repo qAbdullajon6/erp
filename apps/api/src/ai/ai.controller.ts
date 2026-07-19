@@ -18,6 +18,7 @@ import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RawResponse } from "../common/decorators/raw-response.decorator";
+import { SkipTimeout } from "../common/decorators/skip-timeout.decorator";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { AiService } from "./ai.service";
 import { ConversationService } from "./chat/conversation.service";
@@ -168,6 +169,7 @@ export class AiController {
   /// @RawResponse() because the body is an SSE stream, not a JSON document —
   /// TransformInterceptor would otherwise try to wrap it.
   @Post("conversations/:id/chat")
+  @SkipTimeout()
   @RawResponse()
   async chat(
     @CurrentUser() user: CurrentUserPayload,

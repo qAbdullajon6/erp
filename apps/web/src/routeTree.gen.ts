@@ -9,6 +9,8 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TermsRouteImport } from './routes/terms'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PortalRouteImport } from './routes/portal'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
@@ -30,8 +32,10 @@ import { Route as AppReportsRouteImport } from './routes/app.reports'
 import { Route as AppNotificationsRouteImport } from './routes/app.notifications'
 import { Route as AppMyDeliveriesRouteImport } from './routes/app.my-deliveries'
 import { Route as AppIntegrationsRouteImport } from './routes/app.integrations'
+import { Route as AppFleetTrackingRouteImport } from './routes/app.fleet-tracking'
 import { Route as AppFinanceRouteImport } from './routes/app.finance'
 import { Route as AppDeveloperRouteImport } from './routes/app.developer'
+import { Route as AppBillingRouteImport } from './routes/app.billing'
 import { Route as AppAiAssistantRouteImport } from './routes/app.ai-assistant'
 import { Route as AppVehiclesIndexRouteImport } from './routes/app.vehicles.index'
 import { Route as AppOrdersIndexRouteImport } from './routes/app.orders.index'
@@ -59,6 +63,16 @@ import { Route as AppDispatchesDispatchIdRouteImport } from './routes/app.dispat
 import { Route as AppCustomersCreateRouteImport } from './routes/app.customers.create'
 import { Route as AppCustomersCustomerIdRouteImport } from './routes/app.customers.$customerId'
 
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PortalRoute = PortalRouteImport.update({
   id: '/portal',
   path: '/portal',
@@ -164,6 +178,11 @@ const AppIntegrationsRoute = AppIntegrationsRouteImport.update({
   path: '/integrations',
   getParentRoute: () => AppRoute,
 } as any)
+const AppFleetTrackingRoute = AppFleetTrackingRouteImport.update({
+  id: '/fleet-tracking',
+  path: '/fleet-tracking',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppFinanceRoute = AppFinanceRouteImport.update({
   id: '/finance',
   path: '/finance',
@@ -172,6 +191,11 @@ const AppFinanceRoute = AppFinanceRouteImport.update({
 const AppDeveloperRoute = AppDeveloperRouteImport.update({
   id: '/developer',
   path: '/developer',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppBillingRoute = AppBillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
   getParentRoute: () => AppRoute,
 } as any)
 const AppAiAssistantRoute = AppAiAssistantRouteImport.update({
@@ -309,9 +333,13 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/portal': typeof PortalRouteWithChildren
+  '/privacy': typeof PrivacyRoute
+  '/terms': typeof TermsRoute
   '/app/ai-assistant': typeof AppAiAssistantRoute
+  '/app/billing': typeof AppBillingRoute
   '/app/developer': typeof AppDeveloperRoute
   '/app/finance': typeof AppFinanceRoute
+  '/app/fleet-tracking': typeof AppFleetTrackingRoute
   '/app/integrations': typeof AppIntegrationsRoute
   '/app/my-deliveries': typeof AppMyDeliveriesRoute
   '/app/notifications': typeof AppNotificationsRoute
@@ -358,9 +386,13 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/privacy': typeof PrivacyRoute
+  '/terms': typeof TermsRoute
   '/app/ai-assistant': typeof AppAiAssistantRoute
+  '/app/billing': typeof AppBillingRoute
   '/app/developer': typeof AppDeveloperRoute
   '/app/finance': typeof AppFinanceRoute
+  '/app/fleet-tracking': typeof AppFleetTrackingRoute
   '/app/integrations': typeof AppIntegrationsRoute
   '/app/my-deliveries': typeof AppMyDeliveriesRoute
   '/app/notifications': typeof AppNotificationsRoute
@@ -410,9 +442,13 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/portal': typeof PortalRouteWithChildren
+  '/privacy': typeof PrivacyRoute
+  '/terms': typeof TermsRoute
   '/app/ai-assistant': typeof AppAiAssistantRoute
+  '/app/billing': typeof AppBillingRoute
   '/app/developer': typeof AppDeveloperRoute
   '/app/finance': typeof AppFinanceRoute
+  '/app/fleet-tracking': typeof AppFleetTrackingRoute
   '/app/integrations': typeof AppIntegrationsRoute
   '/app/my-deliveries': typeof AppMyDeliveriesRoute
   '/app/notifications': typeof AppNotificationsRoute
@@ -463,9 +499,13 @@ export interface FileRouteTypes {
     | '/'
     | '/app'
     | '/portal'
+    | '/privacy'
+    | '/terms'
     | '/app/ai-assistant'
+    | '/app/billing'
     | '/app/developer'
     | '/app/finance'
+    | '/app/fleet-tracking'
     | '/app/integrations'
     | '/app/my-deliveries'
     | '/app/notifications'
@@ -512,9 +552,13 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/privacy'
+    | '/terms'
     | '/app/ai-assistant'
+    | '/app/billing'
     | '/app/developer'
     | '/app/finance'
+    | '/app/fleet-tracking'
     | '/app/integrations'
     | '/app/my-deliveries'
     | '/app/notifications'
@@ -563,9 +607,13 @@ export interface FileRouteTypes {
     | '/'
     | '/app'
     | '/portal'
+    | '/privacy'
+    | '/terms'
     | '/app/ai-assistant'
+    | '/app/billing'
     | '/app/developer'
     | '/app/finance'
+    | '/app/fleet-tracking'
     | '/app/integrations'
     | '/app/my-deliveries'
     | '/app/notifications'
@@ -615,6 +663,8 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
   PortalRoute: typeof PortalRouteWithChildren
+  PrivacyRoute: typeof PrivacyRoute
+  TermsRoute: typeof TermsRoute
   AuthForgotPasswordRoute: typeof AuthForgotPasswordRoute
   AuthSignInRoute: typeof AuthSignInRoute
   InviteTokenRoute: typeof InviteTokenRoute
@@ -623,6 +673,20 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/portal': {
       id: '/portal'
       path: '/portal'
@@ -770,6 +834,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIntegrationsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/fleet-tracking': {
+      id: '/app/fleet-tracking'
+      path: '/fleet-tracking'
+      fullPath: '/app/fleet-tracking'
+      preLoaderRoute: typeof AppFleetTrackingRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/finance': {
       id: '/app/finance'
       path: '/finance'
@@ -782,6 +853,13 @@ declare module '@tanstack/react-router' {
       path: '/developer'
       fullPath: '/app/developer'
       preLoaderRoute: typeof AppDeveloperRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/billing': {
+      id: '/app/billing'
+      path: '/billing'
+      fullPath: '/app/billing'
+      preLoaderRoute: typeof AppBillingRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/ai-assistant': {
@@ -983,8 +1061,10 @@ const AppWorkflowsRouteWithChildren = AppWorkflowsRoute._addFileChildren(
 
 interface AppRouteChildren {
   AppAiAssistantRoute: typeof AppAiAssistantRoute
+  AppBillingRoute: typeof AppBillingRoute
   AppDeveloperRoute: typeof AppDeveloperRoute
   AppFinanceRoute: typeof AppFinanceRoute
+  AppFleetTrackingRoute: typeof AppFleetTrackingRoute
   AppIntegrationsRoute: typeof AppIntegrationsRoute
   AppMyDeliveriesRoute: typeof AppMyDeliveriesRoute
   AppNotificationsRoute: typeof AppNotificationsRoute
@@ -1017,8 +1097,10 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppAiAssistantRoute: AppAiAssistantRoute,
+  AppBillingRoute: AppBillingRoute,
   AppDeveloperRoute: AppDeveloperRoute,
   AppFinanceRoute: AppFinanceRoute,
+  AppFleetTrackingRoute: AppFleetTrackingRoute,
   AppIntegrationsRoute: AppIntegrationsRoute,
   AppMyDeliveriesRoute: AppMyDeliveriesRoute,
   AppNotificationsRoute: AppNotificationsRoute,
@@ -1104,6 +1186,8 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
   PortalRoute: PortalRouteWithChildren,
+  PrivacyRoute: PrivacyRoute,
+  TermsRoute: TermsRoute,
   AuthForgotPasswordRoute: AuthForgotPasswordRoute,
   AuthSignInRoute: AuthSignInRoute,
   InviteTokenRoute: InviteTokenRoute,

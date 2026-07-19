@@ -6,7 +6,7 @@
 #
 #   ./scripts/rollback.sh                 # interactive-safe manual rollback
 #   ./scripts/rollback.sh --auto          # called by deploy.sh, no confirmation
-#   ENV_FILE=.env.prod ./scripts/rollback.sh
+#   ENV_FILE=.env.production ./scripts/rollback.sh
 #
 # How the rollback point exists: before every swap, deploy.sh tags the
 # currently-running (good) image as `<repo>:previous`. Rollback re-points the
@@ -25,7 +25,7 @@ source "$(dirname "$0")/lib.sh"
 AUTO=0
 [[ "${1:-}" == "--auto" ]] && AUTO=1
 
-[[ -f "$ENV_FILE" ]] || die "$ENV_FILE not found"
+require_env_file
 
 LIVE_REF="$(api_live_ref || true)"
 [[ -n "$LIVE_REF" ]] || die "no running api container — nothing to roll back"

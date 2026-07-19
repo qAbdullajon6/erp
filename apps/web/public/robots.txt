@@ -1,0 +1,27 @@
+# FlowERP AI - Robots Exclusion Protocol
+# https://flowerp.uz/robots.txt
+
+# Allow all crawlers to index marketing pages
+User-agent: *
+Allow: /
+
+# Block authenticated app routes (not meant for public indexing)
+Disallow: /app/
+Disallow: /auth/
+Disallow: /portal/
+Disallow: /invite/
+
+# Block API routes (no SEO value)
+Disallow: /api/
+
+# Sitemap location
+Sitemap: https://flowerp.uz/sitemap.xml
+
+# Crawl-delay for aggressive bots (optional, adjust as needed)
+# Crawl-delay: 1
+
+# Additional notes:
+# - Landing page (/) is indexed
+# - Future public pages (pricing, features, blog) will be indexed
+# - Authenticated pages are blocked to prevent login walls in SERPs
+# - API endpoints are blocked (no HTML content)

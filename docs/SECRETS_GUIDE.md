@@ -8,7 +8,7 @@ There are four stores, and it matters which is which:
 
 1. **GitHub environment secrets** (`production` env) — CI/CD needs them to reach
    the VPS. See GITHUB_SETUP.md.
-2. **The VPS `.env.staging`** (git-ignored, on the box) — what the running API
+2. **The VPS `.env.production`** (git-ignored, on the box) — what the running API
    reads. This is the runtime source of truth.
 3. **The database (AES-256 encrypted)** — payment-provider credentials, entered
    through the admin UI, encrypted with `APP_SECRET`. Never an env var.
@@ -25,16 +25,16 @@ GitHub; nothing CI-only belongs on the VPS.
 | `GITHUB_TOKEN` | GitHub (auto, per-run) | GitHub | Automatic — ephemeral per workflow run. Never stored. |
 | GHCR read PAT (VPS `docker login`) | VPS (docker credential store) | DevOps | Regenerate the `read:packages` PAT; `docker login` again. Or make the package public and retire the PAT. |
 | `SLACK_WEBHOOK_URL` | GitHub `production` env | DevOps | Regenerate in Slack; update the secret. On leak. |
-| `POSTGRES_PASSWORD` | VPS `.env.staging` | DevOps/DBA | `openssl rand`, update `.env.staging`, `ALTER ROLE … PASSWORD`, restart API. Coordinated (brief downtime). |
-| `DATABASE_URL` | VPS `.env.staging` (derived from the above) | DevOps | Changes only when the password/host changes; it is composed from `POSTGRES_*` in compose. |
-| `JWT_ACCESS_SECRET` | VPS `.env.staging` | DevOps | `openssl rand -base64 48`; update and restart. Effect: all live access tokens rejected → users re-login. Low blast radius; rotate freely. |
-| `APP_SECRET` | VPS `.env.staging` | DevOps (**high-value**) | **Load-bearing for data.** It decrypts DB-stored payment credentials — rotating it requires re-encrypting those rows, not just swapping the value. Treat as a key-rotation project, not a config edit. Store off-box (secret manager) so a restore can recover it. See DISASTER_RECOVERY.md. |
-| `REDIS_URL` | VPS `.env.staging` | DevOps | Only if Redis auth/host changes. No data at risk (counters only). |
+| `POSTGRES_PASSWORD` | VPS `.env.production` | DevOps/DBA | `openssl rand`, update `.env.production`, `ALTER ROLE … PASSWORD`, restart API. Coordinated (brief downtime). |
+| `DATABASE_URL` | VPS `.env.production` (derived from the above) | DevOps | Changes only when the password/host changes; it is composed from `POSTGRES_*` in compose. |
+| `JWT_ACCESS_SECRET` | VPS `.env.production` | DevOps | `openssl rand -base64 48`; update and restart. Effect: all live access tokens rejected → users re-login. Low blast radius; rotate freely. |
+| `APP_SECRET` | VPS `.env.production` | DevOps (**high-value**) | **Load-bearing for data.** It decrypts DB-stored payment credentials — rotating it requires re-encrypting those rows, not just swapping the value. Treat as a key-rotation project, not a config edit. Store off-box (secret manager) so a restore can recover it. See DISASTER_RECOVERY.md. |
+| `REDIS_URL` | VPS `.env.production` | DevOps | Only if Redis auth/host changes. No data at risk (counters only). |
 | Payment provider creds — **Stripe**, **Click**, **Payme** | **Database, AES-256 encrypted** | Org admin (per tenant) | Entered/updated through the billing admin UI (`PaymentProviderRegistry`), never as env vars. Rotate at the provider, then update via the UI; the new ciphertext is written with `APP_SECRET`. |
-| `SMTP_URL` / `MAIL_FROM` | VPS `.env.staging` | DevOps | Rotate the SMTP credential at the provider; update and restart. Empty → invite links are logged, not mailed. |
+| `SMTP_URL` / `MAIL_FROM` | VPS `.env.production` | DevOps | Rotate the SMTP credential at the provider; update and restart. Empty → invite links are logged, not mailed. |
 | **AWS** (SES/S3) keys | *not currently required* | DevOps | The mail transport is `SMTP_URL`; the AWS SES SDK is present but unwired. If SES or S3 offsite backups are adopted, prefer **OIDC role assumption** (GITHUB_SETUP.md §7) over static keys; if static keys are unavoidable they go in the store of whoever consumes them (CI → GitHub env; runtime → VPS `.env`). |
-| `SENTRY_DSN` (+ `SENTRY_ENVIRONMENT`, `SENTRY_TRACES_SAMPLE_RATE`) | VPS `.env.staging` | DevOps | Scaffolded, not yet wired (see deploy/monitoring). A DSN is low-sensitivity (ingest-only); rotate in Sentry if leaked. |
-| `GRAFANA_ADMIN_PASSWORD` | VPS `.env.staging` (monitoring stack only) | DevOps | `openssl rand`; update and restart Grafana. Only relevant if the opt-in monitoring stack is running. |
+| `SENTRY_DSN` (+ `SENTRY_ENVIRONMENT`, `SENTRY_TRACES_SAMPLE_RATE`) | VPS `.env.production` | DevOps | Scaffolded, not yet wired (see deploy/monitoring). A DSN is low-sensitivity (ingest-only); rotate in Sentry if leaked. |
+| `GRAFANA_ADMIN_PASSWORD` | VPS `.env.production` (monitoring stack only) | DevOps | `openssl rand`; update and restart Grafana. Only relevant if the opt-in monitoring stack is running. |
 | Vercel project env (e.g. any frontend vars) | Vercel project settings | DevOps | In the Vercel dashboard; redeploy to apply. The frontend currently needs no secret — the API host is baked into `vercel.json`. |
 
 ## Rules

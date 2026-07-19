@@ -13,10 +13,16 @@ import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api/fetch";
 import { toast } from "sonner";
 import { CheckCircle2 } from "lucide-react";
+import { analytics } from "@/lib/analytics";
+import { buildLeadSource, getAttribution } from "@/lib/analytics/attribution";
 
-export function openDemoModal() {
+/**
+ * Open the demo modal. `source` records which CTA triggered it (hero, pricing,
+ * nav, final_cta, …) so the resulting lead carries accurate attribution.
+ */
+export function openDemoModal(source = "demo_modal") {
   if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent("flowerp:open-demo"));
+    window.dispatchEvent(new CustomEvent("flowerp:open-demo", { detail: { source } }));
   }
 }
 
@@ -24,12 +30,26 @@ export function DemoModal() {
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [formStarted, setFormStarted] = useState(false);
+  const [ctaSource, setCtaSource] = useState("demo_modal");
 
   useEffect(() => {
-    const handler = () => setOpen(true);
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ source?: string }>).detail;
+      setCtaSource(detail?.source ?? "demo_modal");
+      setOpen(true);
+    };
     window.addEventListener("flowerp:open-demo", handler);
     return () => window.removeEventListener("flowerp:open-demo", handler);
   }, []);
+
+  // Track form started (first field focus)
+  const handleFormStart = () => {
+    if (!formStarted) {
+      analytics.track({ name: 'demo_form_started', params: { source: ctaSource } });
+      setFormStarted(true);
+    }
+  };
 
   /// Posts to the public POST /leads endpoint. This form used to sleep 700ms
   /// and claim "Demo request received" without sending anything anywhere — the
@@ -42,6 +62,11 @@ export function DemoModal() {
     const form = e.currentTarget;
     const data = new FormData(form);
 
+    // Track form submission attempt
+    analytics.track({ name: 'demo_form_submitted', params: { source: ctaSource } });
+
+    const attribution = getAttribution();
+
     try {
       const response = await apiFetch("/api/leads", {
         method: "POST",
@@ -52,6 +77,14 @@ export function DemoModal() {
           company: String(data.get("company") ?? ""),
           phone: String(data.get("phone") ?? ""),
           message: String(data.get("message") ?? "") || undefined,
+          source: buildLeadSource(ctaSource),
+          utmSource: attribution.utmSource,
+          utmMedium: attribution.utmMedium,
+          utmCampaign: attribution.utmCampaign,
+          utmTerm: attribution.utmTerm,
+          utmContent: attribution.utmContent,
+          referrer: attribution.referrer,
+          landingPath: attribution.landingPath,
         }),
       });
 
@@ -64,13 +97,33 @@ export function DemoModal() {
         throw new Error(Array.isArray(message) ? message[0] : message);
       }
 
+      // Track successful conversion
+      analytics.track({ name: 'demo_form_success', params: { source: ctaSource } });
+      analytics.track({
+        name: 'conversion',
+        params: {
+          conversion_type: 'demo_request',
+          value: 0, // Placeholder; actual lead value is business-defined
+          currency: 'USD',
+        },
+      });
+
       form.reset();
       setOpen(false);
+      setFormStarted(false);
       toast.success("Demo request received", {
         description: "We'll contact you within one business day.",
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not send your request. Please try again.");
+      const errorMessage = err instanceof Error ? err.message : "Could not send your request. Please try again.";
+
+      // Track form error
+      analytics.track({
+        name: 'demo_form_error',
+        params: { error_message: errorMessage },
+      });
+
+      setError(errorMessage);
     } finally {
       setSubmitting(false);
     }
@@ -87,11 +140,11 @@ export function DemoModal() {
       <DialogContent className="max-w-lg border-border/60 bg-surface p-0 sm:rounded-2xl">
         <div className="p-8">
           <DialogHeader className="space-y-2 text-left">
-            <DialogTitle className="font-display text-2xl font-bold tracking-tight">
-              Request a Personalized Demo
+            <DialogTitle className="font-display text-2xl font-semibold tracking-tight">
+              Request a personalized demo
             </DialogTitle>
             <DialogDescription className="text-sm text-muted-foreground">
-              See how FlowERP AI can fit your logistics workflow.
+              Tell us about your operation and we'll tailor the walkthrough to your fleet and routes.
             </DialogDescription>
           </DialogHeader>
 
@@ -104,19 +157,52 @@ export function DemoModal() {
 
             <div className="grid gap-2">
               <Label htmlFor="d-name">Full Name</Label>
-              <Input id="d-name" name="name" required maxLength={200} placeholder="Jane Doe" className="h-11 bg-background/40" />
+              <Input
+                id="d-name"
+                name="name"
+                required
+                maxLength={200}
+                placeholder="Jane Doe"
+                className="h-11 bg-background/40"
+                onFocus={handleFormStart}
+              />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="d-email">Work Email</Label>
-              <Input id="d-email" name="email" type="email" required maxLength={320} placeholder="jane@company.com" className="h-11 bg-background/40" />
+              <Input
+                id="d-email"
+                name="email"
+                type="email"
+                required
+                maxLength={320}
+                placeholder="jane@company.com"
+                className="h-11 bg-background/40"
+                onFocus={handleFormStart}
+              />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="d-company">Company Name</Label>
-              <Input id="d-company" name="company" required maxLength={200} placeholder="Acme Logistics" className="h-11 bg-background/40" />
+              <Input
+                id="d-company"
+                name="company"
+                required
+                maxLength={200}
+                placeholder="Acme Logistics"
+                className="h-11 bg-background/40"
+                onFocus={handleFormStart}
+              />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="d-phone">Phone / WhatsApp</Label>
-              <Input id="d-phone" name="phone" required maxLength={50} placeholder="+998 50 108 18 24" className="h-11 bg-background/40" />
+              <Input
+                id="d-phone"
+                name="phone"
+                required
+                maxLength={50}
+                placeholder="+998 50 108 18 24"
+                className="h-11 bg-background/40"
+                onFocus={handleFormStart}
+              />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="d-msg" className="text-muted-foreground">
@@ -132,8 +218,8 @@ export function DemoModal() {
               />
             </div>
 
-            <Button type="submit" disabled={submitting} className="h-11 w-full bg-gradient-brand text-brand-foreground hover:opacity-90">
-              {submitting ? "Sending…" : "Request My Demo"}
+            <Button type="submit" disabled={submitting} className="h-11 w-full bg-brand font-semibold text-brand-foreground hover:bg-brand/90">
+              {submitting ? "Sending…" : "Request my demo"}
             </Button>
 
             <div className="flex items-center justify-center gap-2 pt-1 text-xs text-muted-foreground">

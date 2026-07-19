@@ -2,12 +2,14 @@ import { NotFoundException } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { OrdersService } from "../../orders/orders.service";
 import { PrismaService } from "../../prisma/prisma.service";
+import { TelematicsService } from "../../telematics/telematics.service";
 import { CustomerOrdersService } from "./customer-orders.service";
 
 describe("CustomerOrdersService", () => {
   let svc: CustomerOrdersService;
   let prisma: any;
   let orders: any;
+  let telematics: any;
 
   const payload = {
     accountId: "acc-1",
@@ -22,12 +24,14 @@ describe("CustomerOrdersService", () => {
       orderStatusHistory: { findMany: jest.fn() },
     };
     orders = { list: jest.fn(), getById: jest.fn() };
+    telematics = { trackForOrder: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CustomerOrdersService,
         { provide: PrismaService, useValue: prisma },
         { provide: OrdersService, useValue: orders },
+        { provide: TelematicsService, useValue: telematics },
       ],
     }).compile();
 
@@ -68,6 +72,24 @@ describe("CustomerOrdersService", () => {
       orders.getById.mockResolvedValue({ id: "ord-1", customerId: "other" });
 
       await expect(svc.getTimeline(payload, "ord-1")).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe("getTracking", () => {
+    it("returns tracking for an owned order", async () => {
+      orders.getById.mockResolvedValue({ id: "ord-1", customerId: "cust-1" });
+      telematics.trackForOrder.mockResolvedValue({ orderId: "ord-1", status: "IN_TRANSIT", tracking: { latitude: 1, longitude: 2 } });
+
+      const result = await svc.getTracking(payload, "ord-1");
+      expect(result.tracking).toEqual({ latitude: 1, longitude: 2 });
+      expect(telematics.trackForOrder).toHaveBeenCalledWith("org-1", "ord-1");
+    });
+
+    it("throws NotFound and never reveals a position for a foreign order", async () => {
+      orders.getById.mockResolvedValue({ id: "ord-1", customerId: "other-cust" });
+
+      await expect(svc.getTracking(payload, "ord-1")).rejects.toThrow(NotFoundException);
+      expect(telematics.trackForOrder).not.toHaveBeenCalled();
     });
   });
 

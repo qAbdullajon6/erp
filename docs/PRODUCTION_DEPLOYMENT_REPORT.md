@@ -43,9 +43,9 @@ ready now.
 | Monitoring | `deploy/monitoring/**` *(new, opt-in)* | Prometheus, Alertmanager, Loki, Promtail, exporters, Grafana datasources |
 | Error tracking | `apps/api/.env.example` | `SENTRY_DSN` scaffolding (config contract; SDK wiring deferred) |
 
-Nothing existing was rewritten or removed. `docker-compose.prod.yml` remains
-present but SUPERSEDED (its own header says so); the canonical stack is
-`docker-compose.staging.yml`, which is production topology despite the name.
+Historical note: older superseded compose files were removed; the canonical
+production stack is root `docker-compose.yml`. Local Postgres/Traccar lives in
+`docker-compose.local.yml`.
 
 ---
 
@@ -96,7 +96,7 @@ present but SUPERSEDED (its own header says so); the canonical stack is
 ## 4. Required environment variables
 
 Supplied to the stack via `--env-file` (never committed; `.gitignore` excludes
-`.env*` except `*.env.example`). Template: `deploy/.env.staging.example`.
+`.env*` except `*.env.example`). Template: `deploy/.env.example`.
 
 **Required — the API refuses to boot without these in production:**
 
@@ -129,7 +129,7 @@ Supplied to the stack via `--env-file` (never committed; `.gitignore` excludes
 **One-time (per VPS):**
 - [ ] Ubuntu LTS, Docker + Compose plugin; firewall to 80/443/SSH only.
 - [ ] DNS A record → VPS **before** first boot (so Caddy's ACME succeeds).
-- [ ] `.env.staging` filled from the template; secrets generated with `openssl`.
+- [ ] `.env.production` filled from the template; secrets generated with `openssl`.
 - [ ] `vercel.json` rewrite host == `SITE_ADDRESS`.
 - [ ] Backup cron installed with `OFFSITE_COMMAND` set (§6).
 
@@ -249,7 +249,7 @@ running dev stack and its data were never touched; torn down with `down -v` afte
 - `amtool check-config` — Alertmanager: route + 1 inhibit rule + 2 receivers. ✅
 - `loki -verify-config` — exit 0, no errors. ✅
 - `promtail -check-syntax` — "Valid config file". ✅
-- `docker compose config` — monitoring stack and staging stack both valid. ✅
+- `docker compose config` — monitoring stack and production stack both valid. ✅
 - `bash -n` — `deploy.sh` and `restore-postgres.sh`: syntax OK. ✅
 
 ---

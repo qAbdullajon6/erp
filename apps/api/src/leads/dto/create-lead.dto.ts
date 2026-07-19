@@ -31,4 +31,41 @@ export class CreateLeadDto {
   @IsString()
   @MaxLength(100)
   source?: string;
+
+  /// First-touch marketing attribution, captured on the marketing site. All
+  /// optional and length-capped like every other field on this public endpoint.
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  utmSource?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  utmMedium?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  utmCampaign?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  utmTerm?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  utmContent?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  referrer?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  landingPath?: string;
 }

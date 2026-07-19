@@ -105,6 +105,16 @@ export class NotificationsService {
         { type: "CUSTOMER_AT_RISK", category: "CUSTOMERS", severity: "LOW", entityType: "Customer" },
         () => this.findAtRiskCustomers(organizationId),
       ],
+      [
+        // Fleet telematics has its own alert centre with ack/resolve; only the
+        // serious, still-open alerts are surfaced into the shared notification
+        // stream so it isn't flooded by low-severity idle pings. An alert that
+        // is acknowledged or resolved no longer qualifies, so the reconcile
+        // loop auto-archives its notification — the same resolved-condition
+        // lifecycle every other FLEET rule follows.
+        { type: "TELEMATICS_ALERT", category: "FLEET", severity: "HIGH", entityType: "TelematicsAlert" },
+        () => this.findOpenTelematicsAlerts(organizationId),
+      ],
     ];
 
     for (const [rule, findQualifying] of rules) {
@@ -343,6 +353,19 @@ export class NotificationsService {
       title: `${d.firstName} ${d.lastName}'s license expires soon`,
       message: `Driver ${d.employeeCode}'s license expires on ${d.licenseExpiry!.toISOString().slice(0, 10)}.`,
       metadata: { employeeCode: d.employeeCode },
+    }));
+  }
+
+  private async findOpenTelematicsAlerts(organizationId: string): Promise<QualifyingEntity[]> {
+    const alerts = await this.prisma.telematicsAlert.findMany({
+      where: { organizationId, status: "OPEN", severity: { in: ["CRITICAL", "HIGH"] } },
+      select: { id: true, title: true, message: true, type: true, severity: true, vehicleId: true },
+    });
+    return alerts.map((a) => ({
+      entityId: a.id,
+      title: a.title,
+      message: a.message,
+      metadata: { alertType: a.type, severity: a.severity, vehicleId: a.vehicleId },
     }));
   }
 

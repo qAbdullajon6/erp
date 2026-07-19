@@ -1,4 +1,4 @@
-import { IsDateString, IsEnum, IsInt, IsOptional, IsString, IsUUID, Min } from "class-validator";
+import { IsDateString, IsEnum, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from "class-validator";
 import { Type } from "class-transformer";
 import type { DispatchStatus } from "@prisma/client";
 
@@ -13,10 +13,12 @@ export class ListDispatchesQueryDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(200)
   limit?: number = 10;
 
   @IsOptional()
   @IsString()
+  @MaxLength(200)
   search?: string;
 
   @IsOptional()

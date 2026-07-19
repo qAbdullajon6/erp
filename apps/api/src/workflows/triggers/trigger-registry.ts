@@ -26,6 +26,11 @@ export const TRIGGER_DEFINITIONS: TriggerDefinition[] = [
   { type: 'lead.created', displayName: 'Lead Created', description: 'When a new lead is captured' },
   { type: 'expense.created', displayName: 'Expense Created', description: 'When an expense is submitted' },
   { type: 'expense.approved', displayName: 'Expense Approved', description: 'When an expense is approved' },
+  { type: 'trip.started', displayName: 'Trip Started', description: 'When a vehicle starts a tracked journey' },
+  { type: 'trip.completed', displayName: 'Trip Completed', description: 'When a tracked journey ends' },
+  { type: 'vehicle.geofence.entered', displayName: 'Geofence Entered', description: 'When a vehicle enters a geofence' },
+  { type: 'vehicle.geofence.exited', displayName: 'Geofence Exited', description: 'When a vehicle leaves a geofence' },
+  { type: 'telematics.alert.raised', displayName: 'Telematics Alert', description: 'When a fleet alert fires (speeding, idle, offline, harsh driving, geofence, low fuel, check-engine)' },
   { type: 'api', displayName: 'API Trigger', description: 'Triggered programmatically via the Workflow API' },
 ];
 

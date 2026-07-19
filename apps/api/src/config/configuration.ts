@@ -3,6 +3,17 @@ export interface AppConfig {
   nodeEnv: string;
   corsOrigins: string[];
   databaseUrl: string;
+  /// Graceful shutdown timeout in milliseconds. When SIGTERM/SIGINT is received,
+  /// NestJS runs onModuleDestroy/onApplicationShutdown hooks. If they don't
+  /// complete within this time, the process force-exits to prevent hanging on
+  /// stuck SSE streams, blocked Prisma disconnects, etc. Must be shorter than
+  /// Docker's SIGKILL timeout (default 10s) to allow clean shutdown logs.
+  shutdownTimeoutMs: number;
+  /// Global HTTP request timeout in milliseconds. Prevents slow queries or
+  /// hanging operations from blocking workers indefinitely. Does NOT apply to
+  /// Server-Sent Events (SSE) endpoints (AI streaming, telematics live-stream)
+  /// which are long-lived by design. Default 30000ms (30 seconds).
+  requestTimeoutMs: number;
 }
 
 export interface AuthConfig {
@@ -32,6 +43,14 @@ export interface InvitationConfig {
   mailFrom?: string;
 }
 
+export interface LeadsConfig {
+  /// Where new demo/contact lead notifications are emailed. Optional: when
+  /// unset (or no SMTP transport is configured) leads are still persisted and
+  /// logged, just not emailed. Falls back to MAIL_FROM so a single-address
+  /// setup still receives notifications.
+  notifyEmail?: string;
+}
+
 export interface WebhookConfig {
   /// Whether outbound webhooks may target private/loopback addresses.
   ///
@@ -45,6 +64,13 @@ export interface WebhookConfig {
   timeoutMs: number;
   /// How many times a delivery is attempted in total before it is FAILED.
   maxAttempts: number;
+  /// Circuit breaker: consecutive failures before opening circuit.
+  /// When open, deliveries are skipped (not sent) and retried after reset timeout.
+  circuitFailureThreshold: number;
+  /// Circuit breaker: milliseconds before attempting half-open recovery test.
+  circuitResetTimeoutMs: number;
+  /// Circuit breaker: successful test requests before closing circuit.
+  circuitHalfOpenRequests: number;
 }
 
 export interface AiConfig {
@@ -75,12 +101,24 @@ export interface AiConfig {
   rateLimitPerHour: number;
 }
 
+export interface TelematicsConfig {
+  /// Max concurrent SSE (live-stream) connections a single organization may hold
+  /// on this instance. A fairness limit: one org (or a leaky frontend opening a
+  /// stream per navigation) cannot exhaust the whole process. Default 20.
+  sseMaxConnectionsPerOrg: number;
+  /// Max concurrent SSE connections across all organizations on this instance.
+  /// A process-safety ceiling against memory / file-descriptor exhaustion. Default 500.
+  sseMaxConnectionsGlobal: number;
+}
+
 export default (): {
   app: AppConfig;
   auth: AuthConfig;
   invitation: InvitationConfig;
+  leads: LeadsConfig;
   webhook: WebhookConfig;
   ai: AiConfig;
+  telematics: TelematicsConfig;
 } => {
   const nodeEnv = process.env.NODE_ENV ?? "development";
   const jwtAccessSecret = process.env.JWT_ACCESS_SECRET ?? "";
@@ -126,13 +164,32 @@ export default (): {
     throw new Error("WEBHOOK_MAX_ATTEMPTS must be a positive integer (default 5).");
   }
 
-  const aiProvider = (process.env.AI_PROVIDER ?? "anthropic").toLowerCase();
-  const KNOWN_AI_PROVIDERS = ["anthropic", "openai", "gemini", "ollama"];
-  if (!KNOWN_AI_PROVIDERS.includes(aiProvider)) {
+  const circuitFailureThreshold = parseInt(process.env.WEBHOOK_CIRCUIT_FAILURE_THRESHOLD ?? "5", 10);
+  if (!Number.isInteger(circuitFailureThreshold) || circuitFailureThreshold <= 0) {
+    throw new Error("WEBHOOK_CIRCUIT_FAILURE_THRESHOLD must be a positive integer (default 5).");
+  }
+
+  const circuitResetTimeoutMs = parseInt(process.env.WEBHOOK_CIRCUIT_RESET_TIMEOUT_MS ?? "60000", 10);
+  if (!Number.isInteger(circuitResetTimeoutMs) || circuitResetTimeoutMs <= 0) {
+    throw new Error("WEBHOOK_CIRCUIT_RESET_TIMEOUT_MS must be a positive integer in milliseconds (default 60000).");
+  }
+
+  const circuitHalfOpenRequests = parseInt(process.env.WEBHOOK_CIRCUIT_HALF_OPEN_REQUESTS ?? "3", 10);
+  if (!Number.isInteger(circuitHalfOpenRequests) || circuitHalfOpenRequests <= 0) {
+    throw new Error("WEBHOOK_CIRCUIT_HALF_OPEN_REQUESTS must be a positive integer (default 3).");
+  }
+
+  // Blank / whitespace means Copilot is disabled (compose often passes
+  // AI_PROVIDER=${AI_PROVIDER:-} which expands to ""). Do not default empty
+  // to "anthropic" — that would boot-crash when the key is also empty.
+  const aiProviderRaw = (process.env.AI_PROVIDER ?? "").trim().toLowerCase();
+  const KNOWN_AI_PROVIDERS = ["anthropic", "openai", "gemini", "ollama"] as const;
+  if (aiProviderRaw.length > 0 && !(KNOWN_AI_PROVIDERS as readonly string[]).includes(aiProviderRaw)) {
     throw new Error(
-      `AI_PROVIDER must be one of: ${KNOWN_AI_PROVIDERS.join(", ")} (got "${aiProvider}").`,
+      `AI_PROVIDER must be empty (disabled) or one of: ${KNOWN_AI_PROVIDERS.join(", ")} (got "${aiProviderRaw}").`,
     );
   }
+  const aiProvider = aiProviderRaw;
 
   const aiMaxTokens = parseInt(process.env.AI_MAX_TOKENS ?? "4096", 10);
   if (!Number.isInteger(aiMaxTokens) || aiMaxTokens <= 0) {
@@ -159,6 +216,26 @@ export default (): {
     throw new Error("AI_REQUEST_TIMEOUT_MS must be a positive integer (default 120000).");
   }
 
+  const shutdownTimeoutMs = parseInt(process.env.SHUTDOWN_TIMEOUT_MS ?? "30000", 10);
+  if (!Number.isInteger(shutdownTimeoutMs) || shutdownTimeoutMs <= 0) {
+    throw new Error("SHUTDOWN_TIMEOUT_MS must be a positive integer in milliseconds (default 30000).");
+  }
+
+  const requestTimeoutMs = parseInt(process.env.REQUEST_TIMEOUT_MS ?? "30000", 10);
+  if (!Number.isInteger(requestTimeoutMs) || requestTimeoutMs <= 0) {
+    throw new Error("REQUEST_TIMEOUT_MS must be a positive integer in milliseconds (default 30000).");
+  }
+
+  const telematicsSseMaxPerOrg = parseInt(process.env.TELEMATICS_SSE_MAX_CONNECTIONS_PER_ORG ?? "20", 10);
+  if (!Number.isInteger(telematicsSseMaxPerOrg) || telematicsSseMaxPerOrg <= 0) {
+    throw new Error("TELEMATICS_SSE_MAX_CONNECTIONS_PER_ORG must be a positive integer (default 20).");
+  }
+
+  const telematicsSseMaxGlobal = parseInt(process.env.TELEMATICS_SSE_MAX_CONNECTIONS_GLOBAL ?? "500", 10);
+  if (!Number.isInteger(telematicsSseMaxGlobal) || telematicsSseMaxGlobal <= 0) {
+    throw new Error("TELEMATICS_SSE_MAX_CONNECTIONS_GLOBAL must be a positive integer (default 500).");
+  }
+
   return {
     ai: {
       provider: aiProvider,
@@ -179,6 +256,13 @@ export default (): {
       allowPrivateTargets,
       timeoutMs: webhookTimeoutMs,
       maxAttempts: webhookMaxAttempts,
+      circuitFailureThreshold,
+      circuitResetTimeoutMs,
+      circuitHalfOpenRequests,
+    },
+    telematics: {
+      sseMaxConnectionsPerOrg: telematicsSseMaxPerOrg,
+      sseMaxConnectionsGlobal: telematicsSseMaxGlobal,
     },
     app: {
       port: parseInt(process.env.PORT ?? "4000", 10),
@@ -188,6 +272,8 @@ export default (): {
         .map((origin) => origin.trim())
         .filter((origin) => origin.length > 0),
       databaseUrl: process.env.DATABASE_URL ?? "",
+      shutdownTimeoutMs,
+      requestTimeoutMs,
     },
     auth: {
       jwtAccessSecret,
@@ -201,6 +287,9 @@ export default (): {
       // configured" as a simple presence check.
       smtpUrl: process.env.SMTP_URL || undefined,
       mailFrom: process.env.MAIL_FROM || undefined,
+    },
+    leads: {
+      notifyEmail: process.env.LEADS_NOTIFY_EMAIL || process.env.MAIL_FROM || undefined,
     },
   };
 };

@@ -2,7 +2,7 @@
 # Bring it up separately, on the same box, once you want metrics/logs/alerts:
 #
 #   docker compose -f deploy/monitoring/docker-compose.monitoring.yml \
-#     --env-file .env.staging up -d
+#     --env-file .env.production up -d
 #
 # It attaches to the application stack's network (external, below) so the
 # exporters can reach Postgres and Redis by their compose service names. That is
@@ -86,7 +86,7 @@ services:
     image: quay.io/prometheuscommunity/postgres-exporter:v0.16.0
     restart: unless-stopped
     environment:
-      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-erp_staging}?sslmode=disable"
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-erp_prod}?sslmode=disable"
     expose:
       - "9187"
     networks: [monitoring, flowerp]
@@ -149,9 +149,9 @@ volumes:
 
 networks:
   monitoring:
-  # The application stack's network, created by docker-compose.staging.yml
-  # (project name flowerp-staging). Lets the exporters resolve `postgres` and
+  # The application stack's network, created by docker-compose.yml
+  # (project name flowerp). Lets the exporters resolve `postgres` and
   # `redis`. If your app project name differs, change this to match.
   flowerp:
     external: true
-    name: flowerp-staging_default
+    name: flowerp_default

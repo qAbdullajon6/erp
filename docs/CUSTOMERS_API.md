@@ -137,7 +137,7 @@ developer explicitly setting this environment variable.
 
 ```bash
 # 1. Start the backend (see BACKEND_FOUNDATION.md / AUTH_ONBOARDING.md)
-docker compose up -d
+docker compose -f docker-compose.local.yml up -d
 cp apps/api/.env.example apps/api/.env   # set a real JWT_ACCESS_SECRET
 npm run prisma:migrate
 npm run dev:api

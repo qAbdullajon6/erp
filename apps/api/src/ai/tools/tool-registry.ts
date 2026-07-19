@@ -6,6 +6,9 @@ import type { AiTool } from "./tool.interface";
 import { ReadTools } from "./read.tools";
 import { WriteTools } from "./write.tools";
 import { AnalyticsTools } from "./analytics.tools";
+import { TelematicsAiTools } from "./telematics.tools";
+import { NotificationAiTools } from "./notification.tools";
+import { BillingTools } from "./billing.tools";
 
 /// The set of capabilities the Copilot has, and who may use each.
 ///
@@ -24,8 +27,18 @@ export class ToolRegistry {
     readTools: ReadTools,
     writeTools: WriteTools,
     analyticsTools: AnalyticsTools,
+    telematicsTools: TelematicsAiTools,
+    notificationTools: NotificationAiTools,
+    billingTools: BillingTools,
   ) {
-    this.tools = [...readTools.all(), ...writeTools.all(), ...analyticsTools.all()];
+    this.tools = [
+      ...readTools.all(),
+      ...writeTools.all(),
+      ...analyticsTools.all(),
+      ...telematicsTools.all(),
+      ...notificationTools.all(),
+      ...billingTools.getTools(),
+    ];
   }
 
   /// Every tool, regardless of role. For diagnostics and tests only — never

@@ -31,4 +31,13 @@ export class CustomerOrdersController {
   ) {
     return this.svc.getTimeline(customer, id);
   }
+
+  /// Live tracking for one of the customer's own orders.
+  @Get(":id/tracking")
+  getTracking(
+    @CurrentCustomer() customer: CurrentCustomerPayload,
+    @Param("id", ParseUUIDPipe) id: string,
+  ) {
+    return this.svc.getTracking(customer, id);
+  }
 }

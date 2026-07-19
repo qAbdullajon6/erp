@@ -40,7 +40,10 @@
       "**/*.(t|j)s"
     ],
     "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "moduleNameMapper": {
+      "^isomorphic-dompurify$": "<rootDir>/../test/mocks/isomorphic-dompurify.js"
+    }
   },
   "dependencies": {
     "@nest-lab/throttler-storage-redis": "^1.2.0",
@@ -57,6 +60,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "exceljs": "^4.4.0",
+    "helmet": "^8.3.0",
     "ioredis": "^5.11.1",
     "nodemailer": "^9.0.3",
     "papaparse": "^5.5.4",

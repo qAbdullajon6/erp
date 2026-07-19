@@ -5,6 +5,245 @@ to take on with a named payoff point — not a wishlist and not a bug tracker.
 
 ---
 
+## TD-TELEMATICS-01 — `gps_positions` is an unpartitioned, unbounded hot table
+
+**Status:** OPEN, medium severity, accepted.
+**Found:** Fleet Telematics implementation milestone, 2026-07-17.
+
+The raw position stream grows without bound: a 100-vehicle fleet pinging every
+10 s writes ~860k rows/day. It is a single flat table, and retention pruning is
+a `deleteMany` over `recordedAt < cutoff`, which on a large table takes a heavy,
+long-held lock.
+
+**Why not fixed now:** correct at current scale and the reads are all index-
+covered by `(organizationId, vehicleId, recordedAt)`. The fix is declarative
+PostgreSQL range partitioning by month plus `DROP PARTITION`-based retention
+(instant, no lock), and batched deletes in the interim.
+
+**Payoff point:** first org exceeding ~50M rows, or the first retention prune
+that measurably impacts ingest latency.
+
+---
+
+## TD-TELEMATICS-02 — Trip aggregates assume serial per-vehicle ingestion
+
+**Status:** OPEN, low severity, accepted.
+**Found:** Fleet Telematics implementation milestone, 2026-07-17.
+
+`TripService.saveAggregate` writes ABSOLUTE running totals (not atomic
+increments), computed in memory across a batch. This keeps persistence a plain
+update with no raw SQL for the running max, and is correct because one device
+feeds one ordered stream. Two ingest batches for the *same vehicle* processed
+concurrently on two instances could race and lose one batch's contribution.
+
+**Why not fixed now:** a single vehicle has a single device feeding a single
+ordered stream; concurrent same-vehicle ingestion across instances does not
+occur in practice. The fix is a per-vehicle advisory lock around the
+open→rollup→save sequence, or atomic increments + a `GREATEST` raw update for
+max speed.
+
+**Payoff point:** if positions for one vehicle ever fan in from more than one
+source, or an at-least-once queue can replay a batch on another worker.
+
+---
+
+## TD-TELEMATICS-03 — Samsara/Geotab normalizers are documented-shape, not account-verified
+
+**Status:** OPEN, low severity, mitigated.
+**Found:** Fleet Telematics implementation milestone, 2026-07-17.
+
+`SamsaraProvider` and `GeotabProvider` map each vendor's *documented* location
+payload (`data[].gps` / MyGeotab record). They are real, unit-tested normalizers,
+but the field shapes have not been confirmed against a live account's webhook
+sample, and vendors version their payloads.
+
+**Why not fixed now:** no live Samsara/Geotab account is connected in this
+milestone. MANUAL, GENERIC_WEBHOOK and TRACCAR cover the paths actually
+exercised. A wrong mapping fails loudly (a `ProviderNormalizationError` 400),
+never silently corrupts data.
+
+**Payoff point:** onboarding the first customer on either platform — capture a
+real webhook sample and pin the normalizer to it with a fixture test.
+
+---
+
+## TD-TELEMATICS-04 — ETA has no address→coordinate geocoding
+
+**Status:** OPEN, low severity, accepted.
+**Found:** Fleet Telematics implementation milestone, 2026-07-17.
+
+Orders store delivery *addresses* as text, not coordinates, so ETA cannot be
+computed to "the order's destination" automatically. The ETA endpoint takes an
+explicit destination lat/lng; the kinematic estimate itself is fully implemented
+and tested.
+
+**Why not fixed now:** geocoding is a third-party integration (and cost) of its
+own. The `remainingKm` step is isolated so a routing/geocoding provider can drop
+in behind it without changing callers.
+
+**Payoff point:** when a geocoding provider is added, or when Orders gain
+persisted destination coordinates.
+
+---
+
+## TD-TELEMATICS-05 — `ws` typed by a local ambient declaration, not `@types/ws`
+
+**Status:** OPEN, trivial severity, accepted.
+**Found:** Fleet Telematics implementation milestone, 2026-07-17.
+
+The repo has `ws` but not `@types/ws`. Rather than add a dev dependency for a
+handful of methods, `apps/api/src/telematics/realtime/ws.d.ts` declares exactly
+the surface used. If WebSocket usage grows, replace the shim with `@types/ws`.
+
+**Payoff point:** the first time the shim is missing a member someone needs.
+
+---
+
+## TD-TELEMATICS-06 — Device ingest endpoint has no per-device rate limit
+
+**Status:** OPEN, low severity, accepted.
+**Found:** Fleet Telematics implementation milestone, 2026-07-17.
+
+`POST /telematics/ingest/:deviceId` opts out of the global IP throttle (a busy
+fleet legitimately posts hundreds of fixes/min from one egress IP). The device
+secret is the gate — an unauthenticated post is rejected before any work — but a
+compromised device secret could flood ingestion.
+
+**Why not fixed now:** the ingest path is cheap and the secret bounds who can
+call it. The fix is a per-device token-bucket keyed on `deviceId` (Redis), the
+same infrastructure the API-key rate limiter already uses.
+
+**Payoff point:** first sign of abusive volume from a single device, or the SLA
+that requires ingest back-pressure.
+
+---
+
+## TD-TELEMATICS-07 — Geofence dwell/exit does per-ping lookups for the last ENTER
+
+**Status:** OPEN, low severity, accepted.
+**Found:** Fleet Telematics implementation milestone, 2026-07-17.
+
+For a vehicle sitting inside a fence with a dwell threshold, each ping queries
+the most recent ENTER (and whether a DWELL already fired). Active geofences are
+cached per-org, but the ENTER lookup is not.
+
+**Why not fixed now:** fleets have a handful of depots/yards, so the cost is
+negligible. It would matter only with many overlapping fences a vehicle dwells
+in simultaneously. The fix is to carry current-fence membership + entry time on
+`VehicleTelematicsState`.
+
+**Payoff point:** an org with dozens of overlapping active geofences.
+
+---
+
+## TD-TELEMATICS-08 — Account-level multi-vehicle webhooks not fully wired
+
+**Status:** OPEN, low severity, accepted.
+**Found:** Fleet Telematics implementation milestone, 2026-07-17.
+
+Ingestion authenticates per device (`/telematics/ingest/:deviceId`), so a
+Samsara/Geotab *account* webhook that batches many vehicles in one POST is not
+the primary path — each device is expected to post for its own vehicle. The
+normalizers already return one position per vehicle in a batch; what is missing
+is an account-scoped ingest credential that resolves each `externalDeviceId` to
+its device.
+
+**Why not fixed now:** the per-device path covers Traccar, first-party and
+per-device vendor configs. Account fan-out is only needed for a specific
+Samsara/Geotab deployment style.
+
+**Payoff point:** onboarding a customer who insists on a single account-level
+webhook rather than per-device posting.
+
+---
+
+## TD-TELEMATICS-09 — Migration authored & validated but not applied to the shared dev DB
+
+**Status:** OPEN, informational.
+**Found:** Fleet Telematics implementation milestone, 2026-07-17.
+
+The dev database (`erp_dev`) carries a migration history from other branches
+(billing, delivery-proofs, driver-mobile, …) that does not exist on this branch,
+so `prisma migrate deploy` cannot be run cleanly here. The telematics migration
+(`20260717100000_add_fleet_telematics`) was instead validated by executing its
+full SQL against the live schema inside a transaction and rolling back — every
+`CREATE TYPE/TABLE/INDEX` and `ADD CONSTRAINT` succeeded — so it is known-good
+against the real schema without disturbing the drifted DB.
+
+**Why not fixed now:** the branch drift is pre-existing and not this milestone's
+to resolve; forcing the migration would risk another branch's data.
+
+**Payoff point:** when this branch's migrations are reconciled with the shared
+DB (a clean `migrate resolve`/rebaseline), apply telematics as part of that pass.
+
+---
+
+## TD-TELEMATICS-10 — Native PostgreSQL chosen over PostGIS for spatial operations
+
+**Status:** OPEN, deliberate design decision, informational.
+**Found:** Fleet Telematics evolution audit, 2026-07-17.
+
+The telematics module uses native PostgreSQL with haversine distance calculation
+(tested utility functions) and in-memory point-in-polygon testing (cached
+per-org geofences), instead of PostGIS with `GEOMETRY` types and `ST_*` spatial
+functions.
+
+**Why not PostGIS now:**
+- Current design is correct, tested, and performant at scale
+- All queries are org/vehicle-scoped first; spatial filtering is secondary
+- Haversine formula is tested and accurate for distance calculations
+- Point-in-polygon runs in-memory with geofences cached per-org (fast)
+- No spatial-range queries ("find all vehicles within 5km of point") currently needed
+- Avoiding PostGIS dependency reduces deployment complexity
+- PostGIS image (postgis/postgis:16-3.4) is available in docker-compose but not used
+
+**When to add PostGIS:**
+1. **Spatial-range query requirement:** "Find all vehicles within 5km of this point"
+2. **Performance bottleneck:** Geofence evaluation becomes slow (not observed)
+3. **Advanced spatial ops:** Buffer zones, route corridors, heatmaps, spatial indexing
+
+**Migration path when triggered:**
+1. Add PostGIS extension: `CREATE EXTENSION postgis;`
+2. Add geometry columns: `ALTER TABLE gps_positions ADD COLUMN location GEOMETRY(Point, 4326);`
+3. Populate from lat/lng: `UPDATE gps_positions SET location = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326);`
+4. Create GIST index: `CREATE INDEX idx_gps_positions_location ON gps_positions USING GIST (location);`
+5. Update geofence geometry columns similarly
+6. Replace haversine with `ST_Distance`, point-in-polygon with `ST_Contains`
+
+**Payoff point:** First requirement for a spatial-range query, or geofence
+evaluation becomes a measured bottleneck at scale.
+
+---
+
+## TD-TELEMATICS-11 — SSE connection limits are enforced per instance, not globally
+
+**Status:** OPEN, low severity, accepted.
+**Found:** Production readiness audit HIGH-5, 2026-07-18.
+
+`TelematicsRealtimeService` caps concurrent live-stream (SSE) connections with
+`TELEMATICS_SSE_MAX_CONNECTIONS_PER_ORG` and
+`TELEMATICS_SSE_MAX_CONNECTIONS_GLOBAL`, but the counters are an in-process
+`Map`/tally. With N application instances behind a load balancer the effective
+capacity is N times each limit — an org capped at 20 per instance can hold up to
+20N streams across the fleet, and the global ceiling is likewise per instance.
+
+**Why not fixed now:** the SSE registry itself is already per-instance by design
+(a Response object only exists on the instance that terminated its connection),
+so the cap is correct relative to the resource it protects — the memory and file
+descriptors of *this* process. The per-instance ceiling is exactly what defends
+against local OOM / FD exhaustion, which is the actual HIGH-5 risk. A global cap
+would need shared state.
+
+**Fix when triggered:** back the counters with Redis (INCR/DECR keyed by org and
+a global key, decremented on `close`), the same shared-state step deferred for
+the webhook dispatcher and import engine — see TD-018 / TD-019. Do it once,
+alongside those, rather than standing up Redis coordination for one consumer.
+
+**Payoff point:** first multi-instance deployment where a global SSE ceiling
+(not just a per-instance one) becomes an operational requirement.
+
+---
+
 ## TD-021 — Concurrent imports into one organization can collide on generated codes
 
 **Status:** OPEN, low severity, accepted.
@@ -374,3 +613,82 @@ only true because the Phase 5 backfill ran first.
 
 `Order.driverId` / `Order.vehicleId` survive for legacy read compatibility (API
 responses, list filters). No business rule reads them.
+
+---
+
+## TD-NOTIF-01 — Digest mode implementation deferred
+
+**Status:** OPEN, low severity, accepted.
+**Found:** Notifications Center milestone, 2026-07-17.
+
+Preferences table includes digestMode, digestTime fields, but aggregation logic and scheduled job are not implemented. Only instant notification delivery is active.
+
+**Why not fixed now:** Instant mode covers 90% of use cases. Digest requires aggregation logic and scheduled job. Structure ready for future implementation.
+
+**Payoff point:** When users request daily digest emails to reduce notification volume.
+
+---
+
+## TD-NOTIF-02 — SMS provider implementations deferred
+
+**Status:** OPEN, low severity, accepted.
+**Found:** Notifications Center milestone, 2026-07-17.
+
+SMSProvider interface defined, but Twilio/MessageBird implementations not built. SMS channel infrastructure exists but no provider integrations.
+
+**Why not fixed now:** Email is primary channel. SMS requires third-party account setup. Interface allows future providers without changing dispatcher.
+
+**Payoff point:** When SMS notification channel is required.
+
+---
+
+## TD-NOTIF-03 — Push notification providers deferred
+
+**Status:** OPEN, low severity, accepted.
+**Found:** Notifications Center milestone, 2026-07-17.
+
+PushProvider interface defined, but Firebase/APNs implementations not built.
+
+**Why not fixed now:** In-app and email cover current needs. Push requires mobile app.
+
+**Payoff point:** When mobile app is built.
+
+---
+
+## TD-NOTIF-06 — Template management UI deferred
+
+**Status:** OPEN, medium severity, accepted.
+**Found:** Notifications Center milestone, 2026-07-17.
+
+Template CRUD backend exists, admin UI not built.
+
+**Why not fixed now:** System templates seeded at deployment. Backend complete.
+
+**Payoff point:** When non-technical users need template customization.
+
+---
+
+## TD-NOTIF-07 — Preference center UI deferred
+
+**Status:** OPEN, medium severity, accepted.
+**Found:** Notifications Center milestone, 2026-07-17.
+
+Preferences backend complete, user UI not built.
+
+**Why not fixed now:** Admin can configure via API.
+
+**Payoff point:** When users request granular notification control.
+
+---
+
+## TD-NOTIF-08 — SSE realtime updates deferred
+
+**Status:** OPEN, medium severity, accepted.
+**Found:** Notifications Center milestone, 2026-07-17.
+
+SSE infrastructure exists, notification channel not integrated.
+
+**Why not fixed now:** Refresh works for MVP. Infrastructure exists.
+
+**Payoff point:** When realtime updates required.
+

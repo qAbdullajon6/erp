@@ -8,6 +8,8 @@ import { AuditModule } from "../audit/audit.module";
 import { MailModule } from "../mail/mail.module";
 import { OrdersModule } from "../orders/orders.module";
 import { InvoicesModule } from "../invoices/invoices.module";
+import { TelematicsModule } from "../telematics/telematics.module";
+import { BillingModule } from "../billing/billing.module";
 import { CustomerJwtStrategy } from "./auth/strategies/customer-jwt.strategy";
 import { CustomerPortalAuthService } from "./auth/customer-portal-auth.service";
 import { CustomerPortalAuthController } from "./auth/customer-portal-auth.controller";
@@ -26,6 +28,8 @@ import { CustomerProfileController } from "./profile/customer-profile.controller
 import { CustomerPortalProvisioningService } from "./provisioning/customer-portal-provisioning.service";
 import { CustomerPortalProvisioningController } from "./provisioning/customer-portal-provisioning.controller";
 import { PublicCustomerPortalInvitationController } from "./provisioning/public-customer-portal-invitation.controller";
+import { CustomerBillingService } from "./billing/customer-billing.service";
+import { CustomerBillingController } from "./billing/customer-billing.controller";
 
 @Module({
   imports: [
@@ -45,6 +49,8 @@ import { PublicCustomerPortalInvitationController } from "./provisioning/public-
     MailModule,
     OrdersModule,
     InvoicesModule,
+    TelematicsModule,
+    BillingModule,
   ],
   controllers: [
     CustomerPortalAuthController,
@@ -56,6 +62,7 @@ import { PublicCustomerPortalInvitationController } from "./provisioning/public-
     CustomerProfileController,
     CustomerPortalProvisioningController,
     PublicCustomerPortalInvitationController,
+    CustomerBillingController,
   ],
   providers: [
     CustomerJwtStrategy,
@@ -67,6 +74,7 @@ import { PublicCustomerPortalInvitationController } from "./provisioning/public-
     CustomerDocumentsService,
     CustomerProfileService,
     CustomerPortalProvisioningService,
+    CustomerBillingService,
   ],
 })
 export class CustomerPortalModule {}

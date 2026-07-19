@@ -1,4 +1,4 @@
-import { IsDateString, IsOptional, IsString, IsUUID } from "class-validator";
+import { IsDateString, IsOptional, IsString, IsUUID, MaxLength } from "class-validator";
 
 export class CreateDispatchDto {
   @IsUUID()
@@ -12,5 +12,6 @@ export class CreateDispatchDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(2000)
   notes?: string;
 }

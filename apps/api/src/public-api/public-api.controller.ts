@@ -11,6 +11,11 @@ import { ListOrdersQueryDto } from "../orders/dto/list-orders-query.dto";
 import { ListCustomersQueryDto } from "../customers/dto/list-customers-query.dto";
 import { ListDriversQueryDto } from "../drivers/dto/list-drivers-query.dto";
 import { ListVehiclesQueryDto } from "../vehicles/dto/list-vehicles-query.dto";
+import { TelematicsService } from "../telematics/telematics.service";
+import { AlertService } from "../telematics/alerts/alert.service";
+import { TripService } from "../telematics/trips/trip.service";
+import { ListAlertsQueryDto } from "../telematics/dto/list-alerts-query.dto";
+import { ListTripsQueryDto } from "../telematics/dto/list-trips-query.dto";
 
 /// The third-party integration surface — the thing API keys actually
 /// authenticate. Everything under /admin is the *management* of integrations;
@@ -36,6 +41,9 @@ export class PublicApiController {
     private readonly customers: CustomersService,
     private readonly drivers: DriversService,
     private readonly vehicles: VehiclesService,
+    private readonly telematics: TelematicsService,
+    private readonly telematicsAlerts: AlertService,
+    private readonly trips: TripService,
   ) {}
 
   /// Echoes back what the presented key is and may do. The endpoint an
@@ -86,5 +94,33 @@ export class PublicApiController {
   @RequireApiKeyScopes("vehicles:read")
   listVehicles(@Req() request: Request, @Query() query: ListVehiclesQueryDto) {
     return this.vehicles.list(request.apiKey!.organizationId, query);
+  }
+
+  // --- Telematics (live fleet tracking) ---
+  // Same services the session UI uses, so an integrator and the map never
+  // disagree about where a vehicle is.
+
+  @Get("telematics/live")
+  @RequireApiKeyScopes("telematics:read")
+  telematicsLive(@Req() request: Request) {
+    return this.telematics.liveFleet(request.apiKey!.organizationId);
+  }
+
+  @Get("telematics/vehicles/:id/live")
+  @RequireApiKeyScopes("telematics:read")
+  telematicsVehicle(@Req() request: Request, @Param("id", ParseUUIDPipe) id: string) {
+    return this.telematics.liveVehicle(request.apiKey!.organizationId, id);
+  }
+
+  @Get("telematics/trips")
+  @RequireApiKeyScopes("telematics:read")
+  telematicsTrips(@Req() request: Request, @Query() query: ListTripsQueryDto) {
+    return this.trips.list(request.apiKey!.organizationId, query);
+  }
+
+  @Get("telematics/alerts")
+  @RequireApiKeyScopes("telematics:read")
+  telematicsAlertList(@Req() request: Request, @Query() query: ListAlertsQueryDto) {
+    return this.telematicsAlerts.list(request.apiKey!.organizationId, query);
   }
 }

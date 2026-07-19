@@ -5,6 +5,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import type { WebhookConfig } from "../../config/configuration";
 import { signWebhookPayload } from "./webhook-signature.util";
 import { assertSafeWebhookUrl, WebhookUrlError } from "./webhook-url.util";
+import { WebhookCircuitBreaker, CircuitState } from "./webhook-circuit-breaker";
 
 /// How often the drain loop looks for due work.
 const POLL_INTERVAL_MS = 5_000;
@@ -36,11 +37,19 @@ export class WebhookDispatcherService implements OnModuleInit, OnModuleDestroy {
   /// Set when a drain is requested while one is already running. Without it,
   /// that request is simply dropped — see drain().
   private drainRequested = false;
+  private circuitBreaker: WebhookCircuitBreaker;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
-  ) {}
+  ) {
+    const webhookConfig = this.config.getOrThrow<WebhookConfig>("webhook");
+    this.circuitBreaker = new WebhookCircuitBreaker({
+      failureThreshold: webhookConfig.circuitFailureThreshold,
+      resetTimeoutMs: webhookConfig.circuitResetTimeoutMs,
+      halfOpenRequests: webhookConfig.circuitHalfOpenRequests,
+    });
+  }
 
   private get webhookConfig(): WebhookConfig {
     return this.config.getOrThrow<WebhookConfig>("webhook");
@@ -202,6 +211,50 @@ export class WebhookDispatcherService implements OnModuleInit, OnModuleDestroy {
     });
     if (!delivery || !delivery.endpoint) return;
 
+    // Circuit breaker: skip delivery if circuit is OPEN
+    if (this.circuitBreaker.shouldBlock(delivery.endpointId)) {
+      const circuitState = this.circuitBreaker.getState(delivery.endpointId);
+      const newAttemptCount = delivery.attemptCount + 1;
+
+      // Check if we've exhausted attempts
+      if (newAttemptCount >= this.webhookConfig.maxAttempts) {
+        this.logger.warn(
+          `Circuit ${circuitState} for endpoint ${delivery.endpoint.name} (${delivery.endpointId}). ` +
+          `Delivery ${delivery.id} exhausted after ${newAttemptCount} attempts (blocked by circuit). Marking FAILED.`,
+        );
+
+        await this.prisma.webhookDelivery.update({
+          where: { id: deliveryId },
+          data: {
+            status: "FAILED",
+            attemptCount: newAttemptCount,
+            failedAt: new Date(),
+            errorMessage: `Circuit breaker ${circuitState} after ${newAttemptCount} attempts`,
+            nextAttemptAt: null,
+          },
+        });
+        return;
+      }
+
+      const nextAttempt = nextBackoff(newAttemptCount);
+
+      this.logger.warn(
+        `Circuit ${circuitState} for endpoint ${delivery.endpoint.name} (${delivery.endpointId}). ` +
+        `Skipping delivery ${delivery.id}, will retry at ${nextAttempt.toISOString()} (attempt ${newAttemptCount}/${this.webhookConfig.maxAttempts})`,
+      );
+
+      // Return delivery to PENDING with backoff delay and incremented attempt count
+      await this.prisma.webhookDelivery.update({
+        where: { id: deliveryId },
+        data: {
+          status: "PENDING",
+          nextAttemptAt: nextAttempt,
+          attemptCount: newAttemptCount,
+        },
+      });
+      return;
+    }
+
     const attemptNumber = delivery.attemptCount + 1;
     const body = JSON.stringify(delivery.payload);
     const startedAt = Date.now();
@@ -241,6 +294,9 @@ export class WebhookDispatcherService implements OnModuleInit, OnModuleDestroy {
         );
 
         if (response.ok) {
+          // Record success in circuit breaker before settling
+          this.circuitBreaker.recordSuccess(delivery.endpointId);
+
           await this.settleSuccess(delivery.id, delivery.endpointId, {
             attemptNumber,
             httpStatus: response.status,
@@ -250,6 +306,9 @@ export class WebhookDispatcherService implements OnModuleInit, OnModuleDestroy {
           });
           return;
         }
+
+        // Record failure in circuit breaker before settling
+        this.circuitBreaker.recordFailure(delivery.endpointId);
 
         await this.settleFailure(delivery, {
           attemptNumber,
@@ -272,6 +331,9 @@ export class WebhookDispatcherService implements OnModuleInit, OnModuleDestroy {
             : err instanceof Error
               ? err.message
               : String(err);
+
+      // Record failure in circuit breaker before settling
+      this.circuitBreaker.recordFailure(delivery.endpointId);
 
       await this.settleFailure(delivery, {
         attemptNumber,

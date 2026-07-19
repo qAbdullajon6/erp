@@ -30,6 +30,8 @@ import { DeveloperModule } from "./developer/developer.module";
 import { PublicApiModule } from "./public-api/public-api.module";
 import { ImportModule } from "./import/import.module";
 import { AiModule } from "./ai/ai.module";
+import { TelematicsModule } from "./telematics/telematics.module";
+import { BillingModule } from "./billing/billing.module";
 import { testSupportImports } from "./test-support/test-support.module";
 import { LoggingMiddleware } from "./common/middleware/logging.middleware";
 
@@ -37,6 +39,9 @@ import { LoggingMiddleware } from "./common/middleware/logging.middleware";
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      // Prefer .env.local for development; fall back to .env. Production
+      // containers inject env via compose (.env.production) — no file required.
+      envFilePath: [".env.local", ".env"],
       load: [configuration],
     }),
     // Global default: 300 requests / 60s per IP. A single SPA page load fans
@@ -81,7 +86,9 @@ import { LoggingMiddleware } from "./common/middleware/logging.middleware";
     DeveloperModule,
     PublicApiModule,
     ImportModule,
+    TelematicsModule,
     AiModule,
+    BillingModule,
     // TEST-ONLY. Yields TestSupportModule under NODE_ENV=test and an empty list
     // everywhere else, so a production build registers zero extra routes and
     // zero extra providers. The e2e suite needs it because a raw invitation

@@ -9,6 +9,8 @@ import type { CurrentUserPayload } from "../auth/interfaces/current-user.interfa
 import { ExportReportQueryDto } from "./dto/export-report-query.dto";
 import { ReportFilterDto } from "./dto/report-filter.dto";
 import { ReportsService } from "./reports.service";
+import { TelematicsAnalyticsService } from "../telematics/analytics/telematics-analytics.service";
+import { AnalyticsQueryDto } from "../telematics/dto/analytics-query.dto";
 
 /// Every non-DRIVER role can reach every report in this phase — unlike
 /// Notifications, reports aren't split by category, so there's no
@@ -26,7 +28,26 @@ const ROLES: MembershipRole[] = [
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller("reports")
 export class ReportsController {
-  constructor(private readonly reportsService: ReportsService) {}
+  constructor(
+    private readonly reportsService: ReportsService,
+    private readonly telematicsAnalytics: TelematicsAnalyticsService,
+  ) {}
+
+  /// Fleet telematics report — the same fleet-utilisation, driver-behaviour and
+  /// fuel aggregates the telematics module computes, surfaced under /reports so
+  /// they sit alongside the operations and financial reports. Delegates to the
+  /// telematics analytics service rather than re-deriving anything.
+  @Roles(...ROLES)
+  @Get("fleet-telematics")
+  async fleetTelematics(@Query() query: AnalyticsQueryDto, @CurrentUser() user: CurrentUserPayload) {
+    const [overview, utilization, driverBehavior, fuel] = await Promise.all([
+      this.telematicsAnalytics.overview(user.organizationId, query),
+      this.telematicsAnalytics.fleetUtilization(user.organizationId, query),
+      this.telematicsAnalytics.driverBehavior(user.organizationId, query),
+      this.telematicsAnalytics.fuelAnalytics(user.organizationId, query),
+    ]);
+    return { overview, utilization, driverBehavior, fuel };
+  }
 
   @Roles(...ROLES)
   @Get("executive-overview")

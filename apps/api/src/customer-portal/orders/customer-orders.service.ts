@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { OrdersService } from "../../orders/orders.service";
+import { TelematicsService } from "../../telematics/telematics.service";
 import type { CurrentCustomerPayload } from "../auth/interfaces/current-customer.interface";
 import type { ListOrdersQueryDto } from "../../orders/dto/list-orders-query.dto";
 
@@ -17,6 +18,7 @@ export class CustomerOrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly orders: OrdersService,
+    private readonly telematics: TelematicsService,
   ) {}
 
   async list(payload: CurrentCustomerPayload, query: ListOrdersQueryDto) {
@@ -39,6 +41,16 @@ export class CustomerOrdersService {
       where: { orderId: id },
       orderBy: { createdAt: "asc" },
     });
+  }
+
+  /// Live location of the vehicle carrying this order, for the customer's
+  /// tracking view. Ownership is checked exactly like getById — a foreign
+  /// order 404s — before any position is revealed, and the payload carries no
+  /// driver PII (see TelematicsService.trackForOrder).
+  async getTracking(payload: CurrentCustomerPayload, id: string) {
+    const order = await this.orders.getById(payload.organizationId, id);
+    this.assertOwned(order, payload);
+    return this.telematics.trackForOrder(payload.organizationId, id);
   }
 
   /// A customer's own order that belongs to another customer in the same

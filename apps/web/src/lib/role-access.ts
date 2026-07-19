@@ -32,6 +32,11 @@ export const IMPORT_ROLES: MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER", "D
 /// WorkflowController.WORKFLOW_ROLES / developer-portal admin controllers.
 export const ADMIN_OPS_ROLES: MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER"];
 
+/// SubscriptionsController (@Roles("ADMIN")) and PlansController's admin routes —
+/// billing management is ADMIN-only, so OPERATIONS_MANAGER is deliberately
+/// excluded here (the API 403s them).
+export const ADMIN_ONLY_ROLES: MembershipRole[] = ["ADMIN"];
+
 /// OrdersController.CREATE_UPDATE_ROLES — excludes ACCOUNTANT (read-only orders).
 export const ORDER_WRITE_ROLES: MembershipRole[] = [
   "ADMIN",
