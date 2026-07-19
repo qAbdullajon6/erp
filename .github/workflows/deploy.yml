@@ -136,10 +136,17 @@ jobs:
             git rev-parse HEAD
 
             echo "==> Fix permissions"
-            chmod +x \
-              scripts/deploy.sh \
-              scripts/rollback.sh \
-              scripts/lib.sh
+
+            pwd
+            whoami
+            ls -lah
+            ls -lah scripts || true
+
+            stat scripts/deploy.sh || true
+            stat scripts/lib.sh || true
+            stat scripts/rollback.sh || true
+
+            chmod +x scripts/deploy.sh scripts/lib.sh scripts/rollback.sh
 
             if [ -n "${API_IMAGE:-}" ]; then
               export API_IMAGE
