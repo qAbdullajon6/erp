@@ -108,11 +108,19 @@ jobs:
           port: ${{ secrets.VPS_SSH_PORT || '22' }}
 
           command_timeout: 20m
-          script_stop: true
+          # Do NOT set script_stop. In appleboy/ssh-action@v1.2.0 (drone-ssh),
+          # script_stop injects an exit-code check after every newline, which
+          # breaks if/else: a false condition leaves $?=1, the injected check
+          # inside the else branch then exits 1 before the else body runs.
+          # That matches CI failing with only "Process exited with status 1"
+          # while `bash ./scripts/deploy.sh` on the VPS succeeds. Fail-fast is
+          # already handled by set -Eeuo pipefail below. script_stop was later
+          # removed upstream (appleboy/ssh-action#350).
 
           envs: DEPLOY_REF,API_IMAGE
 
           script: |
+            #!/usr/bin/env bash
             set -Eeuo pipefail
 
             cd /opt/flowerp
