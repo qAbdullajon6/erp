@@ -87,8 +87,19 @@ compose up -d $API_UP_ARGS api
 
 # --- 5. health verification --------------------------------------------------
 if wait_healthy; then
-  log "ensuring web + caddy are up"
-  compose up -d web caddy
+  log "ensuring web is up"
+  compose up -d web
+  # The Caddyfile is bind-mounted from the host
+  # (${CADDYFILE:-./deploy/Caddyfile} → /etc/caddy/Caddyfile:ro). Editing that
+  # file (git pull) does not change the compose service hash, so plain
+  # `up -d caddy` leaves the existing container running with its previous
+  # in-memory config and the existing cert set in the caddy_data volume.
+  # That is why www.flowerp.uz can be in the repo Caddyfile while TLS still
+  # fails: the process never re-read the file or reconciled ACME SANs.
+  # Force-recreate (same volumes) so Caddy reloads the Caddyfile and obtains
+  # any missing names (e.g. www) without touching deploy architecture.
+  log "recreating caddy so Caddyfile + ACME certs are reconciled"
+  compose up -d --force-recreate --no-deps caddy
   log "deploy of $DEPLOY_REF complete and healthy"
   compose ps
   exit 0
