@@ -9,16 +9,31 @@ import { useEffect, useRef } from 'react';
 import { useRouter } from '@tanstack/react-router';
 import { analytics } from '@/lib/analytics';
 import { getAnalyticsConfig } from '@/lib/analytics/config';
+import { loadConsent } from '@/lib/analytics/consent';
+import { captureAttribution } from '@/lib/analytics/attribution';
+import { initMonitoring } from '@/lib/monitoring';
 
 export function AnalyticsProvider() {
   const router = useRouter();
   const initialized = useRef(false);
 
-  // Initialize analytics on mount
+  // Initialize analytics + monitoring once on mount.
   useEffect(() => {
     if (!initialized.current) {
+      // Snapshot marketing attribution before anything navigates away.
+      captureAttribution();
+
       const config = getAnalyticsConfig();
       analytics.init(config);
+
+      // Re-apply a stored consent decision so it survives reloads across the
+      // whole app; the banner (on the marketing page) drives first-time choices.
+      const stored = loadConsent();
+      if (stored) analytics.setConsent(stored);
+
+      // Global error handlers + Web Vitals.
+      initMonitoring();
+
       initialized.current = true;
     }
   }, []);

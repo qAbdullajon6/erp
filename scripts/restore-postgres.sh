@@ -7,7 +7,7 @@
 # live data. Run it on a schedule; a restore that has not been rehearsed this
 # month is not a backup you can trust.
 #
-#   ./scripts/restore-postgres.sh backups/erp_staging-20260718T031700Z.sql.gz
+#   ./scripts/restore-postgres.sh backups/erp_prod-20260718T031700Z.sql.gz
 #       -> restores into <db>_restore_test, verifies, drops it. Live DB untouched.
 #
 #   CONFIRM=RESTORE_LIVE ./scripts/restore-postgres.sh <dump>.sql.gz --into-live
@@ -15,15 +15,15 @@
 #          so this DROPS and recreates every object: it REPLACES live contents.
 #          Refuses to run without the exact CONFIRM token, by design.
 #
-#   ENV_FILE=.env.prod ./scripts/restore-postgres.sh <dump>.sql.gz
+#   ENV_FILE=.env.production ./scripts/restore-postgres.sh <dump>.sql.gz
 #
 # Pairs with scripts/backup-postgres.sh and the runbook in deploy/README.md and
 # docs/DISASTER_RECOVERY.md.
 
 set -Eeuo pipefail
 
-ENV_FILE="${ENV_FILE:-.env.staging}"
-COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.staging.yml}"
+ENV_FILE="${ENV_FILE:-.env.production}"
+COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.yml}"
 
 DUMP=""
 INTO_LIVE=0
@@ -55,7 +55,7 @@ gzip -t "$DUMP"
 # shellcheck disable=SC1090
 set -a; source "$ENV_FILE"; set +a
 : "${POSTGRES_USER:?POSTGRES_USER missing from $ENV_FILE}"
-: "${POSTGRES_DB:=erp_staging}"
+: "${POSTGRES_DB:=erp_prod}"
 
 psql_db() {
   # -v ON_ERROR_STOP=1 so a mid-restore failure is a non-zero exit, not a

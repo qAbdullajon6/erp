@@ -1,26 +1,22 @@
 name: Deploy (production)
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
-      image_tag:
-        description: "GHCR image tag to deploy (e.g. v1.2.3, or a hotfix tag)"
-        required: true
-        default: latest
       ref:
-        description: "git ref checked out on the VPS for scripts/compose"
+        description: "git ref checked out on the VPS"
         required: true
         default: main
       reason:
         description: "Why this deploy is happening (recorded in the run)"
         required: false
         default: ""
-      deploy_env:
-        description: "Which env file the VPS loads (.env.<value>). Default staging preserves current behaviour."
+      api_image:
+        description: "Optional prebuilt API image (e.g. ghcr.io/owner/erp-api:v1.2.3). Leave empty to build on the VPS."
         required: false
-        default: staging
-        type: choice
-        options: [staging, production]
+        default: ""
   release:
     types: [published]
 
@@ -41,32 +37,32 @@ jobs:
       HAS_SLACK: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
 
     steps:
-      - name: Resolve tag & ref
+      - name: Resolve ref
         id: cfg
         env:
           OWNER: ${{ github.repository_owner }}
           EVENT: ${{ github.event_name }}
-          IN_TAG: ${{ github.event.inputs.image_tag }}
           IN_REF: ${{ github.event.inputs.ref }}
-          IN_ENV: ${{ github.event.inputs.deploy_env }}
+          IN_IMAGE: ${{ github.event.inputs.api_image }}
           REL_TAG: ${{ github.event.release.tag_name }}
         run: |
           if [ "$EVENT" = "release" ]; then
-            TAG="$REL_TAG"
             REF="$REL_TAG"
+            IMAGE="ghcr.io/${OWNER,,}/erp-api:${REL_TAG}"
+          elif [ "$EVENT" = "push" ]; then
+            REF="$GITHUB_REF_NAME"
+            IMAGE=""
           else
-            TAG="$IN_TAG"
             REF="$IN_REF"
+            IMAGE="$IN_IMAGE"
           fi
 
           {
-            echo "image_repo=ghcr.io/${OWNER,,}/erp-api"
-            echo "image_tag=$TAG"
             echo "deploy_ref=$REF"
-            echo "deploy_env=$ENV_NAME"
+            echo "api_image=$IMAGE"
           } >> "$GITHUB_OUTPUT"
 
-          echo "Deploying ghcr.io/${OWNER,,}/erp-api:$TAG (ref $REF)"
+          echo "Deploying ref=$REF image=${IMAGE:-build-on-vps}"
 
       - name: Preflight — SSH secrets check
         env:
@@ -114,7 +110,7 @@ jobs:
           command_timeout: 20m
           script_stop: true
 
-          envs: IMAGE_REPO,IMAGE_TAG,DEPLOY_REF
+          envs: DEPLOY_REF,API_IMAGE
 
           script: |
             set -Eeuo pipefail
@@ -135,49 +131,37 @@ jobs:
 
             git submodule update --init --recursive
 
-
             echo "==> Repository state"
-
             pwd
             git rev-parse HEAD
-            ls -la
-            ls -la scripts
-
 
             echo "==> Fix permissions"
-
             chmod +x \
               scripts/deploy.sh \
               scripts/rollback.sh \
               scripts/lib.sh
 
-
-            export API_IMAGE="${IMAGE_REPO}:${IMAGE_TAG}"
-
-
-            echo "==> deploying $API_IMAGE (ref ${DEPLOY_REF})"
-
+            if [ -n "${API_IMAGE:-}" ]; then
+              export API_IMAGE
+              echo "==> deploying with prebuilt image $API_IMAGE (ref ${DEPLOY_REF})"
+            else
+              unset API_IMAGE || true
+              echo "==> deploying with local build (ref ${DEPLOY_REF})"
+            fi
 
             ./scripts/deploy.sh "${DEPLOY_REF}"
 
-
         env:
-          IMAGE_REPO: ${{ steps.cfg.outputs.image_repo }}
-          IMAGE_TAG: ${{ steps.cfg.outputs.image_tag }}
           DEPLOY_REF: ${{ steps.cfg.outputs.deploy_ref }}
-          DEPLOY_ENV: ${{ steps.cfg.outputs.deploy_env }}
-
-
+          API_IMAGE: ${{ steps.cfg.outputs.api_image }}
 
       - name: Notify on failure
         if: failure() && env.HAS_SLACK == 'true'
-
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-
         run: |
           curl -sf \
           -X POST \
           -H 'Content-type: application/json' \
-          --data "{\"text\":\":rotating_light: FlowERP production deploy FAILED for \`${{ steps.cfg.outputs.image_tag }}\`\"}" \
+          --data "{\"text\":\":rotating_light: FlowERP production deploy FAILED for \`${{ steps.cfg.outputs.deploy_ref }}\`\"}" \
           "$SLACK_WEBHOOK_URL"

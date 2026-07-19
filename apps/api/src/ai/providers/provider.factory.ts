@@ -38,6 +38,11 @@ export class ProviderFactory {
   /// would send their data somewhere they did not choose.
   get(): LlmProvider {
     const name = this.aiConfig.provider;
+    if (!name) {
+      throw new ServiceUnavailableException(
+        "The AI Copilot is disabled. Set AI_PROVIDER to anthropic, openai, gemini, or ollama and provide the matching API key.",
+      );
+    }
     const provider = this.providers.find((p) => p.name === name);
 
     if (!provider) {

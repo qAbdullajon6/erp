@@ -10,16 +10,16 @@ the repository itself was restructured in the prior phase.
 ## Local prerequisites
 
 - Node.js and npm (already required for `apps/web`)
-- Docker (for local PostgreSQL via `docker-compose.yml`) — or any PostgreSQL
+- Docker (for local PostgreSQL via `docker-compose.local.yml`) — or any PostgreSQL
   16+ instance you already have running locally
 
 ## Starting PostgreSQL locally with Docker Compose
 
-A `docker-compose.yml` at the repo root starts **Postgres only** — the
+A `docker-compose.local.yml` at the repo root starts **Postgres only** — the
 frontend and API are not containerized in this phase.
 
 ```bash
-docker compose up -d
+docker compose -f docker-compose.local.yml up -d
 ```
 
 This starts Postgres on `localhost:5433` (host port; the container's internal
@@ -40,7 +40,7 @@ These match the default `DATABASE_URL` in `apps/api/.env.example`. Useful
 commands:
 
 ```bash
-docker compose up -d      # start Postgres in the background
+docker compose -f docker-compose.local.yml up -d      # start Postgres in the background
 docker compose down       # stop it (data volume persists)
 docker compose down -v    # stop it and delete the data volume
 docker compose ps         # check container status/health

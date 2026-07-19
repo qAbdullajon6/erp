@@ -9,7 +9,7 @@ migrates any ERP business data (Customers, Orders, Dispatch, Finance, ...).
 ## Local setup
 
 ```bash
-docker compose up -d                          # start local PostgreSQL (see BACKEND_FOUNDATION.md)
+docker compose -f docker-compose.local.yml up -d                          # start local PostgreSQL (see BACKEND_FOUNDATION.md)
 cp apps/api/.env.example apps/api/.env
 # generate a real local secret and paste it into .env as JWT_ACCESS_SECRET:
 node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"

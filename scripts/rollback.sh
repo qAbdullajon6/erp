@@ -6,7 +6,7 @@
 #
 #   ./scripts/rollback.sh                 # interactive-safe manual rollback
 #   ./scripts/rollback.sh --auto          # called by deploy.sh, no confirmation
-#   ENV_FILE=.env.prod ./scripts/rollback.sh
+#   ENV_FILE=.env.production ./scripts/rollback.sh
 #
 # How the rollback point exists: before every swap, deploy.sh tags the
 # currently-running (good) image as `<repo>:previous`. Rollback re-points the

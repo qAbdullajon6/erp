@@ -65,12 +65,17 @@ export class LinkedInInsightProvider {
 
     // LinkedIn primarily tracks conversions, not engagement events
     if (this.isConversionEvent(name)) {
-      // Map to LinkedIn conversion ID (configured in Campaign Manager)
-      // In production, you'd map specific events to conversion IDs
-      window.lintrk('track', { conversion_id: this.getConversionId(name) });
+      const conversionId = this.getConversionId(name);
+      if (!conversionId) {
+        if (this.debug) {
+          console.warn(`[LinkedIn Insight] No conversion ID configured for ${name}, skipped`);
+        }
+        return;
+      }
+      window.lintrk('track', { conversion_id: conversionId });
 
       if (this.debug) {
-        console.log(`[LinkedIn Insight] Conversion tracked: ${name}`);
+        console.log(`[LinkedIn Insight] Conversion tracked: ${name} (${conversionId})`);
       }
     }
   }
@@ -94,17 +99,20 @@ export class LinkedInInsightProvider {
   }
 
   /**
-   * Map event names to LinkedIn Conversion IDs.
-   * In production, these would be actual conversion IDs from Campaign Manager.
+   * Map event names to LinkedIn Conversion IDs from env.
+   * Set VITE_LINKEDIN_CONVERSION_<EVENT> to a numeric Campaign Manager ID.
+   * Returns 0 when unset — callers must skip tracking for 0.
    */
   private getConversionId(name: string): number {
-    // Placeholder — replace with real conversion IDs from LinkedIn Campaign Manager
-    const mapping: Record<string, number> = {
-      demo_form_success: 1234567,
-      demo_form_submitted: 1234568,
-      book_demo_click: 1234569,
+    const envMap: Record<string, string | undefined> = {
+      demo_form_success: import.meta.env.VITE_LINKEDIN_CONVERSION_DEMO_SUCCESS,
+      demo_form_submitted: import.meta.env.VITE_LINKEDIN_CONVERSION_DEMO_SUBMITTED,
+      book_demo_click: import.meta.env.VITE_LINKEDIN_CONVERSION_BOOK_DEMO,
     };
-    return mapping[name] ?? 0;
+    const raw = envMap[name]?.trim();
+    if (!raw) return 0;
+    const id = Number.parseInt(raw, 10);
+    return Number.isFinite(id) && id > 0 ? id : 0;
   }
 
   isReady(): boolean {

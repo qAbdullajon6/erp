@@ -1,32 +1,24 @@
-# Local rehearsal only: frontend and API behind one origin, the way Vercel's
-# rewrite makes it look to the browser in production.
+# Local rehearsal only: frontend and API behind one origin (production-like).
 #
-#   CADDYFILE=./deploy/Caddyfile.local docker compose \
-#     -f docker-compose.staging.yml --env-file .env.staging --profile web up -d --build
+#   CADDYFILE=./deploy/Caddyfile.local HTTP_PORT=8080 HTTPS_PORT=8443 \
+#     SITE_ADDRESS=:8080 API_ADDRESS=:8080 \
+#     docker compose --env-file .env.production up -d --build
 #   curl -fsS http://localhost:8080/api/health
 #
-# This is what lets the e2e suite run against a production build without Vercel:
+# E2E against a production build without Vercel:
 #   FRONTEND_URL=http://localhost:8080 API_URL=http://localhost:8080/api \
 #     npx playwright test e2e/rc-golden-path.spec.ts
 #
-# The VPS itself never uses this file — see deploy/Caddyfile.
+# The VPS never uses this file — see deploy/Caddyfile.
 
 {$SITE_ADDRESS::8080} {
 	encode zstd gzip
 
-	# The API mounts its routes at the root — /auth/login, /orders — not under
-	# /api. `handle_path` strips the matched prefix before proxying, which is
-	# what the Vite dev proxy's rewrite does locally and what Vercel's rewrite
-	# does in production. `handle` alone would forward /api/orders and 404.
 	handle_path /api/* {
 		reverse_proxy api:4000 {
 			health_uri /health
 			health_interval 5s
 			health_timeout 2s
-
-			# Match production: stream SSE immediately (telematics live feed, AI
-			# copilot) and never buffer or time out a long-lived stream, so a
-			# local rehearsal exercises the same streaming path the VPS does.
 			flush_interval -1
 			transport http {
 				dial_timeout 5s

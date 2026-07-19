@@ -1,57 +1,33 @@
 # FlowERP production edge (VPS).
 #
-# The VPS serves BOTH the SSR frontend (web:3000) and the API (api:4000) behind
-# one origin at $SITE_ADDRESS. Caddy terminates TLS (ACME, auto-renewed) and
-# redirects http:// -> https:// on its own.
+#   https://flowerp.uz      → SSR web (web:3000)
+#   https://api.flowerp.uz → NestJS API (api:4000)
 #
-#   SITE_ADDRESS (in .env.staging, VPS-side, gitignored):
-#     production   flowerp.uz www.flowerp.uz   -> Caddy obtains/renews TLS
-#     local        :8080                        -> plain HTTP, ACME skipped
+# Env (in .env.production on the VPS):
+#   SITE_ADDRESS=flowerp.uz
+#   API_ADDRESS=api.flowerp.uz
 #
-# Bring the whole stack up (frontend included) with the `web` profile:
-#   docker compose -f docker-compose.staging.yml --env-file .env.staging \
-#     --profile web up -d
-#
-# History: the frontend was originally deployed to Vercel with this box serving
-# the API alone, but production now serves everything from the VPS (flowerp.uz
-# resolves here). deploy/Caddyfile.local mirrors this topology for local rehearsal.
+# Local rehearsal of the production build uses deploy/Caddyfile.local instead:
+#   CADDYFILE=./deploy/Caddyfile.local HTTP_PORT=8080 HTTPS_PORT=8443 \
+#     SITE_ADDRESS=:8080 docker compose --env-file .env.production up -d --build
 
-{$SITE_ADDRESS::8080} {
+{$SITE_ADDRESS:flowerp.uz} {
 	encode zstd gzip
 
-	# Security headers set at the TLS-terminating edge. HSTS in particular
-	# belongs here, not on the API: the API only ever sees Caddy's internal HTTP
-	# hop, so helmet cannot reliably know the public request was HTTPS. Caddy's
-	# `header` replaces rather than appends, so where helmet already sets one of
-	# these on an /api response there is no duplicate — the edge value wins.
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
-		# Don't advertise the server software.
 		-Server
 	}
 
-	# The API mounts its routes at the root — /auth/login, /orders — not under
-	# /api. `handle_path` strips the matched prefix before proxying, exactly as
-	# the Vite dev proxy does locally. `handle` alone would forward /api/orders
-	# and 404 on every call.
+	# Same-origin /api/* for browsers that call the marketing origin.
 	handle_path /api/* {
 		reverse_proxy api:4000 {
-			# Polled every 5s, not every 30s: the API runs `prisma migrate
-			# deploy` before it listens, so after a deploy Caddy would otherwise
-			# keep answering 503 for up to half a minute after the API was
-			# already serving.
 			health_uri /health
 			health_interval 5s
 			health_timeout 2s
-
-			# SSE (the telematics live feed, the AI copilot stream) must reach
-			# the client token-by-token. flush_interval -1 makes immediate
-			# flushing explicit and disables response buffering, so a long-lived
-			# stream is never held back. There is deliberately no response
-			# timeout on the transport — an SSE connection is meant to stay open.
 			flush_interval -1
 			transport http {
 				dial_timeout 5s
@@ -59,9 +35,35 @@
 		}
 	}
 
-	# Everything else is the SSR frontend.
 	handle {
 		reverse_proxy web:3000
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}
+
+{$API_ADDRESS:api.flowerp.uz} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	reverse_proxy api:4000 {
+		health_uri /health
+		health_interval 5s
+		health_timeout 2s
+		flush_interval -1
+		transport http {
+			dial_timeout 5s
+		}
 	}
 
 	log {

@@ -155,7 +155,7 @@ FlowERP AI has been audited for production deployment readiness. This report cov
 
 **Recommendation:**
 1. **Before production deploy:** Reconcile migration history with `prisma migrate resolve`
-2. **Before production deploy:** Apply telematics migration cleanly to a staging DB
+2. **Before production deploy:** Apply telematics migration cleanly to a production DB (or a throwaway rehearsal DB)
 3. **Production deploy:** Use `prisma migrate deploy`, never `prisma db push`
 
 ---
@@ -300,7 +300,7 @@ FlowERP AI has been audited for production deployment readiness. This report cov
 
 ### Database
 - [ ] **BLOCKER:** Reconcile migration history (`prisma migrate resolve`)
-- [ ] **BLOCKER:** Apply telematics migration cleanly to staging
+- [ ] **BLOCKER:** Apply telematics migration cleanly before production cutover
 - [ ] Run `prisma migrate deploy` (NOT `db push`)
 - [ ] Verify all 20+ migrations apply without errors
 - [ ] Seed system notification templates (if not already seeded)
@@ -316,7 +316,7 @@ FlowERP AI has been audited for production deployment readiness. This report cov
 - [ ] Kill DB connection, verify `/health/database` returns 503
 - [ ] Verify `/health` returns 200 when DB is down
 - [ ] Load test auth endpoints to verify 5/min rate limit works
-- [ ] Deploy to staging and run full E2E test suite
+- [ ] Deploy to production (or local production compose) and run full E2E test suite
 - [ ] Monitor first 24h for unhandled exceptions in logs
 
 ### Documentation
@@ -385,7 +385,7 @@ FlowERP AI demonstrates strong production readiness fundamentals:
 
 **Next Steps:**
 1. Resolve 6 blockers listed in section 9
-2. Deploy to staging environment
+2. Deploy to production
 3. Run full verification checklist (section 8)
 4. Monitor first 24h with on-call engineer
 5. Address P1 items within 30 days

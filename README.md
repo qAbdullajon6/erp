@@ -31,11 +31,11 @@ Run everything from the repository root; npm workspaces forwards to the right ap
 # 1. Install
 npm install
 
-# 2. Start PostgreSQL (host port 5433, not 5432 — see docker-compose.yml)
-docker compose up -d
+# 2. Start PostgreSQL (host port 5433, not 5432 — see docker-compose.local.yml)
+docker compose -f docker-compose.local.yml up -d
 
 # 3. Configure the API
-cp apps/api/.env.example apps/api/.env
+cp apps/api/.env.example apps/api/.env.local
 # Generate a JWT secret and paste it into JWT_ACCESS_SECRET:
 node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 
@@ -210,7 +210,10 @@ erp/
       prisma/            # schema, migrations, seeds
       src/<module>/      # one folder per business module
   docs/                  # per-phase API contracts and design notes
-  docker-compose.yml     # local PostgreSQL
+  docker-compose.yml       # production stack (VPS)
+  docker-compose.local.yml # local PostgreSQL + Traccar
+  deploy/                  # Caddyfile, env template, monitoring
+  scripts/                 # deploy, backup, rollback
 ```
 
 `apps/web/src/components/shared/` is the design system. `status-badge.tsx` is the single

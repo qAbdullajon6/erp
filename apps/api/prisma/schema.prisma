@@ -1071,8 +1071,19 @@ model Lead {
   company   String
   phone     String
   message   String?
-  /// Where on the site the request came from, for attribution.
+  /// Where on the site the request came from, for attribution. Derived from
+  /// the campaign (utm_source/medium/campaign) when present, otherwise the CTA.
   source    String     @default("landing_demo_modal")
+  /// First-touch marketing attribution, captured client-side. All optional:
+  /// direct/organic visitors have none of these.
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  utmTerm     String?
+  utmContent  String?
+  /// External referrer and the first path the visitor landed on.
+  referrer    String?
+  landingPath String?
   status    LeadStatus @default(NEW)
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt

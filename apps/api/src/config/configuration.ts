@@ -43,6 +43,14 @@ export interface InvitationConfig {
   mailFrom?: string;
 }
 
+export interface LeadsConfig {
+  /// Where new demo/contact lead notifications are emailed. Optional: when
+  /// unset (or no SMTP transport is configured) leads are still persisted and
+  /// logged, just not emailed. Falls back to MAIL_FROM so a single-address
+  /// setup still receives notifications.
+  notifyEmail?: string;
+}
+
 export interface WebhookConfig {
   /// Whether outbound webhooks may target private/loopback addresses.
   ///
@@ -107,6 +115,7 @@ export default (): {
   app: AppConfig;
   auth: AuthConfig;
   invitation: InvitationConfig;
+  leads: LeadsConfig;
   webhook: WebhookConfig;
   ai: AiConfig;
   telematics: TelematicsConfig;
@@ -170,13 +179,17 @@ export default (): {
     throw new Error("WEBHOOK_CIRCUIT_HALF_OPEN_REQUESTS must be a positive integer (default 3).");
   }
 
-  const aiProvider = (process.env.AI_PROVIDER ?? "anthropic").toLowerCase();
-  const KNOWN_AI_PROVIDERS = ["anthropic", "openai", "gemini", "ollama"];
-  if (!KNOWN_AI_PROVIDERS.includes(aiProvider)) {
+  // Blank / whitespace means Copilot is disabled (compose often passes
+  // AI_PROVIDER=${AI_PROVIDER:-} which expands to ""). Do not default empty
+  // to "anthropic" — that would boot-crash when the key is also empty.
+  const aiProviderRaw = (process.env.AI_PROVIDER ?? "").trim().toLowerCase();
+  const KNOWN_AI_PROVIDERS = ["anthropic", "openai", "gemini", "ollama"] as const;
+  if (aiProviderRaw.length > 0 && !(KNOWN_AI_PROVIDERS as readonly string[]).includes(aiProviderRaw)) {
     throw new Error(
-      `AI_PROVIDER must be one of: ${KNOWN_AI_PROVIDERS.join(", ")} (got "${aiProvider}").`,
+      `AI_PROVIDER must be empty (disabled) or one of: ${KNOWN_AI_PROVIDERS.join(", ")} (got "${aiProviderRaw}").`,
     );
   }
+  const aiProvider = aiProviderRaw;
 
   const aiMaxTokens = parseInt(process.env.AI_MAX_TOKENS ?? "4096", 10);
   if (!Number.isInteger(aiMaxTokens) || aiMaxTokens <= 0) {
@@ -274,6 +287,9 @@ export default (): {
       // configured" as a simple presence check.
       smtpUrl: process.env.SMTP_URL || undefined,
       mailFrom: process.env.MAIL_FROM || undefined,
+    },
+    leads: {
+      notifyEmail: process.env.LEADS_NOTIFY_EMAIL || process.env.MAIL_FROM || undefined,
     },
   };
 };

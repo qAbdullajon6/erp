@@ -78,7 +78,7 @@ export const INTEGRATIONS: Integration[] = [
     name: 'Google Maps',
     description: 'Route optimization and live tracking',
     category: 'mapping',
-    status: 'active',
+    status: 'coming_soon',
     icon: '/icons/google-maps.svg',
     docsUrl: '/docs/integrations/google-maps',
     setupRequired: true,

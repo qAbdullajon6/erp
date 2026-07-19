@@ -8,6 +8,8 @@
  * https://developers.google.com/search/docs/appearance/structured-data
  */
 
+import { siteConfig, socialProfiles } from '@/lib/site-config';
+
 interface OrganizationSchema {
   '@context': 'https://schema.org';
   '@type': 'Organization';
@@ -77,23 +79,18 @@ export function getOrganizationSchema(): OrganizationSchema {
   return {
     '@context': 'https://schema.org',
     '@type': 'Organization',
-    name: 'FlowERP',
-    url: 'https://flowerp.uz',
-    logo: 'https://flowerp.uz/logo-512.png', // Placeholder — needs actual logo
+    name: siteConfig.name,
+    url: siteConfig.url,
+    logo: siteConfig.logo,
     description:
-      'FlowERP orchestrates logistics operations with AI. Orders, dispatch, fleet, and finance unified in one command center. Trusted by 23 companies managing 10,000+ daily deliveries.',
+      'FlowERP orchestrates logistics operations with AI. Orders, dispatch, fleet, and finance unified in one command center.',
     contactPoint: {
       '@type': 'ContactPoint',
-      telephone: '+998-50-108-18-24',
+      telephone: siteConfig.contact.phoneDisplay,
       contactType: 'Sales',
-      email: 'hello@itechnology.uz',
+      email: siteConfig.contact.email,
     },
-    sameAs: [
-      // Add social profiles when available
-      // 'https://www.linkedin.com/company/flowerp-ai',
-      // 'https://twitter.com/flowerpai',
-      // 'https://www.facebook.com/flowerpai',
-    ],
+    sameAs: socialProfiles(),
   };
 }
 
@@ -115,7 +112,7 @@ export function getSoftwareApplicationSchema(): SoftwareApplicationSchema {
     },
     description:
       'AI-powered logistics management platform. Orders, dispatch, fleet tracking, and finance in one unified system. 14-day free trial, no credit card required.',
-    url: 'https://flowerp.uz',
+    url: siteConfig.url,
     // screenshot: 'https://flowerp.uz/screenshots/dashboard.png', // Add when available
     // aggregateRating: {
     //   '@type': 'AggregateRating',

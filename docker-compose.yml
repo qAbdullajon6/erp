@@ -1,76 +1,153 @@
-# Local PostgreSQL + Traccar — for apps/api development. Does not containerize
-# the frontend or the API itself; see docs/BACKEND_FOUNDATION.md.
+# Production stack (single VPS): PostgreSQL, Redis, NestJS API, SSR web, Caddy.
+#
+#   cp deploy/.env.example .env.production
+#   docker compose --env-file .env.production up -d --build
+#
+# Only Caddy publishes ports. Postgres and Redis stay on the compose network.
+#
+# Local development Postgres + Traccar: docker-compose.local.yml
+#
+# Project name is pinned so this stack never collides with the local compose
+# project when both run from the same directory on a developer machine.
+name: flowerp
+
 services:
   postgres:
-    # postgis/postgis:16-3.4 — PostgreSQL 16 with PostGIS 3.4 extension.
-    #
-    # The Fleet Telematics module currently uses native PostgreSQL with
-    # haversine distance calculations and in-memory point-in-polygon testing.
-    # PostGIS is available but not yet enabled (see TD-TELEMATICS-10).
-    #
-    # PostGIS will be activated when:
-    # 1. Spatial-range queries are needed ("find all vehicles within 5km")
-    # 2. Geofence evaluation becomes a performance bottleneck
-    # 3. Advanced spatial ops are required (buffer zones, route corridors)
-    #
-    # Current implementation is correct and performant; PostGIS is a future
-    # optimization, not a requirement.
-    image: postgis/postgis:16-3.4
+    image: postgres:16-alpine
+    container_name: flowerp-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: erp
-      POSTGRES_PASSWORD: erp
-      POSTGRES_DB: erp_dev
-    ports:
-      # Host-side port is 5433, not 5432: some developer machines already run
-      # a native PostgreSQL install on the default 5432, which silently wins
-      # the port and causes Prisma to authenticate against the wrong server.
-      # The container's internal port is still the Postgres default (5432).
-      - "5433:5432"
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-erp_prod}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./backups:/backups
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U erp -d erp_dev"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB:-erp_prod}"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
-  # Traccar — the GPS server the telematics module integrates against.
-  #
-  # A real open-source telematics platform speaking 2000+ device protocols, not
-  # a stand-in for one. It owns the device-facing side (a tracker connects to it
-  # over its own protocol on one of the ports below); FlowERP reads positions
-  # from its REST API. That split is deliberate: writing GPS protocol decoders
-  # is not this product's job, and Traccar has done it for a decade.
-  #
-  # Verifiable without buying hardware: Traccar's own phone app posts real GPS
-  # from a real device to port 5055, which is how this integration gets
-  # exercised end-to-end locally.
-  traccar:
-    image: traccar/traccar:6.4-alpine
+  redis:
+    image: redis:7-alpine
+    container_name: flowerp-redis
     restart: unless-stopped
-    ports:
-      # Web UI + REST API. FlowERP talks to this one.
-      - "8082:8082"
-      # OsmAnd/Traccar Client protocol — plain HTTP, what the phone app posts to.
-      - "5055:5055"
-      # Teltonika, the most common hardware tracker protocol.
-      - "5027:5027/tcp"
-    volumes:
-      - traccar_data:/opt/traccar/data
-      - traccar_logs:/opt/traccar/logs
+    # Persistence off on purpose: Redis only holds rate-limit counters.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
     healthcheck:
-      # Traccar has no dedicated health endpoint; the server root answering is
-      # the signal that it has finished booting its embedded Jetty.
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:8082/ || exit 1"]
-      interval: 10s
-      timeout: 5s
-      # Slower than Postgres: Traccar boots a JVM and initialises its own
-      # embedded database on first run.
-      retries: 12
-      start_period: 30s
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    # API_IMAGE lets a deploy pull a prebuilt image from GHCR. Unset → build locally.
+    image: ${API_IMAGE:-flowerp-api:local}
+    container_name: flowerp-api
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-erp_prod}?schema=public&connection_limit=30&pool_timeout=10&connect_timeout=30&statement_timeout=15000
+      REDIS_URL: redis://redis:6379
+      CORS_ORIGIN: ${PUBLIC_ORIGIN:?PUBLIC_ORIGIN is required, e.g. https://flowerp.uz}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET is required}
+      JWT_ACCESS_EXPIRES_IN_SECONDS: ${JWT_ACCESS_EXPIRES_IN_SECONDS:-900}
+      REFRESH_TOKEN_EXPIRES_IN_DAYS: ${REFRESH_TOKEN_EXPIRES_IN_DAYS:-30}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:?APP_PUBLIC_URL is required, e.g. https://flowerp.uz}
+      INVITATION_EXPIRES_IN_DAYS: ${INVITATION_EXPIRES_IN_DAYS:-7}
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      LEADS_NOTIFY_EMAIL: ${LEADS_NOTIFY_EMAIL:-}
+      APP_SECRET: ${APP_SECRET:-}
+      AI_PROVIDER: ${AI_PROVIDER:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-}
+      AI_OPENAI_BASE_URL: ${AI_OPENAI_BASE_URL:-https://api.openai.com/v1}
+      AI_OLLAMA_BASE_URL: ${AI_OLLAMA_BASE_URL:-http://127.0.0.1:11434}
+      AI_MAX_TOKENS: ${AI_MAX_TOKENS:-4096}
+      AI_TEMPERATURE: ${AI_TEMPERATURE:-0.2}
+      AI_RATE_LIMIT_PER_HOUR: ${AI_RATE_LIMIT_PER_HOUR:-120}
+      WEBHOOK_TIMEOUT_MS: ${WEBHOOK_TIMEOUT_MS:-10000}
+      WEBHOOK_MAX_ATTEMPTS: ${WEBHOOK_MAX_ATTEMPTS:-5}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      CLICK_SECRET_KEY: ${CLICK_SECRET_KEY:-}
+      PAYME_MERCHANT_ID: ${PAYME_MERCHANT_ID:-}
+      PAYME_SECRET_KEY: ${PAYME_SECRET_KEY:-}
+      GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-unknown}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+    expose:
+      - "4000"
+
+  web:
+    image: flowerp-web:local
+    container_name: flowerp-web
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOST: 0.0.0.0
+    expose:
+      - "3000"
+
+  # Seeds create accounts with a published README password — never on production.
+  #
+  #   docker compose --env-file .env.production --profile seed \
+  #     run --rm seeder npx ts-node prisma/seed-test-org.ts
+  seeder:
+    profiles: ["seed"]
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: build
+    depends_on:
+      postgres:
+        condition: service_healthy
+    working_dir: /repo/apps/api
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-erp_prod}?schema=public
+    entrypoint: ["sh", "-c"]
+    command: ["echo 'pass a command, e.g. npx ts-node prisma/seed-test-org.ts'"]
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: flowerp-caddy
+    restart: unless-stopped
+    depends_on:
+      - api
+      - web
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-flowerp.uz}
+      API_ADDRESS: ${API_ADDRESS:-api.flowerp.uz}
+    ports:
+      # Host and container HTTP port must match: ACME hostnames use 80;
+      # local rehearsal with SITE_ADDRESS=:8080 uses 8080.
+      - "${HTTP_PORT:-80}:${HTTP_PORT:-80}"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ${CADDYFILE:-./deploy/Caddyfile}:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
 
 volumes:
   postgres_data:
-  traccar_data:
-  traccar_logs:
+  caddy_data:
+  caddy_config:

@@ -14,10 +14,15 @@ import { apiFetch } from "@/lib/api/fetch";
 import { toast } from "sonner";
 import { CheckCircle2 } from "lucide-react";
 import { analytics } from "@/lib/analytics";
+import { buildLeadSource, getAttribution } from "@/lib/analytics/attribution";
 
-export function openDemoModal() {
+/**
+ * Open the demo modal. `source` records which CTA triggered it (hero, pricing,
+ * nav, final_cta, …) so the resulting lead carries accurate attribution.
+ */
+export function openDemoModal(source = "demo_modal") {
   if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent("flowerp:open-demo"));
+    window.dispatchEvent(new CustomEvent("flowerp:open-demo", { detail: { source } }));
   }
 }
 
@@ -26,9 +31,14 @@ export function DemoModal() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formStarted, setFormStarted] = useState(false);
+  const [ctaSource, setCtaSource] = useState("demo_modal");
 
   useEffect(() => {
-    const handler = () => setOpen(true);
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ source?: string }>).detail;
+      setCtaSource(detail?.source ?? "demo_modal");
+      setOpen(true);
+    };
     window.addEventListener("flowerp:open-demo", handler);
     return () => window.removeEventListener("flowerp:open-demo", handler);
   }, []);
@@ -36,7 +46,7 @@ export function DemoModal() {
   // Track form started (first field focus)
   const handleFormStart = () => {
     if (!formStarted) {
-      analytics.track({ name: 'demo_form_started', params: {} });
+      analytics.track({ name: 'demo_form_started', params: { source: ctaSource } });
       setFormStarted(true);
     }
   };
@@ -53,7 +63,9 @@ export function DemoModal() {
     const data = new FormData(form);
 
     // Track form submission attempt
-    analytics.track({ name: 'demo_form_submitted', params: {} });
+    analytics.track({ name: 'demo_form_submitted', params: { source: ctaSource } });
+
+    const attribution = getAttribution();
 
     try {
       const response = await apiFetch("/api/leads", {
@@ -65,6 +77,14 @@ export function DemoModal() {
           company: String(data.get("company") ?? ""),
           phone: String(data.get("phone") ?? ""),
           message: String(data.get("message") ?? "") || undefined,
+          source: buildLeadSource(ctaSource),
+          utmSource: attribution.utmSource,
+          utmMedium: attribution.utmMedium,
+          utmCampaign: attribution.utmCampaign,
+          utmTerm: attribution.utmTerm,
+          utmContent: attribution.utmContent,
+          referrer: attribution.referrer,
+          landingPath: attribution.landingPath,
         }),
       });
 
@@ -78,7 +98,7 @@ export function DemoModal() {
       }
 
       // Track successful conversion
-      analytics.track({ name: 'demo_form_success', params: {} });
+      analytics.track({ name: 'demo_form_success', params: { source: ctaSource } });
       analytics.track({
         name: 'conversion',
         params: {
@@ -120,11 +140,11 @@ export function DemoModal() {
       <DialogContent className="max-w-lg border-border/60 bg-surface p-0 sm:rounded-2xl">
         <div className="p-8">
           <DialogHeader className="space-y-2 text-left">
-            <DialogTitle className="font-display text-2xl font-bold tracking-tight">
-              Get a Demo
+            <DialogTitle className="font-display text-2xl font-semibold tracking-tight">
+              Request a personalized demo
             </DialogTitle>
             <DialogDescription className="text-sm text-muted-foreground">
-              See how FlowERP AI can fit your logistics workflow.
+              Tell us about your operation and we'll tailor the walkthrough to your fleet and routes.
             </DialogDescription>
           </DialogHeader>
 
@@ -198,8 +218,8 @@ export function DemoModal() {
               />
             </div>
 
-            <Button type="submit" disabled={submitting} className="h-11 w-full bg-gradient-brand text-brand-foreground hover:opacity-90">
-              {submitting ? "Sending…" : "Request My Demo"}
+            <Button type="submit" disabled={submitting} className="h-11 w-full bg-brand font-semibold text-brand-foreground hover:bg-brand/90">
+              {submitting ? "Sending…" : "Request my demo"}
             </Button>
 
             <div className="flex items-center justify-center gap-2 pt-1 text-xs text-muted-foreground">

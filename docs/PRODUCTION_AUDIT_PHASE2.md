@@ -749,7 +749,7 @@ if (process.env.SENTRY_DSN) {
 
 ## Go/No-Go Recommendation
 
-**For single-instance staging/pilot (< 50 users):** ✅ GO after Sprint 1 (Critical fixes)
+**For single-instance production/pilot (< 50 users):** ✅ GO after Sprint 1 (Critical fixes)
 
 **For production launch (public):** ⚠️ HOLD until Sprint 2 complete (High-1,2,3)
 

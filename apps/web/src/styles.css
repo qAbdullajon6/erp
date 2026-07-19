@@ -165,6 +165,118 @@
   box-shadow: var(--shadow-glow);
 }
 
+/* ============================================================
+   Landing V2 — ambient + motion layer.
+   Colour stays restrained (one brand hue); life comes from motion.
+   Everything is prefixed `lv2-` and every decorative animation is
+   switched off under prefers-reduced-motion (block at the bottom).
+   ============================================================ */
+
+@utility lv2-grid {
+  /* Barely-there engineering grid. Always pair with a fade mask. */
+  background-image:
+    linear-gradient(to right, oklch(1 0 0 / 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, oklch(1 0 0 / 0.035) 1px, transparent 1px);
+  background-size: 56px 56px;
+}
+
+@utility lv2-grid-fine {
+  background-image:
+    linear-gradient(to right, oklch(1 0 0 / 0.025) 1px, transparent 1px),
+    linear-gradient(to bottom, oklch(1 0 0 / 0.025) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+@utility lv2-wash {
+  /* Single soft brand wash — the only ambient colour we allow. */
+  background: radial-gradient(60% 55% at 50% -5%, oklch(0.68 0.17 250 / 0.14), transparent 72%);
+}
+
+@utility lv2-wash-soft {
+  background: radial-gradient(55% 50% at 50% 50%, oklch(0.68 0.17 250 / 0.08), transparent 72%);
+}
+
+@utility lv2-mask-x {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 14%, #000 86%, transparent);
+  mask-image: linear-gradient(to right, transparent, #000 14%, #000 86%, transparent);
+}
+
+@utility lv2-mask-b {
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent);
+  mask-image: linear-gradient(to bottom, #000 55%, transparent);
+}
+
+@utility lv2-mask-radial {
+  -webkit-mask-image: radial-gradient(70% 70% at 50% 40%, #000 55%, transparent);
+  mask-image: radial-gradient(70% 70% at 50% 40%, #000 55%, transparent);
+}
+
+@keyframes lv2-marquee {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-50%, 0, 0); }
+}
+@keyframes lv2-blink { 0%, 45% { opacity: 1; } 55%, 100% { opacity: 0; } }
+@keyframes lv2-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}
+@keyframes lv2-float-slow {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-11px); }
+}
+@keyframes lv2-pulse-ring {
+  0% { transform: scale(0.85); opacity: 0.55; }
+  70% { transform: scale(2.1); opacity: 0; }
+  100% { transform: scale(2.1); opacity: 0; }
+}
+@keyframes lv2-shimmer {
+  from { background-position: -180% 0; }
+  to { background-position: 180% 0; }
+}
+@keyframes lv2-dash { to { stroke-dashoffset: 0; } }
+@keyframes lv2-flow { to { stroke-dashoffset: -240; } }
+@keyframes lv2-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.lv2-marquee { animation: lv2-marquee 46s linear infinite; }
+.lv2-marquee-slow { animation: lv2-marquee 68s linear infinite; }
+.lv2-pause:hover .lv2-marquee,
+.lv2-pause:hover .lv2-marquee-slow { animation-play-state: paused; }
+.lv2-caret { animation: lv2-blink 1.05s steps(1, end) infinite; }
+.lv2-float { animation: lv2-float 6.5s ease-in-out infinite; }
+.lv2-float-slow { animation: lv2-float-slow 9s ease-in-out infinite; }
+.lv2-shimmer {
+  background: linear-gradient(90deg, transparent, oklch(1 0 0 / 0.07), transparent);
+  background-size: 180% 100%;
+  animation: lv2-shimmer 2.4s ease-in-out infinite;
+}
+.lv2-pulse-ring { animation: lv2-pulse-ring 2.6s cubic-bezier(0.16, 1, 0.3, 1) infinite; }
+.lv2-flow { stroke-dasharray: 5 11; animation: lv2-flow 14s linear infinite; }
+
+/* SVG route/network draw-in — flip to `.is-in` when scrolled into view. */
+.lv2-draw {
+  stroke-dasharray: var(--lv2-len, 1200);
+  stroke-dashoffset: var(--lv2-len, 1200);
+}
+.lv2-draw.is-in { animation: lv2-dash 2.2s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lv2-marquee,
+  .lv2-marquee-slow,
+  .lv2-caret,
+  .lv2-float,
+  .lv2-float-slow,
+  .lv2-shimmer,
+  .lv2-pulse-ring,
+  .lv2-flow,
+  .lv2-draw.is-in {
+    animation: none !important;
+  }
+  .lv2-draw { stroke-dashoffset: 0 !important; }
+}
+
 /* A scrollable panel (sidebar nav, board columns) with the default browser
    scrollbar reads as unfinished next to everything else in the shell — thin,
    rounded, and quiet until hovered, so it never competes with the content

@@ -28,7 +28,7 @@ GPS Device → Traccar (protocol decoding) → FlowERP webhook → Ingestion →
 
 ### Docker Compose (Recommended)
 
-Traccar is already configured in `docker-compose.yml`:
+Traccar is already configured in `docker-compose.local.yml`:
 
 ```bash
 # Start Traccar + PostgreSQL

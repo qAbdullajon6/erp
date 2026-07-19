@@ -1,6 +1,9 @@
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { MailService } from "../mail/mail.service";
+import type { LeadsConfig } from "../config/configuration";
 import { CreateLeadDto } from "./dto/create-lead.dto";
 import { ListLeadsQueryDto } from "./dto/list-leads-query.dto";
 import { UpdateLeadStatusDto } from "./dto/update-lead-status.dto";
@@ -9,27 +12,87 @@ import { UpdateLeadStatusDto } from "./dto/update-lead-status.dto";
 export class LeadsService {
   private readonly logger = new Logger(LeadsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mail: MailService,
+    private readonly config: ConfigService,
+  ) {}
 
   /// Returns only an acknowledgement, never the stored row: the endpoint is
   /// public, and echoing the record back would let anyone confirm what was
   /// persisted (and hand them the lead's id).
   async create(dto: CreateLeadDto) {
+    const clean = (value?: string) => value?.trim() || null;
+
     const lead = await this.prisma.lead.create({
       data: {
         name: dto.name.trim(),
         email: dto.email.trim().toLowerCase(),
         company: dto.company.trim(),
         phone: dto.phone.trim(),
-        message: dto.message?.trim() || null,
+        message: clean(dto.message),
         source: dto.source?.trim() || "landing_demo_modal",
+        utmSource: clean(dto.utmSource),
+        utmMedium: clean(dto.utmMedium),
+        utmCampaign: clean(dto.utmCampaign),
+        utmTerm: clean(dto.utmTerm),
+        utmContent: clean(dto.utmContent),
+        referrer: clean(dto.referrer),
+        landingPath: clean(dto.landingPath),
       },
       select: { id: true, createdAt: true },
     });
 
-    this.logger.log(`New demo request ${lead.id} from ${dto.company}`);
+    this.logger.log(
+      `New demo request ${lead.id} from ${dto.company} (source: ${dto.source ?? "landing_demo_modal"})`,
+    );
+
+    // Best-effort notification. A failed/absent mail transport must never fail
+    // the visitor's submission — the lead is already safely persisted.
+    void this.notifySales(dto);
 
     return { received: true };
+  }
+
+  private async notifySales(dto: CreateLeadDto): Promise<void> {
+    const to = this.config.get<LeadsConfig>("leads")?.notifyEmail;
+    if (!to) return;
+
+    const attribution = [
+      dto.source && `Source: ${dto.source}`,
+      dto.utmSource && `utm_source: ${dto.utmSource}`,
+      dto.utmMedium && `utm_medium: ${dto.utmMedium}`,
+      dto.utmCampaign && `utm_campaign: ${dto.utmCampaign}`,
+      dto.referrer && `Referrer: ${dto.referrer}`,
+      dto.landingPath && `Landing page: ${dto.landingPath}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const textBody = [
+      "New demo request from the marketing site.",
+      "",
+      `Name:    ${dto.name}`,
+      `Email:   ${dto.email}`,
+      `Company: ${dto.company}`,
+      `Phone:   ${dto.phone}`,
+      dto.message ? `\nMessage:\n${dto.message}` : "",
+      attribution ? `\nAttribution:\n${attribution}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    try {
+      await this.mail.sendRawEmail({
+        to,
+        subject: `New demo request — ${dto.company}`,
+        textBody,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Lead saved but notification email failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   /// Platform-admin only (see PlatformAdminGuard). Leads carry no

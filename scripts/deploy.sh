@@ -4,7 +4,7 @@
 #   ./scripts/deploy.sh                       # build locally + deploy current checkout
 #   ./scripts/deploy.sh v1.4.0                # checkout a ref, then build + deploy
 #   API_IMAGE=ghcr.io/OWNER/erp-api:v1.4.0 ./scripts/deploy.sh v1.4.0   # pull prebuilt
-#   ENV_FILE=.env.prod ./scripts/deploy.sh
+#   ENV_FILE=.env.production ./scripts/deploy.sh
 #
 # What it does, in order:
 #   1. (optional) checks out the requested git ref
@@ -43,8 +43,7 @@ source "$(dirname "$0")/lib.sh"  # compose(), log(), die(), wait_healthy(), api_
 API_IMAGE="${API_IMAGE:-}"       # set -> pull a prebuilt image; unset -> build locally
 GIT_REF="${1:-}"
 
-# Select, validate, and load the correct env file before any docker compose call
-# (compose() carries it as --env-file). DEPLOY_ENV chooses staging vs production.
+# Validate and load .env.production before any docker compose call.
 require_env_file
 
 # --- 1. optional git ref -----------------------------------------------------
@@ -88,10 +87,8 @@ compose up -d $API_UP_ARGS api
 
 # --- 5. health verification --------------------------------------------------
 if wait_healthy; then
-  # --- 7. reverse proxy last: it health-polls the API and only routes when
-  # /health passes, so it never sends traffic to an API mid-migration.
-  log "ensuring caddy is up"
-  compose up -d caddy
+  log "ensuring web + caddy are up"
+  compose up -d web caddy
   log "deploy of $DEPLOY_REF complete and healthy"
   compose ps
   exit 0

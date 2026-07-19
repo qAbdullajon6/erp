@@ -64,18 +64,22 @@ export type AnalyticsEvent =
   | { name: 'pricing_billing_toggle'; params: { billing_cycle: string } }
   | { name: 'pricing_contact_click'; params: Record<string, never> }
 
+  // Product showcase events
+  | { name: 'product_tab_view'; params: { tab: string } }
+
   // Integration events
   | { name: 'integration_click'; params: { integration_id: string; integration_name: string } }
   | { name: 'integration_docs_click'; params: { doc_type: string } }
 
   // Demo form events
-  | { name: 'demo_form_started'; params: Record<string, never> }
+  | { name: 'demo_form_started'; params: { source?: string } }
   | { name: 'demo_form_submitted'; params: {
+      source?: string;
       company_size?: string;
       use_case?: string;
       timeline?: string;
     }}
-  | { name: 'demo_form_success'; params: Record<string, never> }
+  | { name: 'demo_form_success'; params: { source?: string } }
   | { name: 'demo_form_error'; params: { error_message: string } }
 
   // Engagement events
@@ -90,7 +94,16 @@ export type AnalyticsEvent =
       conversion_type: 'demo_request' | 'trial_signup' | 'contact';
       value?: number;
       currency?: string;
-    }};
+    }}
+
+  // Consent + monitoring
+  | { name: 'cookie_consent_update'; params: { analytics: boolean; marketing: boolean } }
+  | { name: 'web_vitals'; params: {
+      metric_name: 'LCP' | 'CLS' | 'INP' | 'FCP' | 'TTFB';
+      value: number;
+      rating: 'good' | 'needs-improvement' | 'poor';
+    }}
+  | { name: 'app_error'; params: { message: string; source: string } };
 
 export interface ConsentState {
   analytics: boolean;

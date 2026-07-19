@@ -7,7 +7,7 @@
 **Execution time:** ~45-60 minutes for full checklist
 
 **Prerequisites:**
-- Access to staging/production environment
+- Access to the production environment
 - Valid admin credentials
 - API access (curl, Postman, or similar)
 - Browser for frontend testing
@@ -18,7 +18,7 @@
 
 ### Environment Configuration
 
-- [ ] `.env.staging` or `.env.production` file exists on VPS
+- [ ] `.env.production` or `.env.production` file exists on VPS
 - [ ] `JWT_ACCESS_SECRET` is set and non-empty
 - [ ] `APP_SECRET` is set (if billing/notifications are configured)
 - [ ] `DATABASE_URL` points to correct database
@@ -44,7 +44,7 @@
 
 ```bash
 cd /opt/flowerp
-docker compose -f docker-compose.staging.yml ps
+docker compose -f docker-compose.yml ps
 ```
 
 - [ ] `postgres` - Status: Up, Health: healthy
@@ -55,9 +55,9 @@ docker compose -f docker-compose.staging.yml ps
 **Check container logs for errors:**
 
 ```bash
-docker compose -f docker-compose.staging.yml logs api --tail=100
-docker compose -f docker-compose.staging.yml logs caddy --tail=50
-docker compose -f docker-compose.staging.yml logs postgres --tail=50
+docker compose -f docker-compose.yml logs api --tail=100
+docker compose -f docker-compose.yml logs caddy --tail=50
+docker compose -f docker-compose.yml logs postgres --tail=50
 ```
 
 - [ ] No `ERROR` or `FATAL` lines in API logs (last 100 lines)
@@ -67,7 +67,7 @@ docker compose -f docker-compose.staging.yml logs postgres --tail=50
 ### Database Migrations
 
 ```bash
-docker compose -f docker-compose.staging.yml exec api npx prisma migrate status
+docker compose -f docker-compose.yml exec api npx prisma migrate status
 ```
 
 - [ ] Output shows "Database schema is up to date!"
@@ -77,12 +77,12 @@ docker compose -f docker-compose.staging.yml exec api npx prisma migrate status
 
 ## 2. Health Endpoints
 
-**Base URL:** `https://staging.flowerp.uz` (or `https://api.flowerp.uz` for production)
+**Base URL:** `https://api.flowerp.uz` (or `https://api.flowerp.uz` for production)
 
 ### GET /api/health
 
 ```bash
-curl -fsS https://staging.flowerp.uz/api/health | jq
+curl -fsS https://api.flowerp.uz/api/health | jq
 ```
 
 **Expected response:**
@@ -96,7 +96,7 @@ curl -fsS https://staging.flowerp.uz/api/health | jq
 ### GET /api/health/database
 
 ```bash
-curl -fsS https://staging.flowerp.uz/api/health/database | jq
+curl -fsS https://api.flowerp.uz/api/health/database | jq
 ```
 
 - [ ] HTTP 200
@@ -106,7 +106,7 @@ curl -fsS https://staging.flowerp.uz/api/health/database | jq
 ### GET /api/health/redis
 
 ```bash
-curl -fsS https://staging.flowerp.uz/api/health/redis | jq
+curl -fsS https://api.flowerp.uz/api/health/redis | jq
 ```
 
 - [ ] HTTP 200
@@ -116,7 +116,7 @@ curl -fsS https://staging.flowerp.uz/api/health/redis | jq
 ### GET /api/health/ready
 
 ```bash
-curl -fsS https://staging.flowerp.uz/api/health/ready | jq
+curl -fsS https://api.flowerp.uz/api/health/ready | jq
 ```
 
 - [ ] HTTP 200
@@ -130,7 +130,7 @@ curl -fsS https://staging.flowerp.uz/api/health/ready | jq
 
 ### Register New Organization (if testing fresh install)
 
-**Browser:** Navigate to `https://staging.flowerp.uz/auth/sign-up`
+**Browser:** Navigate to `https://api.flowerp.uz/auth/sign-up`
 
 - [ ] Registration form loads
 - [ ] Fill: email, password, firstName, lastName, organizationName
@@ -139,7 +139,7 @@ curl -fsS https://staging.flowerp.uz/api/health/ready | jq
 
 ### Login
 
-**Browser:** Navigate to `https://staging.flowerp.uz/auth/sign-in`
+**Browser:** Navigate to `https://api.flowerp.uz/auth/sign-in`
 
 - [ ] Login form loads
 - [ ] Enter valid credentials
@@ -151,7 +151,7 @@ curl -fsS https://staging.flowerp.uz/api/health/ready | jq
 
 ```bash
 # Get access token
-curl -X POST https://staging.flowerp.uz/api/auth/login \
+curl -X POST https://api.flowerp.uz/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"admin@dev-test.local","password":"DevTest@123!"}' | jq
 
@@ -168,7 +168,7 @@ curl -X POST https://staging.flowerp.uz/api/auth/login \
 
 ```bash
 # Use the refreshToken from login response
-curl -X POST https://staging.flowerp.uz/api/auth/refresh \
+curl -X POST https://api.flowerp.uz/api/auth/refresh \
   -H "Content-Type: application/json" \
   -d '{"refreshToken":"<REFRESH_TOKEN>"}' | jq
 ```
@@ -181,7 +181,7 @@ curl -X POST https://staging.flowerp.uz/api/auth/refresh \
 ### Logout
 
 ```bash
-curl -X POST https://staging.flowerp.uz/api/auth/logout \
+curl -X POST https://api.flowerp.uz/api/auth/logout \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <ACCESS_TOKEN>" \
   -d '{"refreshToken":"<REFRESH_TOKEN>"}' | jq
@@ -193,7 +193,7 @@ curl -X POST https://staging.flowerp.uz/api/auth/logout \
 ### Unauthorized Request Returns 401
 
 ```bash
-curl -X GET https://staging.flowerp.uz/api/customers \
+curl -X GET https://api.flowerp.uz/api/customers \
   -H "Authorization: Bearer invalid-token" -w "\n%{http_code}\n"
 ```
 
@@ -213,7 +213,7 @@ export ACCESS_TOKEN="<your-access-token>"
 ### List Customers
 
 ```bash
-curl -fsS https://staging.flowerp.uz/api/customers \
+curl -fsS https://api.flowerp.uz/api/customers \
   -H "Authorization: Bearer $ACCESS_TOKEN" | jq
 ```
 
@@ -225,7 +225,7 @@ curl -fsS https://staging.flowerp.uz/api/customers \
 ### Create Customer
 
 ```bash
-curl -X POST https://staging.flowerp.uz/api/customers \
+curl -X POST https://api.flowerp.uz/api/customers \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -247,7 +247,7 @@ export CUSTOMER_ID="<returned-id>"
 ### Update Customer
 
 ```bash
-curl -X PATCH https://staging.flowerp.uz/api/customers/$CUSTOMER_ID \
+curl -X PATCH https://api.flowerp.uz/api/customers/$CUSTOMER_ID \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"address":"Updated Address 456"}' | jq
@@ -259,7 +259,7 @@ curl -X PATCH https://staging.flowerp.uz/api/customers/$CUSTOMER_ID \
 ### Archive Customer
 
 ```bash
-curl -X PATCH https://staging.flowerp.uz/api/customers/$CUSTOMER_ID/archive \
+curl -X PATCH https://api.flowerp.uz/api/customers/$CUSTOMER_ID/archive \
   -H "Authorization: Bearer $ACCESS_TOKEN" | jq
 ```
 
@@ -270,7 +270,7 @@ curl -X PATCH https://staging.flowerp.uz/api/customers/$CUSTOMER_ID/archive \
 ### Restore Customer
 
 ```bash
-curl -X PATCH https://staging.flowerp.uz/api/customers/$CUSTOMER_ID/restore \
+curl -X PATCH https://api.flowerp.uz/api/customers/$CUSTOMER_ID/restore \
   -H "Authorization: Bearer $ACCESS_TOKEN" | jq
 ```
 
@@ -284,7 +284,7 @@ curl -X PATCH https://staging.flowerp.uz/api/customers/$CUSTOMER_ID/restore \
 ### Create Driver (prerequisite)
 
 ```bash
-curl -X POST https://staging.flowerp.uz/api/drivers \
+curl -X POST https://api.flowerp.uz/api/drivers \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -304,7 +304,7 @@ export DRIVER_ID="<returned-id>"
 ### Create Vehicle (prerequisite)
 
 ```bash
-curl -X POST https://staging.flowerp.uz/api/vehicles \
+curl -X POST https://api.flowerp.uz/api/vehicles \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -324,7 +324,7 @@ export VEHICLE_ID="<returned-id>"
 ### Create Order
 
 ```bash
-curl -X POST https://staging.flowerp.uz/api/orders \
+curl -X POST https://api.flowerp.uz/api/orders \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -349,7 +349,7 @@ export ORDER_ID="<returned-id>"
 ### Edit Order
 
 ```bash
-curl -X PATCH https://staging.flowerp.uz/api/orders/$ORDER_ID \
+curl -X PATCH https://api.flowerp.uz/api/orders/$ORDER_ID \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"price":55000}' | jq
@@ -361,7 +361,7 @@ curl -X PATCH https://staging.flowerp.uz/api/orders/$ORDER_ID \
 ### Create Dispatch Assignment
 
 ```bash
-curl -X POST https://staging.flowerp.uz/api/dispatch \
+curl -X POST https://api.flowerp.uz/api/dispatch \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -381,7 +381,7 @@ export DISPATCH_ID="<returned-id>"
 ### Update Order Status via Dispatch
 
 ```bash
-curl -X PATCH https://staging.flowerp.uz/api/dispatch/$DISPATCH_ID/status \
+curl -X PATCH https://api.flowerp.uz/api/dispatch/$DISPATCH_ID/status \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -402,7 +402,7 @@ curl -X PATCH https://staging.flowerp.uz/api/dispatch/$DISPATCH_ID/status \
 
 ```bash
 # Attempt to create dispatch with >2000 char notes (should fail)
-curl -X POST https://staging.flowerp.uz/api/dispatch \
+curl -X POST https://api.flowerp.uz/api/dispatch \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -420,7 +420,7 @@ curl -X POST https://staging.flowerp.uz/api/dispatch \
 
 ```bash
 # Attempt limit > 200 (should be capped or rejected)
-curl -fsS "https://staging.flowerp.uz/api/dispatch?limit=999" \
+curl -fsS "https://api.flowerp.uz/api/dispatch?limit=999" \
   -H "Authorization: Bearer $ACCESS_TOKEN" | jq
 ```
 
@@ -435,7 +435,7 @@ curl -fsS "https://staging.flowerp.uz/api/dispatch?limit=999" \
 ### View Finance Dashboard
 
 ```bash
-curl -fsS https://staging.flowerp.uz/api/finance \
+curl -fsS https://api.flowerp.uz/api/finance \
   -H "Authorization: Bearer $ACCESS_TOKEN" | jq
 ```
 
@@ -445,7 +445,7 @@ curl -fsS https://staging.flowerp.uz/api/finance \
 ### Create Expense
 
 ```bash
-curl -X POST https://staging.flowerp.uz/api/expenses \
+curl -X POST https://api.flowerp.uz/api/expenses \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -465,7 +465,7 @@ export EXPENSE_ID="<returned-id>"
 ### Create Invoice for Order
 
 ```bash
-curl -X POST https://staging.flowerp.uz/api/invoices \
+curl -X POST https://api.flowerp.uz/api/invoices \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -483,7 +483,7 @@ export INVOICE_ID="<returned-id>"
 ### Record Payment
 
 ```bash
-curl -X POST https://staging.flowerp.uz/api/payments \
+curl -X POST https://api.flowerp.uz/api/payments \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -505,7 +505,7 @@ curl -X POST https://staging.flowerp.uz/api/payments \
 ### Check AI Health
 
 ```bash
-curl -fsS https://staging.flowerp.uz/api/ai/health \
+curl -fsS https://api.flowerp.uz/api/ai/health \
   -H "Authorization: Bearer $ACCESS_TOKEN" | jq
 ```
 
@@ -516,7 +516,7 @@ curl -fsS https://staging.flowerp.uz/api/ai/health \
 
 ### Simple Chat Request (if AI is configured)
 
-**Browser:** Navigate to `https://staging.flowerp.uz/app/ai-assistant`
+**Browser:** Navigate to `https://api.flowerp.uz/app/ai-assistant`
 
 - [ ] AI chat interface loads
 - [ ] Send message: "What is today's date?"
@@ -526,7 +526,7 @@ curl -fsS https://staging.flowerp.uz/api/ai/health \
 **API test:**
 
 ```bash
-curl -X POST https://staging.flowerp.uz/api/ai/chat \
+curl -X POST https://api.flowerp.uz/api/ai/chat \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -543,7 +543,7 @@ curl -X POST https://staging.flowerp.uz/api/ai/chat \
 **If AI_PROVIDER is not configured:**
 
 ```bash
-curl -X POST https://staging.flowerp.uz/api/ai/chat \
+curl -X POST https://api.flowerp.uz/api/ai/chat \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"message":"test"}' -w "\n%{http_code}\n"
@@ -560,7 +560,7 @@ curl -X POST https://staging.flowerp.uz/api/ai/chat \
 ### List Notifications
 
 ```bash
-curl -fsS https://staging.flowerp.uz/api/notifications \
+curl -fsS https://api.flowerp.uz/api/notifications \
   -H "Authorization: Bearer $ACCESS_TOKEN" | jq
 ```
 
@@ -581,7 +581,7 @@ curl -fsS https://staging.flowerp.uz/api/notifications \
 # Get first notification ID from list
 export NOTIFICATION_ID="<id-from-list>"
 
-curl -X PATCH https://staging.flowerp.uz/api/notifications/$NOTIFICATION_ID/read \
+curl -X PATCH https://api.flowerp.uz/api/notifications/$NOTIFICATION_ID/read \
   -H "Authorization: Bearer $ACCESS_TOKEN" | jq
 ```
 
@@ -599,7 +599,7 @@ curl -X PATCH https://staging.flowerp.uz/api/notifications/$NOTIFICATION_ID/read
 ```bash
 # Dashboard/Reports
 curl -w "\nTime: %{time_total}s\n" -o /dev/null -s \
-  https://staging.flowerp.uz/api/reports/executive-overview \
+  https://api.flowerp.uz/api/reports/executive-overview \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -634,7 +634,7 @@ docker stats --no-stream --format "table {{.Name}}\t{{.MemUsage}}\t{{.CPUPerc}}"
 
 ```bash
 # Wait for token to expire (15 minutes) OR use an old token
-curl -X GET https://staging.flowerp.uz/api/customers \
+curl -X GET https://api.flowerp.uz/api/customers \
   -H "Authorization: Bearer <EXPIRED_TOKEN>" -w "\n%{http_code}\n"
 ```
 
@@ -644,7 +644,7 @@ curl -X GET https://staging.flowerp.uz/api/customers \
 **Test tampered token:**
 
 ```bash
-curl -X GET https://staging.flowerp.uz/api/customers \
+curl -X GET https://api.flowerp.uz/api/customers \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.invalid" \
   -w "\n%{http_code}\n"
 ```
@@ -658,7 +658,7 @@ curl -X GET https://staging.flowerp.uz/api/customers \
 ```bash
 # Send 6 login requests rapidly
 for i in {1..6}; do
-  curl -X POST https://staging.flowerp.uz/api/auth/login \
+  curl -X POST https://api.flowerp.uz/api/auth/login \
     -H "Content-Type: application/json" \
     -d '{"email":"wrong@example.com","password":"wrong"}' \
     -w "\n%{http_code}\n" -s -o /dev/null
@@ -676,7 +676,7 @@ done
 Navigate to a different origin (e.g., `https://google.com`), open DevTools console:
 
 ```javascript
-fetch('https://staging.flowerp.uz/api/health')
+fetch('https://api.flowerp.uz/api/health')
   .then(r => r.json())
   .then(console.log)
   .catch(console.error)
@@ -688,7 +688,7 @@ fetch('https://staging.flowerp.uz/api/health')
 **Test from unauthorized origin:**
 
 ```bash
-curl -X GET https://staging.flowerp.uz/api/customers \
+curl -X GET https://api.flowerp.uz/api/customers \
   -H "Origin: https://evil.com" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -I
@@ -700,7 +700,7 @@ curl -X GET https://staging.flowerp.uz/api/customers \
 ### Security Headers
 
 ```bash
-curl -I https://staging.flowerp.uz/api/health
+curl -I https://api.flowerp.uz/api/health
 ```
 
 **Verify headers:**
@@ -718,7 +718,7 @@ curl -I https://staging.flowerp.uz/api/health
 **Prerequisite:** Tag current version before testing rollback
 
 ```bash
-docker tag flowerp-staging-api:latest flowerp-staging-api:pre-rollback-test
+docker tag flowerp-api:latest flowerp-api:pre-rollback-test
 ```
 
 ### Execute Rollback
@@ -731,15 +731,15 @@ CONFIRM=ROLLBACK ./scripts/rollback.sh
 **Verify rollback:**
 - [ ] Script outputs "Rollback complete"
 - [ ] API container restarted
-- [ ] Health check passes: `curl https://staging.flowerp.uz/api/health`
+- [ ] Health check passes: `curl https://api.flowerp.uz/api/health`
 - [ ] Previous image is now running
 - [ ] No data loss (customers/orders still exist)
 
 ### Roll Forward Again
 
 ```bash
-docker tag flowerp-staging-api:pre-rollback-test flowerp-staging-api:previous
-docker compose -f docker-compose.staging.yml up -d api
+docker tag flowerp-api:pre-rollback-test flowerp-api:previous
+docker compose -f docker-compose.yml up -d api
 ```
 
 - [ ] API returns to current version
@@ -871,7 +871,7 @@ After launch, monitor:
 ## Notes
 
 - **Smoke test vs. Full QA:** This checklist covers critical paths only. Comprehensive QA testing should happen before this smoke test.
-- **Environment:** Run this checklist on staging first, then production pre-launch, then after every production deployment.
+- **Environment:** Run this checklist on production pre-launch, then after every production deployment.
 - **Timing:** Allow 45-60 minutes. Do NOT rush.
 - **Team:** Minimum 2 people (one executes, one verifies).
 - **Documentation:** Note all failures in a shared document with timestamps.

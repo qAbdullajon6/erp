@@ -39,6 +39,9 @@ import { LoggingMiddleware } from "./common/middleware/logging.middleware";
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      // Prefer .env.local for development; fall back to .env. Production
+      // containers inject env via compose (.env.production) — no file required.
+      envFilePath: [".env.local", ".env"],
       load: [configuration],
     }),
     // Global default: 300 requests / 60s per IP. A single SPA page load fans

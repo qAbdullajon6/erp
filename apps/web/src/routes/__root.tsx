@@ -10,7 +10,7 @@ import {
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
-import { reportLovableError } from "../lib/lovable-error-reporting";
+import { captureError } from "@/lib/monitoring";
 import { Toaster } from "@/components/ui/sonner";
 import { AnalyticsProvider } from "@/components/analytics/AnalyticsProvider";
 
@@ -40,7 +40,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
   useEffect(() => {
-    reportLovableError(error, { boundary: "tanstack_root_error_component" });
+    captureError(error, { source: "tanstack_root_error_component" });
   }, [error]);
 
   return (
@@ -93,11 +93,23 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           "Run every delivery from one intelligent command center. Ask your operations. Get answers in seconds.",
       },
       { property: "og:type", content: "website" },
+      { property: "og:image", content: "/og-image.png" },
+      { property: "og:site_name", content: "FlowERP AI" },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:image", content: "/og-image.png" },
+      {
+        name: "google-site-verification",
+        content:
+          import.meta.env.VITE_GOOGLE_SITE_VERIFICATION ||
+          "HTDoaPLsApzhYvaAEFLax6nbQwme2VAkrHZzZxeCL6c",
+      },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
       { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
+      { rel: "icon", type: "image/x-icon", href: "/favicon.ico" },
+      { rel: "apple-touch-icon", href: "/logo-512.png" },
+      { rel: "manifest", href: "/site.webmanifest" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {

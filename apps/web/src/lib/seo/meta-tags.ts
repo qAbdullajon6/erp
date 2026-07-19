@@ -5,6 +5,8 @@
  * Handles Open Graph, Twitter Cards, and standard meta tags.
  */
 
+import { siteConfig } from '@/lib/site-config';
+
 export interface SEOMetaTags {
   title: string;
   description: string;
@@ -30,8 +32,8 @@ export function generateMetaTags(seo: SEOMetaTags) {
     description,
     canonical,
     keywords,
-    image = 'https://flowerp.uz/og-image.png', // Default OG image
-    imageAlt = 'FlowERP AI - Intelligent Logistics Command Center',
+    image = siteConfig.ogImage, // Default OG image
+    imageAlt = `${siteConfig.legalName} — Intelligent Logistics Command Center`,
     type = 'website',
     publishedTime,
     modifiedTime,
@@ -76,8 +78,10 @@ export function generateMetaTags(seo: SEOMetaTags) {
     tags.push({ property: 'og:url', content: canonical });
   }
   tags.push({ property: 'og:image', content: image });
+  tags.push({ property: 'og:image:width', content: '1200' });
+  tags.push({ property: 'og:image:height', content: '630' });
   tags.push({ property: 'og:image:alt', content: imageAlt });
-  tags.push({ property: 'og:site_name', content: 'FlowERP AI' });
+  tags.push({ property: 'og:site_name', content: siteConfig.legalName });
   tags.push({ property: 'og:locale', content: 'en_US' });
 
   if (type === 'article' && publishedTime) {
@@ -93,9 +97,11 @@ export function generateMetaTags(seo: SEOMetaTags) {
   tags.push({ name: 'twitter:description', content: description });
   tags.push({ name: 'twitter:image', content: image });
   tags.push({ name: 'twitter:image:alt', content: imageAlt });
-  // Add Twitter handle when available
-  // tags.push({ name: 'twitter:site', content: '@flowerpai' });
-  // tags.push({ name: 'twitter:creator', content: '@flowerpai' });
+  if (siteConfig.social.twitter) {
+    const handle = `@${siteConfig.social.twitter.replace(/^https?:\/\/(x|twitter)\.com\//, '').replace(/^@/, '')}`;
+    tags.push({ name: 'twitter:site', content: handle });
+    tags.push({ name: 'twitter:creator', content: handle });
+  }
 
   return { meta: tags, canonical };
 }
@@ -122,10 +128,10 @@ export function generateLinkTags(seo: Pick<SEOMetaTags, 'canonical'>) {
  * Default SEO configuration for the landing page.
  */
 export const defaultSEO: SEOMetaTags = {
-  title: 'FlowERP — Your logistics operation, orchestrated',
+  title: 'FlowERP — The AI operating system for logistics',
   description:
-    'Stop firefighting. FlowERP unifies orders, dispatch, fleet, and finance into one AI-powered command center. Ask questions, get answers, take action—instantly. 14-day free trial.',
-  canonical: 'https://flowerp.uz',
+    'FlowERP unifies orders, dispatch, fleet, and finance into one live command center — with an AI copilot that answers questions, catches problems, and takes action in seconds. 14-day free trial.',
+  canonical: siteConfig.url,
   keywords: [
     'logistics management software',
     'fleet management system',
@@ -140,7 +146,7 @@ export const defaultSEO: SEOMetaTags = {
     'logistics automation',
     'route optimization software',
   ],
-  image: 'https://flowerp.uz/og-image.png',
-  imageAlt: 'FlowERP - Your logistics operation, orchestrated by AI',
+  image: siteConfig.ogImage,
+  imageAlt: 'FlowERP — Your logistics operation, orchestrated by AI',
   type: 'website',
 };
