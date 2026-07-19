@@ -71,6 +71,14 @@ export type AnalyticsEvent =
   | { name: 'integration_click'; params: { integration_id: string; integration_name: string } }
   | { name: 'integration_docs_click'; params: { doc_type: string } }
 
+  // Product demo events
+  | { name: 'product_demo_tab_click'; params: { tab: 'ai' | 'dispatch' | 'fleet' } }
+  | { name: 'product_demo_video_play'; params: { tab: 'ai' | 'dispatch' | 'fleet' } }
+
+  // FAQ events
+  | { name: 'faq_question_click'; params: { question: string } }
+  | { name: 'faq_contact_click'; params: Record<string, never> }
+
   // Demo form events
   | { name: 'demo_form_started'; params: { source?: string } }
   | { name: 'demo_form_submitted'; params: {
