@@ -4,19 +4,19 @@
 #   https://flowerp.uz      → SSR web (web:3000)
 #   https://api.flowerp.uz  → NestJS API (api:4000)
 #
+# flowerp.uz and www.flowerp.uz share one site block so Caddy obtains a single
+# Let's Encrypt certificate with both names as SANs. www is redirected; the
+# app reverse_proxy only serves the canonical host after that.
+#
 # Env (in .env.production on the VPS):
-#   SITE_ADDRESS is unused for the site block (canonical host is flowerp.uz).
 #   API_ADDRESS=api.flowerp.uz
 #
-# Local rehearsal of the production build uses deploy/Caddyfile.local instead:
-#   CADDYFILE=./deploy/Caddyfile.local HTTP_PORT=8080 HTTPS_PORT=8443 \
-#     SITE_ADDRESS=:8080 docker compose --env-file .env.production up -d --build
+# DNS: A/AAAA for flowerp.uz AND www.flowerp.uz must point at this VPS before
+# the first ACME attempt for www will succeed.
+#
+# Local rehearsal uses deploy/Caddyfile.local instead.
 
-www.flowerp.uz {
-	redir https://flowerp.uz{uri} permanent
-}
-
-flowerp.uz {
+flowerp.uz, www.flowerp.uz {
 	encode zstd gzip
 
 	header {
@@ -26,6 +26,9 @@ flowerp.uz {
 		Referrer-Policy "strict-origin-when-cross-origin"
 		-Server
 	}
+
+	@www host www.flowerp.uz
+	redir @www https://flowerp.uz{uri} permanent
 
 	# Same-origin /api/* for browsers that call the marketing origin.
 	handle_path /api/* {
