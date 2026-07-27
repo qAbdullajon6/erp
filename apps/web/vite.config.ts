@@ -26,6 +26,9 @@ export default defineConfig({
       port: 3000,
       host: true,
       strictPort: false,
+      // Cloud/dev tunnels (trycloudflare, loca.lt, Cursor forwards) send a
+      // non-localhost Host header — Vite 6+ blocks those unless allowed.
+      allowedHosts: true,
       // Pre-transform hot routes so first navigation after boot is not a
       // multi-second cold compile (especially painful over remote tunnels).
       warmup: {
@@ -78,7 +81,6 @@ export default defineConfig({
         'react/jsx-runtime',
         '@tanstack/react-router',
         '@tanstack/react-query',
-        '@tanstack/react-query-devtools',
         'lucide-react',
         'sonner',
         'clsx',
