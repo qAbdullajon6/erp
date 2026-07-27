@@ -149,7 +149,24 @@ export class AuthService {
       where: { userId: existing.userId, organizationId: existing.organizationId, status: "ACTIVE" },
       include: { organization: true },
     });
-    if (!membership || membership.organization.status !== "ACTIVE") {
+    if (!membership) {
+      throw new UnauthorizedException("Session is no longer valid");
+    }
+
+    // Platform support sessions may target a SUSPENDED org so staff can still
+    // investigate — normal tenant logins stay restricted to ACTIVE orgs.
+    const inSupportSession =
+      existing.user.isPlatformAdmin &&
+      (await this.prisma.platformSupportSession.findFirst({
+        where: {
+          userId: existing.userId,
+          targetOrganizationId: membership.organizationId,
+          endedAt: null,
+        },
+        select: { id: true },
+      }));
+
+    if (membership.organization.status !== "ACTIVE" && !inSupportSession) {
       throw new UnauthorizedException("Session is no longer valid");
     }
 
@@ -223,6 +240,14 @@ export class AuthService {
       include: { user: true, organization: true },
     });
 
+    const supportSession = membership.user.isPlatformAdmin
+      ? await this.prisma.platformSupportSession.findFirst({
+          where: { userId: membership.user.id, endedAt: null },
+          include: { targetOrganization: { select: { id: true, name: true, slug: true } } },
+          orderBy: { startedAt: "desc" },
+        })
+      : null;
+
     return {
       user: {
         id: membership.user.id,
@@ -245,7 +270,33 @@ export class AuthService {
         id: membership.id,
         role: membership.role,
       },
+      supportSession: supportSession
+        ? {
+            id: supportSession.id,
+            organizationId: supportSession.targetOrganization.id,
+            organizationName: supportSession.targetOrganization.name,
+            organizationSlug: supportSession.targetOrganization.slug,
+            startedAt: supportSession.startedAt,
+          }
+        : null,
     };
+  }
+
+  /// Used by Platform Console "Open ERP" / exit-support to mint a session for
+  /// an already-resolved membership without going through login.
+  async issueSessionForMembership(userId: string, membershipId: string): Promise<AuthResult> {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    const membership = await this.prisma.membership.findUniqueOrThrow({
+      where: { id: membershipId },
+      include: { organization: true },
+    });
+    if (membership.userId !== userId) {
+      throw new UnauthorizedException("Membership does not belong to this user");
+    }
+    if (membership.status !== "ACTIVE") {
+      throw new UnauthorizedException("Membership is not active");
+    }
+    return this.issueSession(user, membership);
   }
 
   async changePassword(dto: ChangePasswordDto, currentUser: CurrentUserPayload): Promise<void> {
@@ -335,6 +386,7 @@ export class AuthService {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        isPlatformAdmin: user.isPlatformAdmin,
       },
       organization: {
         id: membership.organization.id,

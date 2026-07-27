@@ -15,8 +15,10 @@ import {
   LEAD_STATUSES,
   type LeadStatus,
 } from '@/lib/api/leads';
+import { useConvertLeadMutation } from '@/lib/api/platform';
 import { useCurrentUser } from '@/lib/api/auth';
 import { formatDate } from '@/lib/format';
+import { Button } from '@/components/ui/button';
 import { Mail, Phone, ShieldOff } from 'lucide-react';
 
 const SELECT_CLASS =
@@ -46,6 +48,7 @@ export function LeadsList() {
   );
   const { data: counts } = useLeadStatsQuery(allowed);
   const { mutate: updateStatus, isPending: updating } = useUpdateLeadStatusMutation();
+  const { mutate: convertLead, isPending: converting } = useConvertLeadMutation();
 
   const items = data?.items ?? [];
   const meta = data?.meta;
@@ -58,6 +61,17 @@ export function LeadsList() {
         onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to update lead'),
       },
     );
+
+  const handleConvert = (id: string, company: string) =>
+    convertLead(id, {
+      onSuccess: (result) => {
+        toast.success(
+          `Converted ${company} → ${result.organization.name}. Provisional password: ${result.provisionalPassword}`,
+          { duration: 12_000 },
+        );
+      },
+      onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to convert lead'),
+    });
 
   if (userLoading) return <LoadingState label="Loading..." />;
 
@@ -201,20 +215,33 @@ export function LeadsList() {
                     <TableCell>
                       {/* Any status may follow any other — a sales pipeline is
                           not a forward-only state machine. */}
-                      <select
-                        value={lead.status}
-                        onChange={(e) => handleStatusChange(lead.id, e.target.value as LeadStatus)}
-                        disabled={updating}
-                        aria-label={`Status for ${lead.company}`}
-                        data-testid="lead-status-select"
-                        className={SELECT_CLASS}
-                      >
-                        {LEAD_STATUSES.map((status) => (
-                          <option key={status} value={status}>
-                            {statusLabel(status)}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="flex flex-col items-start gap-2">
+                        <select
+                          value={lead.status}
+                          onChange={(e) => handleStatusChange(lead.id, e.target.value as LeadStatus)}
+                          disabled={updating || converting}
+                          aria-label={`Status for ${lead.company}`}
+                          data-testid="lead-status-select"
+                          className={SELECT_CLASS}
+                        >
+                          {LEAD_STATUSES.map((status) => (
+                            <option key={status} value={status}>
+                              {statusLabel(status)}
+                            </option>
+                          ))}
+                        </select>
+                        {lead.status !== 'CLOSED' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={converting}
+                            data-testid="lead-convert-button"
+                            onClick={() => handleConvert(lead.id, lead.company)}
+                          >
+                            Convert
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

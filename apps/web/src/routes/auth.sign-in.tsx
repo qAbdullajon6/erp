@@ -27,9 +27,12 @@ function SignInPage() {
     e.preventDefault();
     setError(null);
     try {
-      await login({ email, password });
+      const result = await login({ email, password });
       toast.success("Signed in successfully");
-      navigate({ to: "/app", replace: true });
+      navigate({
+        to: result.user.isPlatformAdmin ? "/platform" : "/app",
+        replace: true,
+      });
     } catch (err) {
       // Read the thrown error, not the hook's `error` state — that state has
       // not re-rendered yet at this point, so it was always the previous value

@@ -40,7 +40,21 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException("User account is not active");
     }
     if (membership.organization.status !== "ACTIVE") {
-      throw new UnauthorizedException("Organization is not active");
+      // Platform staff in an active Open ERP support session may stay inside
+      // a SUSPENDED org to investigate — everyone else is locked out.
+      const inSupportSession =
+        membership.user.isPlatformAdmin &&
+        (await this.prisma.platformSupportSession.findFirst({
+          where: {
+            userId: membership.userId,
+            targetOrganizationId: membership.organizationId,
+            endedAt: null,
+          },
+          select: { id: true },
+        }));
+      if (!inSupportSession) {
+        throw new UnauthorizedException("Organization is not active");
+      }
     }
 
     return {
