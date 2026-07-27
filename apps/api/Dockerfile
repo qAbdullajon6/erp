@@ -8,9 +8,6 @@ COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY apps/mobile/package.json apps/mobile/package.json
-# Root postinstall runs because of --include-workspace-root; the script no-ops
-# for API-only installs, but the file must exist or npm fails before that.
-COPY scripts/postinstall-mobile.js scripts/postinstall-mobile.js
 RUN npm ci --workspace=apps/api --include-workspace-root
 
 COPY apps/api apps/api
@@ -32,7 +29,6 @@ COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY apps/mobile/package.json apps/mobile/package.json
-COPY scripts/postinstall-mobile.js scripts/postinstall-mobile.js
 RUN npm ci --workspace=apps/api --include-workspace-root --omit=dev
 
 # Owned by the unprivileged `node` user (uid 1000, ships with the image) so the
