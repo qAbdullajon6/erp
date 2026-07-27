@@ -13,6 +13,9 @@ COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY apps/mobile/package.json apps/mobile/package.json
+# Root postinstall runs because of --include-workspace-root; the script no-ops
+# for non-mobile installs, but the file must exist or npm fails before that.
+COPY scripts/postinstall-mobile.js scripts/postinstall-mobile.js
 RUN npm ci --workspace=apps/web --include-workspace-root
 
 COPY apps/web apps/web

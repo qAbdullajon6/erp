@@ -31,12 +31,49 @@
  *    reliably fixed it every time it's recurred is a targeted, scoped reinstall —
  *    so that's what this step does, verifying first so it's a no-op once the tree
  *    is already correct.
+ *
+ * This script must never fail API/web Docker builds. Root `package.json` declares
+ * `"postinstall": "node scripts/postinstall-mobile.js"`, and those Dockerfiles run
+ * `npm ci --workspace=apps/{api,web} --include-workspace-root`, which installs the
+ * root package and therefore runs this lifecycle hook. They also COPY
+ * `apps/mobile/package.json` only so npm can resolve the workspace lockfile —
+ * that is not a mobile install.
  */
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 const repoRoot = path.join(__dirname, '..');
+
+function isTruthyEnv(name) {
+  const value = process.env[name];
+  return value === 'true' || value === '1';
+}
+
+/**
+ * nativewind is mobile-only. Its presence means this install actually
+ * materialised apps/mobile dependencies. `apps/mobile/package.json` alone is
+ * not enough — API/web Docker stages copy it for workspace lockfile completeness.
+ */
+function isMobileDependencyTreePresent() {
+  try {
+    require.resolve('nativewind/package.json', { paths: [repoRoot] });
+    return true;
+  } catch {
+    return fs.existsSync(
+      path.join(repoRoot, 'apps', 'mobile', 'node_modules', 'nativewind'),
+    );
+  }
+}
+
+function getMobileBootstrapSkipReason() {
+  if (isTruthyEnv('CI')) return 'CI=true';
+  if (isTruthyEnv('DOCKER_BUILD')) return 'DOCKER_BUILD=true';
+  if (fs.existsSync('/.dockerenv')) return '/.dockerenv present';
+  if (process.env.NODE_ENV === 'production') return 'NODE_ENV=production';
+  if (!isMobileDependencyTreePresent()) return 'mobile dependency tree not installed';
+  return null;
+}
 
 function fixExpoRouterHoist() {
   const target = path.join(repoRoot, 'apps', 'mobile', 'node_modules', 'expo-router');
@@ -49,8 +86,7 @@ function fixExpoRouterHoist() {
 }
 
 function fixTailwindResolution() {
-  const mobilePkgJson = path.join(repoRoot, 'apps', 'mobile', 'package.json');
-  if (!fs.existsSync(mobilePkgJson)) return;
+  if (!isMobileDependencyTreePresent()) return;
 
   let resolvedVersion;
   try {
@@ -72,6 +108,14 @@ function fixTailwindResolution() {
     cwd: repoRoot,
     stdio: 'inherit',
   });
+}
+
+const skipReason = getMobileBootstrapSkipReason();
+if (skipReason) {
+  console.log(
+    `[postinstall-mobile] Skipping mobile bootstrap (CI/API-only Docker build): ${skipReason}`,
+  );
+  process.exit(0);
 }
 
 fixExpoRouterHoist();
