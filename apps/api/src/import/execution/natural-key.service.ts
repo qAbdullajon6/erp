@@ -2,7 +2,7 @@ import { Injectable } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import type { EntityDefinition } from "../registry/entity-registry";
 
-/// Allocates natural keys (CUS-0001, DRV-0002, ...) for rows whose file did
+/// Allocates natural keys (CUS-0001, EMP-0002, ...) for rows whose file did
 /// not supply one.
 ///
 /// A migration file exported from another system almost never carries our

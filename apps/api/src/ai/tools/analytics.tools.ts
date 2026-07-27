@@ -66,9 +66,10 @@ export class AnalyticsTools {
       },
       handler: async (args, actor) => {
         const report = await this.reports.executiveOverview(actor.organizationId, {
-          startDate: typeof args.startDate === "string" ? args.startDate : undefined,
-          endDate: typeof args.endDate === "string" ? args.endDate : undefined,
-        } as never);
+          dateFrom: typeof args.startDate === "string" ? args.startDate : undefined,
+          dateTo: typeof args.endDate === "string" ? args.endDate : undefined,
+          comparisonPeriod: "none",
+        });
         return report;
       },
     };

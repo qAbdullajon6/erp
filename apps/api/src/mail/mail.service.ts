@@ -1,3 +1,14 @@
+/// What every render*Email() function in ./templates returns: the three
+/// pieces a transport needs to actually send something. `text` is a real,
+/// independently-written plaintext version — not an HTML strip — so clients
+/// that show it (or spam filters that weigh its absence) get a proper
+/// fallback rather than a degraded one.
+export interface RenderedEmail {
+  subject: string;
+  text: string;
+  html: string;
+}
+
 /// Everything the mail layer needs to deliver one invitation email.
 ///
 /// The accept URL is built in full by the caller (the invitation service, in a
@@ -43,6 +54,47 @@ export interface RawEmailMessage {
   htmlBody?: string;
 }
 
+/// Everything the mail layer needs to notify FlowERP staff of one new demo
+/// request. Mirrors CreateLeadDto's optional fields — the caller (LeadsService)
+/// passes the raw submitted values straight through; formatting/omission of
+/// empty fields is the template's job, not the caller's.
+export interface LeadNotificationEmailMessage {
+  to: string;
+  name: string;
+  email: string;
+  company: string;
+  phone: string;
+  message?: string;
+  source?: string;
+  landingPath?: string;
+  referrer?: string;
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
+  utmTerm?: string;
+  utmContent?: string;
+  /// When the lead was actually persisted (Lead.createdAt) — not `new Date()`
+  /// at send time, since this fires asynchronously after the row is written.
+  submittedAt: Date;
+  /// Only set if a lead-dashboard URL is genuinely configured somewhere
+  /// upstream. No such config exists in this codebase today, so every
+  /// current caller leaves this undefined and the template omits the CTA
+  /// button entirely rather than rendering a dead link.
+  dashboardUrl?: string;
+}
+
+/// Everything the mail layer needs to confirm receipt of one demo request
+/// back to the person who submitted it.
+export interface DemoConfirmationEmailMessage {
+  /// The visitor's own submitted email — this is the one address in this
+  /// file that is not staff-controlled, since anyone can type any address
+  /// into the public demo form.
+  to: string;
+  name: string;
+  company: string;
+  phone: string;
+}
+
 /// The mail abstraction invitation services depend on. Exactly one concrete
 /// implementation is chosen at module load — real SMTP, the dev/test outbox,
 /// or a production-safe "unavailable" provider — see `createMailService`.
@@ -53,4 +105,6 @@ export abstract class MailService {
     message: CustomerPortalInvitationEmailMessage,
   ): Promise<void>;
   abstract sendRawEmail(message: RawEmailMessage): Promise<void>;
+  abstract sendLeadNotificationEmail(message: LeadNotificationEmailMessage): Promise<void>;
+  abstract sendDemoConfirmationEmail(message: DemoConfirmationEmailMessage): Promise<void>;
 }

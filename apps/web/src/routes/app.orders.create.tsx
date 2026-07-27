@@ -1,15 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { OrdersCreateForm } from "@/components/orders/orders-create-form";
-import { ProtectedApiRoute } from "@/components/layout/protected-api-route";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
+/// The full-page create form is gone — order creation is a right-side sheet on
+/// the list (`OrdersCreateSheet`). Deep links to /app/orders/create still work:
+/// they land on the list with the sheet open.
 export const Route = createFileRoute("/app/orders/create")({
-  component: OrdersCreatePage,
+  beforeLoad: () => {
+    throw redirect({ to: "/app/orders", search: { create: true } as const });
+  },
 });
-
-function OrdersCreatePage() {
-  return (
-    <ProtectedApiRoute>
-      <OrdersCreateForm />
-    </ProtectedApiRoute>
-  );
-}

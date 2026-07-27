@@ -1,21 +1,18 @@
-import { createFileRoute } from '@tanstack/react-router';
-import { CustomerCreateForm } from '@/components/customers/customer-create-form';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 import { ProtectedApiRoute } from '@/components/layout/protected-api-route';
+import { CUSTOMER_WRITE_ROLES } from '@/lib/role-access';
 
 export const Route = createFileRoute('/app/customers/create')({
-  component: CreateCustomerPage,
+  beforeLoad: () => {
+    throw redirect({ to: '/app/customers', search: { create: true } as const });
+  },
+  component: CreateCustomerRedirect,
 });
 
-function CreateCustomerPage() {
+function CreateCustomerRedirect() {
   return (
-    <ProtectedApiRoute>
-      <div className="max-w-2xl">
-        <h1 className="font-display text-3xl font-bold text-foreground">Create Customer</h1>
-        <p className="mt-2 text-muted-foreground">Add a new customer to your organization</p>
-        <div className="mt-8">
-          <CustomerCreateForm />
-        </div>
-      </div>
+    <ProtectedApiRoute requireRoles={CUSTOMER_WRITE_ROLES}>
+      <div className="p-6 text-sm text-muted-foreground">Opening new customer…</div>
     </ProtectedApiRoute>
   );
 }

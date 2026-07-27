@@ -68,10 +68,11 @@ export function usePortalNotificationsList(limit = 50) {
   });
 }
 
-export function usePortalUnreadCount() {
+export function usePortalUnreadCount(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: portalNotificationKeys.unreadCount(),
     queryFn: () => portalNotificationsAPI.unreadCount(),
+    enabled: options.enabled ?? true,
   });
 }
 

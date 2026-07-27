@@ -226,6 +226,7 @@ export function InvoiceCreateDialog() {
                   />
                   <button
                     type="button"
+                    aria-label="Remove line item"
                     onClick={() => removeLineItem(li.key)}
                     disabled={lineItems.length === 1}
                     className="col-span-1 flex h-9 items-center justify-center rounded-md text-muted-foreground hover:text-destructive disabled:opacity-30"

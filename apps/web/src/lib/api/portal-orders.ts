@@ -4,7 +4,14 @@ import { unwrapResponse as unwrap } from './error';
 import { portalOrderKeys } from './portal-query-keys';
 import { describeError } from './describe-error';
 
-export type PortalOrderStatus = 'PENDING' | 'ASSIGNED' | 'PICKED_UP' | 'IN_TRANSIT' | 'DELIVERED' | 'CANCELLED';
+export type PortalOrderStatus =
+  | 'DRAFT'
+  | 'PENDING'
+  | 'ASSIGNED'
+  | 'PICKED_UP'
+  | 'IN_TRANSIT'
+  | 'DELIVERED'
+  | 'CANCELLED';
 
 export interface PortalOrderItem {
   id: string;
@@ -34,11 +41,18 @@ export interface PortalOrderStatusHistoryEntry {
   createdAt: string;
 }
 
-export interface PortalProofItem {
-  id: string;
-  fileName: string;
-  fileType: string;
-  uploadedAt: string;
+export interface PortalOrderTracking {
+  orderId: string;
+  status: PortalOrderStatus;
+  tracking: {
+    latitude: number;
+    longitude: number;
+    speedKph: number | null;
+    heading: number | null;
+    movementState: string | null;
+    lastUpdatedAt: string;
+  } | null;
+  message?: string;
 }
 
 export interface ListPortalOrdersResponse {
@@ -87,9 +101,9 @@ class PortalOrdersAPI {
     return unwrap(response, 'Failed to fetch order timeline');
   }
 
-  async getDeliveryProofs(id: string): Promise<{ items: PortalProofItem[] }> {
-    const response = await portalFetch(`${this.baseUrl}/${id}/delivery-proof`, { method: 'GET' });
-    return unwrap(response, 'Failed to fetch delivery proofs');
+  async getTracking(id: string): Promise<PortalOrderTracking> {
+    const response = await portalFetch(`${this.baseUrl}/${id}/tracking`, { method: 'GET' });
+    return unwrap(response, 'Failed to fetch shipment tracking');
   }
 }
 
@@ -133,10 +147,16 @@ export function usePortalOrderTimeline(id: string) {
   });
 }
 
-export function usePortalOrderDeliveryProofs(id: string) {
+export function usePortalOrderTracking(id: string, enabled = true) {
   return useQuery({
-    queryKey: [...portalOrderKeys.detail(id), 'delivery-proofs'],
-    queryFn: () => portalOrdersAPI.getDeliveryProofs(id),
-    enabled: Boolean(id),
+    queryKey: [...portalOrderKeys.detail(id), 'tracking'],
+    queryFn: () => portalOrdersAPI.getTracking(id),
+    enabled: Boolean(id) && enabled,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data?.tracking) return false;
+      const live = data.status === 'ASSIGNED' || data.status === 'PICKED_UP' || data.status === 'IN_TRANSIT';
+      return live ? 30_000 : false;
+    },
   });
 }

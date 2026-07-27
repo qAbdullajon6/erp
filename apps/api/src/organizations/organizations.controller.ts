@@ -30,8 +30,10 @@ export class OrganizationsController {
     return this.organizationsService.updateCurrent(user.organizationId, dto, user);
   }
 
+  /// Read-only roster for admin + fleet (link DRIVER logins on the Drivers
+  /// screen). Member mutations stay ADMIN-only below.
   @UseGuards(RolesGuard)
-  @Roles("ADMIN")
+  @Roles("ADMIN", "OPERATIONS_MANAGER", "DISPATCHER")
   @Get("members")
   listMembers(@CurrentUser() user: CurrentUserPayload) {
     return this.organizationsService.listMembers(user.organizationId);

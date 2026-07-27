@@ -6,7 +6,7 @@ import { describeError } from './describe-error';
 
 export interface PortalDocument {
   id: string;
-  type: 'POD' | 'INVOICE';
+  type: 'INVOICE';
   title: string;
   entityId: string;
   createdAt: string;

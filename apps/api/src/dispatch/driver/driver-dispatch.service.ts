@@ -4,6 +4,7 @@ import { AuditService } from "../../audit/audit.service";
 import type { CurrentUserPayload } from "../../auth/interfaces/current-user.interface";
 import { OrderWriter } from "../../order-state/order-writer";
 import { PrismaService } from "../../prisma/prisma.service";
+import { TrackingService } from "../../telematics/tracking/tracking.service";
 import { DispatchesService } from "../dispatches.service";
 import { allowedDispatchTransitions, DRIVER_DISPATCH_STATUSES } from "../dispatch-transitions";
 import { UpdateDispatchStatusDto } from "../dto/update-dispatch-status.dto";
@@ -41,6 +42,7 @@ export class DriverDispatchService {
     private readonly dispatches: DispatchesService,
     private readonly orderWriter: OrderWriter,
     private readonly auditService: AuditService,
+    private readonly tracking: TrackingService,
   ) {}
 
   /// Everything currently on this driver's plate.
@@ -121,6 +123,10 @@ export class DriverDispatchService {
       metadata: { from: dispatch.status, to: dto.status, note: dto.note },
     });
 
+    if (dto.status === "DELIVERED" || dto.status === "CANCELLED") {
+      await this.tracking.endSessionsForDispatch(organizationId, id).catch(() => undefined);
+    }
+
     return this.toDriverResponse(updated);
   }
 
@@ -152,7 +158,11 @@ export class DriverDispatchService {
   /// the client. A driver cannot ask for somebody else's work by changing a
   /// parameter, because there is no parameter to change.
   private async resolveOwnDriverId(organizationId: string, userId: string): Promise<string> {
-    const driver = await this.prisma.driver.findFirst({ where: { organizationId, userId } });
+    /// Archived drivers must not keep running the driver app — matches
+    /// DriversService.getMe and telematics ingest.
+    const driver = await this.prisma.driver.findFirst({
+      where: { organizationId, userId, archivedAt: null },
+    });
     if (!driver) {
       throw new NotFoundException("No driver profile is linked to your account yet");
     }

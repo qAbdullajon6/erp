@@ -39,7 +39,11 @@ export class OrdersService {
   async list(organizationId: string, query: ListOrdersQueryDto) {
     const where: Prisma.OrderWhereInput = {
       organizationId,
-      ...(query.status ? { status: query.status } : {}),
+      ...(query.statuses?.length
+        ? { status: { in: query.statuses } }
+        : query.status
+          ? { status: query.status }
+          : {}),
       ...(query.customerId ? { customerId: query.customerId } : {}),
       ...(query.driverId ? { driverId: query.driverId } : {}),
       ...(query.vehicleId ? { vehicleId: query.vehicleId } : {}),
@@ -178,25 +182,52 @@ export class OrdersService {
       });
     }
 
-    const updated = await this.prisma.order.update({
-      where: { id },
-      data: {
-        orderNumber: dto.orderNumber,
-        customerId,
-        pickupAddress: dto.pickupAddress,
-        pickupCity: dto.pickupCity,
-        pickupDate: dto.pickupDate ? pickupDate : undefined,
-        deliveryAddress: dto.deliveryAddress,
-        deliveryCity: dto.deliveryCity,
-        deliveryDate: dto.deliveryDate ? deliveryDate : undefined,
-        cargoDescription: dto.cargoDescription,
-        cargoWeightKg: dto.cargoWeightKg !== undefined ? new Prisma.Decimal(dto.cargoWeightKg) : undefined,
-        cargoVolumeM3: dto.cargoVolumeM3 !== undefined ? new Prisma.Decimal(dto.cargoVolumeM3) : undefined,
-        price: dto.price !== undefined ? new Prisma.Decimal(dto.price) : undefined,
-        currency: dto.currency,
-        notes: dto.notes,
-        deliveryNotes: dto.deliveryNotes,
-      },
+    // When an assigned order's window moves, the live dispatch's scheduled
+    // dates must move in the same transaction. Availability and the GiST
+    // exclusion constraints read Dispatch.pickupDateScheduled /
+    // deliveryDateScheduled — leaving them stale after an Order edit would
+    // let two trips overlap on the new window while the reservation still
+    // holds the old one (ADR-001 schedule drift).
+    const updated = await this.dispatches.inTransaction(async (tx) => {
+      const order = await tx.order.update({
+        where: { id },
+        data: {
+          orderNumber: dto.orderNumber,
+          customerId,
+          pickupAddress: dto.pickupAddress,
+          pickupCity: dto.pickupCity,
+          pickupDate: dto.pickupDate ? pickupDate : undefined,
+          deliveryAddress: dto.deliveryAddress,
+          deliveryCity: dto.deliveryCity,
+          deliveryDate: dto.deliveryDate ? deliveryDate : undefined,
+          cargoDescription: dto.cargoDescription,
+          cargoWeightKg: dto.cargoWeightKg !== undefined ? new Prisma.Decimal(dto.cargoWeightKg) : undefined,
+          cargoVolumeM3: dto.cargoVolumeM3 !== undefined ? new Prisma.Decimal(dto.cargoVolumeM3) : undefined,
+          price: dto.price !== undefined ? new Prisma.Decimal(dto.price) : undefined,
+          currency: dto.currency,
+          notes: dto.notes,
+          deliveryNotes: dto.deliveryNotes,
+        },
+      });
+
+      if (windowMoved) {
+        // Sync every non-terminal dispatch for this order (DRAFT included —
+        // its scheduled window is what AssignmentPolicy / GiST will use once
+        // it activates). Terminal rows keep their historical schedule.
+        await tx.dispatch.updateMany({
+          where: {
+            organizationId,
+            orderId: id,
+            status: { notIn: ["CANCELLED", "DELIVERED"] },
+          },
+          data: {
+            pickupDateScheduled: pickupDate,
+            deliveryDateScheduled: deliveryDate,
+          },
+        });
+      }
+
+      return order;
     });
 
     await this.auditService.log({
@@ -233,21 +264,31 @@ export class OrdersService {
     // This is the shape Task 8.7 will lift wholesale into a wrapper; the only thing
     // left in this method is the commercial precondition and the audit line.
     const updated = await this.dispatches.inTransaction(async (tx) => {
-      const live = await this.dispatches.activeDispatchForOrder(tx, organizationId, id);
+      // Prefer an existing non-terminal dispatch (including DRAFT). Creating a
+      // second live row while a draft sits on the order hits the partial unique
+      // and deadlocks the assign path until someone cancels the draft by hand.
+      const existing = await this.dispatches.drivableDispatchForOrder(tx, organizationId, id);
 
-      if (live) {
-        // The order already has a dispatch, so this is a REASSIGNMENT — and there
-        // is exactly one implementation of that (AR1). It closes the open
-        // DispatchAssignment and opens a new one, keeping the dispatch itself and
-        // its whole status history intact.
+      if (existing) {
         await this.dispatches.reassignInTx(
           tx,
           organizationId,
-          live,
+          existing,
           { driverId: dto.driverId, vehicleId: dto.vehicleId },
           actor,
-          "Reassigned via order",
+          existing.status === "DRAFT" ? "Activated via order assign" : "Reassigned via order",
         );
+        if (existing.status === "DRAFT") {
+          const fresh = await tx.dispatch.findUniqueOrThrow({ where: { id: existing.id } });
+          await this.dispatches.transitionInTx(
+            tx,
+            organizationId,
+            fresh,
+            "ASSIGNED",
+            actor,
+            "Driver and vehicle assigned",
+          );
+        }
       } else {
         // First assignment: create the dispatch and commit it. ASSIGNED is what
         // "this order has a driver" MEANS under ADR-001 (R3).
@@ -378,15 +419,18 @@ export class OrdersService {
     }
 
     const updated = await this.dispatches.inTransaction(async (tx) => {
-      // A dead order must not keep a driver and a truck reserved, so its dispatch
-      // dies with it. Note this does NOT project afterwards: projecting a
-      // fully-cancelled order would read "all dispatches cancelled -> PENDING" and
-      // resurrect the very order we are killing. The commercial write is the last
-      // word, and ProjectionPolicy refuses to overwrite CANCELLED anyway — belt
-      // and braces, in the two places that each independently prevent it.
-      const live = await this.dispatches.activeDispatchForOrder(tx, organizationId, id);
-      if (live) {
-        await this.dispatches.cancelInTx(tx, organizationId, live.id, actor, "Order cancelled");
+      // A dead order must not keep a driver and a truck reserved — including a
+      // DRAFT dispatch that has already opened an assignment but is not yet in
+      // ACTIVE_DISPATCH_STATUSES. Cancel every non-terminal row for this order.
+      const open = await tx.dispatch.findMany({
+        where: {
+          organizationId,
+          orderId: id,
+          status: { notIn: ["CANCELLED", "DELIVERED"] },
+        },
+      });
+      for (const dispatch of open) {
+        await this.dispatches.cancelInTx(tx, organizationId, dispatch.id, actor, "Order cancelled");
       }
 
       return this.orderWriter.applyCommercial(tx, organizationId, order, "CANCELLED", actor, dto.note);

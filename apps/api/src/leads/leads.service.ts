@@ -47,50 +47,62 @@ export class LeadsService {
       `New demo request ${lead.id} from ${dto.company} (source: ${dto.source ?? "landing_demo_modal"})`,
     );
 
-    // Best-effort notification. A failed/absent mail transport must never fail
-    // the visitor's submission — the lead is already safely persisted.
-    void this.notifySales(dto);
+    // Best-effort notifications. A failed/absent mail transport must never
+    // fail the visitor's submission — the lead is already safely persisted.
+    // The two emails are independent: a failure in one must never affect the
+    // other, or the response already sent below.
+    void this.notifySales(dto, lead.createdAt);
+    void this.notifyCustomer(dto);
 
     return { received: true };
   }
 
-  private async notifySales(dto: CreateLeadDto): Promise<void> {
+  /// Emails FlowERP staff (LEADS_NOTIFY_EMAIL) about the new lead. No-op when
+  /// unset — leads are still persisted and logged either way.
+  private async notifySales(dto: CreateLeadDto, submittedAt: Date): Promise<void> {
     const to = this.config.get<LeadsConfig>("leads")?.notifyEmail;
     if (!to) return;
 
-    const attribution = [
-      dto.source && `Source: ${dto.source}`,
-      dto.utmSource && `utm_source: ${dto.utmSource}`,
-      dto.utmMedium && `utm_medium: ${dto.utmMedium}`,
-      dto.utmCampaign && `utm_campaign: ${dto.utmCampaign}`,
-      dto.referrer && `Referrer: ${dto.referrer}`,
-      dto.landingPath && `Landing page: ${dto.landingPath}`,
-    ]
-      .filter(Boolean)
-      .join("\n");
-
-    const textBody = [
-      "New demo request from the marketing site.",
-      "",
-      `Name:    ${dto.name}`,
-      `Email:   ${dto.email}`,
-      `Company: ${dto.company}`,
-      `Phone:   ${dto.phone}`,
-      dto.message ? `\nMessage:\n${dto.message}` : "",
-      attribution ? `\nAttribution:\n${attribution}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n");
-
     try {
-      await this.mail.sendRawEmail({
+      await this.mail.sendLeadNotificationEmail({
         to,
-        subject: `New demo request — ${dto.company}`,
-        textBody,
+        name: dto.name,
+        email: dto.email,
+        company: dto.company,
+        phone: dto.phone,
+        message: dto.message,
+        source: dto.source,
+        landingPath: dto.landingPath,
+        referrer: dto.referrer,
+        utmSource: dto.utmSource,
+        utmMedium: dto.utmMedium,
+        utmCampaign: dto.utmCampaign,
+        utmTerm: dto.utmTerm,
+        utmContent: dto.utmContent,
+        submittedAt,
       });
     } catch (error) {
       this.logger.warn(
-        `Lead saved but notification email failed: ${error instanceof Error ? error.message : String(error)}`,
+        `Lead saved but admin notification email failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  /// Confirms receipt to the visitor's own submitted address. Unconditional
+  /// (unlike notifySales, there is no config gate) — every successful
+  /// submission gets one, since that confirmation is the entire point of
+  /// this email.
+  private async notifyCustomer(dto: CreateLeadDto): Promise<void> {
+    try {
+      await this.mail.sendDemoConfirmationEmail({
+        to: dto.email,
+        name: dto.name,
+        company: dto.company,
+        phone: dto.phone,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Lead saved but customer confirmation email failed: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }

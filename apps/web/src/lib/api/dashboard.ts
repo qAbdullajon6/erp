@@ -1,5 +1,8 @@
 import { apiFetch } from './fetch';
-import { useCallback, useEffect, useState } from 'react';
+import { unwrapResponse } from './error';
+import { describeError } from './describe-error';
+import { useQuery } from '@tanstack/react-query';
+import { dashboardKeys } from './query-keys';
 
 export interface ExecutiveOverviewTotals {
   totalOrders: number;
@@ -27,22 +30,33 @@ export interface OrdersByStatusRow {
   count: number;
 }
 
-export interface ExecutiveOverview {
-  totals: ExecutiveOverviewTotals;
-  revenueVsExpensesTimeSeries: RevenueBucket[];
-  ordersByStatus: OrdersByStatusRow[];
-}
-
 export interface DelayedOrderRow {
   orderId: string;
   orderNumber: string;
   customerId: string;
+  customerName?: string | null;
   status: string;
   pickupCity: string;
   deliveryCity: string;
   deliveryDate: string;
   price: string;
   currency: string;
+}
+
+export interface DashboardTodaySnapshot {
+  dueToday: number;
+  deliveredToday: number;
+  pickupsDueToday: number;
+}
+
+export interface DashboardSummary {
+  currency?: string | null;
+  generatedAt?: string;
+  today: DashboardTodaySnapshot;
+  totals: ExecutiveOverviewTotals;
+  revenueVsExpensesTimeSeries: RevenueBucket[];
+  ordersByStatus: OrdersByStatusRow[];
+  delayedOrders: { total: number; items: DelayedOrderRow[] };
 }
 
 export interface BoardOrderSummary {
@@ -53,6 +67,11 @@ export interface BoardOrderSummary {
   pickupDate: string;
   deliveryDate: string;
   status: string;
+  customerName?: string | null;
+  price?: string | null;
+  currency?: string | null;
+  createdAt?: string;
+  cargoWeightKg?: string | null;
 }
 
 export interface BoardDriverSummary {
@@ -62,6 +81,7 @@ export interface BoardDriverSummary {
   lastName: string;
   phone: string;
   status: string;
+  licenseExpiry?: string | null;
 }
 
 export interface BoardVehicleSummary {
@@ -70,6 +90,8 @@ export interface BoardVehicleSummary {
   plateNumber: string;
   type: string;
   status: string;
+  capacityKg?: string | null;
+  capacityM3?: string | null;
 }
 
 /// The board endpoint returns far more than a count — `busy` carries the
@@ -93,105 +115,54 @@ export interface DispatchBoardSummary {
   };
 }
 
-export interface RecentOrderRow {
-  id: string;
-  orderNumber: string;
-  pickupCity: string;
-  deliveryCity: string;
-  price: string;
-  currency: string;
-  status: string;
-  createdAt: string;
-}
-
 class DashboardAPI {
   private baseUrl = '/api';
 
-  async getExecutiveOverview(): Promise<ExecutiveOverview> {
-    const response = await apiFetch(`${this.baseUrl}/reports/executive-overview`, { method: 'GET' });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || 'Failed to load dashboard overview');
-    }
-    const result = await response.json();
-    return result.data || result;
+  async getDashboardSummary(): Promise<DashboardSummary> {
+    const response = await apiFetch(`${this.baseUrl}/reports/dashboard-summary`, { method: 'GET' });
+    return unwrapResponse(response, 'Failed to load dashboard overview');
   }
 
-  async getDelayedOrders(): Promise<DelayedOrderRow[]> {
-    const response = await apiFetch(`${this.baseUrl}/reports/operations`, { method: 'GET' });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || 'Failed to load delayed deliveries');
-    }
-    const result = await response.json();
-    const data = result.data || result;
-    return data.exceptions?.delayedOrders ?? [];
-  }
-
+  /// Shared with the real Dispatch Board (use-dispatches.ts's
+  /// useDispatchBoardSummary) — kept here as the one fetcher for this
+  /// endpoint's response shape, but the dashboard reads it through that
+  /// hook so both screens share one cached, invalidated-together query.
   async getDispatchBoard(): Promise<DispatchBoardSummary> {
     const response = await apiFetch(`${this.baseUrl}/dispatch/board`, { method: 'GET' });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || 'Failed to load fleet status');
-    }
-    const result = await response.json();
-    return result.data || result;
-  }
-
-  async getRecentOrders(limit = 5): Promise<RecentOrderRow[]> {
-    const params = new URLSearchParams({
-      limit: String(limit),
-      sortBy: 'createdAt',
-      sortOrder: 'desc',
-    });
-    const response = await apiFetch(`${this.baseUrl}/orders?${params.toString()}`, { method: 'GET' });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || 'Failed to load recent orders');
-    }
-    const result = await response.json();
-    const data = result.data || result;
-    return data.items ?? [];
+    return unwrapResponse(response, 'Failed to load fleet status');
   }
 }
 
 export const dashboardAPI = new DashboardAPI();
 
-/// `includeFleet` should be false for roles without dispatch/board access
-/// (SALES_CRM_MANAGER) so the page doesn't fire a request guaranteed to
-/// 403 — see DispatchController's role list.
-export function useDashboardData(includeFleet: boolean) {
-  const [overview, setOverview] = useState<ExecutiveOverview | null>(null);
-  const [delayedOrders, setDelayedOrders] = useState<DelayedOrderRow[]>([]);
-  const [board, setBoard] = useState<DispatchBoardSummary | null>(null);
-  const [recentOrders, setRecentOrders] = useState<RecentOrderRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+/// React Query (Task: Dashboard vertical audit) — replaces a hand-rolled
+/// Promise.allSettled/useState hook that had no cache, no retry, and a real
+/// race: its fetch identity depended on `includeFleet`, which flips
+/// asynchronously once the user's role loads, with nothing guarding against
+/// an earlier in-flight request resolving after a later one and clobbering
+/// state. useQuery removes all three: cached across navigations (30s
+/// staleTime, same as every other screen), retried on transient failures,
+/// and stale responses are never committed over fresher ones.
+export function useDashboardSummary(options: { refetchInterval?: number } = {}) {
+  const result = useQuery({
+    queryKey: dashboardKeys.summary(),
+    queryFn: () => dashboardAPI.getDashboardSummary(),
+    /// The Command Center is meant to stay open all shift, so it polls itself
+    /// live. `refetchInterval` (default: off) does NOT run while the tab is
+    /// backgrounded, so an idle manager isn't hammering the API from a hidden
+    /// tab; focus returning triggers the normal stale refetch instead.
+    refetchInterval: options.refetchInterval,
+  });
 
-  const fetchAll = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [overviewResult, delayedResult, recentResult, boardResult] = await Promise.all([
-        dashboardAPI.getExecutiveOverview(),
-        dashboardAPI.getDelayedOrders(),
-        dashboardAPI.getRecentOrders(5),
-        includeFleet ? dashboardAPI.getDispatchBoard() : Promise.resolve(null),
-      ]);
-      setOverview(overviewResult);
-      setDelayedOrders(delayedResult);
-      setRecentOrders(recentResult);
-      setBoard(boardResult);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
-    } finally {
-      setLoading(false);
-    }
-  }, [includeFleet]);
-
-  useEffect(() => {
-    fetchAll();
-  }, [fetchAll]);
-
-  return { overview, delayedOrders, recentOrders, board, loading, error, refetch: fetchAll };
+  return {
+    data: result.data ?? null,
+    loading: result.isPending,
+    /// A refetch is in flight over data we already have (poll or manual
+    /// refresh) — drives the header's spinning indicator without blanking
+    /// the widgets to skeletons.
+    isFetching: result.isFetching,
+    dataUpdatedAt: result.dataUpdatedAt,
+    error: result.error ? describeError(result.error, 'Failed to load dashboard overview') : null,
+    refetch: result.refetch,
+  };
 }

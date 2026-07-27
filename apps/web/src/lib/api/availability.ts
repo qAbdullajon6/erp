@@ -76,8 +76,12 @@ export const availabilityAPI = new AvailabilityAPI();
 /// SOMEBODY ELSE did. Every operational mutation invalidates it (see invalidate.ts),
 /// but another dispatcher can book the same driver between your render and your
 /// click, so it is also refetched on focus rather than trusted for minutes.
-export function useAvailability(window?: { pickupDate?: string; deliveryDate?: string }) {
-  const enabled = Boolean(window?.pickupDate && window?.deliveryDate);
+export function useAvailability(
+  window?: { pickupDate?: string; deliveryDate?: string },
+  options: { enabled?: boolean } = {},
+) {
+  const enabled =
+    Boolean(window?.pickupDate && window?.deliveryDate) && (options.enabled ?? true);
 
   const result = useQuery({
     queryKey: availabilityKeys.window(window),

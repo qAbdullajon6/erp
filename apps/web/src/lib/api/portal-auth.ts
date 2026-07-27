@@ -111,11 +111,12 @@ export function usePortalLogin() {
   return { login, loading, error };
 }
 
-export function usePortalCurrentCustomer() {
+export function usePortalCurrentCustomer(options: { enabled?: boolean } = {}) {
   const query = useQuery({
     queryKey: portalAuthKeys.currentCustomer(),
     queryFn: () => portalAuthAPI.getCurrentCustomer(),
     staleTime: 60_000,
+    enabled: options.enabled ?? true,
   });
 
   return {

@@ -22,11 +22,23 @@ import { dispatchBoardKeys, dispatchKeys } from '@/lib/api/query-keys';
 export function useDispatches(
   page = 1,
   limit = 10,
-  params?: { search?: string; status?: string; orderId?: string; driverId?: string; vehicleId?: string },
+  params?: {
+    search?: string;
+    status?: string;
+    statuses?: string[];
+    orderId?: string;
+    driverId?: string;
+    vehicleId?: string;
+  },
+  options: { enabled?: boolean; refetchInterval?: number } = {},
 ) {
   const result = useQuery({
     queryKey: dispatchKeys.list({ page, limit, ...(params ?? {}) }),
     queryFn: () => dispatchesAPI.list(page, limit, params),
+    enabled: options.enabled ?? true,
+    /// Opt-in: the Dispatch Board keeps the shift live the same way Overview does.
+    /// Paused while the tab is hidden.
+    refetchInterval: options.refetchInterval,
   });
 
   return {
@@ -39,6 +51,7 @@ export function useDispatches(
     /// time a card moved would be unusable, so the caller shows a quiet indicator
     /// instead and leaves the cards on screen.
     refreshing: result.isFetching && !result.isPending,
+    dataUpdatedAt: result.dataUpdatedAt,
     error: result.error ? describeError(result.error, 'Failed to fetch dispatches') : null,
     refetch: result.refetch,
   };
@@ -46,16 +59,29 @@ export function useDispatches(
 
 /// The Operations Center's alert data: unassigned orders, and who's free/busy
 /// (Task: dispatch board summary). A single global snapshot — no params, no
-/// pagination — so its key carries no arguments.
-export function useDispatchBoardSummary() {
+/// pagination — so its key carries no arguments. Also the Dashboard's "Live
+/// Dispatch"/"Fleet Status" widgets (Task: Dashboard vertical audit) — same
+/// cache entry as the Dispatch Board page, `enabled` gated for roles
+/// (SALES_CRM_MANAGER) the endpoint 403s for, so the dashboard doesn't fire
+/// a request guaranteed to fail.
+export function useDispatchBoardSummary(
+  options: { enabled?: boolean; refetchInterval?: number } = {},
+) {
   const result = useQuery({
     queryKey: dispatchBoardKeys.all,
     queryFn: () => dashboardAPI.getDispatchBoard(),
+    enabled: options.enabled ?? true,
+    /// Off by default (Dispatch Board drives its own refetching via mutations);
+    /// the Command Center opts in so its live fleet/dispatch widgets stay fresh
+    /// while it sits open all shift. Paused automatically while the tab is hidden.
+    refetchInterval: options.refetchInterval,
   });
 
   return {
     data: result.data ?? null,
     loading: result.isPending,
+    isFetching: result.isFetching,
+    dataUpdatedAt: result.dataUpdatedAt,
     error: result.error ? describeError(result.error, 'Failed to load board summary') : null,
     refetch: result.refetch,
   };

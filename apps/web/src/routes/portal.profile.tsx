@@ -1,12 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePortalProfile, usePortalProfileUpdate } from "@/lib/api/portal-profile";
 import { usePortalChangePassword } from "@/lib/api/portal-auth";
 import { formatMoney } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
@@ -34,14 +33,15 @@ function PortalProfilePage() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
 
-  if (!initialized && profile) {
+  useEffect(() => {
+    if (!profile || initialized) return;
     setContactName(profile.contactName ?? "");
     setPhone(profile.phone ?? "");
     setAddress(profile.address ?? "");
     setCity(profile.city ?? "");
     setCountry(profile.country ?? "");
     setInitialized(true);
-  }
+  }, [profile, initialized]);
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();

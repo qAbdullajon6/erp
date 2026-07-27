@@ -78,8 +78,11 @@ export function generateMetaTags(seo: SEOMetaTags) {
     tags.push({ property: 'og:url', content: canonical });
   }
   tags.push({ property: 'og:image', content: image });
-  tags.push({ property: 'og:image:width', content: '1200' });
-  tags.push({ property: 'og:image:height', content: '630' });
+  // Must match the actual public/og-image.png dimensions — platforms that
+  // trust these hints over the fetched file (some do, to avoid a render-
+  // blocking image fetch) will letterbox or reject the crawl on a mismatch.
+  tags.push({ property: 'og:image:width', content: '1536' });
+  tags.push({ property: 'og:image:height', content: '1024' });
   tags.push({ property: 'og:image:alt', content: imageAlt });
   tags.push({ property: 'og:site_name', content: siteConfig.legalName });
   tags.push({ property: 'og:locale', content: 'en_US' });
@@ -129,8 +132,10 @@ export function generateLinkTags(seo: Pick<SEOMetaTags, 'canonical'>) {
  */
 export const defaultSEO: SEOMetaTags = {
   title: 'FlowERP — The AI operating system for logistics',
+  // Kept under ~160 chars so Google doesn't truncate the SERP snippet
+  // mid-sentence — the previous copy ran to 192 chars.
   description:
-    'FlowERP unifies orders, dispatch, fleet, and finance into one live command center — with an AI copilot that answers questions, catches problems, and takes action in seconds. 14-day free trial.',
+    'FlowERP unifies orders, dispatch, fleet, and finance into one AI-powered command center that answers questions and takes action in seconds. 14-day free trial.',
   canonical: siteConfig.url,
   keywords: [
     'logistics management software',

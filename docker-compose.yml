@@ -89,6 +89,10 @@ services:
       GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-unknown}
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+      # Fleet Tracking — Mapbox Directions / reverse-geocode (sk.* only).
+      MAPBOX_SECRET_TOKEN: ${MAPBOX_SECRET_TOKEN:-}
+      TELEMATICS_SSE_MAX_CONNECTIONS_PER_ORG: ${TELEMATICS_SSE_MAX_CONNECTIONS_PER_ORG:-20}
+      TELEMATICS_SSE_MAX_CONNECTIONS_GLOBAL: ${TELEMATICS_SSE_MAX_CONNECTIONS_GLOBAL:-500}
     expose:
       - "4000"
 
@@ -98,6 +102,9 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        # Baked into the Vite client bundle at image build time (pk.* only).
+        VITE_MAPBOX_ACCESS_TOKEN: ${VITE_MAPBOX_ACCESS_TOKEN:-}
     restart: unless-stopped
     depends_on:
       - api

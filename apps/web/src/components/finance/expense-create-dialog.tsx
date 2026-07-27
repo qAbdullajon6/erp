@@ -13,8 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import { Plus } from 'lucide-react';
 import { ordersAPI } from '@/lib/api/orders';
-import { driversAPI } from '@/lib/api/drivers';
-import { vehiclesAPI } from '@/lib/api/vehicles';
+import { useFinanceDriverLookupsQuery, useFinanceVehicleLookupsQuery } from '@/lib/api/finance';
 import { useCreateExpenseMutation, type ExpenseCategory } from '@/lib/api/expenses';
 
 const CATEGORIES: ExpenseCategory[] = ['FUEL', 'TOLL', 'MAINTENANCE', 'DRIVER_ADVANCE', 'PARKING', 'INSURANCE', 'OTHER'];
@@ -37,16 +36,8 @@ export function ExpenseCreateDialog() {
     queryFn: () => ordersAPI.listOrders({ limit: 100, sortBy: 'createdAt', sortOrder: 'desc' }),
     enabled: open,
   });
-  const { data: vehicles } = useQuery({
-    queryKey: ['vehicles-for-expense'],
-    queryFn: () => vehiclesAPI.list({ limit: 100 }),
-    enabled: open,
-  });
-  const { data: drivers } = useQuery({
-    queryKey: ['drivers-for-expense'],
-    queryFn: () => driversAPI.list({ limit: 100 }),
-    enabled: open,
-  });
+  const { data: vehicles } = useFinanceVehicleLookupsQuery(open);
+  const { data: drivers } = useFinanceDriverLookupsQuery(open);
 
   const { mutateAsync, isPending } = useCreateExpenseMutation();
 
@@ -184,7 +175,7 @@ export function ExpenseCreateDialog() {
                   <option value="">None</option>
                   {vehicles?.items.map((v) => (
                     <option key={v.id} value={v.id}>
-                      {v.plateNumber}
+                      {v.label}
                     </option>
                   ))}
                 </select>
@@ -199,7 +190,7 @@ export function ExpenseCreateDialog() {
                   <option value="">None</option>
                   {drivers?.items.map((d) => (
                     <option key={d.id} value={d.id}>
-                      {d.firstName} {d.lastName}
+                      {d.label}
                     </option>
                   ))}
                 </select>

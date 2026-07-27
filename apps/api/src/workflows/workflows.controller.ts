@@ -42,6 +42,8 @@ export class WorkflowsController {
     return result;
   }
 
+  /// Static paths must be registered before `@Get(':id')` / `@Post(':id/…')`
+  /// or Nest binds `executions` / `import` / `from-template` as an `:id`.
   @Get('triggers')
   @Roles(...WORKFLOW_READ_ROLES)
   getTriggers() {
@@ -59,6 +61,65 @@ export class WorkflowsController {
   async getTemplates() {
     const templates = await this.service.getTemplates();
     return templates;
+  }
+
+  @Get('executions/:executionId')
+  @Roles(...WORKFLOW_READ_ROLES)
+  async getExecution(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('executionId', ParseUUIDPipe) executionId: string,
+  ) {
+    const execution = await this.service.getExecution(user.organizationId, executionId);
+    return execution;
+  }
+
+  @Post('import')
+  @Roles(...WORKFLOW_ROLES)
+  async importWorkflow(@CurrentUser() user: AuthenticatedUser, @Body() body: {
+    name: string;
+    description?: string;
+    config: Record<string, unknown>;
+  }) {
+    const workflow = await this.service.importWorkflow(user.organizationId, user.userId, body);
+    return workflow;
+  }
+
+  @Post('from-template/:templateId')
+  @Roles(...WORKFLOW_ROLES)
+  async createFromTemplate(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('templateId', ParseUUIDPipe) templateId: string,
+    @Body() body: { name?: string },
+  ) {
+    const workflow = await this.service.createFromTemplate(
+      user.organizationId,
+      user.userId,
+      templateId,
+      body.name,
+    );
+    return workflow;
+  }
+
+  @Post('executions/:executionId/cancel')
+  @Roles(...WORKFLOW_ROLES)
+  @HttpCode(200)
+  async cancelExecution(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('executionId', ParseUUIDPipe) executionId: string,
+  ) {
+    const execution = await this.service.cancelExecution(user.organizationId, user.userId, executionId);
+    return execution;
+  }
+
+  @Post('executions/:executionId/retry')
+  @Roles(...WORKFLOW_ROLES)
+  @HttpCode(200)
+  async retryExecution(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('executionId', ParseUUIDPipe) executionId: string,
+  ) {
+    const execution = await this.service.retryExecution(user.organizationId, user.userId, executionId);
+    return execution;
   }
 
   @Get(':id')
@@ -145,17 +206,6 @@ export class WorkflowsController {
     return exported;
   }
 
-  @Post('import')
-  @Roles(...WORKFLOW_ROLES)
-  async importWorkflow(@CurrentUser() user: AuthenticatedUser, @Body() body: {
-    name: string;
-    description?: string;
-    config: Record<string, unknown>;
-  }) {
-    const workflow = await this.service.importWorkflow(user.organizationId, user.userId, body);
-    return workflow;
-  }
-
   @Post(':id/execute')
   @Roles(...WORKFLOW_ROLES)
   @HttpCode(200)
@@ -187,53 +237,5 @@ export class WorkflowsController {
       status: query.status as any,
     });
     return result;
-  }
-
-  @Get('executions/:executionId')
-  @Roles(...WORKFLOW_READ_ROLES)
-  async getExecution(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('executionId', ParseUUIDPipe) executionId: string,
-  ) {
-    const execution = await this.service.getExecution(user.organizationId, executionId);
-    return execution;
-  }
-
-  @Post('executions/:executionId/cancel')
-  @Roles(...WORKFLOW_ROLES)
-  @HttpCode(200)
-  async cancelExecution(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('executionId', ParseUUIDPipe) executionId: string,
-  ) {
-    const execution = await this.service.cancelExecution(user.organizationId, user.userId, executionId);
-    return execution;
-  }
-
-  @Post('executions/:executionId/retry')
-  @Roles(...WORKFLOW_ROLES)
-  @HttpCode(200)
-  async retryExecution(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('executionId', ParseUUIDPipe) executionId: string,
-  ) {
-    const execution = await this.service.retryExecution(user.organizationId, user.userId, executionId);
-    return execution;
-  }
-
-  @Post('from-template/:templateId')
-  @Roles(...WORKFLOW_ROLES)
-  async createFromTemplate(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('templateId', ParseUUIDPipe) templateId: string,
-    @Body() body: { name?: string },
-  ) {
-    const workflow = await this.service.createFromTemplate(
-      user.organizationId,
-      user.userId,
-      templateId,
-      body.name,
-    );
-    return workflow;
   }
 }

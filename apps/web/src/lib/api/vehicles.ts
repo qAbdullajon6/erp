@@ -1,6 +1,8 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { describeError } from './describe-error';
 import { unwrapResponse } from './error';
 import { apiFetch } from './fetch';
-import { useState, useCallback, useEffect } from 'react';
+import { vehicleKeys } from './query-keys';
 
 export type VehicleStatus = 'AVAILABLE' | 'IN_USE' | 'MAINTENANCE' | 'INACTIVE';
 
@@ -60,28 +62,30 @@ export interface ListVehiclesResponse {
   };
 }
 
+export interface ListVehiclesParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: VehicleStatus;
+  includeArchived?: boolean;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+}
+
 class VehiclesAPI {
-  async list(query?: {
-    page?: number;
-    limit?: number;
-    search?: string;
-    status?: VehicleStatus;
-    includeArchived?: boolean;
-    sortBy?: string;
-    sortOrder?: 'asc' | 'desc';
-  }): Promise<ListVehiclesResponse> {
+  async list(query: ListVehiclesParams = {}): Promise<ListVehiclesResponse> {
     const params = new URLSearchParams();
-    if (query?.page) params.append('page', String(query.page));
-    if (query?.limit) params.append('limit', String(query.limit));
-    if (query?.search) params.append('search', query.search);
-    if (query?.status) params.append('status', query.status);
-    if (query?.includeArchived) params.append('includeArchived', String(query.includeArchived));
-    if (query?.sortBy) params.append('sortBy', query.sortBy);
-    if (query?.sortOrder) params.append('sortOrder', query.sortOrder);
+    if (query.page) params.append('page', String(query.page));
+    if (query.limit) params.append('limit', String(query.limit));
+    if (query.search) params.append('search', query.search);
+    if (query.status) params.append('status', query.status);
+    if (query.includeArchived) params.append('includeArchived', String(query.includeArchived));
+    if (query.sortBy) params.append('sortBy', query.sortBy);
+    if (query.sortOrder) params.append('sortOrder', query.sortOrder);
 
     const response = await apiFetch(
       `/api/vehicles${params.size > 0 ? `?${params.toString()}` : ''}`,
-      { method: 'GET' }
+      { method: 'GET' },
     );
     return unwrapResponse(response, 'Failed to fetch vehicles');
   }
@@ -122,155 +126,95 @@ class VehiclesAPI {
 
 export const vehiclesAPI = new VehiclesAPI();
 
-export function useVehiclesList(query?: {
-  page?: number;
-  limit?: number;
-  search?: string;
-  status?: VehicleStatus;
-  includeArchived?: boolean;
-  sortBy?: string;
-  sortOrder?: 'asc' | 'desc';
-}) {
-  const [data, setData] = useState<ListVehiclesResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // See useDriversList: `query` is an inline object literal at every call
-  // site, so depending on its identity re-runs the effect forever.
-  const queryKey = JSON.stringify(query ?? {});
-
-  const fetch = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await vehiclesAPI.list(JSON.parse(queryKey));
-      setData(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch vehicles');
-    } finally {
-      setLoading(false);
-    }
-  }, [queryKey]);
-
-  useEffect(() => {
-    fetch();
-  }, [fetch]);
-
-  return { data, loading, error, refetch: fetch };
+function useInvalidateVehicles() {
+  const queryClient = useQueryClient();
+  return () => queryClient.invalidateQueries({ queryKey: vehicleKeys.all });
 }
 
-export function useVehicle(id: string) {
-  const [data, setData] = useState<Vehicle | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export function useVehiclesList(query: ListVehiclesParams = {}, options: { enabled?: boolean } = {}) {
+  const result = useQuery({
+    queryKey: vehicleKeys.list(query),
+    queryFn: () => vehiclesAPI.list(query),
+    enabled: options.enabled ?? true,
+  });
 
-  const fetch = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await vehiclesAPI.getById(id);
-      setData(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch vehicle');
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
+  return {
+    data: result.data ?? null,
+    items: result.data?.items ?? [],
+    meta: result.data?.meta,
+    loading: result.isPending,
+    error: result.error ? describeError(result.error, 'Failed to fetch vehicles') : null,
+    refetch: result.refetch,
+  };
+}
 
-  useEffect(() => {
-    fetch();
-  }, [fetch]);
+export function useVehicle(id: string, options: { enabled?: boolean } = {}) {
+  const result = useQuery({
+    queryKey: vehicleKeys.detail(id),
+    queryFn: () => vehiclesAPI.getById(id),
+    enabled: (options.enabled ?? true) && Boolean(id),
+  });
 
-  return { data, loading, error, refetch: fetch };
+  return {
+    data: result.data ?? null,
+    loading: result.isPending,
+    error: result.error ? describeError(result.error, 'Failed to fetch vehicle') : null,
+    refetch: result.refetch,
+  };
 }
 
 export function useCreateVehicle() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const invalidate = useInvalidateVehicles();
+  const mutation = useMutation({
+    mutationFn: (input: CreateVehicleInput) => vehiclesAPI.create(input),
+    onSuccess: invalidate,
+  });
 
-  const mutate = useCallback(async (input: CreateVehicleInput) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await vehiclesAPI.create(input);
-      return result;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to create vehicle';
-      setError(message);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  return { mutate, loading, error };
+  return {
+    mutate: mutation.mutateAsync,
+    loading: mutation.isPending,
+    error: mutation.error ? describeError(mutation.error, 'Failed to create vehicle') : null,
+  };
 }
 
 export function useUpdateVehicle(id: string) {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const invalidate = useInvalidateVehicles();
+  const mutation = useMutation({
+    mutationFn: (input: UpdateVehicleInput) => vehiclesAPI.update(id, input),
+    onSuccess: invalidate,
+  });
 
-  const mutate = useCallback(
-    async (input: UpdateVehicleInput) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const result = await vehiclesAPI.update(id, input);
-        return result;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to update vehicle';
-        setError(message);
-        throw err;
-      } finally {
-        setLoading(false);
-      }
-    },
-    [id]
-  );
-
-  return { mutate, loading, error };
+  return {
+    mutate: mutation.mutateAsync,
+    loading: mutation.isPending,
+    error: mutation.error ? describeError(mutation.error, 'Failed to update vehicle') : null,
+  };
 }
 
 export function useArchiveVehicle(id: string) {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const invalidate = useInvalidateVehicles();
+  const mutation = useMutation({
+    mutationFn: () => vehiclesAPI.archive(id),
+    onSuccess: invalidate,
+  });
 
-  const mutate = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await vehiclesAPI.archive(id);
-      return result;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to archive vehicle';
-      setError(message);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
-  return { mutate, loading, error };
+  return {
+    mutate: mutation.mutateAsync,
+    loading: mutation.isPending,
+    error: mutation.error ? describeError(mutation.error, 'Failed to archive vehicle') : null,
+  };
 }
 
 export function useRestoreVehicle(id: string) {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const invalidate = useInvalidateVehicles();
+  const mutation = useMutation({
+    mutationFn: () => vehiclesAPI.restore(id),
+    onSuccess: invalidate,
+  });
 
-  const mutate = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await vehiclesAPI.restore(id);
-      return result;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to restore vehicle';
-      setError(message);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
-  return { mutate, loading, error };
+  return {
+    mutate: mutation.mutateAsync,
+    loading: mutation.isPending,
+    error: mutation.error ? describeError(mutation.error, 'Failed to restore vehicle') : null,
+  };
 }

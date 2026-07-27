@@ -205,13 +205,14 @@ export class TripService {
   }
 
   /// Ordered positions for a trip — the route-replay payload. Bounded so a
-  /// pathological trip cannot return an unbounded array.
+  /// pathological trip cannot return an unbounded array. Drops null-island
+  /// and duplicate timestamps so replay never invents or doubles points.
   async replay(organizationId: string, id: string, query: TripReplayQueryDto) {
     await this.findOrThrow(organizationId, id);
-    const points = await this.prisma.gpsPosition.findMany({
+    const rows = await this.prisma.gpsPosition.findMany({
       where: { organizationId, tripId: id },
-      orderBy: { recordedAt: "asc" },
-      take: query.limit,
+      orderBy: [{ recordedAt: "asc" }, { createdAt: "asc" }],
+      take: Math.min(query.limit ?? 10_000, 50_000),
       select: {
         id: true,
         recordedAt: true,
@@ -222,17 +223,35 @@ export class TripService {
         movementState: true,
       },
     });
-    return {
-      tripId: id,
-      pointCount: points.length,
-      points: points.map((p) => ({
+
+    const points: Array<{
+      at: Date;
+      lat: number;
+      lng: number;
+      speedKph: number | null;
+      heading: number | null;
+      movementState: (typeof rows)[number]["movementState"];
+    }> = [];
+    let prevAtMs: number | null = null;
+    for (const p of rows) {
+      if (Math.abs(p.latitude) < 1e-5 && Math.abs(p.longitude) < 1e-5) continue;
+      const atMs = p.recordedAt.getTime();
+      if (prevAtMs != null && atMs === prevAtMs) continue;
+      prevAtMs = atMs;
+      points.push({
         at: p.recordedAt,
         lat: p.latitude,
         lng: p.longitude,
         speedKph: p.speedKph,
         heading: p.heading,
         movementState: p.movementState,
-      })),
+      });
+    }
+
+    return {
+      tripId: id,
+      pointCount: points.length,
+      points,
     };
   }
 

@@ -82,3 +82,13 @@ export class DispatchNumberConflictError extends ConflictException {
     super("Could not allocate a dispatch number because another dispatch was created at the same moment. Please try again.");
   }
 }
+
+/// R2 — at most one non-terminal dispatch per order. The pre-check is
+/// check-then-write; under concurrency the partial unique index
+/// `dispatches_one_live_per_order` rejects the loser, and this is the 409
+/// that surfaces instead of a 500.
+export class OrderAlreadyHasDispatchError extends ConflictException {
+  constructor() {
+    super("Order already has an active dispatch");
+  }
+}

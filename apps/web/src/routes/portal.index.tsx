@@ -15,6 +15,7 @@ export const Route = createFileRoute("/portal/")({
 
 function StatusBadge({ status }: { status: string }) {
   const variantMap: Record<string, "warning" | "brand" | "success" | "secondary" | "destructive" | "muted"> = {
+    DRAFT: "muted",
     PENDING: "warning",
     ASSIGNED: "brand",
     PICKED_UP: "brand",
@@ -26,7 +27,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function PortalDashboardPage() {
-  const { data: dashboard, loading, error } = usePortalDashboard();
+  const { data: dashboard, loading, error, refetch } = usePortalDashboard();
 
   if (loading) {
     return (
@@ -52,6 +53,13 @@ function PortalDashboardPage() {
     return (
       <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-8 text-center">
         <p className="text-sm text-destructive">{error}</p>
+        <button
+          type="button"
+          onClick={() => void refetch()}
+          className="mt-4 text-sm font-medium text-brand underline hover:no-underline"
+        >
+          Retry
+        </button>
       </div>
     );
   }

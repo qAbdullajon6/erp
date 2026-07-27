@@ -41,7 +41,7 @@ export function NotificationActions({
           Archive
         </Button>
       </div>
-      <Button variant="ghost" size="sm" onClick={onClearSelection}>
+      <Button variant="ghost" size="sm" onClick={onClearSelection} aria-label="Clear selection">
         <X className="h-4 w-4" />
       </Button>
     </div>

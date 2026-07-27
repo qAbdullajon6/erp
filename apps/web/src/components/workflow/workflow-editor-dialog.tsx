@@ -234,7 +234,7 @@ export function WorkflowEditorDialog({
                     placeholder="value"
                     className="w-32"
                   />
-                  <Button variant="ghost" size="icon" onClick={() => handleRemoveCondition(i)}>
+                  <Button variant="ghost" size="icon" onClick={() => handleRemoveCondition(i)} aria-label="Remove condition">
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </div>
@@ -272,7 +272,7 @@ export function WorkflowEditorDialog({
                       ))}
                     </SelectContent>
                   </Select>
-                  <Button variant="ghost" size="icon" onClick={() => handleRemoveAction(i)}>
+                  <Button variant="ghost" size="icon" onClick={() => handleRemoveAction(i)} aria-label="Remove action">
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </div>

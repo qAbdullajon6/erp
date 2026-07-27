@@ -1,5 +1,14 @@
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiFetch } from './fetch';
+import { reportKeys } from './query-keys';
+
+/// Reports client.
+///
+/// UI-connected: executive / operations / financial / fleet-telematics / export.
+/// Intentionally typed but unused in Reports UI (API/AI may still send them):
+/// `customerId`, `driverId`, `vehicleId`, `pickupCity`, `deliveryCity`,
+/// `orderStatus`, `invoiceStatus`, `currency`, `timezone` on ReportFilterParams.
+/// `dashboard-summary` is consumed by the Command Center via dashboard.ts, not here.
 
 export type ComparisonPeriod = 'previous_period' | 'previous_year' | 'none';
 export type ExportReportType = 'executive-overview' | 'operations' | 'financial';
@@ -24,6 +33,7 @@ export interface ReportFiltersEcho {
   dateTo: string;
   comparisonPeriod: ComparisonPeriod;
   timezone: string;
+  currency: string | null;
 }
 
 export interface ComparisonPair {
@@ -216,6 +226,61 @@ export interface FinancialReport {
   };
 }
 
+export interface FleetTelematicsParams {
+  from?: string;
+  to?: string;
+}
+
+export interface FleetTelematicsReport {
+  overview: {
+    totalDistanceKm: number;
+    totalTrips: number;
+    movingHours: number;
+    idleHours: number;
+    utilizationPct: number;
+    maxSpeedKph: number;
+    harshEvents: number;
+    speedingEvents: number;
+    openAlerts: number;
+    fleet: { totalVehicles: number; moving: number; idling: number; stopped: number; offline: number };
+  };
+  utilization: {
+    vehicles: Array<{
+      vehicleId: string;
+      vehicleCode: string | null;
+      plateNumber: string | null;
+      trips: number;
+      distanceKm: number;
+      utilizationPct: number;
+    }>;
+  };
+  driverBehavior: {
+    drivers: Array<{
+      driverId: string | null;
+      employeeCode: string | null;
+      name: string | null;
+      trips: number;
+      distanceKm: number;
+      safetyScore: number;
+      speedingEvents: number;
+    }>;
+  };
+  fuel: {
+    estimate: boolean;
+    totalDistanceKm: number;
+    totalEstimatedFuelLiters: number;
+    fleetLitersPer100Km: number;
+    vehicles: Array<{
+      vehicleId: string;
+      vehicleCode: string | null;
+      plateNumber: string | null;
+      distanceKm: number;
+      estimatedFuelLiters: number;
+      litersPer100Km: number;
+    }>;
+  };
+}
+
 function buildQuery(params: object): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params) as [string, unknown][]) {
@@ -250,6 +315,11 @@ class ReportsAPI {
     return unwrap(response, 'Failed to load financial report');
   }
 
+  async fleetTelematics(params: FleetTelematicsParams = {}): Promise<FleetTelematicsReport> {
+    const response = await apiFetch(`/api/reports/fleet-telematics${buildQuery(params)}`, { method: 'GET' });
+    return unwrap(response, 'Failed to load fleet telematics report');
+  }
+
   /// Exports as a raw CSV file (the backend bypasses its usual `{data}`
   /// envelope for this route specifically) — returns the blob + a filename
   /// parsed from Content-Disposition so the caller can trigger a real
@@ -269,13 +339,6 @@ class ReportsAPI {
 }
 
 export const reportsAPI = new ReportsAPI();
-
-export const reportKeys = {
-  all: ['reports'] as const,
-  executiveOverview: (params: ReportFilterParams) => [...reportKeys.all, 'executive-overview', params] as const,
-  operations: (params: ReportFilterParams) => [...reportKeys.all, 'operations', params] as const,
-  financial: (params: ReportFilterParams) => [...reportKeys.all, 'financial', params] as const,
-};
 
 export function useExecutiveOverviewQuery(params: ReportFilterParams, enabled = true) {
   return useQuery({
@@ -299,6 +362,15 @@ export function useFinancialReportQuery(params: ReportFilterParams, enabled = tr
   return useQuery({
     queryKey: reportKeys.financial(params),
     queryFn: () => reportsAPI.financial(params),
+    enabled,
+    placeholderData: (previousData) => previousData,
+  });
+}
+
+export function useFleetTelematicsReportQuery(params: FleetTelematicsParams, enabled = true) {
+  return useQuery({
+    queryKey: reportKeys.fleetTelematics(params),
+    queryFn: () => reportsAPI.fleetTelematics(params),
     enabled,
     placeholderData: (previousData) => previousData,
   });

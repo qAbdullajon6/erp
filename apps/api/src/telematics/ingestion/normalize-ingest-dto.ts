@@ -5,6 +5,7 @@ import type { NormalizedPosition } from "../providers/telematics-provider.interf
 /// shape. The DTO has already enforced ranges/types, so this is a pure
 /// field rename — no parsing, no defaulting beyond recordedAt.
 export function normalizeIngestDto(dto: IngestPositionDto): NormalizedPosition {
+  const key = dto.idempotencyKey?.trim();
   return {
     recordedAt: dto.recordedAt ? new Date(dto.recordedAt) : new Date(),
     latitude: dto.latitude,
@@ -17,5 +18,6 @@ export function normalizeIngestDto(dto: IngestPositionDto): NormalizedPosition {
     odometerKm: dto.odometerKm ?? null,
     fuelLevelPct: dto.fuelLevelPct ?? null,
     satellites: dto.satellites ?? null,
+    raw: key ? { idempotencyKey: key } : undefined,
   };
 }

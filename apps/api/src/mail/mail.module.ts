@@ -27,6 +27,7 @@ import { createMailService } from "./mail.factory";
           nodeEnv: app.nodeEnv,
           smtpUrl: invitation.smtpUrl,
           mailFrom: invitation.mailFrom,
+          marketingUrl: app.marketingUrl,
           outbox,
         });
       },

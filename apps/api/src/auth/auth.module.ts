@@ -7,10 +7,12 @@ import { AuthService } from "./auth.service";
 import { PasswordService } from "./password.service";
 import { JwtStrategy } from "./strategies/jwt.strategy";
 import type { AuthConfig } from "../config/configuration";
+import { TelematicsModule } from "../telematics/telematics.module";
 
 @Module({
   imports: [
     PassportModule,
+    TelematicsModule,
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {

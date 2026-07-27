@@ -9,6 +9,7 @@ export const Route = createFileRoute("/privacy")({
       { name: "description", content: `How ${siteConfig.name} collects, uses, and protects your data.` },
       { name: "robots", content: "index, follow" },
     ],
+    links: [{ rel: "canonical", href: `${siteConfig.url}/privacy` }],
   }),
   component: PrivacyPage,
 });

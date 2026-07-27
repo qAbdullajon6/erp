@@ -28,7 +28,7 @@ export const SurfaceCardHeader = React.forwardRef<HTMLDivElement, React.Componen
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn("flex items-center justify-between gap-4 border-b border-brand/10 px-6 py-5", className)}
+      className={cn("flex items-center justify-between gap-3 border-b border-brand/10 px-4 py-3", className)}
       {...props}
     />
   ),

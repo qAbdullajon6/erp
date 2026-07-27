@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { Driver, Vehicle } from "@prisma/client";
+import { Driver, OrderStatus, Vehicle } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { AssignmentQueries, TripSummary } from "./assignment/assignment.queries";
 import { DispatchAvailabilityQueryDto } from "./dto/dispatch-availability-query.dto";
@@ -12,6 +12,7 @@ function toDriverSummary(driver: Driver) {
     lastName: driver.lastName,
     phone: driver.phone,
     status: driver.status,
+    licenseExpiry: driver.licenseExpiry?.toISOString() ?? null,
   };
 }
 
@@ -36,6 +37,39 @@ function toOrderSummary(order: TripSummary) {
     pickupDate: order.pickupDate,
     deliveryDate: order.deliveryDate,
     status: order.status,
+    customerName: order.customerName ?? null,
+    price: order.price ?? null,
+    currency: order.currency ?? null,
+  };
+}
+
+function toBoardUnassignedOrder(order: {
+  id: string;
+  orderNumber: string;
+  pickupCity: string;
+  deliveryCity: string;
+  pickupDate: Date;
+  deliveryDate: Date;
+  status: OrderStatus;
+  price: { toString(): string };
+  currency: string;
+  createdAt: Date;
+  cargoWeightKg: { toString(): string } | null;
+  customer: { companyName: string };
+}) {
+  return {
+    id: order.id,
+    orderNumber: order.orderNumber,
+    pickupCity: order.pickupCity,
+    deliveryCity: order.deliveryCity,
+    pickupDate: order.pickupDate,
+    deliveryDate: order.deliveryDate,
+    status: order.status,
+    customerName: order.customer.companyName,
+    price: order.price.toString(),
+    currency: order.currency,
+    createdAt: order.createdAt.toISOString(),
+    cargoWeightKg: order.cargoWeightKg?.toString() ?? null,
   };
 }
 
@@ -60,6 +94,20 @@ export class DispatchService {
       this.prisma.order.findMany({
         where: { organizationId, status: "PENDING" },
         orderBy: { pickupDate: "asc" },
+        select: {
+          id: true,
+          orderNumber: true,
+          pickupCity: true,
+          deliveryCity: true,
+          pickupDate: true,
+          deliveryDate: true,
+          status: true,
+          price: true,
+          currency: true,
+          createdAt: true,
+          cargoWeightKg: true,
+          customer: { select: { companyName: true } },
+        },
       }),
       this.prisma.driver.findMany({ where: { organizationId, archivedAt: null } }),
       this.prisma.vehicle.findMany({ where: { organizationId, archivedAt: null } }),
@@ -74,7 +122,7 @@ export class DispatchService {
       AssignmentQueries.reservationFor(reservations, "vehicleId", id);
 
     return {
-      unassignedOrders: unassignedOrders.map(toOrderSummary),
+      unassignedOrders: unassignedOrders.map(toBoardUnassignedOrder),
       drivers: {
         available: drivers
           .filter((d) => d.status === "ACTIVE" && !heldDriver(d.id))

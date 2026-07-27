@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Mail, Phone, MessageCircle, ShieldCheck } from "lucide-react";
+import { Mail, Phone, MessageCircle } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
 import { siteConfig } from "@/lib/site-config";
 
@@ -23,78 +23,79 @@ export function Footer() {
               center.
             </p>
             <div className="mt-6 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1 text-xs text-muted-foreground">
-                <ShieldCheck className="h-3.5 w-3.5 text-success" />
-                SOC 2 Type II
-              </span>
               <span className="inline-flex items-center rounded-full border border-border bg-surface px-3 py-1 text-xs text-muted-foreground">
                 Built in Central Asia
               </span>
             </div>
           </div>
 
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Product
-            </div>
-            <ul className="mt-4 space-y-2.5 text-sm">
-              {PRODUCT.map((l) => (
-                <li key={l.href}>
-                  <a href={l.href} className="text-foreground/80 transition-colors hover:text-foreground">
-                    {l.label}
-                  </a>
-                </li>
-              ))}
-              <li>
-                <Link to="/auth/sign-in" className="text-foreground/80 transition-colors hover:text-foreground">
-                  Sign in
-                </Link>
-              </li>
-            </ul>
-          </div>
-
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Contact
-            </div>
-            <ul className="mt-4 space-y-2.5 text-sm">
-              <li>
-                <a href={siteConfig.contact.emailHref} className="inline-flex items-center gap-2 text-foreground/80 transition-colors hover:text-foreground">
-                  <Mail className="h-3.5 w-3.5" /> {siteConfig.contact.email}
-                </a>
-              </li>
-              <li>
-                <a href={siteConfig.contact.phoneHref} className="inline-flex items-center gap-2 text-foreground/80 transition-colors hover:text-foreground">
-                  <Phone className="h-3.5 w-3.5" /> {siteConfig.contact.phoneDisplay}
-                </a>
-              </li>
-              {siteConfig.contact.whatsappHref && (
+          {/* A screen reader landing in the footer previously had no structural
+              signal that these three columns are navigation groups (plain divs,
+              no landmark, no headings) — nav + h2 gives it one. */}
+          <nav aria-label="Footer" className="contents">
+            <div>
+              <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Product
+              </h2>
+              <ul className="mt-4 space-y-2.5 text-sm">
+                {PRODUCT.map((l) => (
+                  <li key={l.href}>
+                    <a href={l.href} className="text-foreground/80 transition-colors hover:text-foreground">
+                      {l.label}
+                    </a>
+                  </li>
+                ))}
                 <li>
-                  <a href={siteConfig.contact.whatsappHref} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-foreground/80 transition-colors hover:text-foreground">
-                    <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
+                  <Link to="/auth/sign-in" className="text-foreground/80 transition-colors hover:text-foreground">
+                    Sign in
+                  </Link>
+                </li>
+              </ul>
+            </div>
+
+            <div>
+              <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Contact
+              </h2>
+              <ul className="mt-4 space-y-2.5 text-sm">
+                <li>
+                  <a href={siteConfig.contact.emailHref} className="inline-flex items-center gap-2 text-foreground/80 transition-colors hover:text-foreground">
+                    <Mail className="h-3.5 w-3.5" /> {siteConfig.contact.email}
                   </a>
                 </li>
-              )}
-            </ul>
-          </div>
-
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Legal
+                <li>
+                  <a href={siteConfig.contact.phoneHref} className="inline-flex items-center gap-2 text-foreground/80 transition-colors hover:text-foreground">
+                    <Phone className="h-3.5 w-3.5" /> {siteConfig.contact.phoneDisplay}
+                  </a>
+                </li>
+                {siteConfig.contact.whatsappHref && (
+                  <li>
+                    <a href={siteConfig.contact.whatsappHref} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-foreground/80 transition-colors hover:text-foreground">
+                      <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
+                    </a>
+                  </li>
+                )}
+              </ul>
             </div>
-            <ul className="mt-4 space-y-2.5 text-sm">
-              <li>
-                <Link to="/privacy" className="text-foreground/80 transition-colors hover:text-foreground">
-                  Privacy
-                </Link>
-              </li>
-              <li>
-                <Link to="/terms" className="text-foreground/80 transition-colors hover:text-foreground">
-                  Terms
-                </Link>
-              </li>
-            </ul>
-          </div>
+
+            <div>
+              <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Legal
+              </h2>
+              <ul className="mt-4 space-y-2.5 text-sm">
+                <li>
+                  <Link to="/privacy" className="text-foreground/80 transition-colors hover:text-foreground">
+                    Privacy
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/terms" className="text-foreground/80 transition-colors hover:text-foreground">
+                    Terms
+                  </Link>
+                </li>
+              </ul>
+            </div>
+          </nav>
         </div>
 
         <div className="mt-14 flex flex-col items-start justify-between gap-3 border-t border-border/60 pt-6 text-xs text-muted-foreground sm:flex-row sm:items-center">

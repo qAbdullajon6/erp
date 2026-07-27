@@ -30,6 +30,11 @@ export function WorkflowList() {
 
   const handleToggle = useCallback((id: string) => {
     toggleMutation.mutate(id, {
+      onSuccess: (wf) => {
+        if (wf.status === 'PUBLISHED' && wf.active) {
+          toast.success('Workflow published and activated — it will run on matching events');
+        }
+      },
       onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to toggle workflow'),
     });
   }, [toggleMutation]);
@@ -104,8 +109,15 @@ export function WorkflowList() {
                         checked={wf.active}
                         onCheckedChange={() => handleToggle(wf.id)}
                         aria-label="Toggle workflow"
+                        disabled={wf.status === 'ARCHIVED'}
                       />
                       <StatusBadge status={wf.active ? 'ACTIVE' : 'INACTIVE'} />
+                      {wf.status === 'DRAFT' && (
+                        <StatusBadge status="DRAFT" />
+                      )}
+                      {wf.status === 'ARCHIVED' && (
+                        <StatusBadge status="ARCHIVED" />
+                      )}
                     </div>
                   </TableCell>
                   <TableCell className="text-right">

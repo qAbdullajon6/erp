@@ -5,6 +5,7 @@ import { TemplateService } from '../templates/template.service';
 import { DeliveryQueueService } from '../queue/delivery-queue.service';
 import { PreferencesService } from '../preferences/preferences.service';
 import { WorkflowEventService } from '../../workflows/triggers/workflow-event.service';
+import { categoriesForRole } from '../notification-roles.util';
 
 export interface DispatchNotificationRequest {
   organizationId: string;
@@ -144,36 +145,10 @@ export class NotificationDispatcherService {
 
     return memberships
       .filter((m) => {
-        const allowedCategories = this.categoriesForRole(m.role);
+        const allowedCategories = categoriesForRole(m.role);
         return allowedCategories.includes(category);
       })
       .map((m) => m.user);
-  }
-
-  private categoriesForRole(role: string): NotificationCategory[] {
-    switch (role) {
-      case 'ADMIN':
-        return [
-          NotificationCategory.OPERATIONS,
-          NotificationCategory.FINANCE,
-          NotificationCategory.CUSTOMERS,
-          NotificationCategory.FLEET,
-        ];
-      case 'OPERATIONS_MANAGER':
-        return [
-          NotificationCategory.OPERATIONS,
-          NotificationCategory.CUSTOMERS,
-          NotificationCategory.FLEET,
-        ];
-      case 'DISPATCHER':
-        return [NotificationCategory.OPERATIONS, NotificationCategory.FLEET];
-      case 'ACCOUNTANT':
-        return [NotificationCategory.FINANCE, NotificationCategory.CUSTOMERS];
-      case 'SALES_CRM_MANAGER':
-        return [NotificationCategory.CUSTOMERS];
-      default:
-        return [];
-    }
   }
 
   private normalizeTemplateKey(type: string): string {

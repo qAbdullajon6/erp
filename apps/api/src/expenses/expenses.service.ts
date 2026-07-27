@@ -150,15 +150,21 @@ export class ExpensesService {
   }
 
   async approve(organizationId: string, id: string, actor: CurrentUserPayload) {
-    const existing = await this.findOrThrow(organizationId, id);
-    if (existing.status !== "PENDING") {
+    const result = await this.prisma.expense.updateMany({
+      where: { id, organizationId, status: "PENDING" },
+      data: {
+        status: "APPROVED",
+        approvedByUserId: actor.userId,
+        approvedAt: new Date(),
+        rejectionReason: null,
+      },
+    });
+    if (result.count === 0) {
+      const existing = await this.findOrThrow(organizationId, id);
       throw new ConflictException(`Only PENDING expenses can be approved (this one is ${existing.status})`);
     }
 
-    const expense = await this.prisma.expense.update({
-      where: { id },
-      data: { status: "APPROVED", approvedByUserId: actor.userId, approvedAt: new Date(), rejectionReason: null },
-    });
+    const expense = await this.findOrThrow(organizationId, id);
 
     await this.auditService.log({
       organizationId,
@@ -168,19 +174,18 @@ export class ExpensesService {
       entityId: id,
     });
 
-    this.workflowEvents.emit(organizationId, "expense.approved", { id, expenseNumber: expense.expenseNumber, amount: expense.amount.toString() });
+    this.workflowEvents.emit(organizationId, "expense.approved", {
+      id,
+      expenseNumber: expense.expenseNumber,
+      amount: expense.amount.toString(),
+    });
 
     return this.toResponse(expense);
   }
 
   async reject(organizationId: string, id: string, dto: RejectExpenseDto, actor: CurrentUserPayload) {
-    const existing = await this.findOrThrow(organizationId, id);
-    if (existing.status !== "PENDING") {
-      throw new ConflictException(`Only PENDING expenses can be rejected (this one is ${existing.status})`);
-    }
-
-    const expense = await this.prisma.expense.update({
-      where: { id },
+    const result = await this.prisma.expense.updateMany({
+      where: { id, organizationId, status: "PENDING" },
       data: {
         status: "REJECTED",
         rejectionReason: dto.rejectionReason,
@@ -188,6 +193,12 @@ export class ExpensesService {
         approvedAt: new Date(),
       },
     });
+    if (result.count === 0) {
+      const existing = await this.findOrThrow(organizationId, id);
+      throw new ConflictException(`Only PENDING expenses can be rejected (this one is ${existing.status})`);
+    }
+
+    const expense = await this.findOrThrow(organizationId, id);
 
     await this.auditService.log({
       organizationId,
@@ -207,12 +218,16 @@ export class ExpensesService {
   }
 
   private async assertVehicleExists(organizationId: string, vehicleId: string): Promise<void> {
-    const vehicle = await this.prisma.vehicle.findFirst({ where: { id: vehicleId, organizationId } });
+    const vehicle = await this.prisma.vehicle.findFirst({
+      where: { id: vehicleId, organizationId, archivedAt: null },
+    });
     if (!vehicle) throw new NotFoundException("Vehicle not found");
   }
 
   private async assertDriverExists(organizationId: string, driverId: string): Promise<void> {
-    const driver = await this.prisma.driver.findFirst({ where: { id: driverId, organizationId } });
+    const driver = await this.prisma.driver.findFirst({
+      where: { id: driverId, organizationId, archivedAt: null },
+    });
     if (!driver) throw new NotFoundException("Driver not found");
   }
 

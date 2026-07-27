@@ -48,6 +48,7 @@ export function Pricing() {
             <button
               key={c}
               onClick={() => toggle(c)}
+              aria-pressed={cycle === c}
               className={cn(
                 "flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium capitalize transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 cycle === c ? "bg-brand text-brand-foreground" : "text-muted-foreground hover:text-foreground",

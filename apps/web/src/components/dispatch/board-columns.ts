@@ -11,19 +11,21 @@ import type { ApiDispatch, DispatchStatus } from '@/lib/api/dispatches';
 export interface BoardColumn {
   status: DispatchStatus;
   title: string;
+  /// Compact column header for dense board layouts (1366+).
+  shortTitle: string;
   /// Terminal columns are visually quieter — nothing leaves them, and a card that
   /// lands there is finished.
   terminal: boolean;
 }
 
 export const BOARD_COLUMNS: readonly BoardColumn[] = [
-  { status: 'DRAFT', title: 'Draft', terminal: false },
-  { status: 'ASSIGNED', title: 'Assigned', terminal: false },
-  { status: 'EN_ROUTE_TO_PICKUP', title: 'En Route to Pickup', terminal: false },
-  { status: 'AT_PICKUP', title: 'At Pickup', terminal: false },
-  { status: 'IN_TRANSIT', title: 'In Transit', terminal: false },
-  { status: 'DELIVERED', title: 'Delivered', terminal: true },
-  { status: 'CANCELLED', title: 'Cancelled', terminal: true },
+  { status: 'DRAFT', title: 'Draft', shortTitle: 'Draft', terminal: false },
+  { status: 'ASSIGNED', title: 'Assigned', shortTitle: 'Assigned', terminal: false },
+  { status: 'EN_ROUTE_TO_PICKUP', title: 'En Route to Pickup', shortTitle: 'To Pickup', terminal: false },
+  { status: 'AT_PICKUP', title: 'At Pickup', shortTitle: 'At Pickup', terminal: false },
+  { status: 'IN_TRANSIT', title: 'In Transit', shortTitle: 'In Transit', terminal: false },
+  { status: 'DELIVERED', title: 'Delivered', shortTitle: 'Done', terminal: true },
+  { status: 'CANCELLED', title: 'Cancelled', shortTitle: 'Cancelled', terminal: true },
 ] as const;
 
 /// Buckets the dispatches by the status the API gave them.

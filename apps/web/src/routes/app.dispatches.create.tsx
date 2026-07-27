@@ -1,15 +1,19 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { DispatchesCreateForm } from "@/components/dispatch/dispatches-create-form";
-import { ProtectedApiRoute } from "@/components/layout/protected-api-route";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
+/// The full-page create form is gone — dispatch creation is a right-side sheet on
+/// the list (`DispatchesCreateSheet`). Deep links to /app/dispatches/create still
+/// work (including ?orderId=) — they land on the list with the sheet open.
 export const Route = createFileRoute("/app/dispatches/create")({
-  component: DispatchesCreatePage,
+  validateSearch: (search: Record<string, unknown>): { orderId?: string } => ({
+    orderId: typeof search.orderId === "string" ? search.orderId : undefined,
+  }),
+  beforeLoad: ({ search }) => {
+    throw redirect({
+      to: "/app/dispatches",
+      search: {
+        create: true,
+        ...(search.orderId ? { orderId: search.orderId } : {}),
+      } as const,
+    });
+  },
 });
-
-function DispatchesCreatePage() {
-  return (
-    <ProtectedApiRoute>
-      <DispatchesCreateForm />
-    </ProtectedApiRoute>
-  );
-}

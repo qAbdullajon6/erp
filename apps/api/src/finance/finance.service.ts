@@ -10,37 +10,49 @@ export class FinanceService {
     private readonly invoicesService: InvoicesService,
   ) {}
 
-  /// A read-only aggregation, safe for the broadest set of finance-adjacent
-  /// roles (including DISPATCHER, whose only finance access is this
-  /// endpoint). `estimatedGrossProfit` here is an org-wide figure — money
-  /// actually collected minus approved costs — distinct from
-  /// orderProfitability's per-order figure below, which uses the order's
-  /// agreed price as revenue rather than what's actually been collected.
+  /// Org-wide cash signal scoped to the organization's default currency.
+  /// Mixing USD + UZS in a single sum is accountingly wrong, so other
+  /// currencies are excluded and counted in `excludedOtherCurrencyCount`.
   async summary(organizationId: string) {
     await this.invoicesService.refreshOverdueInvoices(organizationId);
 
-    const [invoiceAgg, overdueAgg, pendingExpenseCount, approvedExpenseAgg] = await Promise.all([
-      this.prisma.invoice.aggregate({
-        where: { organizationId, status: { not: "CANCELLED" } },
-        _count: { _all: true },
-        _sum: { totalAmount: true, paidAmount: true, balanceDue: true },
-      }),
-      this.prisma.invoice.aggregate({
-        where: { organizationId, status: "OVERDUE" },
-        _count: { _all: true },
-        _sum: { balanceDue: true },
-      }),
-      this.prisma.expense.count({ where: { organizationId, status: "PENDING" } }),
-      this.prisma.expense.aggregate({
-        where: { organizationId, status: "APPROVED" },
-        _sum: { amount: true },
-      }),
-    ]);
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { defaultCurrency: true },
+    });
+    const currency = org?.defaultCurrency ?? "USD";
+
+    const [invoiceAgg, overdueAgg, pendingExpenseCount, approvedExpenseAgg, otherInvoiceCount, otherExpenseCount] =
+      await Promise.all([
+        this.prisma.invoice.aggregate({
+          where: { organizationId, currency, status: { not: "CANCELLED" } },
+          _count: { _all: true },
+          _sum: { totalAmount: true, paidAmount: true, balanceDue: true },
+        }),
+        this.prisma.invoice.aggregate({
+          where: { organizationId, currency, status: "OVERDUE" },
+          _count: { _all: true },
+          _sum: { balanceDue: true },
+        }),
+        this.prisma.expense.count({ where: { organizationId, status: "PENDING" } }),
+        this.prisma.expense.aggregate({
+          where: { organizationId, currency, status: "APPROVED" },
+          _sum: { amount: true },
+        }),
+        this.prisma.invoice.count({
+          where: { organizationId, status: { not: "CANCELLED" }, currency: { not: currency } },
+        }),
+        this.prisma.expense.count({
+          where: { organizationId, status: "APPROVED", currency: { not: currency } },
+        }),
+      ]);
 
     const totalCollected = invoiceAgg._sum.paidAmount ?? new Prisma.Decimal(0);
     const approvedExpensesTotal = approvedExpenseAgg._sum.amount ?? new Prisma.Decimal(0);
+    const excludedOtherCurrencyCount = otherInvoiceCount + otherExpenseCount;
 
     return {
+      currency,
       invoices: {
         count: invoiceAgg._count._all,
         totalInvoiced: (invoiceAgg._sum.totalAmount ?? new Prisma.Decimal(0)).toString(),
@@ -53,18 +65,11 @@ export class FinanceService {
         pendingCount: pendingExpenseCount,
         approvedTotal: approvedExpensesTotal.toString(),
       },
-      /// = total collected across all non-cancelled invoices - total
-      /// APPROVED expenses org-wide. A coarse profitability signal, not a
-      /// substitute for real accounting (no COGS/overhead/tax modeling).
       estimatedGrossProfit: totalCollected.sub(approvedExpensesTotal).toString(),
+      excludedOtherCurrencyCount,
     };
   }
 
-  /// Order Revenue = order.price (the agreed price, not what's actually
-  /// been collected — see the docstring on `summary` for how this differs
-  /// from the org-wide figure). Approved Expenses = sum of this order's
-  /// APPROVED expenses only; PENDING/REJECTED never count, per the phase
-  /// spec ("only APPROVED expenses count toward profitability").
   async orderProfitability(organizationId: string, orderId: string) {
     const order = await this.prisma.order.findFirst({ where: { id: orderId, organizationId } });
     if (!order) {
@@ -72,7 +77,7 @@ export class FinanceService {
     }
 
     const approvedExpenseAgg = await this.prisma.expense.aggregate({
-      where: { organizationId, orderId, status: "APPROVED" },
+      where: { organizationId, orderId, status: "APPROVED", currency: order.currency },
       _sum: { amount: true },
     });
     const approvedExpenses = approvedExpenseAgg._sum.amount ?? new Prisma.Decimal(0);
@@ -86,4 +91,39 @@ export class FinanceService {
       estimatedGrossProfit: order.price.sub(approvedExpenses).toString(),
     };
   }
+
+  /// Minimal fleet references for expense forms — ACCOUNTANT can write
+  /// expenses but cannot call /drivers or /vehicles (FLEET_ROLES).
+  async lookupDrivers(organizationId: string) {
+    const rows = await this.prisma.driver.findMany({
+      where: { organizationId, archivedAt: null },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      take: 200,
+      select: { id: true, employeeCode: true, firstName: true, lastName: true },
+    });
+    return {
+      items: rows.map((d) => ({
+        id: d.id,
+        code: d.employeeCode,
+        label: `${d.firstName} ${d.lastName}`.trim(),
+      })),
+    };
+  }
+
+  async lookupVehicles(organizationId: string) {
+    const rows = await this.prisma.vehicle.findMany({
+      where: { organizationId, archivedAt: null },
+      orderBy: { plateNumber: "asc" },
+      take: 200,
+      select: { id: true, vehicleCode: true, plateNumber: true },
+    });
+    return {
+      items: rows.map((v) => ({
+        id: v.id,
+        code: v.vehicleCode,
+        label: v.plateNumber,
+      })),
+    };
+  }
 }
+

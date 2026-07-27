@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { toCsv, reportCsvFilename } from "./csv.util";
@@ -15,14 +15,29 @@ import {
   percentChange,
   resolveBucketGranularity,
   resolveReportFilter,
+  resolveZonedDayRange,
   ResolvedReportFilter,
 } from "./report-filters.util";
 
 const ZERO = new Prisma.Decimal(0);
 const DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_RANGE_DAYS = 366;
 const ACTIVE_ORDER_STATUSES = ["PENDING", "ASSIGNED", "PICKED_UP", "IN_TRANSIT"];
 const AGING_BUCKET_KEYS = ["current", "1-30", "31-60", "61-90", "90+"] as const;
 type AgingBucketKey = (typeof AGING_BUCKET_KEYS)[number];
+
+const exceptionOrderSelect = {
+  id: true,
+  orderNumber: true,
+  customerId: true,
+  status: true,
+  pickupCity: true,
+  deliveryCity: true,
+  deliveryDate: true,
+  price: true,
+  currency: true,
+  customer: { select: { companyName: true } },
+} as const;
 
 interface OrderProfitabilityRow {
   orderId: string;
@@ -63,11 +78,13 @@ function toOrderExceptionRow(order: {
   deliveryDate: Date;
   price: Prisma.Decimal;
   currency: string;
+  customer?: { companyName: string } | null;
 }) {
   return {
     orderId: order.id,
     orderNumber: order.orderNumber,
     customerId: order.customerId,
+    customerName: order.customer?.companyName ?? null,
     status: order.status,
     pickupCity: order.pickupCity,
     deliveryCity: order.deliveryCity,
@@ -82,8 +99,24 @@ export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async resolveFilter(organizationId: string, dto: ReportFilterDto): Promise<ResolvedReportFilter> {
-    const organization = await this.prisma.organization.findUniqueOrThrow({ where: { id: organizationId } });
-    return resolveReportFilter(dto, organization.timezone);
+    const organization = await this.prisma.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+      select: { timezone: true, defaultCurrency: true },
+    });
+    const resolved = resolveReportFilter(dto, organization.timezone);
+    if (resolved.range.from.getTime() > resolved.range.to.getTime()) {
+      throw new BadRequestException("dateFrom must be on or before dateTo");
+    }
+    const rangeDays = (resolved.range.to.getTime() - resolved.range.from.getTime()) / DAY_MS;
+    if (rangeDays > MAX_RANGE_DAYS) {
+      throw new BadRequestException(`Report date range cannot exceed ${MAX_RANGE_DAYS} days`);
+    }
+    // Match FinanceService: never sum USD+UZS into one total. Callers may
+    // still override via ?currency=EUR; omitting defaults to the org currency.
+    if (!resolved.currency) {
+      resolved.currency = organization.defaultCurrency || "USD";
+    }
+    return resolved;
   }
 
   // -----------------------------------------------------------------------
@@ -278,7 +311,7 @@ export class ReportsService {
     if (grouped.length === 0) return [];
 
     const customers = await this.prisma.customer.findMany({
-      where: { id: { in: grouped.map((g) => g.customerId) } },
+      where: { organizationId, id: { in: grouped.map((g) => g.customerId) } },
       select: { id: true, companyName: true },
     });
     const nameById = new Map(customers.map((c) => [c.id, c.companyName]));
@@ -307,6 +340,89 @@ export class ReportsService {
       revenue: (g._sum.price ?? ZERO).toString(),
       orderCount: g._count._all,
     }));
+  }
+
+  // -----------------------------------------------------------------------
+  // Dashboard summary
+  // -----------------------------------------------------------------------
+
+  /// The Dashboard renders a small slice of what Executive Overview +
+  /// Operations compute — totals, the revenue time series, the status
+  /// breakdown, and a capped live delayed-orders list — but calling those
+  /// two full report endpoints ran ~15 queries per page load (comparison,
+  /// topCustomers, topRoutes, driver/vehicle/route performance, all 5
+  /// exception lists) only to discard most of it. This computes just what's
+  /// actually rendered, and caps the delayed-orders list server-side instead
+  /// of shipping every delayed order in the org on every load.
+  async dashboardSummary(organizationId: string) {
+    const filter = await this.resolveFilter(organizationId, { comparisonPeriod: "none" });
+    const [totals, timeSeries, ordersByStatus, delayedOrders, today] = await Promise.all([
+      this.computeCoreMetrics(organizationId, filter, filter.range),
+      this.computeTimeSeries(organizationId, filter),
+      this.computeOrdersByStatus(organizationId, filter),
+      this.computeDashboardDelayedOrders(organizationId, filter),
+      this.computeTodaySnapshot(organizationId, filter),
+    ]);
+
+    return {
+      currency: filter.currency ?? null,
+      generatedAt: new Date().toISOString(),
+      today,
+      totals: this.coreMetricsToResponse(totals),
+      revenueVsExpensesTimeSeries: timeSeries.revenueVsExpenses,
+      ordersByStatus,
+      delayedOrders,
+    };
+  }
+
+  /// The operator's "today" — the single most-asked question on a command
+  /// center that stays open all shift: how much is promised today, how much
+  /// is done, and what still has to be collected. Anchored to the org's
+  /// local calendar day (resolveZonedDayRange), not a UTC day, so it doesn't
+  /// roll over mid-afternoon for +HH regions. Scoped by the same non-date
+  /// filters as the rest of the summary (currency/customer/…), never by the
+  /// 30-day report window — "today" is a live fact, not a historical slice.
+  private async computeTodaySnapshot(organizationId: string, filter: ResolvedReportFilter) {
+    const { from, to } = resolveZonedDayRange(new Date(), filter.timezone);
+    const base = buildExceptionOrderWhere(organizationId, filter);
+    const [dueToday, deliveredToday, pickupsDueToday] = await Promise.all([
+      // Scheduled to be delivered today and not cancelled — the day's workload.
+      this.prisma.order.count({
+        where: { ...base, deliveryDate: { gte: from, lte: to }, status: { not: "CANCELLED" } },
+      }),
+      // Actually delivered today (by the delivery timestamp) — the day's progress.
+      this.prisma.order.count({
+        where: { ...base, deliveredAt: { gte: from, lte: to }, status: "DELIVERED" },
+      }),
+      // Pickups scheduled today that haven't been collected yet — the day's inflow.
+      this.prisma.order.count({
+        where: {
+          ...base,
+          pickupDate: { gte: from, lte: to },
+          status: { in: ["PENDING", "ASSIGNED"] as never },
+        },
+      }),
+    ]);
+    return { dueToday, deliveredToday, pickupsDueToday };
+  }
+
+  /// Same "live, unscoped by date range" definition of delayed as
+  /// computeExceptions' delayedOrders list, but queried directly instead of
+  /// via the 5-list computeExceptions (which also enriches negative-profit/
+  /// no-invoice orders the dashboard never shows). Capped to `take`, ordered
+  /// most-overdue first; `total` is a separate count so the widget can show
+  /// an accurate badge even though the list itself is capped.
+  private async computeDashboardDelayedOrders(organizationId: string, filter: ResolvedReportFilter, take = 10) {
+    const where: Prisma.OrderWhereInput = {
+      ...buildExceptionOrderWhere(organizationId, filter),
+      status: { notIn: ["DELIVERED", "CANCELLED"] },
+      deliveryDate: { lt: new Date() },
+    };
+    const [total, items] = await Promise.all([
+      this.prisma.order.count({ where }),
+      this.prisma.order.findMany({ where, orderBy: { deliveryDate: "asc" }, take, select: exceptionOrderSelect }),
+    ]);
+    return { total, items: items.map(toOrderExceptionRow) };
   }
 
   // -----------------------------------------------------------------------
@@ -359,7 +475,7 @@ export class ReportsService {
     }
 
     const drivers = await this.prisma.driver.findMany({
-      where: { id: { in: [...byDriver.keys()] } },
+      where: { organizationId, id: { in: [...byDriver.keys()] } },
       select: { id: true, employeeCode: true, firstName: true, lastName: true },
     });
 
@@ -415,7 +531,7 @@ export class ReportsService {
     }
 
     const vehicles = await this.prisma.vehicle.findMany({
-      where: { id: { in: [...byVehicle.keys()] } },
+      where: { organizationId, id: { in: [...byVehicle.keys()] } },
       select: { id: true, vehicleCode: true, plateNumber: true },
     });
 
@@ -484,43 +600,37 @@ export class ReportsService {
     const rangeWhere = buildOrderWhere(organizationId, filter, filter.range);
     const now = new Date();
 
-    const exceptionSelect = {
-      id: true,
-      orderNumber: true,
-      customerId: true,
-      status: true,
-      pickupCity: true,
-      deliveryCity: true,
-      deliveryDate: true,
-      price: true,
-      currency: true,
-    } as const;
-
     const [delayed, unassigned, cancelled, deliveredInRange] = await Promise.all([
       this.prisma.order.findMany({
         where: { ...exceptionWhere, status: { notIn: ["DELIVERED", "CANCELLED"] }, deliveryDate: { lt: now } },
-        select: exceptionSelect,
+        select: exceptionOrderSelect,
       }),
       this.prisma.order.findMany({
         where: { ...exceptionWhere, status: "PENDING" },
-        select: exceptionSelect,
+        select: exceptionOrderSelect,
       }),
       this.prisma.order.findMany({
         where: { ...rangeWhere, status: "CANCELLED" },
-        select: exceptionSelect,
+        select: exceptionOrderSelect,
       }),
       this.prisma.order.findMany({
         where: { ...rangeWhere, status: "DELIVERED" },
-        select: exceptionSelect,
+        select: exceptionOrderSelect,
       }),
     ]);
 
     const orderIds = deliveredInRange.map((o) => o.id);
+    const currency = filter.currency;
     const [expenseAgg, invoicedOrders] = await Promise.all([
       orderIds.length > 0
         ? this.prisma.expense.groupBy({
             by: ["orderId"],
-            where: { organizationId, status: "APPROVED", orderId: { in: orderIds } },
+            where: {
+              organizationId,
+              status: "APPROVED",
+              orderId: { in: orderIds },
+              ...(currency ? { currency } : {}),
+            },
             _sum: { amount: true },
           })
         : Promise.resolve([]),
@@ -558,6 +668,17 @@ export class ReportsService {
   // -----------------------------------------------------------------------
 
   async financial(organizationId: string, dto: ReportFilterDto) {
+    // Aging uses status OVERDUE; keep it fresh like Finance/Invoices list.
+    await this.prisma.invoice.updateMany({
+      where: {
+        organizationId,
+        status: { in: ["SENT", "PARTIALLY_PAID"] },
+        dueDate: { lt: new Date() },
+        balanceDue: { gt: 0 },
+      },
+      data: { status: "OVERDUE" },
+    });
+
     const filter = await this.resolveFilter(organizationId, dto);
     const [receivablesAging, invoiceCollectionPerformance, expenseBreakdown, profitabilityRows] = await Promise.all([
       this.computeReceivablesAging(organizationId, filter),
@@ -571,9 +692,18 @@ export class ReportsService {
     const vehicleIds = [...new Set(profitabilityRows.map((r) => r.vehicleId).filter((id): id is string => !!id))];
 
     const [customers, drivers, vehicles] = await Promise.all([
-      this.prisma.customer.findMany({ where: { id: { in: customerIds } }, select: { id: true, companyName: true } }),
-      this.prisma.driver.findMany({ where: { id: { in: driverIds } }, select: { id: true, firstName: true, lastName: true } }),
-      this.prisma.vehicle.findMany({ where: { id: { in: vehicleIds } }, select: { id: true, plateNumber: true } }),
+      this.prisma.customer.findMany({
+        where: { organizationId, id: { in: customerIds } },
+        select: { id: true, companyName: true },
+      }),
+      this.prisma.driver.findMany({
+        where: { organizationId, id: { in: driverIds } },
+        select: { id: true, firstName: true, lastName: true },
+      }),
+      this.prisma.vehicle.findMany({
+        where: { organizationId, id: { in: vehicleIds } },
+        select: { id: true, plateNumber: true },
+      }),
     ]);
     const customerName = new Map(customers.map((c) => [c.id, c.companyName]));
     const driverName = new Map(drivers.map((d) => [d.id, `${d.firstName} ${d.lastName}`]));
@@ -740,9 +870,15 @@ export class ReportsService {
     if (orders.length === 0) return [];
 
     const orderIds = orders.map((o) => o.id);
+    const currency = filter.currency;
     const expenseAgg = await this.prisma.expense.groupBy({
       by: ["orderId"],
-      where: { organizationId, status: "APPROVED", orderId: { in: orderIds } },
+      where: {
+        organizationId,
+        status: "APPROVED",
+        orderId: { in: orderIds },
+        ...(currency ? { currency } : {}),
+      },
       _sum: { amount: true },
     });
     const expenseByOrder = new Map(expenseAgg.map((e) => [e.orderId as string, e._sum.amount ?? ZERO]));
@@ -795,74 +931,193 @@ export class ReportsService {
   // CSV export
   // -----------------------------------------------------------------------
 
-  /// Each report type exports the single most naturally tabular slice of
-  /// its data (CSV has no concept of multiple sheets/sections):
-  /// executive-overview -> the daily/monthly time series; operations -> all
-  /// five exception lists concatenated with a leading type column;
-  /// financial -> the full per-order profitability table. Documented in
-  /// docs/REPORTS_NOTIFICATIONS_API.md.
+  /// Each report type exports the tabular slices the UI actually shows —
+  /// never a silently different dataset. Sections share a leading `section`
+  /// column so a single CSV can carry KPIs + charts + tables.
   async exportCsv(organizationId: string, dto: ExportReportQueryDto): Promise<{ filename: string; csv: string }> {
-    const organization = await this.prisma.organization.findUniqueOrThrow({ where: { id: organizationId } });
+    const organization = await this.prisma.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+      select: { slug: true },
+    });
 
     let headers: string[];
     let rows: (string | number | boolean | Date | null | undefined)[][];
 
     if (dto.type === "executive-overview") {
       const report = await this.executiveOverview(organizationId, dto);
-      const deliveryByBucket = new Map(report.deliveryPerformanceTimeSeries.map((d) => [d.bucket, d]));
-      headers = ["bucket", "revenue", "expenses", "delivered", "delayed"];
-      rows = report.revenueVsExpensesTimeSeries.map((r) => {
-        const delivery = deliveryByBucket.get(r.bucket);
-        return [r.bucket, r.revenue, r.expenses, delivery?.delivered ?? 0, delivery?.delayed ?? 0];
-      });
+      headers = ["section", "key", "label", "value", "count", "currency"];
+      const currency = report.filters.currency;
+      const t = report.totals;
+      rows = [
+        ["kpi", "totalOrders", "Total Orders", t.totalOrders, "", currency],
+        ["kpi", "deliveredOrders", "Delivered", t.deliveredOrders, "", currency],
+        ["kpi", "activeOrders", "Active", t.activeOrders, "", currency],
+        ["kpi", "delayedOrders", "Delayed", t.delayedOrders, "", currency],
+        ["kpi", "totalRevenue", "Revenue", t.totalRevenue, "", currency],
+        ["kpi", "totalCollected", "Collected", t.totalCollected, "", currency],
+        ["kpi", "outstandingReceivables", "Outstanding Receivables", t.outstandingReceivables, "", currency],
+        ["kpi", "estimatedGrossProfit", "Est. Gross Profit", t.estimatedGrossProfit, "", currency],
+        ["kpi", "deliveryCompletionRate", "Delivery Completion %", t.deliveryCompletionRate, "", currency],
+        ["kpi", "onTimeDeliveryRate", "On-Time Rate %", t.onTimeDeliveryRate, "", currency],
+        ...report.revenueVsExpensesTimeSeries.map((r) => [
+          "revenueVsExpenses",
+          r.bucket,
+          "revenue/expenses",
+          `${r.revenue}/${r.expenses}`,
+          "",
+          currency,
+        ]),
+        ...report.deliveryPerformanceTimeSeries.map((d) => [
+          "deliveryPerformance",
+          d.bucket,
+          "delivered/delayed",
+          `${d.delivered}/${d.delayed}`,
+          "",
+          currency,
+        ]),
+        ...report.ordersByStatus.map((s) => ["ordersByStatus", s.status, s.status, s.count, s.count, currency]),
+        ...report.topCustomers.map((c) => [
+          "topCustomer",
+          c.customerId,
+          c.companyName,
+          c.revenue,
+          c.orderCount,
+          currency,
+        ]),
+        ...report.topRoutes.map((r) => [
+          "topRoute",
+          `${r.pickupCity}->${r.deliveryCity}`,
+          `${r.pickupCity} -> ${r.deliveryCity}`,
+          r.revenue,
+          r.orderCount,
+          currency,
+        ]),
+      ];
     } else if (dto.type === "operations") {
       const report = await this.operations(organizationId, dto);
       headers = [
-        "exceptionType",
-        "orderId",
-        "orderNumber",
-        "customerId",
-        "status",
-        "pickupCity",
-        "deliveryCity",
-        "deliveryDate",
-        "price",
+        "section",
+        "id",
+        "label",
+        "metric1",
+        "metric2",
+        "metric3",
+        "metric4",
+        "metric5",
         "currency",
       ];
-      const rowsFor = (
-        type: string,
-        list: { orderId: string; orderNumber: string; customerId: string; status: string; pickupCity: string; deliveryCity: string; deliveryDate: Date; price: string; currency: string }[],
-      ) =>
-        list.map((o) => [
-          type,
-          o.orderId,
-          o.orderNumber,
-          o.customerId,
-          o.status,
-          o.pickupCity,
-          o.deliveryCity,
-          o.deliveryDate.toISOString(),
-          o.price,
-          o.currency,
-        ]);
+      const currency = report.filters.currency;
       rows = [
-        ...rowsFor("DELAYED", report.exceptions.delayedOrders),
-        ...rowsFor("UNASSIGNED", report.exceptions.unassignedActiveOrders),
-        ...rowsFor("CANCELLED", report.exceptions.cancelledOrders),
-        ...rowsFor("NEGATIVE_PROFIT", report.exceptions.negativeProfitOrders),
-        ...rowsFor("DELIVERED_WITHOUT_INVOICE", report.exceptions.deliveredWithoutInvoice),
+        ...report.driverPerformance.map((d) => [
+          "driver",
+          d.driverId,
+          d.name,
+          d.totalOrders,
+          d.deliveredOrders,
+          d.onTimeRate,
+          d.delayedOrders,
+          d.revenue,
+          currency,
+        ]),
+        ...report.vehiclePerformance.map((v) => [
+          "vehicle",
+          v.vehicleId,
+          v.plateNumber,
+          v.totalOrders,
+          v.deliveredOrders,
+          v.revenue,
+          v.approvedExpenses,
+          v.estimatedGrossProfit,
+          currency,
+        ]),
+        ...report.routePerformance.map((r) => [
+          "route",
+          `${r.pickupCity}->${r.deliveryCity}`,
+          `${r.pickupCity} -> ${r.deliveryCity}`,
+          r.totalOrders,
+          r.deliveredOrders,
+          r.completionRate,
+          r.revenue,
+          "",
+          currency,
+        ]),
+        ...(["delayedOrders", "unassignedActiveOrders", "cancelledOrders", "negativeProfitOrders", "deliveredWithoutInvoice"] as const).flatMap(
+          (type) =>
+            report.exceptions[type].map((o) => [
+              type,
+              o.orderId,
+              o.orderNumber,
+              o.status,
+              o.pickupCity,
+              o.deliveryCity,
+              o.deliveryDate instanceof Date ? o.deliveryDate.toISOString() : o.deliveryDate,
+              o.price,
+              o.currency,
+            ]),
+        ),
       ];
     } else {
       const report = await this.financial(organizationId, dto);
-      headers = ["orderId", "orderNumber", "revenue", "approvedExpenses", "estimatedGrossProfit", "currency"];
-      rows = report.profitability.byOrder.map((o) => [
-        o.orderId,
-        o.orderNumber,
-        o.revenue,
-        o.approvedExpenses,
-        o.estimatedGrossProfit,
-        o.currency,
-      ]);
+      headers = ["section", "id", "label", "amount", "count", "currency"];
+      const currency = report.filters.currency;
+      const collection = report.invoiceCollectionPerformance;
+      rows = [
+        ...report.receivablesAging.map((a) => ["aging", a.bucket, a.bucket, a.amount, a.invoiceCount, currency]),
+        ["collection", "invoiceCount", "Invoice Count", collection.invoiceCount, "", currency],
+        ["collection", "paidInvoiceCount", "Paid Invoice Count", collection.paidInvoiceCount, "", currency],
+        ["collection", "totalInvoiced", "Total Invoiced", collection.totalInvoiced, "", currency],
+        ["collection", "totalCollected", "Total Collected", collection.totalCollected, "", currency],
+        ["collection", "collectionRate", "Collection Rate %", collection.collectionRate, "", currency],
+        [
+          "collection",
+          "averageDaysToFullPayment",
+          "Avg Days to Full Payment",
+          collection.averageDaysToFullPayment,
+          "",
+          currency,
+        ],
+        ...report.expenseBreakdown.map((e) => ["expense", e.category, e.category, e.amount, e.count, currency]),
+        ...report.profitability.byCustomer.map((r) => [
+          "byCustomer",
+          r.id,
+          r.label,
+          r.estimatedGrossProfit,
+          r.orderCount,
+          currency,
+        ]),
+        ...report.profitability.byRoute.map((r) => [
+          "byRoute",
+          r.id,
+          r.label,
+          r.estimatedGrossProfit,
+          r.orderCount,
+          currency,
+        ]),
+        ...report.profitability.byDriver.map((r) => [
+          "byDriver",
+          r.id,
+          r.label,
+          r.estimatedGrossProfit,
+          r.orderCount,
+          currency,
+        ]),
+        ...report.profitability.byVehicle.map((r) => [
+          "byVehicle",
+          r.id,
+          r.label,
+          r.estimatedGrossProfit,
+          r.orderCount,
+          currency,
+        ]),
+        ...report.profitability.byOrder.map((o) => [
+          "byOrder",
+          o.orderId,
+          o.orderNumber,
+          o.estimatedGrossProfit,
+          "",
+          o.currency,
+        ]),
+      ];
     }
 
     return { filename: reportCsvFilename(organization.slug, dto.type), csv: toCsv(headers, rows) };
@@ -872,8 +1127,11 @@ export class ReportsService {
     return {
       dateFrom: filter.range.from,
       dateTo: filter.range.to,
-      comparisonPeriod: dto.comparisonPeriod,
+      comparisonPeriod: filter.comparisonRange
+        ? (dto.comparisonPeriod ?? "previous_period")
+        : "none",
       timezone: filter.timezone,
+      currency: filter.currency ?? null,
     };
   }
 }

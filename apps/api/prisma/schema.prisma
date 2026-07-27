@@ -244,6 +244,7 @@ model Organization {
   telematicsAlerts          TelematicsAlert[]
   vehicleHealthSnapshots    VehicleHealthSnapshot[]
   telematicsSettings        TelematicsSettings?
+  trackingSessions          TrackingSession[]
   notificationTemplates     NotificationTemplate[]
   emailProviders            EmailProvider[]
   deliveryQueue             NotificationDeliveryQueue[]
@@ -616,10 +617,14 @@ model Driver {
   trips                   Trip[]
   geofenceEvents          GeofenceEvent[]
   telematicsAlerts        TelematicsAlert[]
+  trackingSessions        TrackingSession[]
 
   @@unique([organizationId, employeeCode])
   @@index([organizationId])
   @@index([organizationId, status])
+  /// Default fleet list filters archivedAt IS NULL — this index keeps that
+  /// path from scanning every driver row in large orgs.
+  @@index([organizationId, archivedAt])
   @@map("drivers")
 }
 
@@ -656,10 +661,16 @@ model Vehicle {
   geofenceEvents      GeofenceEvent[]
   telematicsAlerts    TelematicsAlert[]
   healthSnapshots     VehicleHealthSnapshot[]
+  trackingSessions    TrackingSession[]
 
   @@unique([organizationId, vehicleCode])
   @@index([organizationId])
   @@index([organizationId, status])
+  /// Default fleet list filters archivedAt IS NULL.
+  @@index([organizationId, archivedAt])
+  /// Live plate uniqueness is enforced by partial unique index
+  /// `vehicles_one_live_plate_per_org` (WHERE archivedAt IS NULL) — Prisma
+  /// cannot express partial uniques in schema, so the SQL lives in a migration.
   @@map("vehicles")
 }
 
@@ -707,6 +718,11 @@ model Order {
   @@unique([organizationId, orderNumber])
   @@index([organizationId])
   @@index([organizationId, status])
+  /// Every report/dashboard query date-filters on deliveryDate within an
+  /// organization (see report-filters.util.ts buildOrderWhere) — without
+  /// this, that scan falls back to the plain organizationId index and
+  /// filters deliveryDate row-by-row.
+  @@index([organizationId, deliveryDate])
   @@index([driverId])
   @@index([vehicleId])
   @@index([customerId])
@@ -769,6 +785,7 @@ model Dispatch {
   statusHistory DispatchStatusHistory[]
   assignments   DispatchAssignment[]
   trips         Trip[]
+  trackingSessions TrackingSession[]
 
   @@unique([organizationId, dispatchNumber])
   @@index([organizationId])
@@ -776,6 +793,10 @@ model Dispatch {
   @@index([orderId])
   @@index([driverId])
   @@index([vehicleId])
+  /// R2 — one live dispatch per order is enforced by the partial unique index
+  /// `dispatches_one_live_per_order` (WHERE status NOT IN CANCELLED/DELIVERED).
+  /// Prisma cannot express partial uniques in schema; see migration
+  /// 20260725153000_one_live_dispatch_per_order.
   @@map("dispatches")
 }
 
@@ -890,6 +911,9 @@ model Invoice {
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId])
   @@index([organizationId, status])
+  /// Every report/dashboard query date-filters on issueDate within an
+  /// organization (see report-filters.util.ts buildInvoiceWhere).
+  @@index([organizationId, issueDate])
   @@index([customerId])
   @@index([orderId])
   @@map("invoices")
@@ -937,6 +961,8 @@ model Payment {
 
   @@index([organizationId])
   @@index([invoiceId])
+  /// Payments list/filter by date within an organization (PaymentsService.list).
+  @@index([organizationId, paymentDate])
   @@map("payments")
 }
 
@@ -976,6 +1002,9 @@ model Expense {
   @@unique([organizationId, expenseNumber])
   @@index([organizationId])
   @@index([organizationId, status])
+  /// Every report/dashboard query date-filters on expenseDate within an
+  /// organization (see report-filters.util.ts buildExpenseWhere).
+  @@index([organizationId, expenseDate])
   @@index([orderId])
   @@index([vehicleId])
   @@index([driverId])
@@ -2271,6 +2300,7 @@ model TelematicsDevice {
   vehicle         Vehicle?                @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   positions       GpsPosition[]
   healthSnapshots VehicleHealthSnapshot[]
+  trackingSessions TrackingSession[]
 
   @@unique([organizationId, provider, externalId])
   @@index([organizationId])
@@ -2321,6 +2351,7 @@ model GpsPosition {
   trip         Trip?             @relation(fields: [tripId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, vehicleId, recordedAt])
+  @@index([organizationId, driverId, recordedAt])
   @@index([tripId, recordedAt])
   @@index([organizationId, recordedAt])
   @@map("gps_positions")
@@ -2357,6 +2388,7 @@ model VehicleTelematicsState {
   driver       Driver?      @relation(fields: [driverId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, movementState])
+  @@index([organizationId, driverId])
   @@map("vehicle_telematics_states")
 }
 
@@ -2603,6 +2635,63 @@ model TelematicsSettings {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("telematics_settings")
+}
+
+/// Who opened a tracking presence session. Distinct from TelematicsProviderType
+/// (how GPS arrives): a session is the operational "we are actively tracking
+/// this asset right now" lease, used for heartbeat / offline presence without
+/// inventing coordinates.
+enum TrackingSessionSource {
+  DRIVER_APP
+  DEVICE
+  STAFF
+  API
+}
+
+enum TrackingSessionStatus {
+  ACTIVE
+  ENDED
+}
+
+/// Active tracking presence for a vehicle/driver/device/dispatch binding.
+///
+/// Scale notes:
+///   - GpsPosition remains the append-only history stream (100k+/hr).
+///   - VehicleTelematicsState remains the O(fleet) live position cache.
+///   - TrackingSession is a low-cardinality presence row (roughly one ACTIVE
+///     per tracked asset source), updated on heartbeat and GPS — not a
+///     history table. Heartbeats never fabricate lat/lng.
+model TrackingSession {
+  id               String                 @id @default(uuid())
+  organizationId   String
+  vehicleId        String?
+  driverId         String?
+  deviceId         String?
+  dispatchId       String?
+  source           TrackingSessionSource
+  status           TrackingSessionStatus  @default(ACTIVE)
+  startedAt        DateTime               @default(now())
+  lastHeartbeatAt  DateTime               @default(now())
+  lastPositionAt   DateTime?
+  endedAt          DateTime?
+  /// Free-form non-security metadata (app version, device model). Never used
+  /// as an authorization boundary.
+  metadata         Json?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  vehicle      Vehicle?         @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  driver       Driver?          @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  device       TelematicsDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  dispatch     Dispatch?        @relation(fields: [dispatchId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status, lastHeartbeatAt])
+  @@index([organizationId, vehicleId, status])
+  @@index([organizationId, driverId, status])
+  @@index([organizationId, dispatchId, status])
+  @@index([organizationId, deviceId, status])
+  @@map("tracking_sessions")
 }
 
 // ============================================================================

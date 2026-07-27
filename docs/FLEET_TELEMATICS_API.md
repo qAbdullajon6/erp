@@ -8,7 +8,11 @@ all read from.
 
 Module: `apps/api/src/telematics`. Registered in `AppModule`; a leaf consumer of
 `AuditModule` and the `WorkflowsModule` event bus, so nothing in the rest of the
-domain depends on it.
+domain depends on it (Dispatch/Auth call into `TrackingService` for session
+lifecycle only).
+
+**Driver Mobile App GPS contract** (payloads, cadence, failure handling): see
+`docs/DRIVER_MOBILE_GPS.md`. Production surface: `POST /tracking/my-location`.
 
 ---
 

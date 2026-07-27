@@ -1,6 +1,15 @@
+import { Transform, Type } from "class-transformer";
 import { IsDateString, IsEnum, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from "class-validator";
-import { Type } from "class-transformer";
-import type { DispatchStatus } from "@prisma/client";
+import { DispatchStatus } from "@prisma/client";
+
+function toStatusArray(value: unknown): DispatchStatus[] | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (Array.isArray(value)) return value as DispatchStatus[];
+  if (typeof value === "string") {
+    return value.split(",").map((s) => s.trim()).filter(Boolean) as DispatchStatus[];
+  }
+  return undefined;
+}
 
 export class ListDispatchesQueryDto {
   @IsOptional()
@@ -22,8 +31,15 @@ export class ListDispatchesQueryDto {
   search?: string;
 
   @IsOptional()
-  @IsEnum(["DRAFT", "ASSIGNED", "EN_ROUTE_TO_PICKUP", "AT_PICKUP", "IN_TRANSIT", "DELIVERED", "CANCELLED"])
+  @IsEnum(DispatchStatus)
   status?: DispatchStatus;
+
+  /// Comma-separated or repeated — Active / Completed tabs need an IN filter
+  /// without N parallel single-status fetches.
+  @IsOptional()
+  @Transform(({ value }) => toStatusArray(value))
+  @IsEnum(DispatchStatus, { each: true })
+  statuses?: DispatchStatus[];
 
   @IsOptional()
   @IsUUID()

@@ -8,11 +8,20 @@ FROM node:24-alpine AS build
 WORKDIR /repo
 
 COPY package.json package-lock.json ./
+# Workspaces include apps/* — npm ci needs every workspace package.json present
+# even when building only the web app (package-lock references them all).
+COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
+COPY apps/mobile/package.json apps/mobile/package.json
 RUN npm ci --workspace=apps/web --include-workspace-root
 
 COPY apps/web apps/web
 WORKDIR /repo/apps/web
+
+# Public Mapbox token (pk.*) — inlined by Vite at build time. Never pass sk.*.
+ARG VITE_MAPBOX_ACCESS_TOKEN=
+ENV VITE_MAPBOX_ACCESS_TOKEN=$VITE_MAPBOX_ACCESS_TOKEN
+
 RUN npm run build
 
 # The Nitro bundle carries its own node_modules, so the runtime image needs

@@ -28,6 +28,9 @@ export function MobileNav({
   const handleDemo = () => {
     analytics.track({ name: "book_demo_click", params: { source: "mobile_menu" } });
     onOpenChange(false);
+    // Opening the demo dialog immediately would stack it on top of the sheet's
+    // own close transition (ui/sheet.tsx: 300ms close duration) — 120ms lets
+    // the sheet visibly start closing first so the two don't visually collide.
     setTimeout(() => openDemoModal("mobile_menu"), 120);
   };
 

@@ -1,187 +1,696 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useCustomersList, CustomerStatus, CustomerSortField } from '@/lib/api/customers';
-import { PageHeader } from '@/components/shared/page-header';
-import { ListToolbar, FilterSelect } from '@/components/shared/list-toolbar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  useCustomersList,
+  type Customer,
+  type CustomerSortField,
+  type CustomerStatus,
+} from '@/lib/api/customers';
+import { useCurrentUser } from '@/lib/api/auth';
+import { CUSTOMER_WRITE_ROLES, INVOICE_READ_ROLES } from '@/lib/role-access';
+import type { MembershipRole } from '@/lib/api/organizations';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-states';
 import { PaginationBar } from '@/components/shared/pagination-bar';
 import { StatusBadge } from '@/components/shared/status-badge';
-import { SortHeader } from '@/components/shared/sort-header';
-import { Plus } from 'lucide-react';
+import { CustomersCreateSheet } from '@/components/customers/customers-create-sheet';
+import { CustomersEditSheet } from '@/components/customers/customers-edit-sheet';
+import {
+  creditUtilization,
+  useCustomerRelationshipIndex,
+} from '@/components/customers/customer-relationship-stats';
+import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
+import { formatMoney, formatRelativeTime } from '@/lib/format';
+import { toCsv, downloadCsv } from '@/lib/csv';
+import { cn } from '@/lib/utils';
+import {
+  AlertTriangle,
+  Building2,
+  Download,
+  Edit2,
+  ExternalLink,
+  Mail,
+  MoreHorizontal,
+  Phone,
+  Plus,
+  Search,
+  User,
+} from 'lucide-react';
+import { toast } from 'sonner';
 
-interface ListSearchState {
-  page?: number;
-  search?: string;
+type CrmTab = 'active' | 'high_value' | 'outstanding' | 'inactive' | 'archived' | 'all';
+
+const TAB_CONFIG: { key: CrmTab; label: string }[] = [
+  { key: 'active', label: 'Active' },
+  { key: 'high_value', label: 'High Value' },
+  { key: 'outstanding', label: 'Outstanding Balance' },
+  { key: 'inactive', label: 'Inactive' },
+  { key: 'archived', label: 'Archived' },
+  { key: 'all', label: 'All' },
+];
+
+function companyInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase();
+}
+
+function tabToQuery(tab: CrmTab): {
   status?: CustomerStatus;
+  includeArchived?: boolean;
   sortBy?: CustomerSortField;
   sortOrder?: 'asc' | 'desc';
+} {
+  switch (tab) {
+    case 'active':
+      return { status: 'ACTIVE', sortBy: 'companyName', sortOrder: 'asc' };
+    case 'high_value':
+      return { status: 'ACTIVE', sortBy: 'creditLimit', sortOrder: 'desc' };
+    case 'inactive':
+      return { status: 'INACTIVE', sortBy: 'updatedAt', sortOrder: 'desc' };
+    case 'archived':
+      return { status: 'ARCHIVED', includeArchived: true, sortBy: 'updatedAt', sortOrder: 'desc' };
+    case 'outstanding':
+      return { includeArchived: false, sortBy: 'companyName', sortOrder: 'asc' };
+    case 'all':
+    default:
+      return { includeArchived: false, sortBy: 'updatedAt', sortOrder: 'desc' };
+  }
 }
 
 export function CustomersList() {
   const navigate = useNavigate();
-  const searchState = useSearch({ from: '/app/customers/' }) as ListSearchState;
+  const searchState = useSearch({ from: '/app/customers/' });
+  const { data: currentUser } = useCurrentUser();
+  const role = currentUser?.membership.role as MembershipRole | undefined;
+  const canWrite = Boolean(role && CUSTOMER_WRITE_ROLES.includes(role));
+  const canViewInvoices = Boolean(role && INVOICE_READ_ROLES.includes(role));
 
+  const tab = (TAB_CONFIG.some((t) => t.key === searchState.tab)
+    ? searchState.tab
+    : 'active') as CrmTab;
   const page = searchState.page || 1;
   const search = searchState.search || '';
-  const status = searchState.status;
-  const sortBy = searchState.sortBy || 'createdAt';
-  const sortOrder = searchState.sortOrder || 'desc';
+  const createOpen = Boolean(searchState.create);
+  const tabQuery = tabToQuery(tab);
+  const sortBy = (searchState.sortBy as CustomerSortField | undefined) || tabQuery.sortBy || 'updatedAt';
+  const sortOrder = searchState.sortOrder || tabQuery.sortOrder || 'desc';
 
-  const { data, meta, loading, error, refetch } = useCustomersList({
-    page,
-    limit: 20,
-    search: search || undefined,
-    status,
-    sortBy,
-    sortOrder,
+  const listEnabled = tab !== 'outstanding';
+  const { data, meta, loading, error, refetch } = useCustomersList(
+    {
+      page: listEnabled ? page : 1,
+      limit: listEnabled ? 20 : 200,
+      search: search || undefined,
+      status: tabQuery.status,
+      includeArchived: tabQuery.includeArchived,
+      sortBy,
+      sortOrder,
+    },
+    { enabled: true },
+  );
+
+  const relationships = useCustomerRelationshipIndex({
+    enabled: true,
+    canViewInvoices,
+  });
+
+  const activeCount = useCustomersList({ status: 'ACTIVE', limit: 1 });
+  const atRiskCount = useCustomersList({ status: 'AT_RISK', limit: 1 });
+  const recentCustomers = useCustomersList({
+    sortBy: 'createdAt',
+    sortOrder: 'desc',
+    limit: 100,
   });
 
   const [localSearch, setLocalSearch] = useState(search);
-  const [statusFilter, setStatusFilter] = useState<CustomerStatus | ''>(status || '');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<Customer | null>(null);
 
   useEffect(() => {
-    refetch({ page, limit: 20, search: search || undefined, status, sortBy, sortOrder });
-  }, [page, search, status, sortBy, sortOrder, refetch]);
+    setLocalSearch(search);
+  }, [search]);
 
-  const handleSearch = (value: string) => {
-    setLocalSearch(value);
-    navigate({ to: '/app/customers', search: { page: 1, search: value || undefined, status, sortBy, sortOrder } });
+  const debouncedSearch = useDebouncedValue(localSearch, 300);
+  useEffect(() => {
+    if (debouncedSearch === search) return;
+    navigate({
+      to: '/app/customers',
+      search: (prev) => ({
+        ...prev,
+        page: 1,
+        search: debouncedSearch || undefined,
+      }),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch]);
+
+  const newThisMonth = useMemo(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    let count = 0;
+    for (const c of recentCustomers.data) {
+      const d = new Date(c.createdAt);
+      if (d.getFullYear() === y && d.getMonth() === m) count += 1;
+      else if (d.getFullYear() < y || (d.getFullYear() === y && d.getMonth() < m)) break;
+    }
+    return count;
+  }, [recentCustomers.data]);
+
+  const highUtilCount = useMemo(() => {
+    const ids = new Set<string>();
+    for (const c of [...recentCustomers.data, ...data]) {
+      const util = creditUtilization(c.creditLimit, relationships.getStats(c.id).outstanding);
+      if (util != null && util >= 0.8) ids.add(c.id);
+    }
+    return ids.size;
+  }, [recentCustomers.data, data, relationships]);
+
+  const displayRows = useMemo(() => {
+    if (tab !== 'outstanding') return data;
+    return data.filter((c) => relationships.outstandingCustomerIds.has(c.id));
+  }, [tab, data, relationships.outstandingCustomerIds]);
+
+  const setCreateOpen = (open: boolean) => {
+    navigate({
+      to: '/app/customers',
+      search: (prev) => ({
+        ...prev,
+        create: open ? true : undefined,
+      }),
+    });
   };
 
-  const handleStatusFilter = (newStatus: CustomerStatus | '') => {
-    setStatusFilter(newStatus);
-    navigate({ to: '/app/customers', search: { page: 1, search, status: newStatus || undefined, sortBy, sortOrder } });
+  const setTab = (next: CrmTab) => {
+    const q = tabToQuery(next);
+    navigate({
+      to: '/app/customers',
+      search: {
+        page: 1,
+        search: search || undefined,
+        tab: next,
+        sortBy: q.sortBy,
+        sortOrder: q.sortOrder,
+      },
+    });
   };
 
-  const handleSort = (field: CustomerSortField) => {
-    const newOrder = sortBy === field && sortOrder === 'asc' ? 'desc' : 'asc';
-    navigate({ to: '/app/customers', search: { page, search, status, sortBy: field, sortOrder: newOrder } });
+  const handleExport = () => {
+    if (displayRows.length === 0) {
+      toast.error('Nothing to export on this page');
+      return;
+    }
+    const rows = displayRows.map((c) => {
+      const stats = relationships.getStats(c.id);
+      const util = creditUtilization(c.creditLimit, stats.outstanding);
+      return {
+        code: c.customerCode,
+        company: c.companyName,
+        contact: c.contactName,
+        email: c.email ?? '',
+        phone: c.phone ?? '',
+        status: c.status,
+        creditLimit: c.creditLimit,
+        openOrders: stats.openOrders,
+        invoices: stats.invoiceCount,
+        outstanding: stats.outstanding,
+        utilization: util != null ? `${Math.round(util * 100)}%` : '',
+        updatedAt: c.updatedAt,
+      };
+    });
+    downloadCsv(
+      `customers-page-${page}.csv`,
+      toCsv(rows, [
+        { key: 'code', label: 'Code' },
+        { key: 'company', label: 'Company' },
+        { key: 'contact', label: 'Contact' },
+        { key: 'email', label: 'Email' },
+        { key: 'phone', label: 'Phone' },
+        { key: 'status', label: 'Status' },
+        { key: 'creditLimit', label: 'Credit limit' },
+        { key: 'openOrders', label: 'Open orders' },
+        { key: 'invoices', label: 'Invoices' },
+        { key: 'outstanding', label: 'Outstanding' },
+        { key: 'utilization', label: 'Utilization' },
+        { key: 'updatedAt', label: 'Updated' },
+      ]),
+    );
+    toast.success('Exported current page');
   };
 
-  const handlePageChange = (newPage: number) => {
-    navigate({ to: '/app/customers', search: { page: newPage, search, status, sortBy, sortOrder } });
-  };
+  const summaryChips = [
+    { key: 'active', label: 'Active customers', value: activeCount.meta.total },
+    { key: 'new', label: 'New this month', value: newThisMonth },
+    canViewInvoices
+      ? { key: 'out', label: 'Outstanding invoices', value: relationships.openInvoiceCount }
+      : null,
+    canViewInvoices
+      ? { key: 'util', label: 'High credit utilization', value: highUtilCount }
+      : null,
+    atRiskCount.meta.total > 0
+      ? { key: 'risk', label: 'At risk', value: atRiskCount.meta.total }
+      : null,
+  ].filter((c): c is { key: string; label: string; value: number } => Boolean(c && c.value > 0));
 
-  const sortProps = { activeField: sortBy, order: sortOrder, onSort: handleSort };
+  const hasFilters = Boolean(search || tab !== 'active');
 
   return (
-    <div className="space-y-6" data-testid="customers-page">
-      <PageHeader
-        title="Customers"
-        subtitle={loading ? 'Loading...' : error ? 'Error loading customers' : `${meta.total} customers found`}
-        action={
-          <Button
-            onClick={() => navigate({ to: '/app/customers/create' })}
-            className="gap-2 bg-gradient-brand text-brand-foreground hover:opacity-90"
-          >
-            <Plus className="h-4 w-4" />
-            Create Customer
+    <div className="space-y-4" data-testid="customers-page">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">Customers</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            {loading ? 'Loading…' : error ? 'Could not load accounts' : `${meta.total} accounts`}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" onClick={handleExport} disabled={displayRows.length === 0}>
+            <Download className="mr-1.5 h-3.5 w-3.5" />
+            Export
           </Button>
-        }
-      />
+          {canWrite && (
+            <Button
+              size="sm"
+              className="bg-gradient-brand text-brand-foreground hover:opacity-90"
+              onClick={() => setCreateOpen(true)}
+            >
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              New Customer
+            </Button>
+          )}
+        </div>
+      </div>
 
-      <ListToolbar
-        searchValue={localSearch}
-        onSearchChange={handleSearch}
-        searchPlaceholder="Company name, contact, email, phone..."
-        searchTestId="customers-search-input"
-      >
-        <FilterSelect
-          label="Status"
-          value={statusFilter}
-          onChange={(value) => handleStatusFilter(value as CustomerStatus | '')}
-          testId="customers-status-filter"
+      {/* Search + quick filters */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[16rem] flex-1">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={localSearch}
+            onChange={(e) => setLocalSearch(e.target.value)}
+            placeholder="Search company, contact, email, phone…"
+            data-testid="customers-search-input"
+            className="h-9 w-full rounded-md border border-border bg-background pl-8 pr-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
+          />
+        </div>
+        <Button
+          size="sm"
+          variant={tab === 'active' ? 'secondary' : 'outline'}
+          className="h-9"
+          onClick={() => setTab('active')}
         >
-          <option value="">All Statuses</option>
-          <option value="ACTIVE">Active</option>
-          <option value="AT_RISK">At Risk</option>
-          <option value="INACTIVE">Inactive</option>
-          <option value="ARCHIVED">Archived</option>
-        </FilterSelect>
-      </ListToolbar>
+          Active
+        </Button>
+        {canViewInvoices && (
+          <Button
+            size="sm"
+            variant={tab === 'outstanding' ? 'secondary' : 'outline'}
+            className="h-9"
+            onClick={() => setTab('outstanding')}
+          >
+            Outstanding
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant={tab === 'high_value' ? 'secondary' : 'outline'}
+          className="h-9"
+          onClick={() => setTab('high_value')}
+        >
+          High value
+        </Button>
+      </div>
 
-      <div className="overflow-hidden rounded-lg border border-brand/10">
-        {loading && <LoadingState label="Loading customers..." />}
+      {/* Ops summary strip */}
+      {summaryChips.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {summaryChips.map((chip) => (
+            <span
+              key={chip.key}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-muted/20 px-2.5 py-1 text-xs text-foreground"
+            >
+              <span className="text-muted-foreground">{chip.label}</span>
+              <span className="font-semibold tabular-nums">{chip.value}</span>
+            </span>
+          ))}
+        </div>
+      )}
 
+      {/* Tabs */}
+      <div className="flex flex-wrap gap-1 border-b border-border/60">
+        {TAB_CONFIG.filter((t) => t.key !== 'outstanding' || canViewInvoices).map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setTab(t.key)}
+            className={cn(
+              '-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors',
+              tab === t.key
+                ? 'border-brand text-foreground'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-border/70 bg-surface">
+        {loading && <LoadingState label="Loading customers…" />}
         {error && !loading && <ErrorState message={error} onRetry={() => refetch()} />}
 
-        {!loading && !error && data.length === 0 && (
+        {!loading && !error && displayRows.length === 0 && (
           <EmptyState
-            title="No customers found"
-            description="Add a customer before creating orders for them."
+            title={hasFilters ? 'No customers match' : 'No customers yet'}
+            description={
+              hasFilters
+                ? tab === 'outstanding'
+                  ? 'No accounts with an open invoice balance in the loaded set.'
+                  : 'Try another tab or clear search.'
+                : 'Add an account before creating orders for them.'
+            }
             action={
-              <Button onClick={() => navigate({ to: '/app/customers/create' })} variant="outline">
-                Create the first customer
-              </Button>
+              hasFilters ? (
+                <Button variant="outline" onClick={() => setTab('active')}>
+                  Show active
+                </Button>
+              ) : canWrite ? (
+                <Button variant="outline" onClick={() => setCreateOpen(true)}>
+                  New Customer
+                </Button>
+              ) : undefined
             }
           />
         )}
 
-        {!loading && !error && data.length > 0 && (
-          <div className="overflow-x-auto">
-            <Table data-testid="customers-table">
-              <TableHeader>
-                <TableRow className="bg-surface/50 hover:bg-surface/50">
-                  <TableHead>
-                    <SortHeader field="companyName" label="Company" {...sortProps} />
-                  </TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>
-                    <SortHeader field="creditLimit" label="Credit Limit" {...sortProps} />
-                  </TableHead>
-                  <TableHead>
-                    <SortHeader field="status" label="Status" {...sortProps} />
-                  </TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.map((customer) => (
-                  <TableRow key={customer.id} data-testid="customer-row">
-                    <TableCell className="font-medium text-foreground">{customer.companyName}</TableCell>
-                    <TableCell className="text-muted-foreground">{customer.contactName}</TableCell>
-                    <TableCell className="text-muted-foreground">{customer.email || '—'}</TableCell>
-                    <TableCell className="font-mono text-foreground">
-                      $
-                      {parseFloat(customer.creditLimit).toLocaleString('en-US', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={customer.status} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        onClick={() => navigate({ to: `/app/customers/${customer.id}` })}
-                        variant="ghost"
-                        size="sm"
-                        data-testid="customer-view-button"
-                      >
-                        View
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+        {!loading && !error && displayRows.length > 0 && (
+          <ul className="divide-y divide-border/50" data-testid="customers-table">
+            {displayRows.map((customer) => (
+              <CustomerCrmRow
+                key={customer.id}
+                customer={customer}
+                stats={relationships.getStats(customer.id)}
+                selected={selectedId === customer.id}
+                canWrite={canWrite}
+                canViewInvoices={canViewInvoices}
+                onSelect={() => setSelectedId(customer.id)}
+                onOpen={() =>
+                  navigate({ to: '/app/customers/$customerId', params: { customerId: customer.id } })
+                }
+                onEdit={() => setEditing(customer)}
+              />
+            ))}
+          </ul>
         )}
       </div>
 
-      <PaginationBar
-        page={meta.page}
-        totalPages={meta.totalPages}
-        total={meta.total}
-        onPageChange={handlePageChange}
-        prevTestId="customers-prev-page"
-        nextTestId="customers-next-page"
-      />
+      {tab !== 'outstanding' && !loading && !error && meta.totalPages > 1 && (
+        <PaginationBar
+          page={meta.page}
+          totalPages={meta.totalPages}
+          total={meta.total}
+          onPageChange={(newPage) =>
+            navigate({
+              to: '/app/customers',
+              search: (prev) => ({ ...prev, page: newPage }),
+            })
+          }
+        />
+      )}
+
+      {canWrite && (
+        <CustomersCreateSheet
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+          onCreated={(c) =>
+            navigate({ to: '/app/customers/$customerId', params: { customerId: c.id } })
+          }
+        />
+      )}
+
+      {editing && (
+        <CustomersEditSheet
+          open={Boolean(editing)}
+          onOpenChange={(open) => !open && setEditing(null)}
+          customer={editing}
+        />
+      )}
+    </div>
+  );
+}
+
+function CustomerCrmRow({
+  customer,
+  stats,
+  selected,
+  canWrite,
+  canViewInvoices,
+  onSelect,
+  onOpen,
+  onEdit,
+}: {
+  customer: Customer;
+  stats: ReturnType<ReturnType<typeof useCustomerRelationshipIndex>['getStats']>;
+  selected: boolean;
+  canWrite: boolean;
+  canViewInvoices: boolean;
+  onSelect: () => void;
+  onOpen: () => void;
+  onEdit: () => void;
+}) {
+  const util = creditUtilization(customer.creditLimit, stats.outstanding);
+  const credit = parseFloat(customer.creditLimit);
+  const highUtil = util != null && util >= 0.8;
+  const atRisk = customer.status === 'AT_RISK' || highUtil || stats.outstanding > 0 && customer.status === 'ACTIVE' && util != null && util >= 0.9;
+
+  return (
+    <li
+      data-testid="customer-row"
+      className={cn(
+        'group relative px-4 py-3.5 transition-colors hover:bg-muted/25',
+        selected && 'bg-brand/5 ring-1 ring-inset ring-brand/30',
+      )}
+      onClick={onSelect}
+      onDoubleClick={onOpen}
+    >
+      <div className="flex flex-wrap items-start gap-3 lg:flex-nowrap">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen();
+          }}
+          className="flex min-w-0 flex-1 items-start gap-3 text-left"
+        >
+          <span
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-xs font-bold text-brand"
+            aria-hidden
+          >
+            {companyInitials(customer.companyName)}
+          </span>
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="truncate text-sm font-semibold text-foreground">
+                {customer.companyName}
+              </span>
+              <StatusBadge status={customer.status} />
+              {atRisk && customer.status !== 'AT_RISK' && (
+                <span className="inline-flex items-center gap-0.5 rounded-full bg-warning/10 px-1.5 py-0.5 text-[10px] font-semibold text-warning">
+                  <AlertTriangle className="h-2.5 w-2.5" />
+                  Risk
+                </span>
+              )}
+              {customer.status === 'AT_RISK' && (
+                <span className="inline-flex items-center gap-0.5 rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
+                  <AlertTriangle className="h-2.5 w-2.5" />
+                  At risk
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-1">
+                <User className="h-3 w-3" />
+                {customer.contactName}
+              </span>
+              {customer.phone && (
+                <span className="inline-flex items-center gap-1">
+                  <Phone className="h-3 w-3" />
+                  {customer.phone}
+                </span>
+              )}
+              {customer.email && (
+                <span className="inline-flex items-center gap-1 truncate">
+                  <Mail className="h-3 w-3" />
+                  {customer.email}
+                </span>
+              )}
+              <span className="font-mono text-[11px]">{customer.customerCode}</span>
+            </div>
+          </div>
+        </button>
+
+        <div className="grid w-full grid-cols-2 gap-2 text-xs sm:grid-cols-4 lg:w-auto lg:min-w-[22rem] lg:grid-cols-4">
+          <Metric cell label="Open orders" value={String(stats.openOrders)} />
+          {canViewInvoices ? (
+            <Metric cell label="Invoices" value={String(stats.invoiceCount)} />
+          ) : (
+            <Metric cell label="City" value={customer.city ?? '—'} />
+          )}
+          {canViewInvoices ? (
+            <Metric
+              cell
+              label="Outstanding"
+              value={
+                stats.outstanding > 0
+                  ? formatMoney(stats.outstanding, stats.currency ?? 'USD')
+                  : '—'
+              }
+              tone={stats.outstanding > 0 ? 'warn' : undefined}
+            />
+          ) : (
+            <Metric
+              cell
+              label="Credit"
+              value={
+                Number.isFinite(credit)
+                  ? formatMoney(credit, 'USD')
+                  : '—'
+              }
+            />
+          )}
+          <Metric
+            cell
+            label={canViewInvoices ? 'Utilization' : 'Updated'}
+            value={
+              canViewInvoices
+                ? util != null
+                  ? `${Math.round(util * 100)}%`
+                  : Number.isFinite(credit) && credit > 0
+                    ? '0%'
+                    : '—'
+                : formatRelativeTime(customer.updatedAt)
+            }
+            tone={highUtil ? 'warn' : undefined}
+          />
+        </div>
+
+        <div className="hidden flex-col items-end gap-1 text-right text-xs lg:flex lg:w-28">
+          <span className="font-mono font-medium tabular-nums text-foreground">
+            {Number.isFinite(credit) ? formatMoney(credit, 'USD') : '—'}
+          </span>
+          <span className="text-muted-foreground" title={customer.updatedAt}>
+            {formatRelativeTime(customer.updatedAt)}
+          </span>
+        </div>
+
+        <div
+          className="ml-auto flex shrink-0 items-center gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Button size="sm" variant="ghost" className="h-8 px-2" onClick={onOpen}>
+            <ExternalLink className="h-3.5 w-3.5" />
+            <span className="sr-only">Open</span>
+          </Button>
+          {customer.phone && (
+            <Button size="sm" variant="ghost" className="h-8 px-2" asChild>
+              <a href={`tel:${customer.phone}`}>
+                <Phone className="h-3.5 w-3.5" />
+                <span className="sr-only">Call</span>
+              </a>
+            </Button>
+          )}
+          {customer.email && (
+            <Button size="sm" variant="ghost" className="h-8 px-2" asChild>
+              <a href={`mailto:${customer.email}`}>
+                <Mail className="h-3.5 w-3.5" />
+                <span className="sr-only">Email</span>
+              </a>
+            </Button>
+          )}
+          {canWrite && customer.status !== 'ARCHIVED' && (
+            <Button size="sm" variant="ghost" className="h-8 px-2" onClick={onEdit}>
+              <Edit2 className="h-3.5 w-3.5" />
+              <span className="sr-only">Edit</span>
+            </Button>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="ghost" className="h-8 px-2">
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem onClick={onOpen}>
+                <Building2 className="mr-2 h-3.5 w-3.5" />
+                Open account
+              </DropdownMenuItem>
+              {customer.phone && (
+                <DropdownMenuItem asChild>
+                  <a href={`tel:${customer.phone}`}>
+                    <Phone className="mr-2 h-3.5 w-3.5" />
+                    Call
+                  </a>
+                </DropdownMenuItem>
+              )}
+              {customer.email && (
+                <DropdownMenuItem asChild>
+                  <a href={`mailto:${customer.email}`}>
+                    <Mail className="mr-2 h-3.5 w-3.5" />
+                    Email
+                  </a>
+                </DropdownMenuItem>
+              )}
+              {canWrite && customer.status !== 'ARCHIVED' && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={onEdit}>
+                    <Edit2 className="mr-2 h-3.5 w-3.5" />
+                    Edit
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function Metric({
+  label,
+  value,
+  tone,
+  cell,
+}: {
+  label: string;
+  value: string;
+  tone?: 'warn';
+  cell?: boolean;
+}) {
+  return (
+    <div className={cn(cell && 'min-w-0')}>
+      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p
+        className={cn(
+          'mt-0.5 truncate font-medium tabular-nums text-foreground',
+          tone === 'warn' && 'text-warning',
+        )}
+      >
+        {value}
+      </p>
     </div>
   );
 }

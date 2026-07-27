@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from './fetch';
+import { dashboardKeys, financeSummaryKeys, reportKeys } from './query-keys';
 
 export type ExpenseCategory = 'FUEL' | 'TOLL' | 'MAINTENANCE' | 'DRIVER_ADVANCE' | 'PARKING' | 'INSURANCE' | 'OTHER';
 export type ExpenseStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -134,10 +135,14 @@ export const expenseKeys = {
   detail: (id: string) => [...expenseKeys.details(), id] as const,
 };
 
-export function useExpensesQuery(params: ListExpensesParams = {}) {
+export function useExpensesQuery(
+  params: ListExpensesParams = {},
+  options: { enabled?: boolean } = {},
+) {
   return useQuery({
     queryKey: expenseKeys.list(params),
     queryFn: () => expensesAPI.list(params),
+    enabled: options.enabled ?? true,
   });
 }
 
@@ -155,7 +160,9 @@ export function useCreateExpenseMutation() {
     mutationFn: (input: CreateExpenseInput) => expensesAPI.create(input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: expenseKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: ['finance-summary'] });
+      queryClient.invalidateQueries({ queryKey: financeSummaryKeys.all });
+      queryClient.invalidateQueries({ queryKey: reportKeys.all });
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
     },
   });
 }
@@ -177,7 +184,9 @@ export function useApproveExpenseMutation() {
     mutationFn: (id: string) => expensesAPI.approve(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: expenseKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: ['finance-summary'] });
+      queryClient.invalidateQueries({ queryKey: financeSummaryKeys.all });
+      queryClient.invalidateQueries({ queryKey: reportKeys.all });
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
     },
   });
 }
@@ -189,7 +198,9 @@ export function useRejectExpenseMutation() {
       expensesAPI.reject(id, rejectionReason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: expenseKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: ['finance-summary'] });
+      queryClient.invalidateQueries({ queryKey: financeSummaryKeys.all });
+      queryClient.invalidateQueries({ queryKey: reportKeys.all });
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
     },
   });
 }

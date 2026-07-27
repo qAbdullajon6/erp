@@ -29,14 +29,27 @@ import { GeofencesController } from "./geofences.controller";
 import { TelematicsAlertsController } from "./telematics-alerts.controller";
 import { TelematicsDevicesController } from "./telematics-devices.controller";
 import { TelematicsAdminController } from "./telematics-admin.controller";
+import { TrackingController } from "./tracking/tracking.controller";
+import { TrackingMapController } from "./tracking/tracking-map.controller";
+import { TrackingDevController } from "./tracking/tracking-dev.controller";
+import { TrackingDebugController } from "./debug/tracking-debug.controller";
+import { TrackingService } from "./tracking/tracking.service";
+import { TrackingDebugBufferService } from "./debug/tracking-debug-buffer.service";
+import { TrackingDebugService } from "./debug/tracking-debug.service";
+import { MapboxService } from "./mapbox/mapbox.service";
+
+const isDevelopment = process.env.NODE_ENV === "development";
 
 /// Fleet Telematics & GPS Tracking.
 ///
 /// Depends inward only: it consumes Audit and the Workflows event bus (so its
 /// alerts and trips fan out to workflows and webhooks), and nothing in those
-/// modules knows telematics exists. JwtModule is registered locally with the
-/// same access secret the auth module uses, so the WebSocket gateway can verify
-/// a token on the handshake without reaching into AuthModule internals.
+/// modules knows telematics exists.
+///
+/// TrackingService is the Phase 1 foundation facade for GPS receive, live
+/// position reads, bounded history, and TrackingSession heartbeat presence.
+/// Existing `/telematics/*` routes remain backward-compatible; `/tracking/*`
+/// is the additive production surface.
 ///
 /// Every provider and service is a plain NestJS provider — no dynamic wiring —
 /// and the two background actors (the realtime Redis subscriber and the
@@ -57,15 +70,23 @@ import { TelematicsAdminController } from "./telematics-admin.controller";
   controllers: [
     TelematicsController,
     TelematicsIngestController,
+    TrackingController,
+    TrackingMapController,
     TripsController,
     GeofencesController,
     TelematicsAlertsController,
     TelematicsDevicesController,
     TelematicsAdminController,
+    // Phase 10 simulate + Phase 11 debug console — development only.
+    ...(isDevelopment ? [TrackingDevController, TrackingDebugController] : []),
   ],
   providers: [
     // Core services
     TelematicsService,
+    TrackingService,
+    TrackingDebugBufferService,
+    TrackingDebugService,
+    MapboxService,
     IngestionService,
     TripService,
     GeofenceService,
@@ -87,6 +108,13 @@ import { TelematicsAdminController } from "./telematics-admin.controller";
   ],
   // Exported so the AI copilot tools, the public API, the customer portal and
   // reporting can reuse the exact same services the HTTP controllers use.
-  exports: [TelematicsService, TelematicsAnalyticsService, AlertService, GeofenceService, TripService],
+  exports: [
+    TelematicsService,
+    TrackingService,
+    TelematicsAnalyticsService,
+    AlertService,
+    GeofenceService,
+    TripService,
+  ],
 })
 export class TelematicsModule {}

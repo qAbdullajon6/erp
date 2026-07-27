@@ -4,7 +4,10 @@ FROM node:24-alpine AS build
 WORKDIR /repo
 
 COPY package.json package-lock.json ./
+# Workspaces include apps/* — npm ci needs every workspace package.json present.
 COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY apps/mobile/package.json apps/mobile/package.json
 RUN npm ci --workspace=apps/api --include-workspace-root
 
 COPY apps/api apps/api
@@ -24,6 +27,8 @@ RUN apk add --no-cache tini
 ENV NODE_ENV=production
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY apps/mobile/package.json apps/mobile/package.json
 RUN npm ci --workspace=apps/api --include-workspace-root --omit=dev
 
 # Owned by the unprivileged `node` user (uid 1000, ships with the image) so the

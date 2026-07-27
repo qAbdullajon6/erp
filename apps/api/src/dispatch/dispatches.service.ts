@@ -5,6 +5,7 @@ import type { CurrentUserPayload } from "../auth/interfaces/current-user.interfa
 import { OrderWriter } from "../order-state/order-writer";
 import { aggregate } from "../order-state/projection.policy";
 import { PrismaService } from "../prisma/prisma.service";
+import { TrackingService } from "../telematics/tracking/tracking.service";
 import { WorkflowEventService } from "../workflows/triggers/workflow-event.service";
 import { AssignmentPolicy } from "./assignment/assignment.policy";
 import { ACTIVE_DISPATCH_STATUSES } from "./assignment/assignment.queries";
@@ -35,6 +36,7 @@ export class DispatchesService {
     /// The only object permitted to write Order state (AR5).
     private readonly orderWriter: OrderWriter,
     private readonly workflowEvents: WorkflowEventService,
+    private readonly tracking: TrackingService,
   ) {}
 
   async list(organizationId: string, query: ListDispatchesQueryDto) {
@@ -45,7 +47,11 @@ export class DispatchesService {
 
     const where: Prisma.DispatchWhereInput = {
       organizationId,
-      ...(query.status ? { status: query.status } : {}),
+      ...(query.statuses?.length
+        ? { status: { in: query.statuses } }
+        : query.status
+          ? { status: query.status }
+          : {}),
       ...(query.orderId ? { orderId: query.orderId } : {}),
       ...(query.driverId ? { driverId: query.driverId } : {}),
       ...(query.vehicleId ? { vehicleId: query.vehicleId } : {}),
@@ -154,6 +160,9 @@ export class DispatchesService {
       throw new ConflictException(`Cannot update a dispatch with status ${dispatch.status}`);
     }
 
+    const previousVehicleId = dispatch.vehicleId;
+    const previousDriverId = dispatch.driverId;
+
     const reassigned = await this.runInTransaction(async (tx) => {
       // Reassignment (Task 8.7). Returns null when the driver and vehicle are
       // unchanged, so a notes-only PATCH does exactly what it always did.
@@ -176,8 +185,18 @@ export class DispatchesService {
         await this.orderWriter.project(tx, organizationId, dispatch.orderId, actor);
       }
 
-      return change !== null;
+      return change;
     });
+
+    if (reassigned && previousVehicleId !== reassigned.vehicleId) {
+      await this.tracking
+        .endSessionsOnVehicleReassign(organizationId, {
+          previousVehicleId,
+          dispatchId: id,
+          driverId: previousDriverId,
+        })
+        .catch(() => undefined);
+    }
 
     await this.auditService.log({
       organizationId,
@@ -190,8 +209,8 @@ export class DispatchesService {
       entityId: id,
       metadata: reassigned
         ? {
-            from: { driverId: dispatch.driverId, vehicleId: dispatch.vehicleId },
-            to: { driverId: dto.driverId ?? dispatch.driverId, vehicleId: dto.vehicleId ?? dispatch.vehicleId },
+            from: { driverId: previousDriverId, vehicleId: previousVehicleId },
+            to: { driverId: reassigned.driverId, vehicleId: reassigned.vehicleId },
           }
         : { changes: dto },
     });
@@ -227,6 +246,9 @@ export class DispatchesService {
     if (dto.status === "DELIVERED") {
       this.workflowEvents.emit(organizationId, "dispatch.completed", { id, dispatchNumber: dispatch.dispatchNumber });
     }
+    if (dto.status === "DELIVERED" || dto.status === "CANCELLED") {
+      await this.tracking.endSessionsForDispatch(organizationId, id).catch(() => undefined);
+    }
 
     return this.toResponse(updated);
   }
@@ -256,6 +278,8 @@ export class DispatchesService {
       metadata: { previousStatus: dispatch.status },
     });
 
+    await this.tracking.endSessionsForDispatch(organizationId, id).catch(() => undefined);
+
     return this.toResponse(cancelled);
   }
 
@@ -283,6 +307,11 @@ export class DispatchesService {
     if (!order) {
       throw new NotFoundException("Order not found");
     }
+    if (order.status === "DRAFT") {
+      throw new ConflictException(
+        "Move the order to PENDING before creating a dispatch — a draft order cannot reserve a driver or vehicle",
+      );
+    }
     if (order.status === "DELIVERED" || order.status === "CANCELLED") {
       throw new ConflictException(`Cannot create a dispatch for an order with status ${order.status}`);
     }
@@ -301,9 +330,16 @@ export class DispatchesService {
       exclude: { orderId: order.id },
     });
 
-    // R2 — one live dispatch per order.
-    const existing = await tx.dispatch.findFirst({
-      where: { organizationId, orderId: dto.orderId, status: { in: ACTIVE_DISPATCH_STATUSES } },
+    /// R2 — one live dispatch per order. DRAFT counts: two concurrent "assign"
+  /// requests must not both create a draft for the same order. The partial
+  /// unique index `dispatches_one_live_per_order` is the real guarantee; this
+  /// pre-check only produces a clearer 409 before the DB rejects the write.
+  const existing = await tx.dispatch.findFirst({
+      where: {
+        organizationId,
+        orderId: dto.orderId,
+        status: { notIn: ["CANCELLED", "DELIVERED"] },
+      },
     });
     if (existing) {
       throw new ConflictException(`Order already has an active dispatch: ${existing.dispatchNumber}`);

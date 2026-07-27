@@ -26,6 +26,30 @@ export function openDemoModal(source = "demo_modal") {
   }
 }
 
+/// The dialog used to say "Request a personalized demo" no matter which CTA
+/// opened it — a visitor who clicked "Contact Sales" or "Request a Trial" saw
+/// no acknowledgment of the action they'd actually taken. Every CTA still
+/// opens the same form (there's no separate trial/sales flow to build), but
+/// the copy now at least reflects what was clicked.
+function copyForSource(source: string): { title: string; description: string } {
+  if (source === "pricing_enterprise" || source === "pricing_custom") {
+    return {
+      title: "Talk to our sales team",
+      description: "Tell us about your operation and we'll be in touch to discuss your rollout.",
+    };
+  }
+  if (source.startsWith("pricing_")) {
+    return {
+      title: "Request your trial",
+      description: "Tell us about your operation and we'll set up your 14-day trial.",
+    };
+  }
+  return {
+    title: "Request a personalized demo",
+    description: "Tell us about your operation and we'll tailor the walkthrough to your fleet and routes.",
+  };
+}
+
 export function DemoModal() {
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -137,14 +161,14 @@ export function DemoModal() {
         if (!next) setError(null);
       }}
     >
-      <DialogContent className="max-w-lg border-border/60 bg-surface p-0 sm:rounded-2xl">
-        <div className="p-8">
+      <DialogContent className="flex max-h-[90vh] max-w-lg flex-col overflow-hidden border-border/60 bg-surface p-0 sm:rounded-2xl">
+        <div className="min-h-0 overflow-y-auto p-6 sm:p-8">
           <DialogHeader className="space-y-2 text-left">
             <DialogTitle className="font-display text-2xl font-semibold tracking-tight">
-              Request a personalized demo
+              {copyForSource(ctaSource).title}
             </DialogTitle>
             <DialogDescription className="text-sm text-muted-foreground">
-              Tell us about your operation and we'll tailor the walkthrough to your fleet and routes.
+              {copyForSource(ctaSource).description}
             </DialogDescription>
           </DialogHeader>
 

@@ -9,19 +9,23 @@ import {
 } from "../alerts/alert-rules";
 import { AlertService } from "../alerts/alert.service";
 import { GeofenceService } from "../geofences/geofence.service";
-import { haversineKm, haversineMeters, isValidCoordinate, speedKphBetween } from "../geo/haversine.util";
+import { haversineKm, haversineMeters, speedKphBetween } from "../geo/haversine.util";
 import { classifyMovement } from "./movement-detector";
+import { filterIngestBatch } from "./ingest-validation";
 import type { NormalizedPosition } from "../providers/telematics-provider.interface";
 import { TelematicsRealtimeService } from "../realtime/telematics-realtime.service";
 import { TelematicsSettingsService } from "../settings/telematics-settings.service";
 import type { TripAggregate } from "../trips/trip.service";
 import { TripService } from "../trips/trip.service";
+import { TrackingDebugBufferService } from "../debug/tracking-debug-buffer.service";
 
 export interface IngestTarget {
   organizationId: string;
   vehicleId: string;
   driverId?: string | null;
   deviceId?: string | null;
+  /// Optional ingest source label for the debug packet inspector.
+  source?: string | null;
 }
 
 export interface IngestResult {
@@ -70,6 +74,7 @@ export class IngestionService {
     private readonly geofences: GeofenceService,
     private readonly alerts: AlertService,
     private readonly realtime: TelematicsRealtimeService,
+    private readonly debugBuffer: TrackingDebugBufferService,
   ) {}
 
   /// Ingests positions posted by a signed-in DRIVER for their own location.
@@ -101,26 +106,52 @@ export class IngestionService {
   }
 
   async ingestForVehicle(target: IngestTarget, positions: NormalizedPosition[]): Promise<IngestResult> {
-    const valid = positions.filter((p) => isValidCoordinate({ latitude: p.latitude, longitude: p.longitude }));
-    const rejected = positions.length - valid.length;
-    if (valid.length === 0) {
-      return { accepted: 0, rejected, tripId: null, latest: null };
-    }
-    valid.sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime());
-
+    const started = Date.now();
     const settings = await this.settings.getOrCreate(target.organizationId);
     const vehicle = await this.prisma.vehicle.findFirst({
       where: { id: target.vehicleId, organizationId: target.organizationId },
       select: { id: true, vehicleCode: true, plateNumber: true },
     });
     if (!vehicle) {
-      // The vehicle was deleted or belongs to another org — never trust the caller's id.
+      const durationMs = Date.now() - started;
+      for (const p of positions) {
+        this.debugBuffer.recordPacket({
+          organizationId: target.organizationId,
+          vehicleId: target.vehicleId,
+          driverId: target.driverId ?? null,
+          deviceId: target.deviceId ?? null,
+          source: target.source ?? (target.deviceId ? "DEVICE" : "UNKNOWN"),
+          receivedAt: new Date().toISOString(),
+          deviceAt: p.recordedAt.toISOString(),
+          latitude: p.latitude,
+          longitude: p.longitude,
+          speedKph: p.speedKph ?? null,
+          heading: p.heading ?? null,
+          accuracyM: p.accuracyM ?? null,
+          processingDurationMs: durationMs,
+          sseBroadcastDurationMs: null,
+          replayWriteDurationMs: null,
+          outcome: "rejected",
+          reason: "vehicle_not_found",
+          movementState: null,
+          tripId: null,
+          sessionId: null,
+        });
+      }
       return { accepted: 0, rejected: positions.length, tripId: null, latest: null };
     }
     const vehicleLabel = vehicle.plateNumber || vehicle.vehicleCode;
 
     const state = await this.prisma.vehicleTelematicsState.findUnique({ where: { vehicleId: target.vehicleId } });
+    const filtered = filterIngestBatch(positions, { lastRecordedAt: state?.lastRecordedAt ?? null });
+    if (filtered.accepted.length === 0) {
+      const durationMs = Date.now() - started;
+      this.recordFilterDecisions(target, filtered, durationMs, null, null, null);
+      return { accepted: 0, rejected: filtered.rejected, tripId: state?.tripId ?? null, latest: null };
+    }
+
     const activeTrip = await this.trips.getActive(target.organizationId, target.vehicleId);
+    const tripOpenedBefore = activeTrip?.id ?? null;
 
     const running: Running = {
       prevLat: state?.latitude ?? null,
@@ -137,7 +168,7 @@ export class IngestionService {
     };
 
     let latest: IngestResult["latest"] = null;
-    for (const fix of valid) {
+    for (const fix of filtered.accepted) {
       latest = await this.processFix(target, settings, vehicleLabel, fix, running);
     }
 
@@ -174,9 +205,55 @@ export class IngestionService {
       },
     });
 
+    let replayWriteDurationMs: number | null = null;
     if (running.tripId && running.agg) {
+      const replayStarted = Date.now();
       await this.trips.saveAggregate(running.tripId, running.agg);
+      replayWriteDurationMs = Date.now() - replayStarted;
+      this.debugBuffer.recordEvent({
+        organizationId: target.organizationId,
+        kind: "replay_saved",
+        at: new Date().toISOString(),
+        vehicleId: target.vehicleId,
+        driverId: target.driverId ?? null,
+        dispatchId: null,
+        sessionId: null,
+        tripId: running.tripId,
+        message: `Trip aggregate saved (${running.agg.pointCount} points)`,
+        meta: { durationMs: replayWriteDurationMs },
+      });
     }
+
+    if (running.tripId && running.tripId !== tripOpenedBefore) {
+      this.debugBuffer.recordEvent({
+        organizationId: target.organizationId,
+        kind: "replay_saved",
+        at: new Date().toISOString(),
+        vehicleId: target.vehicleId,
+        driverId: target.driverId ?? null,
+        dispatchId: null,
+        sessionId: null,
+        tripId: running.tripId,
+        message: "Trip opened for replay",
+      });
+    }
+
+    this.debugBuffer.recordEvent({
+      organizationId: target.organizationId,
+      kind: "vehicle_updated",
+      at: new Date().toISOString(),
+      vehicleId: target.vehicleId,
+      driverId: target.driverId ?? null,
+      dispatchId: null,
+      sessionId: null,
+      tripId: running.tripId,
+      message: `VehicleTelematicsState updated (${running.movementState})`,
+      meta: {
+        latitude: running.prevLat,
+        longitude: running.prevLng,
+        speedKph: running.prevSpeedKph,
+      },
+    });
 
     // The vehicle is reporting again — clear any open "gone offline" alert.
     await this.alerts.autoResolve(target.organizationId, `offline:${target.vehicleId}`).catch(() => undefined);
@@ -186,8 +263,10 @@ export class IngestionService {
         .catch(() => undefined);
     }
 
+    let sseBroadcastDurationMs: number | null = null;
     // Broadcast the fresh state for the live map.
     if (latest) {
+      const sseStarted = Date.now();
       this.realtime.publish(target.organizationId, {
         type: "state",
         vehicleId: target.vehicleId,
@@ -204,9 +283,88 @@ export class IngestionService {
           tripId: running.tripId,
         },
       });
+      sseBroadcastDurationMs = Date.now() - sseStarted;
+      this.debugBuffer.recordEvent({
+        organizationId: target.organizationId,
+        kind: "sse_broadcast",
+        at: new Date().toISOString(),
+        vehicleId: target.vehicleId,
+        driverId: target.driverId ?? null,
+        dispatchId: null,
+        sessionId: null,
+        tripId: running.tripId,
+        message: "SSE state broadcast",
+        meta: { durationMs: sseBroadcastDurationMs, type: "state" },
+      });
     }
 
-    return { accepted: valid.length, rejected, tripId: running.tripId, latest };
+    const durationMs = Date.now() - started;
+    this.recordFilterDecisions(
+      target,
+      filtered,
+      durationMs,
+      sseBroadcastDurationMs,
+      replayWriteDurationMs,
+      running.tripId,
+      latest?.movementState ?? running.movementState,
+    );
+
+    this.debugBuffer.recordEvent({
+      organizationId: target.organizationId,
+      kind: "gps_received",
+      at: new Date().toISOString(),
+      vehicleId: target.vehicleId,
+      driverId: target.driverId ?? null,
+      dispatchId: null,
+      sessionId: null,
+      tripId: running.tripId,
+      message: `GPS batch accepted=${filtered.accepted.length} rejected=${filtered.rejected}`,
+      meta: { accepted: filtered.accepted.length, rejected: filtered.rejected, durationMs },
+    });
+
+    return {
+      accepted: filtered.accepted.length,
+      rejected: filtered.rejected,
+      tripId: running.tripId,
+      latest,
+    };
+  }
+
+  private recordFilterDecisions(
+    target: IngestTarget,
+    filtered: ReturnType<typeof filterIngestBatch>,
+    processingDurationMs: number,
+    sseBroadcastDurationMs: number | null,
+    replayWriteDurationMs: number | null,
+    tripId: string | null,
+    movementState?: string | null,
+  ): void {
+    const receivedAt = new Date().toISOString();
+    for (const decision of filtered.decisions) {
+      const p = decision.position;
+      this.debugBuffer.recordPacket({
+        organizationId: target.organizationId,
+        vehicleId: target.vehicleId,
+        driverId: target.driverId ?? null,
+        deviceId: target.deviceId ?? null,
+        source: target.source ?? (target.deviceId ? "DEVICE" : "UNKNOWN"),
+        receivedAt,
+        deviceAt: p.recordedAt.toISOString(),
+        latitude: p.latitude,
+        longitude: p.longitude,
+        speedKph: p.speedKph ?? null,
+        heading: p.heading ?? null,
+        accuracyM: p.accuracyM ?? null,
+        processingDurationMs,
+        sseBroadcastDurationMs: decision.accepted ? sseBroadcastDurationMs : null,
+        replayWriteDurationMs: decision.accepted ? replayWriteDurationMs : null,
+        outcome: decision.accepted ? "accepted" : "rejected",
+        reason: decision.reason ?? null,
+        movementState: decision.accepted ? (movementState ?? null) : null,
+        tripId: decision.accepted ? tripId : null,
+        sessionId: null,
+      });
+    }
   }
 
   private async processFix(

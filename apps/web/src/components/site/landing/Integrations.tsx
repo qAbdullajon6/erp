@@ -37,7 +37,7 @@ export function Integrations() {
                 <it.icon className="h-5 w-5" />
               </IconTile>
               <div>
-                <div className="text-sm font-semibold text-foreground">{it.name}</div>
+                <h3 className="text-sm font-semibold text-foreground">{it.name}</h3>
                 <div className="text-xs text-muted-foreground">{it.category}</div>
               </div>
             </Card>
@@ -50,7 +50,7 @@ export function Integrations() {
           {DEV.map((d) => (
             <div key={d.title}>
               <div className="flex items-center gap-2.5">
-                <d.icon className="h-5 w-5 text-brand" />
+                <d.icon className="h-4 w-4 text-brand" />
                 <h3 className="text-sm font-semibold text-foreground">{d.title}</h3>
               </div>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{d.desc}</p>

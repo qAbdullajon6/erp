@@ -33,7 +33,7 @@ export function LegalPage({ title, updated, intro, children }: LegalPageProps) {
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl px-6 py-16">
+      <main id="main-content" className="mx-auto max-w-3xl px-6 py-16">
         <h1 className="font-display text-4xl font-semibold tracking-tight text-foreground">{title}</h1>
         <p className="mt-3 text-sm text-muted-foreground">Last updated {updated}</p>
         <p className="mt-6 text-lg leading-relaxed text-muted-foreground">{intro}</p>

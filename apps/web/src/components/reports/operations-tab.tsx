@@ -65,9 +65,15 @@ export function OperationsTab({ params }: OperationsTabProps) {
     );
   }
 
+  const currency = data.filters.currency || 'USD';
+  const money = (amount: string | number) => formatMoney(amount, currency);
+
   return (
     <div className="space-y-6">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          Money totals in <span className="font-semibold text-foreground">{currency}</span> only
+        </p>
         <ExportCsvButton type="operations" params={params} />
       </div>
       {isFetching && !isLoading && <p className="text-xs text-muted-foreground">Refreshing for the new date range...</p>}
@@ -103,7 +109,7 @@ export function OperationsTab({ params }: OperationsTabProps) {
                     <td className="px-6 py-3 text-right">
                       <span className={d.delayedOrders > 0 ? 'text-destructive' : ''}>{d.delayedOrders}</span>
                     </td>
-                    <td className="px-6 py-3 text-right font-medium">{formatMoney(d.revenue)}</td>
+                    <td className="px-6 py-3 text-right font-medium">{money(d.revenue)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -139,10 +145,10 @@ export function OperationsTab({ params }: OperationsTabProps) {
                     </td>
                     <td className="px-6 py-3 text-right">{v.totalOrders}</td>
                     <td className="px-6 py-3 text-right">{v.deliveredOrders}</td>
-                    <td className="px-6 py-3 text-right">{formatMoney(v.revenue)}</td>
-                    <td className="px-6 py-3 text-right">{formatMoney(v.approvedExpenses)}</td>
+                    <td className="px-6 py-3 text-right">{money(v.revenue)}</td>
+                    <td className="px-6 py-3 text-right">{money(v.approvedExpenses)}</td>
                     <td className={`px-6 py-3 text-right font-medium ${Number(v.estimatedGrossProfit) < 0 ? 'text-destructive' : ''}`}>
-                      {formatMoney(v.estimatedGrossProfit)}
+                      {money(v.estimatedGrossProfit)}
                     </td>
                   </tr>
                 ))}
@@ -177,7 +183,7 @@ export function OperationsTab({ params }: OperationsTabProps) {
                     </td>
                     <td className="px-6 py-3 text-right">{r.totalOrders}</td>
                     <td className="px-6 py-3 text-right">{r.completionRate.toFixed(1)}%</td>
-                    <td className="px-6 py-3 text-right font-medium">{formatMoney(r.revenue)}</td>
+                    <td className="px-6 py-3 text-right font-medium">{money(r.revenue)}</td>
                   </tr>
                 ))}
               </tbody>

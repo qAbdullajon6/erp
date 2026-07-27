@@ -3,9 +3,9 @@ import { usePortalDocuments } from "@/lib/api/portal-documents";
 import { formatDate } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FileText, Download, FileSignature, ArrowRight } from "lucide-react";
+import { FileText, ArrowRight } from "lucide-react";
 
 export const Route = createFileRoute("/portal/documents")({
   head: () => ({
@@ -15,14 +15,14 @@ export const Route = createFileRoute("/portal/documents")({
 });
 
 function PortalDocumentsPage() {
-  const { data: documents, loading, error } = usePortalDocuments();
+  const { data: documents, loading, error, refetch } = usePortalDocuments();
 
   if (loading) {
     return (
       <div className="space-y-6">
         <div>
           <h1 className="font-display text-3xl font-bold text-foreground">Documents</h1>
-          <p className="mt-1 text-muted-foreground">Access your delivery proofs and invoices.</p>
+          <p className="mt-1 text-muted-foreground">Invoices available for your account.</p>
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
@@ -37,6 +37,9 @@ function PortalDocumentsPage() {
     return (
       <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-8 text-center">
         <p className="text-sm text-destructive">{error}</p>
+        <Button variant="outline" className="mt-4" onClick={() => void refetch()}>
+          Retry
+        </Button>
       </div>
     );
   }
@@ -45,14 +48,16 @@ function PortalDocumentsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="font-display text-3xl font-bold text-foreground">Documents</h1>
-        <p className="mt-1 text-muted-foreground">Access your delivery proofs and invoices.</p>
+        <p className="mt-1 text-muted-foreground">
+          Open an invoice to view line items and print or save as PDF from your browser.
+        </p>
       </div>
 
       {documents.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <FileText className="mb-4 h-12 w-12 text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground">No documents available.</p>
+            <p className="text-sm text-muted-foreground">No documents available yet.</p>
           </CardContent>
         </Card>
       ) : (
@@ -60,66 +65,25 @@ function PortalDocumentsPage() {
           {documents.map((doc) => (
             <Card key={doc.id} className="transition-colors hover:bg-muted/20">
               <CardContent className="p-5">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-3">
-                    <div
-                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
-                        doc.type === "POD"
-                          ? "bg-success/10 text-success"
-                          : "bg-brand/10 text-brand"
-                      }`}
-                    >
-                      {doc.type === "POD" ? (
-                        <FileSignature className="h-5 w-5" />
-                      ) : (
-                        <FileText className="h-5 w-5" />
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <Badge
-                        variant={doc.type === "POD" ? "success" : "brand"}
-                        className="mb-2"
-                      >
-                        {doc.type === "POD" ? "POD" : "Invoice"}
-                      </Badge>
-                      <p className="truncate text-sm font-medium text-foreground">
-                        {doc.title}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {formatDate(doc.createdAt)}
-                      </p>
-                    </div>
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
+                    <FileText className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <Badge variant="brand" className="mb-2">
+                      Invoice
+                    </Badge>
+                    <p className="truncate text-sm font-medium text-foreground">{doc.title}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{formatDate(doc.createdAt)}</p>
                   </div>
                 </div>
                 <div className="mt-4">
-                  {doc.type === "POD" ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full gap-2"
-                      asChild
-                    >
-                      <a href={doc.downloadUrl} download>
-                        <Download className="h-4 w-4" />
-                        Download
-                      </a>
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full gap-2"
-                      asChild
-                    >
-                      <Link
-                        to="/portal/invoices/$invoiceId"
-                        params={{ invoiceId: doc.entityId }}
-                      >
-                        <ArrowRight className="h-4 w-4" />
-                        View Invoice
-                      </Link>
-                    </Button>
-                  )}
+                  <Button variant="outline" size="sm" className="w-full gap-2" asChild>
+                    <Link to="/portal/invoices/$invoiceId" params={{ invoiceId: doc.entityId }}>
+                      <ArrowRight className="h-4 w-4" />
+                      View invoice
+                    </Link>
+                  </Button>
                 </div>
               </CardContent>
             </Card>

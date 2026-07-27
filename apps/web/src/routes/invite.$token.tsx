@@ -2,10 +2,11 @@
 
 import type { ReactNode } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { Building2, CalendarClock, Mail, Shield, UserRound } from 'lucide-react';
+import { AlertCircle, Building2, CalendarClock, Mail, Shield, UserRound } from 'lucide-react';
 import { AuthShell } from '@/components/auth/AuthShell';
+import { AuthStatusCard } from '@/components/auth/AuthStatusCard';
 import { Button } from '@/components/ui/button';
-import { LoadingState, ErrorState } from '@/components/shared/list-states';
+import { IconTile } from '@/components/site/landing/primitives';
 import { statusLabel } from '@/components/shared/status-badge';
 import { formatDate } from '@/lib/format';
 import { useValidateInvitation, type ValidatedInvitation } from '@/lib/api/invitations';
@@ -42,13 +43,16 @@ function InvitePage() {
     >
       {isLoading ? (
         <div role="status" aria-live="polite" aria-busy="true">
-          <LoadingState label="Checking your invitation…" />
+          <AuthStatusCard icon={AlertCircle} spin tone="brand" title="Checking your invitation…" />
         </div>
       ) : isError || !data ? (
         // Invalid / expired / revoked / already accepted all arrive here as the
         // server's message — never a hardcoded HTTP code.
-        <ErrorState
-          message={
+        <AuthStatusCard
+          icon={AlertCircle}
+          tone="destructive"
+          title="This invitation isn't available"
+          description={
             error instanceof Error
               ? error.message
               : 'This invitation could not be loaded. It may be invalid or no longer available.'
@@ -84,7 +88,10 @@ function InvitationPreview({ token, invitation }: { token: string; invitation: V
 
       {/* Continues to the acceptance form (Task 7.3). Native anchor — that route
           is intentionally not built yet, so it is not a typed router target. */}
-      <Button asChild className="h-11 w-full bg-gradient-brand text-brand-foreground hover:opacity-90">
+      <Button
+        asChild
+        className="h-11 w-full rounded-xl bg-gradient-brand text-[15px] font-semibold text-brand-foreground transition-all duration-200 hover:opacity-90 hover:shadow-brand active:scale-[0.99]"
+      >
         <a href={`/invite/${token}/accept`}>Accept invitation</a>
       </Button>
     </div>
@@ -93,10 +100,10 @@ function InvitationPreview({ token, invitation }: { token: string; invitation: V
 
 function DetailRow({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
-    <div className="flex items-start gap-3">
-      <span className="mt-0.5 shrink-0 rounded-lg bg-brand/10 p-2 text-brand" aria-hidden="true">
+    <div className="flex items-start gap-3.5">
+      <IconTile size="sm" className="shrink-0">
         {icon}
-      </span>
+      </IconTile>
       <div className="min-w-0">
         <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</dt>
         <dd className="mt-0.5 break-words text-sm font-medium text-foreground">{value}</dd>

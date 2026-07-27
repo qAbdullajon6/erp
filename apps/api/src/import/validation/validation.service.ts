@@ -182,7 +182,7 @@ export class ValidationService {
 
   /// Resolves the several things a human might type for a reference, mapped
   /// back by every accepted spelling. A user migrating expenses will write
-  /// "DRV-0001" in one row and "Ivan Petrov" in the next; both are the driver.
+  /// "EMP-0001" in one row and "Ivan Petrov" in the next; both are the driver.
   private async lookupReferences(
     organizationId: string,
     entity: "Customer" | "Driver" | "Vehicle" | "Order",
