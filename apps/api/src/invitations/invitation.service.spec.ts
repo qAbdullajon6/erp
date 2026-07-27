@@ -82,8 +82,9 @@ function buildInternals(
     assertCanAddSeat: jest.fn().mockResolvedValue(undefined),
     syncSeatsUsed: jest.fn().mockResolvedValue(undefined),
   } as unknown as BillingSeatsService;
+  const audit = { log: jest.fn().mockResolvedValue(undefined) } as unknown as import("../audit/audit.service").AuditService;
 
-  const service = new InvitationService(prisma, mail, config, password, billingSeats);
+  const service = new InvitationService(prisma, mail, config, password, billingSeats, audit);
   return service as unknown as InvitationServiceInternals;
 }
 
@@ -222,6 +223,7 @@ function buildService(configOverrides: Partial<typeof INVITATION_CONFIG> = {}) {
     organization: { findUnique: jest.fn() },
     user: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
     membership: { findUnique: jest.fn(), create: jest.fn() },
+    driver: { findMany: jest.fn(), update: jest.fn() },
   };
   const prisma = {
     $transaction: jest.fn((callback: (client: unknown) => unknown) => callback(tx)),
@@ -251,6 +253,7 @@ function buildService(configOverrides: Partial<typeof INVITATION_CONFIG> = {}) {
     assertCanAddSeat: jest.fn().mockResolvedValue(undefined),
     syncSeatsUsed: jest.fn().mockResolvedValue(undefined),
   };
+  const audit = { log: jest.fn().mockResolvedValue(undefined) };
 
   const service = new InvitationService(
     prisma as unknown as PrismaService,
@@ -258,8 +261,9 @@ function buildService(configOverrides: Partial<typeof INVITATION_CONFIG> = {}) {
     config as unknown as ConfigService,
     password,
     billingSeats as unknown as BillingSeatsService,
+    audit as unknown as import("../audit/audit.service").AuditService,
   );
-  return { service, tx, prisma, mail, password, billingSeats };
+  return { service, tx, prisma, mail, password, billingSeats, audit };
 }
 
 const CREATE_INPUT = {
@@ -1152,5 +1156,87 @@ describe("InvitationService.acceptInvitation", () => {
     expect(serialized).not.toContain("hashed-pw");
     expect(serialized).not.toContain(hashInvitationToken(VALID_TOKEN));
     expect(Object.keys(result).sort()).toEqual(["organizationId", "role", "userId"]);
+  });
+
+  function primeDriverAccept(ctx: ReturnType<typeof buildService>) {
+    ctx.prisma.invitation.findUnique.mockResolvedValue(
+      validatedRow({ role: MembershipRole.DRIVER, email: "driver@example.com" }),
+    );
+    ctx.prisma.user.findUnique.mockResolvedValue(null);
+    ctx.tx.invitation.updateMany.mockResolvedValue({ count: 1 });
+    ctx.tx.organization.findUnique.mockResolvedValue({ status: OrganizationStatus.ACTIVE });
+    ctx.tx.user.findUnique.mockResolvedValue(null);
+    ctx.tx.user.create.mockResolvedValue({ id: "user-1", email: "driver@example.com" });
+    ctx.tx.membership.findUnique.mockResolvedValue(null);
+    ctx.tx.membership.create.mockResolvedValue({ id: "mem-1" });
+    ctx.tx.driver.findMany.mockResolvedValue([]);
+    ctx.tx.driver.update.mockResolvedValue({ id: "drv-1" });
+  }
+
+  it("DRIVER accept: auto-links when exactly one unlinked Driver matches email", async () => {
+    const ctx = buildService();
+    primeDriverAccept(ctx);
+    ctx.tx.driver.findMany.mockResolvedValue([{ id: "drv-1" }]);
+
+    await ctx.service.acceptInvitation(ACCEPT_INPUT);
+
+    expect(ctx.tx.driver.findMany).toHaveBeenCalledWith({
+      where: {
+        organizationId: "org-1",
+        userId: null,
+        archivedAt: null,
+        email: { equals: "driver@example.com", mode: "insensitive" },
+      },
+      select: { id: true },
+      take: 2,
+    });
+    expect(ctx.tx.driver.update).toHaveBeenCalledWith({
+      where: { id: "drv-1" },
+      data: { userId: "user-1" },
+    });
+    expect(ctx.audit.log).toHaveBeenCalledWith({
+      organizationId: "org-1",
+      actorUserId: "user-1",
+      action: "driver.link_user",
+      entityType: "Driver",
+      entityId: "drv-1",
+      metadata: {
+        userId: "user-1",
+        source: "invitation.accept",
+        automatic: true,
+      },
+    });
+  });
+
+  it("DRIVER accept: does not link when no Driver matches email", async () => {
+    const ctx = buildService();
+    primeDriverAccept(ctx);
+    ctx.tx.driver.findMany.mockResolvedValue([]);
+
+    await ctx.service.acceptInvitation(ACCEPT_INPUT);
+
+    expect(ctx.tx.driver.update).not.toHaveBeenCalled();
+    expect(ctx.audit.log).not.toHaveBeenCalled();
+  });
+
+  it("DRIVER accept: does not link when multiple unlinked Drivers match email", async () => {
+    const ctx = buildService();
+    primeDriverAccept(ctx);
+    ctx.tx.driver.findMany.mockResolvedValue([{ id: "drv-1" }, { id: "drv-2" }]);
+
+    await ctx.service.acceptInvitation(ACCEPT_INPUT);
+
+    expect(ctx.tx.driver.update).not.toHaveBeenCalled();
+    expect(ctx.audit.log).not.toHaveBeenCalled();
+  });
+
+  it("non-DRIVER accept: never queries drivers for auto-link", async () => {
+    const ctx = buildService();
+    primeNewUser(ctx);
+
+    await ctx.service.acceptInvitation(ACCEPT_INPUT);
+
+    expect(ctx.tx.driver.findMany).not.toHaveBeenCalled();
+    expect(ctx.audit.log).not.toHaveBeenCalled();
   });
 });

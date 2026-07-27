@@ -2,13 +2,14 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import {
   InvitationStatus,
+  MembershipRole,
   MembershipStatus,
   OrganizationStatus,
   Prisma,
   UserStatus,
   type Invitation,
-  type MembershipRole,
 } from "@prisma/client";
+import { AuditService } from "../audit/audit.service";
 import type { InvitationConfig } from "../config/configuration";
 import { MailService, type InvitationEmailMessage } from "../mail/mail.service";
 import { PasswordService } from "../auth/password.service";
@@ -127,6 +128,7 @@ export class InvitationService {
     private readonly configService: ConfigService,
     private readonly passwordService: PasswordService,
     private readonly billingSeats: BillingSeatsService,
+    private readonly auditService: AuditService,
   ) {
     this.invitationConfig = this.configService.get<InvitationConfig>("invitation")!;
   }
@@ -395,8 +397,26 @@ export class InvitationService {
       // Step 4: one membership per (organization, user).
       await this.provisionMembership(tx, validated.organizationId, userId, validated.role);
 
+      // Step 5 (DRIVER only): auto-link to an existing unlinked Driver when
+      // exactly one org Driver shares this invite email and has userId null.
+      // Zero or multiple matches → leave unlinked (manual link remains).
+      let linkedDriverId: string | null = null;
+      if (validated.role === MembershipRole.DRIVER) {
+        linkedDriverId = await this.maybeAutoLinkDriverProfile(
+          tx,
+          validated.organizationId,
+          userId,
+          validated.email,
+        );
+      }
+
       // Step 6: safe result only.
-      return { userId, organizationId: validated.organizationId, role: validated.role };
+      return {
+        userId,
+        organizationId: validated.organizationId,
+        role: validated.role,
+        linkedDriverId,
+      };
     });
 
     // After commit only, mirroring addMember: the membership is real by now,
@@ -404,7 +424,26 @@ export class InvitationService {
     // rather than drift until the next unrelated sync.
     await this.billingSeats.syncSeatsUsed(result.organizationId);
 
-    return result;
+    if (result.linkedDriverId) {
+      await this.auditService.log({
+        organizationId: result.organizationId,
+        actorUserId: result.userId,
+        action: "driver.link_user",
+        entityType: "Driver",
+        entityId: result.linkedDriverId,
+        metadata: {
+          userId: result.userId,
+          source: "invitation.accept",
+          automatic: true,
+        },
+      });
+    }
+
+    return {
+      userId: result.userId,
+      organizationId: result.organizationId,
+      role: result.role,
+    };
   }
 
   /// A fresh, cryptographically secure raw token. It exists only as a local
@@ -727,6 +766,39 @@ export class InvitationService {
       }
       throw error;
     }
+  }
+
+  /// When a DRIVER invite is accepted, attach the new login to a fleet Driver
+  /// row if and only if exactly one unlinked (`userId` null), non-archived
+  /// Driver in this organization has the same email (case-insensitive).
+  /// Otherwise leave linking to the existing admin `POST /drivers/:id/link-user`.
+  private async maybeAutoLinkDriverProfile(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    userId: string,
+    email: string,
+  ): Promise<string | null> {
+    const matches = await tx.driver.findMany({
+      where: {
+        organizationId,
+        userId: null,
+        archivedAt: null,
+        email: { equals: email, mode: "insensitive" },
+      },
+      select: { id: true },
+      take: 2,
+    });
+
+    if (matches.length !== 1) {
+      return null;
+    }
+
+    const driverId = matches[0].id;
+    await tx.driver.update({
+      where: { id: driverId },
+      data: { userId },
+    });
+    return driverId;
   }
 
   /// A Prisma unique-constraint violation (P2002), without leaking the error.

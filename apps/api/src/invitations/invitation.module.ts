@@ -4,6 +4,7 @@ import { PrismaModule } from "../prisma/prisma.module";
 import { MailModule } from "../mail/mail.module";
 import { AuthModule } from "../auth/auth.module";
 import { BillingModule } from "../billing/billing.module";
+import { AuditModule } from "../audit/audit.module";
 import { InvitationController } from "./invitation.controller";
 import { PublicInvitationController } from "./public-invitation.controller";
 import { InvitationService } from "./invitation.service";
@@ -15,8 +16,9 @@ import { InvitationService } from "./invitation.service";
 /// never AuthService. BillingModule is imported for BillingSeatsService, which
 /// invitations now depend on for seat-limit enforcement (formerly only
 /// OrganizationsService.addMember's concern, removed in favor of invitations).
+/// AuditModule records automatic Driver.userId links on DRIVER invite accept.
 @Module({
-  imports: [PrismaModule, MailModule, ConfigModule, AuthModule, BillingModule],
+  imports: [PrismaModule, MailModule, ConfigModule, AuthModule, BillingModule, AuditModule],
   controllers: [InvitationController, PublicInvitationController],
   providers: [InvitationService],
   exports: [InvitationService],
