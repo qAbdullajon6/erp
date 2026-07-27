@@ -149,7 +149,24 @@ export class AuthService {
       where: { userId: existing.userId, organizationId: existing.organizationId, status: "ACTIVE" },
       include: { organization: true },
     });
-    if (!membership || membership.organization.status !== "ACTIVE") {
+    if (!membership) {
+      throw new UnauthorizedException("Session is no longer valid");
+    }
+
+    // Platform support sessions may target a SUSPENDED org so staff can still
+    // investigate — normal tenant logins stay restricted to ACTIVE orgs.
+    const inSupportSession =
+      existing.user.isPlatformAdmin &&
+      (await this.prisma.platformSupportSession.findFirst({
+        where: {
+          userId: existing.userId,
+          targetOrganizationId: membership.organizationId,
+          endedAt: null,
+        },
+        select: { id: true },
+      }));
+
+    if (membership.organization.status !== "ACTIVE" && !inSupportSession) {
       throw new UnauthorizedException("Session is no longer valid");
     }
 
