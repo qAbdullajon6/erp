@@ -28,3 +28,8 @@ coverage
 docs
 *.md
 !README.md
+
+# Root postinstall entrypoints — must stay in the build context so
+# `npm ci --include-workspace-root` can run them (they no-op for API/web).
+!scripts/postinstall.js
+!scripts/postinstall-mobile.js
