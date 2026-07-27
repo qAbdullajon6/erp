@@ -91,7 +91,8 @@ async function bootstrap() {
     });
   });
 
-  await app.listen(appConfig.port);
+  await app.listen(appConfig.port, "0.0.0.0");
+  logger.log(`API listening on http://0.0.0.0:${appConfig.port}`);
 }
 
 // Wrap bootstrap in error handler to ensure startup failures are never silent.

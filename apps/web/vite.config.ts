@@ -32,7 +32,9 @@ export default defineConfig({
         // production deployment has to strip the prefix the same way, or every
         // call 404s.
         '/api': {
-          target: 'http://localhost:4000',
+          // 127.0.0.1 avoids macOS/Linux "localhost" → IPv6 (::1) mismatches
+          // when the API is only bound / reachable on IPv4.
+          target: 'http://127.0.0.1:4000',
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api/, ''),
         },
