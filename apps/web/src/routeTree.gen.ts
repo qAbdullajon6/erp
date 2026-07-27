@@ -9,82 +9,84 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as TermsRouteImport } from './routes/terms'
-import { Route as PrivacyRouteImport } from './routes/privacy'
-import { Route as PortalRouteImport } from './routes/portal'
-import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as PortalIndexRouteImport } from './routes/portal.index'
+import { Route as AppRouteImport } from './routes/app'
+import { Route as PlatformRouteImport } from './routes/platform'
+import { Route as PortalRouteImport } from './routes/portal'
+import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AppIndexRouteImport } from './routes/app.index'
-import { Route as PortalProfileRouteImport } from './routes/portal.profile'
-import { Route as PortalOrdersRouteImport } from './routes/portal.orders'
-import { Route as PortalNotificationsRouteImport } from './routes/portal.notifications'
-import { Route as PortalLoginRouteImport } from './routes/portal.login'
-import { Route as PortalInvoicesRouteImport } from './routes/portal.invoices'
-import { Route as PortalDocumentsRouteImport } from './routes/portal.documents'
-import { Route as PortalAcceptInviteRouteImport } from './routes/portal.accept-invite'
-import { Route as InviteTokenRouteImport } from './routes/invite.$token'
-import { Route as AuthVerifyEmailRouteImport } from './routes/auth.verify-email'
-import { Route as AuthSignInRouteImport } from './routes/auth.sign-in'
-import { Route as AuthResetPasswordRouteImport } from './routes/auth.reset-password'
-import { Route as AuthForgotPasswordRouteImport } from './routes/auth.forgot-password'
-import { Route as AppWorkflowsRouteImport } from './routes/app.workflows'
-import { Route as AppSettingsRouteImport } from './routes/app.settings'
-import { Route as AppReportsRouteImport } from './routes/app.reports'
-import { Route as AppNotificationsRouteImport } from './routes/app.notifications'
-import { Route as AppMyDeliveriesRouteImport } from './routes/app.my-deliveries'
-import { Route as AppIntegrationsRouteImport } from './routes/app.integrations'
-import { Route as AppFleetTrackingRouteImport } from './routes/app.fleet-tracking'
-import { Route as AppFinanceRouteImport } from './routes/app.finance'
-import { Route as AppDeveloperRouteImport } from './routes/app.developer'
-import { Route as AppBillingRouteImport } from './routes/app.billing'
 import { Route as AppAiAssistantRouteImport } from './routes/app.ai-assistant'
-import { Route as AppVehiclesIndexRouteImport } from './routes/app.vehicles.index'
-import { Route as AppProvidersIndexRouteImport } from './routes/app.providers.index'
-import { Route as AppOrdersIndexRouteImport } from './routes/app.orders.index'
-import { Route as AppLeadsIndexRouteImport } from './routes/app.leads.index'
-import { Route as AppImportIndexRouteImport } from './routes/app.import.index'
-import { Route as AppGeofencesIndexRouteImport } from './routes/app.geofences.index'
-import { Route as AppDriversIndexRouteImport } from './routes/app.drivers.index'
-import { Route as AppDispatchesIndexRouteImport } from './routes/app.dispatches.index'
-import { Route as AppDevicesIndexRouteImport } from './routes/app.devices.index'
-import { Route as AppCustomersIndexRouteImport } from './routes/app.customers.index'
+import { Route as AppBillingRouteImport } from './routes/app.billing'
+import { Route as AppDeveloperRouteImport } from './routes/app.developer'
+import { Route as AppFinanceRouteImport } from './routes/app.finance'
+import { Route as AppFleetTrackingRouteImport } from './routes/app.fleet-tracking'
+import { Route as AppIntegrationsRouteImport } from './routes/app.integrations'
+import { Route as AppMyDeliveriesRouteImport } from './routes/app.my-deliveries'
+import { Route as AppNotificationsRouteImport } from './routes/app.notifications'
+import { Route as AppReportsRouteImport } from './routes/app.reports'
+import { Route as AppSettingsRouteImport } from './routes/app.settings'
+import { Route as AppWorkflowsRouteImport } from './routes/app.workflows'
+import { Route as AuthForgotPasswordRouteImport } from './routes/auth.forgot-password'
+import { Route as AuthResetPasswordRouteImport } from './routes/auth.reset-password'
+import { Route as AuthSignInRouteImport } from './routes/auth.sign-in'
+import { Route as AuthVerifyEmailRouteImport } from './routes/auth.verify-email'
+import { Route as InviteTokenRouteImport } from './routes/invite.$token'
+import { Route as PlatformIndexRouteImport } from './routes/platform.index'
+import { Route as PortalIndexRouteImport } from './routes/portal.index'
+import { Route as PortalAcceptInviteRouteImport } from './routes/portal.accept-invite'
+import { Route as PortalDocumentsRouteImport } from './routes/portal.documents'
+import { Route as PortalInvoicesRouteImport } from './routes/portal.invoices'
+import { Route as PortalLoginRouteImport } from './routes/portal.login'
+import { Route as PortalNotificationsRouteImport } from './routes/portal.notifications'
+import { Route as PortalOrdersRouteImport } from './routes/portal.orders'
+import { Route as PortalProfileRouteImport } from './routes/portal.profile'
 import { Route as AppAuditLogsIndexRouteImport } from './routes/app.audit-logs.index'
-import { Route as PortalOrdersOrderIdRouteImport } from './routes/portal.orders.$orderId'
-import { Route as PortalInvoicesInvoiceIdRouteImport } from './routes/portal.invoices.$invoiceId'
-import { Route as InviteTokenAcceptRouteImport } from './routes/invite.$token_.accept'
-import { Route as AppWorkflowsWorkflowIdRouteImport } from './routes/app.workflows.$workflowId'
-import { Route as AppVehiclesCreateRouteImport } from './routes/app.vehicles.create'
-import { Route as AppVehiclesVehicleIdRouteImport } from './routes/app.vehicles.$vehicleId'
-import { Route as AppProvidersProviderRouteImport } from './routes/app.providers.$provider'
-import { Route as AppOrdersCreateRouteImport } from './routes/app.orders.create'
-import { Route as AppOrdersOrderIdRouteImport } from './routes/app.orders.$orderId'
-import { Route as AppImportHistoryRouteImport } from './routes/app.import.history'
-import { Route as AppImportSessionIdRouteImport } from './routes/app.import.$sessionId'
-import { Route as AppFleetTrackingDebugRouteImport } from './routes/app.fleet-tracking_.debug'
-import { Route as AppDriversCreateRouteImport } from './routes/app.drivers.create'
-import { Route as AppDriversDriverIdRouteImport } from './routes/app.drivers.$driverId'
-import { Route as AppDispatchesCreateRouteImport } from './routes/app.dispatches.create'
-import { Route as AppDispatchesBoardRouteImport } from './routes/app.dispatches.board'
-import { Route as AppDispatchesDispatchIdRouteImport } from './routes/app.dispatches.$dispatchId'
-import { Route as AppDevicesDeviceIdRouteImport } from './routes/app.devices.$deviceId'
-import { Route as AppCustomersCreateRouteImport } from './routes/app.customers.create'
+import { Route as AppCustomersIndexRouteImport } from './routes/app.customers.index'
 import { Route as AppCustomersCustomerIdRouteImport } from './routes/app.customers.$customerId'
+import { Route as AppCustomersCreateRouteImport } from './routes/app.customers.create'
+import { Route as AppDevicesIndexRouteImport } from './routes/app.devices.index'
+import { Route as AppDevicesDeviceIdRouteImport } from './routes/app.devices.$deviceId'
+import { Route as AppDispatchesIndexRouteImport } from './routes/app.dispatches.index'
+import { Route as AppDispatchesDispatchIdRouteImport } from './routes/app.dispatches.$dispatchId'
+import { Route as AppDispatchesBoardRouteImport } from './routes/app.dispatches.board'
+import { Route as AppDispatchesCreateRouteImport } from './routes/app.dispatches.create'
+import { Route as AppDriversIndexRouteImport } from './routes/app.drivers.index'
+import { Route as AppDriversDriverIdRouteImport } from './routes/app.drivers.$driverId'
+import { Route as AppDriversCreateRouteImport } from './routes/app.drivers.create'
+import { Route as AppFleetTrackingDebugRouteImport } from './routes/app.fleet-tracking_.debug'
+import { Route as AppGeofencesIndexRouteImport } from './routes/app.geofences.index'
+import { Route as AppImportIndexRouteImport } from './routes/app.import.index'
+import { Route as AppImportSessionIdRouteImport } from './routes/app.import.$sessionId'
+import { Route as AppImportHistoryRouteImport } from './routes/app.import.history'
+import { Route as AppLeadsIndexRouteImport } from './routes/app.leads.index'
+import { Route as AppOrdersIndexRouteImport } from './routes/app.orders.index'
+import { Route as AppOrdersOrderIdRouteImport } from './routes/app.orders.$orderId'
+import { Route as AppOrdersCreateRouteImport } from './routes/app.orders.create'
+import { Route as AppProvidersIndexRouteImport } from './routes/app.providers.index'
+import { Route as AppProvidersProviderRouteImport } from './routes/app.providers.$provider'
+import { Route as AppVehiclesIndexRouteImport } from './routes/app.vehicles.index'
+import { Route as AppVehiclesVehicleIdRouteImport } from './routes/app.vehicles.$vehicleId'
+import { Route as AppVehiclesCreateRouteImport } from './routes/app.vehicles.create'
+import { Route as AppWorkflowsWorkflowIdRouteImport } from './routes/app.workflows.$workflowId'
+import { Route as InviteTokenAcceptRouteImport } from './routes/invite.$token_.accept'
+import { Route as PlatformAnalyticsIndexRouteImport } from './routes/platform.analytics.index'
+import { Route as PlatformAuditIndexRouteImport } from './routes/platform.audit.index'
+import { Route as PlatformLeadsIndexRouteImport } from './routes/platform.leads.index'
+import { Route as PlatformOrganizationsIndexRouteImport } from './routes/platform.organizations.index'
+import { Route as PlatformOrganizationsOrgIdRouteImport } from './routes/platform.organizations.$orgId'
+import { Route as PlatformSettingsIndexRouteImport } from './routes/platform.settings.index'
+import { Route as PlatformSubscriptionsIndexRouteImport } from './routes/platform.subscriptions.index'
+import { Route as PlatformSupportIndexRouteImport } from './routes/platform.support.index'
+import { Route as PlatformSupportTicketIdRouteImport } from './routes/platform.support.$ticketId'
+import { Route as PlatformSystemIndexRouteImport } from './routes/platform.system.index'
+import { Route as PortalInvoicesInvoiceIdRouteImport } from './routes/portal.invoices.$invoiceId'
+import { Route as PortalOrdersOrderIdRouteImport } from './routes/portal.orders.$orderId'
 import { Route as AppFleetTrackingReplayTripIdRouteImport } from './routes/app.fleet-tracking_.replay.$tripId'
 
-const TermsRoute = TermsRouteImport.update({
-  id: '/terms',
-  path: '/terms',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PrivacyRoute = PrivacyRouteImport.update({
-  id: '/privacy',
-  path: '/privacy',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PortalRoute = PortalRouteImport.update({
-  id: '/portal',
-  path: '/portal',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppRoute = AppRouteImport.update({
@@ -92,129 +94,29 @@ const AppRoute = AppRouteImport.update({
   path: '/app',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const PlatformRoute = PlatformRouteImport.update({
+  id: '/platform',
+  path: '/platform',
   getParentRoute: () => rootRouteImport,
 } as any)
-const PortalIndexRoute = PortalIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => PortalRoute,
+const PortalRoute = PortalRouteImport.update({
+  id: '/portal',
+  path: '/portal',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => AppRoute,
-} as any)
-const PortalProfileRoute = PortalProfileRouteImport.update({
-  id: '/profile',
-  path: '/profile',
-  getParentRoute: () => PortalRoute,
-} as any)
-const PortalOrdersRoute = PortalOrdersRouteImport.update({
-  id: '/orders',
-  path: '/orders',
-  getParentRoute: () => PortalRoute,
-} as any)
-const PortalNotificationsRoute = PortalNotificationsRouteImport.update({
-  id: '/notifications',
-  path: '/notifications',
-  getParentRoute: () => PortalRoute,
-} as any)
-const PortalLoginRoute = PortalLoginRouteImport.update({
-  id: '/login',
-  path: '/login',
-  getParentRoute: () => PortalRoute,
-} as any)
-const PortalInvoicesRoute = PortalInvoicesRouteImport.update({
-  id: '/invoices',
-  path: '/invoices',
-  getParentRoute: () => PortalRoute,
-} as any)
-const PortalDocumentsRoute = PortalDocumentsRouteImport.update({
-  id: '/documents',
-  path: '/documents',
-  getParentRoute: () => PortalRoute,
-} as any)
-const PortalAcceptInviteRoute = PortalAcceptInviteRouteImport.update({
-  id: '/accept-invite',
-  path: '/accept-invite',
-  getParentRoute: () => PortalRoute,
-} as any)
-const InviteTokenRoute = InviteTokenRouteImport.update({
-  id: '/invite/$token',
-  path: '/invite/$token',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AuthVerifyEmailRoute = AuthVerifyEmailRouteImport.update({
-  id: '/auth/verify-email',
-  path: '/auth/verify-email',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AuthSignInRoute = AuthSignInRouteImport.update({
-  id: '/auth/sign-in',
-  path: '/auth/sign-in',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AuthResetPasswordRoute = AuthResetPasswordRouteImport.update({
-  id: '/auth/reset-password',
-  path: '/auth/reset-password',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AuthForgotPasswordRoute = AuthForgotPasswordRouteImport.update({
-  id: '/auth/forgot-password',
-  path: '/auth/forgot-password',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AppWorkflowsRoute = AppWorkflowsRouteImport.update({
-  id: '/workflows',
-  path: '/workflows',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppSettingsRoute = AppSettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppReportsRoute = AppReportsRouteImport.update({
-  id: '/reports',
-  path: '/reports',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppNotificationsRoute = AppNotificationsRouteImport.update({
-  id: '/notifications',
-  path: '/notifications',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppMyDeliveriesRoute = AppMyDeliveriesRouteImport.update({
-  id: '/my-deliveries',
-  path: '/my-deliveries',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppIntegrationsRoute = AppIntegrationsRouteImport.update({
-  id: '/integrations',
-  path: '/integrations',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppFleetTrackingRoute = AppFleetTrackingRouteImport.update({
-  id: '/fleet-tracking',
-  path: '/fleet-tracking',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppFinanceRoute = AppFinanceRouteImport.update({
-  id: '/finance',
-  path: '/finance',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppDeveloperRoute = AppDeveloperRouteImport.update({
-  id: '/developer',
-  path: '/developer',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppBillingRoute = AppBillingRouteImport.update({
-  id: '/billing',
-  path: '/billing',
   getParentRoute: () => AppRoute,
 } as any)
 const AppAiAssistantRoute = AppAiAssistantRouteImport.update({
@@ -222,49 +124,129 @@ const AppAiAssistantRoute = AppAiAssistantRouteImport.update({
   path: '/ai-assistant',
   getParentRoute: () => AppRoute,
 } as any)
-const AppVehiclesIndexRoute = AppVehiclesIndexRouteImport.update({
-  id: '/vehicles/',
-  path: '/vehicles/',
+const AppBillingRoute = AppBillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
   getParentRoute: () => AppRoute,
 } as any)
-const AppProvidersIndexRoute = AppProvidersIndexRouteImport.update({
-  id: '/providers/',
-  path: '/providers/',
+const AppDeveloperRoute = AppDeveloperRouteImport.update({
+  id: '/developer',
+  path: '/developer',
   getParentRoute: () => AppRoute,
 } as any)
-const AppOrdersIndexRoute = AppOrdersIndexRouteImport.update({
-  id: '/orders/',
-  path: '/orders/',
+const AppFinanceRoute = AppFinanceRouteImport.update({
+  id: '/finance',
+  path: '/finance',
   getParentRoute: () => AppRoute,
 } as any)
-const AppLeadsIndexRoute = AppLeadsIndexRouteImport.update({
-  id: '/leads/',
-  path: '/leads/',
+const AppFleetTrackingRoute = AppFleetTrackingRouteImport.update({
+  id: '/fleet-tracking',
+  path: '/fleet-tracking',
   getParentRoute: () => AppRoute,
 } as any)
-const AppImportIndexRoute = AppImportIndexRouteImport.update({
-  id: '/import/',
-  path: '/import/',
+const AppIntegrationsRoute = AppIntegrationsRouteImport.update({
+  id: '/integrations',
+  path: '/integrations',
   getParentRoute: () => AppRoute,
 } as any)
-const AppGeofencesIndexRoute = AppGeofencesIndexRouteImport.update({
-  id: '/geofences/',
-  path: '/geofences/',
+const AppMyDeliveriesRoute = AppMyDeliveriesRouteImport.update({
+  id: '/my-deliveries',
+  path: '/my-deliveries',
   getParentRoute: () => AppRoute,
 } as any)
-const AppDriversIndexRoute = AppDriversIndexRouteImport.update({
-  id: '/drivers/',
-  path: '/drivers/',
+const AppNotificationsRoute = AppNotificationsRouteImport.update({
+  id: '/notifications',
+  path: '/notifications',
   getParentRoute: () => AppRoute,
 } as any)
-const AppDispatchesIndexRoute = AppDispatchesIndexRouteImport.update({
-  id: '/dispatches/',
-  path: '/dispatches/',
+const AppReportsRoute = AppReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
   getParentRoute: () => AppRoute,
 } as any)
-const AppDevicesIndexRoute = AppDevicesIndexRouteImport.update({
-  id: '/devices/',
-  path: '/devices/',
+const AppSettingsRoute = AppSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppWorkflowsRoute = AppWorkflowsRouteImport.update({
+  id: '/workflows',
+  path: '/workflows',
+  getParentRoute: () => AppRoute,
+} as any)
+const AuthForgotPasswordRoute = AuthForgotPasswordRouteImport.update({
+  id: '/auth/forgot-password',
+  path: '/auth/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthResetPasswordRoute = AuthResetPasswordRouteImport.update({
+  id: '/auth/reset-password',
+  path: '/auth/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthSignInRoute = AuthSignInRouteImport.update({
+  id: '/auth/sign-in',
+  path: '/auth/sign-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthVerifyEmailRoute = AuthVerifyEmailRouteImport.update({
+  id: '/auth/verify-email',
+  path: '/auth/verify-email',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InviteTokenRoute = InviteTokenRouteImport.update({
+  id: '/invite/$token',
+  path: '/invite/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PlatformIndexRoute = PlatformIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PortalIndexRoute = PortalIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalAcceptInviteRoute = PortalAcceptInviteRouteImport.update({
+  id: '/accept-invite',
+  path: '/accept-invite',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalDocumentsRoute = PortalDocumentsRouteImport.update({
+  id: '/documents',
+  path: '/documents',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalInvoicesRoute = PortalInvoicesRouteImport.update({
+  id: '/invoices',
+  path: '/invoices',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalLoginRoute = PortalLoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalNotificationsRoute = PortalNotificationsRouteImport.update({
+  id: '/notifications',
+  path: '/notifications',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalOrdersRoute = PortalOrdersRouteImport.update({
+  id: '/orders',
+  path: '/orders',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalProfileRoute = PortalProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => PortalRoute,
+} as any)
+const AppAuditLogsIndexRoute = AppAuditLogsIndexRouteImport.update({
+  id: '/audit-logs/',
+  path: '/audit-logs/',
   getParentRoute: () => AppRoute,
 } as any)
 const AppCustomersIndexRoute = AppCustomersIndexRouteImport.update({
@@ -272,99 +254,9 @@ const AppCustomersIndexRoute = AppCustomersIndexRouteImport.update({
   path: '/customers/',
   getParentRoute: () => AppRoute,
 } as any)
-const AppAuditLogsIndexRoute = AppAuditLogsIndexRouteImport.update({
-  id: '/audit-logs/',
-  path: '/audit-logs/',
-  getParentRoute: () => AppRoute,
-} as any)
-const PortalOrdersOrderIdRoute = PortalOrdersOrderIdRouteImport.update({
-  id: '/$orderId',
-  path: '/$orderId',
-  getParentRoute: () => PortalOrdersRoute,
-} as any)
-const PortalInvoicesInvoiceIdRoute = PortalInvoicesInvoiceIdRouteImport.update({
-  id: '/$invoiceId',
-  path: '/$invoiceId',
-  getParentRoute: () => PortalInvoicesRoute,
-} as any)
-const InviteTokenAcceptRoute = InviteTokenAcceptRouteImport.update({
-  id: '/invite/$token_/accept',
-  path: '/invite/$token/accept',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AppWorkflowsWorkflowIdRoute = AppWorkflowsWorkflowIdRouteImport.update({
-  id: '/$workflowId',
-  path: '/$workflowId',
-  getParentRoute: () => AppWorkflowsRoute,
-} as any)
-const AppVehiclesCreateRoute = AppVehiclesCreateRouteImport.update({
-  id: '/vehicles/create',
-  path: '/vehicles/create',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppVehiclesVehicleIdRoute = AppVehiclesVehicleIdRouteImport.update({
-  id: '/vehicles/$vehicleId',
-  path: '/vehicles/$vehicleId',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppProvidersProviderRoute = AppProvidersProviderRouteImport.update({
-  id: '/providers/$provider',
-  path: '/providers/$provider',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppOrdersCreateRoute = AppOrdersCreateRouteImport.update({
-  id: '/orders/create',
-  path: '/orders/create',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppOrdersOrderIdRoute = AppOrdersOrderIdRouteImport.update({
-  id: '/orders/$orderId',
-  path: '/orders/$orderId',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppImportHistoryRoute = AppImportHistoryRouteImport.update({
-  id: '/import/history',
-  path: '/import/history',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppImportSessionIdRoute = AppImportSessionIdRouteImport.update({
-  id: '/import/$sessionId',
-  path: '/import/$sessionId',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppFleetTrackingDebugRoute = AppFleetTrackingDebugRouteImport.update({
-  id: '/fleet-tracking_/debug',
-  path: '/fleet-tracking/debug',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppDriversCreateRoute = AppDriversCreateRouteImport.update({
-  id: '/drivers/create',
-  path: '/drivers/create',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppDriversDriverIdRoute = AppDriversDriverIdRouteImport.update({
-  id: '/drivers/$driverId',
-  path: '/drivers/$driverId',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppDispatchesCreateRoute = AppDispatchesCreateRouteImport.update({
-  id: '/dispatches/create',
-  path: '/dispatches/create',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppDispatchesBoardRoute = AppDispatchesBoardRouteImport.update({
-  id: '/dispatches/board',
-  path: '/dispatches/board',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppDispatchesDispatchIdRoute = AppDispatchesDispatchIdRouteImport.update({
-  id: '/dispatches/$dispatchId',
-  path: '/dispatches/$dispatchId',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppDevicesDeviceIdRoute = AppDevicesDeviceIdRouteImport.update({
-  id: '/devices/$deviceId',
-  path: '/devices/$deviceId',
+const AppCustomersCustomerIdRoute = AppCustomersCustomerIdRouteImport.update({
+  id: '/customers/$customerId',
+  path: '/customers/$customerId',
   getParentRoute: () => AppRoute,
 } as any)
 const AppCustomersCreateRoute = AppCustomersCreateRouteImport.update({
@@ -372,10 +264,193 @@ const AppCustomersCreateRoute = AppCustomersCreateRouteImport.update({
   path: '/customers/create',
   getParentRoute: () => AppRoute,
 } as any)
-const AppCustomersCustomerIdRoute = AppCustomersCustomerIdRouteImport.update({
-  id: '/customers/$customerId',
-  path: '/customers/$customerId',
+const AppDevicesIndexRoute = AppDevicesIndexRouteImport.update({
+  id: '/devices/',
+  path: '/devices/',
   getParentRoute: () => AppRoute,
+} as any)
+const AppDevicesDeviceIdRoute = AppDevicesDeviceIdRouteImport.update({
+  id: '/devices/$deviceId',
+  path: '/devices/$deviceId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDispatchesIndexRoute = AppDispatchesIndexRouteImport.update({
+  id: '/dispatches/',
+  path: '/dispatches/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDispatchesDispatchIdRoute = AppDispatchesDispatchIdRouteImport.update({
+  id: '/dispatches/$dispatchId',
+  path: '/dispatches/$dispatchId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDispatchesBoardRoute = AppDispatchesBoardRouteImport.update({
+  id: '/dispatches/board',
+  path: '/dispatches/board',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDispatchesCreateRoute = AppDispatchesCreateRouteImport.update({
+  id: '/dispatches/create',
+  path: '/dispatches/create',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDriversIndexRoute = AppDriversIndexRouteImport.update({
+  id: '/drivers/',
+  path: '/drivers/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDriversDriverIdRoute = AppDriversDriverIdRouteImport.update({
+  id: '/drivers/$driverId',
+  path: '/drivers/$driverId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDriversCreateRoute = AppDriversCreateRouteImport.update({
+  id: '/drivers/create',
+  path: '/drivers/create',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppFleetTrackingDebugRoute = AppFleetTrackingDebugRouteImport.update({
+  id: '/fleet-tracking_/debug',
+  path: '/fleet-tracking/debug',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppGeofencesIndexRoute = AppGeofencesIndexRouteImport.update({
+  id: '/geofences/',
+  path: '/geofences/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppImportIndexRoute = AppImportIndexRouteImport.update({
+  id: '/import/',
+  path: '/import/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppImportSessionIdRoute = AppImportSessionIdRouteImport.update({
+  id: '/import/$sessionId',
+  path: '/import/$sessionId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppImportHistoryRoute = AppImportHistoryRouteImport.update({
+  id: '/import/history',
+  path: '/import/history',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppLeadsIndexRoute = AppLeadsIndexRouteImport.update({
+  id: '/leads/',
+  path: '/leads/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppOrdersIndexRoute = AppOrdersIndexRouteImport.update({
+  id: '/orders/',
+  path: '/orders/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppOrdersOrderIdRoute = AppOrdersOrderIdRouteImport.update({
+  id: '/orders/$orderId',
+  path: '/orders/$orderId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppOrdersCreateRoute = AppOrdersCreateRouteImport.update({
+  id: '/orders/create',
+  path: '/orders/create',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppProvidersIndexRoute = AppProvidersIndexRouteImport.update({
+  id: '/providers/',
+  path: '/providers/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppProvidersProviderRoute = AppProvidersProviderRouteImport.update({
+  id: '/providers/$provider',
+  path: '/providers/$provider',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppVehiclesIndexRoute = AppVehiclesIndexRouteImport.update({
+  id: '/vehicles/',
+  path: '/vehicles/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppVehiclesVehicleIdRoute = AppVehiclesVehicleIdRouteImport.update({
+  id: '/vehicles/$vehicleId',
+  path: '/vehicles/$vehicleId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppVehiclesCreateRoute = AppVehiclesCreateRouteImport.update({
+  id: '/vehicles/create',
+  path: '/vehicles/create',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppWorkflowsWorkflowIdRoute = AppWorkflowsWorkflowIdRouteImport.update({
+  id: '/$workflowId',
+  path: '/$workflowId',
+  getParentRoute: () => AppWorkflowsRoute,
+} as any)
+const InviteTokenAcceptRoute = InviteTokenAcceptRouteImport.update({
+  id: '/invite/$token_/accept',
+  path: '/invite/$token/accept',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PlatformAnalyticsIndexRoute = PlatformAnalyticsIndexRouteImport.update({
+  id: '/analytics/',
+  path: '/analytics/',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformAuditIndexRoute = PlatformAuditIndexRouteImport.update({
+  id: '/audit/',
+  path: '/audit/',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformLeadsIndexRoute = PlatformLeadsIndexRouteImport.update({
+  id: '/leads/',
+  path: '/leads/',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformOrganizationsIndexRoute =
+  PlatformOrganizationsIndexRouteImport.update({
+    id: '/organizations/',
+    path: '/organizations/',
+    getParentRoute: () => PlatformRoute,
+  } as any)
+const PlatformOrganizationsOrgIdRoute =
+  PlatformOrganizationsOrgIdRouteImport.update({
+    id: '/organizations/$orgId',
+    path: '/organizations/$orgId',
+    getParentRoute: () => PlatformRoute,
+  } as any)
+const PlatformSettingsIndexRoute = PlatformSettingsIndexRouteImport.update({
+  id: '/settings/',
+  path: '/settings/',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformSubscriptionsIndexRoute =
+  PlatformSubscriptionsIndexRouteImport.update({
+    id: '/subscriptions/',
+    path: '/subscriptions/',
+    getParentRoute: () => PlatformRoute,
+  } as any)
+const PlatformSupportIndexRoute = PlatformSupportIndexRouteImport.update({
+  id: '/support/',
+  path: '/support/',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformSupportTicketIdRoute = PlatformSupportTicketIdRouteImport.update({
+  id: '/support/$ticketId',
+  path: '/support/$ticketId',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformSystemIndexRoute = PlatformSystemIndexRouteImport.update({
+  id: '/system/',
+  path: '/system/',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PortalInvoicesInvoiceIdRoute = PortalInvoicesInvoiceIdRouteImport.update({
+  id: '/$invoiceId',
+  path: '/$invoiceId',
+  getParentRoute: () => PortalInvoicesRoute,
+} as any)
+const PortalOrdersOrderIdRoute = PortalOrdersOrderIdRouteImport.update({
+  id: '/$orderId',
+  path: '/$orderId',
+  getParentRoute: () => PortalOrdersRoute,
 } as any)
 const AppFleetTrackingReplayTripIdRoute =
   AppFleetTrackingReplayTripIdRouteImport.update({
@@ -387,6 +462,7 @@ const AppFleetTrackingReplayTripIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
+  '/platform': typeof PlatformRouteWithChildren
   '/portal': typeof PortalRouteWithChildren
   '/privacy': typeof PrivacyRoute
   '/terms': typeof TermsRoute
@@ -414,6 +490,7 @@ export interface FileRoutesByFullPath {
   '/portal/orders': typeof PortalOrdersRouteWithChildren
   '/portal/profile': typeof PortalProfileRoute
   '/app/': typeof AppIndexRoute
+  '/platform/': typeof PlatformIndexRoute
   '/portal/': typeof PortalIndexRoute
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
   '/app/customers/create': typeof AppCustomersCreateRoute
@@ -433,6 +510,8 @@ export interface FileRoutesByFullPath {
   '/app/vehicles/create': typeof AppVehiclesCreateRoute
   '/app/workflows/$workflowId': typeof AppWorkflowsWorkflowIdRoute
   '/invite/$token/accept': typeof InviteTokenAcceptRoute
+  '/platform/organizations/$orgId': typeof PlatformOrganizationsOrgIdRoute
+  '/platform/support/$ticketId': typeof PlatformSupportTicketIdRoute
   '/portal/invoices/$invoiceId': typeof PortalInvoicesInvoiceIdRoute
   '/portal/orders/$orderId': typeof PortalOrdersOrderIdRoute
   '/app/audit-logs/': typeof AppAuditLogsIndexRoute
@@ -446,6 +525,14 @@ export interface FileRoutesByFullPath {
   '/app/orders/': typeof AppOrdersIndexRoute
   '/app/providers/': typeof AppProvidersIndexRoute
   '/app/vehicles/': typeof AppVehiclesIndexRoute
+  '/platform/analytics/': typeof PlatformAnalyticsIndexRoute
+  '/platform/audit/': typeof PlatformAuditIndexRoute
+  '/platform/leads/': typeof PlatformLeadsIndexRoute
+  '/platform/organizations/': typeof PlatformOrganizationsIndexRoute
+  '/platform/settings/': typeof PlatformSettingsIndexRoute
+  '/platform/subscriptions/': typeof PlatformSubscriptionsIndexRoute
+  '/platform/support/': typeof PlatformSupportIndexRoute
+  '/platform/system/': typeof PlatformSystemIndexRoute
   '/app/fleet-tracking/replay/$tripId': typeof AppFleetTrackingReplayTripIdRoute
 }
 export interface FileRoutesByTo {
@@ -476,6 +563,7 @@ export interface FileRoutesByTo {
   '/portal/orders': typeof PortalOrdersRouteWithChildren
   '/portal/profile': typeof PortalProfileRoute
   '/app': typeof AppIndexRoute
+  '/platform': typeof PlatformIndexRoute
   '/portal': typeof PortalIndexRoute
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
   '/app/customers/create': typeof AppCustomersCreateRoute
@@ -495,6 +583,8 @@ export interface FileRoutesByTo {
   '/app/vehicles/create': typeof AppVehiclesCreateRoute
   '/app/workflows/$workflowId': typeof AppWorkflowsWorkflowIdRoute
   '/invite/$token/accept': typeof InviteTokenAcceptRoute
+  '/platform/organizations/$orgId': typeof PlatformOrganizationsOrgIdRoute
+  '/platform/support/$ticketId': typeof PlatformSupportTicketIdRoute
   '/portal/invoices/$invoiceId': typeof PortalInvoicesInvoiceIdRoute
   '/portal/orders/$orderId': typeof PortalOrdersOrderIdRoute
   '/app/audit-logs': typeof AppAuditLogsIndexRoute
@@ -508,12 +598,21 @@ export interface FileRoutesByTo {
   '/app/orders': typeof AppOrdersIndexRoute
   '/app/providers': typeof AppProvidersIndexRoute
   '/app/vehicles': typeof AppVehiclesIndexRoute
+  '/platform/analytics': typeof PlatformAnalyticsIndexRoute
+  '/platform/audit': typeof PlatformAuditIndexRoute
+  '/platform/leads': typeof PlatformLeadsIndexRoute
+  '/platform/organizations': typeof PlatformOrganizationsIndexRoute
+  '/platform/settings': typeof PlatformSettingsIndexRoute
+  '/platform/subscriptions': typeof PlatformSubscriptionsIndexRoute
+  '/platform/support': typeof PlatformSupportIndexRoute
+  '/platform/system': typeof PlatformSystemIndexRoute
   '/app/fleet-tracking/replay/$tripId': typeof AppFleetTrackingReplayTripIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
+  '/platform': typeof PlatformRouteWithChildren
   '/portal': typeof PortalRouteWithChildren
   '/privacy': typeof PrivacyRoute
   '/terms': typeof TermsRoute
@@ -541,6 +640,7 @@ export interface FileRoutesById {
   '/portal/orders': typeof PortalOrdersRouteWithChildren
   '/portal/profile': typeof PortalProfileRoute
   '/app/': typeof AppIndexRoute
+  '/platform/': typeof PlatformIndexRoute
   '/portal/': typeof PortalIndexRoute
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
   '/app/customers/create': typeof AppCustomersCreateRoute
@@ -560,6 +660,8 @@ export interface FileRoutesById {
   '/app/vehicles/create': typeof AppVehiclesCreateRoute
   '/app/workflows/$workflowId': typeof AppWorkflowsWorkflowIdRoute
   '/invite/$token_/accept': typeof InviteTokenAcceptRoute
+  '/platform/organizations/$orgId': typeof PlatformOrganizationsOrgIdRoute
+  '/platform/support/$ticketId': typeof PlatformSupportTicketIdRoute
   '/portal/invoices/$invoiceId': typeof PortalInvoicesInvoiceIdRoute
   '/portal/orders/$orderId': typeof PortalOrdersOrderIdRoute
   '/app/audit-logs/': typeof AppAuditLogsIndexRoute
@@ -573,6 +675,14 @@ export interface FileRoutesById {
   '/app/orders/': typeof AppOrdersIndexRoute
   '/app/providers/': typeof AppProvidersIndexRoute
   '/app/vehicles/': typeof AppVehiclesIndexRoute
+  '/platform/analytics/': typeof PlatformAnalyticsIndexRoute
+  '/platform/audit/': typeof PlatformAuditIndexRoute
+  '/platform/leads/': typeof PlatformLeadsIndexRoute
+  '/platform/organizations/': typeof PlatformOrganizationsIndexRoute
+  '/platform/settings/': typeof PlatformSettingsIndexRoute
+  '/platform/subscriptions/': typeof PlatformSubscriptionsIndexRoute
+  '/platform/support/': typeof PlatformSupportIndexRoute
+  '/platform/system/': typeof PlatformSystemIndexRoute
   '/app/fleet-tracking_/replay/$tripId': typeof AppFleetTrackingReplayTripIdRoute
 }
 export interface FileRouteTypes {
@@ -580,6 +690,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/app'
+    | '/platform'
     | '/portal'
     | '/privacy'
     | '/terms'
@@ -607,6 +718,7 @@ export interface FileRouteTypes {
     | '/portal/orders'
     | '/portal/profile'
     | '/app/'
+    | '/platform/'
     | '/portal/'
     | '/app/customers/$customerId'
     | '/app/customers/create'
@@ -626,6 +738,8 @@ export interface FileRouteTypes {
     | '/app/vehicles/create'
     | '/app/workflows/$workflowId'
     | '/invite/$token/accept'
+    | '/platform/organizations/$orgId'
+    | '/platform/support/$ticketId'
     | '/portal/invoices/$invoiceId'
     | '/portal/orders/$orderId'
     | '/app/audit-logs/'
@@ -639,6 +753,14 @@ export interface FileRouteTypes {
     | '/app/orders/'
     | '/app/providers/'
     | '/app/vehicles/'
+    | '/platform/analytics/'
+    | '/platform/audit/'
+    | '/platform/leads/'
+    | '/platform/organizations/'
+    | '/platform/settings/'
+    | '/platform/subscriptions/'
+    | '/platform/support/'
+    | '/platform/system/'
     | '/app/fleet-tracking/replay/$tripId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -669,6 +791,7 @@ export interface FileRouteTypes {
     | '/portal/orders'
     | '/portal/profile'
     | '/app'
+    | '/platform'
     | '/portal'
     | '/app/customers/$customerId'
     | '/app/customers/create'
@@ -688,6 +811,8 @@ export interface FileRouteTypes {
     | '/app/vehicles/create'
     | '/app/workflows/$workflowId'
     | '/invite/$token/accept'
+    | '/platform/organizations/$orgId'
+    | '/platform/support/$ticketId'
     | '/portal/invoices/$invoiceId'
     | '/portal/orders/$orderId'
     | '/app/audit-logs'
@@ -701,11 +826,20 @@ export interface FileRouteTypes {
     | '/app/orders'
     | '/app/providers'
     | '/app/vehicles'
+    | '/platform/analytics'
+    | '/platform/audit'
+    | '/platform/leads'
+    | '/platform/organizations'
+    | '/platform/settings'
+    | '/platform/subscriptions'
+    | '/platform/support'
+    | '/platform/system'
     | '/app/fleet-tracking/replay/$tripId'
   id:
     | '__root__'
     | '/'
     | '/app'
+    | '/platform'
     | '/portal'
     | '/privacy'
     | '/terms'
@@ -733,6 +867,7 @@ export interface FileRouteTypes {
     | '/portal/orders'
     | '/portal/profile'
     | '/app/'
+    | '/platform/'
     | '/portal/'
     | '/app/customers/$customerId'
     | '/app/customers/create'
@@ -752,6 +887,8 @@ export interface FileRouteTypes {
     | '/app/vehicles/create'
     | '/app/workflows/$workflowId'
     | '/invite/$token_/accept'
+    | '/platform/organizations/$orgId'
+    | '/platform/support/$ticketId'
     | '/portal/invoices/$invoiceId'
     | '/portal/orders/$orderId'
     | '/app/audit-logs/'
@@ -765,12 +902,21 @@ export interface FileRouteTypes {
     | '/app/orders/'
     | '/app/providers/'
     | '/app/vehicles/'
+    | '/platform/analytics/'
+    | '/platform/audit/'
+    | '/platform/leads/'
+    | '/platform/organizations/'
+    | '/platform/settings/'
+    | '/platform/subscriptions/'
+    | '/platform/support/'
+    | '/platform/system/'
     | '/app/fleet-tracking_/replay/$tripId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
+  PlatformRoute: typeof PlatformRouteWithChildren
   PortalRoute: typeof PortalRouteWithChildren
   PrivacyRoute: typeof PrivacyRoute
   TermsRoute: typeof TermsRoute
@@ -784,25 +930,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/terms': {
-      id: '/terms'
-      path: '/terms'
-      fullPath: '/terms'
-      preLoaderRoute: typeof TermsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/privacy': {
-      id: '/privacy'
-      path: '/privacy'
-      fullPath: '/privacy'
-      preLoaderRoute: typeof PrivacyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/portal': {
-      id: '/portal'
-      path: '/portal'
-      fullPath: '/portal'
-      preLoaderRoute: typeof PortalRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app': {
@@ -812,179 +944,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/platform': {
+      id: '/platform'
+      path: '/platform'
+      fullPath: '/platform'
+      preLoaderRoute: typeof PlatformRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/portal/': {
-      id: '/portal/'
-      path: '/'
-      fullPath: '/portal/'
-      preLoaderRoute: typeof PortalIndexRouteImport
-      parentRoute: typeof PortalRoute
+    '/portal': {
+      id: '/portal'
+      path: '/portal'
+      fullPath: '/portal'
+      preLoaderRoute: typeof PortalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/app/': {
       id: '/app/'
       path: '/'
       fullPath: '/app/'
       preLoaderRoute: typeof AppIndexRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/portal/profile': {
-      id: '/portal/profile'
-      path: '/profile'
-      fullPath: '/portal/profile'
-      preLoaderRoute: typeof PortalProfileRouteImport
-      parentRoute: typeof PortalRoute
-    }
-    '/portal/orders': {
-      id: '/portal/orders'
-      path: '/orders'
-      fullPath: '/portal/orders'
-      preLoaderRoute: typeof PortalOrdersRouteImport
-      parentRoute: typeof PortalRoute
-    }
-    '/portal/notifications': {
-      id: '/portal/notifications'
-      path: '/notifications'
-      fullPath: '/portal/notifications'
-      preLoaderRoute: typeof PortalNotificationsRouteImport
-      parentRoute: typeof PortalRoute
-    }
-    '/portal/login': {
-      id: '/portal/login'
-      path: '/login'
-      fullPath: '/portal/login'
-      preLoaderRoute: typeof PortalLoginRouteImport
-      parentRoute: typeof PortalRoute
-    }
-    '/portal/invoices': {
-      id: '/portal/invoices'
-      path: '/invoices'
-      fullPath: '/portal/invoices'
-      preLoaderRoute: typeof PortalInvoicesRouteImport
-      parentRoute: typeof PortalRoute
-    }
-    '/portal/documents': {
-      id: '/portal/documents'
-      path: '/documents'
-      fullPath: '/portal/documents'
-      preLoaderRoute: typeof PortalDocumentsRouteImport
-      parentRoute: typeof PortalRoute
-    }
-    '/portal/accept-invite': {
-      id: '/portal/accept-invite'
-      path: '/accept-invite'
-      fullPath: '/portal/accept-invite'
-      preLoaderRoute: typeof PortalAcceptInviteRouteImport
-      parentRoute: typeof PortalRoute
-    }
-    '/invite/$token': {
-      id: '/invite/$token'
-      path: '/invite/$token'
-      fullPath: '/invite/$token'
-      preLoaderRoute: typeof InviteTokenRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/auth/verify-email': {
-      id: '/auth/verify-email'
-      path: '/auth/verify-email'
-      fullPath: '/auth/verify-email'
-      preLoaderRoute: typeof AuthVerifyEmailRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/auth/sign-in': {
-      id: '/auth/sign-in'
-      path: '/auth/sign-in'
-      fullPath: '/auth/sign-in'
-      preLoaderRoute: typeof AuthSignInRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/auth/reset-password': {
-      id: '/auth/reset-password'
-      path: '/auth/reset-password'
-      fullPath: '/auth/reset-password'
-      preLoaderRoute: typeof AuthResetPasswordRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/auth/forgot-password': {
-      id: '/auth/forgot-password'
-      path: '/auth/forgot-password'
-      fullPath: '/auth/forgot-password'
-      preLoaderRoute: typeof AuthForgotPasswordRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/app/workflows': {
-      id: '/app/workflows'
-      path: '/workflows'
-      fullPath: '/app/workflows'
-      preLoaderRoute: typeof AppWorkflowsRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/settings': {
-      id: '/app/settings'
-      path: '/settings'
-      fullPath: '/app/settings'
-      preLoaderRoute: typeof AppSettingsRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/reports': {
-      id: '/app/reports'
-      path: '/reports'
-      fullPath: '/app/reports'
-      preLoaderRoute: typeof AppReportsRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/notifications': {
-      id: '/app/notifications'
-      path: '/notifications'
-      fullPath: '/app/notifications'
-      preLoaderRoute: typeof AppNotificationsRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/my-deliveries': {
-      id: '/app/my-deliveries'
-      path: '/my-deliveries'
-      fullPath: '/app/my-deliveries'
-      preLoaderRoute: typeof AppMyDeliveriesRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/integrations': {
-      id: '/app/integrations'
-      path: '/integrations'
-      fullPath: '/app/integrations'
-      preLoaderRoute: typeof AppIntegrationsRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/fleet-tracking': {
-      id: '/app/fleet-tracking'
-      path: '/fleet-tracking'
-      fullPath: '/app/fleet-tracking'
-      preLoaderRoute: typeof AppFleetTrackingRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/finance': {
-      id: '/app/finance'
-      path: '/finance'
-      fullPath: '/app/finance'
-      preLoaderRoute: typeof AppFinanceRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/developer': {
-      id: '/app/developer'
-      path: '/developer'
-      fullPath: '/app/developer'
-      preLoaderRoute: typeof AppDeveloperRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/billing': {
-      id: '/app/billing'
-      path: '/billing'
-      fullPath: '/app/billing'
-      preLoaderRoute: typeof AppBillingRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/ai-assistant': {
@@ -994,67 +986,179 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAiAssistantRouteImport
       parentRoute: typeof AppRoute
     }
-    '/app/vehicles/': {
-      id: '/app/vehicles/'
-      path: '/vehicles'
-      fullPath: '/app/vehicles/'
-      preLoaderRoute: typeof AppVehiclesIndexRouteImport
+    '/app/billing': {
+      id: '/app/billing'
+      path: '/billing'
+      fullPath: '/app/billing'
+      preLoaderRoute: typeof AppBillingRouteImport
       parentRoute: typeof AppRoute
     }
-    '/app/providers/': {
-      id: '/app/providers/'
-      path: '/providers'
-      fullPath: '/app/providers/'
-      preLoaderRoute: typeof AppProvidersIndexRouteImport
+    '/app/developer': {
+      id: '/app/developer'
+      path: '/developer'
+      fullPath: '/app/developer'
+      preLoaderRoute: typeof AppDeveloperRouteImport
       parentRoute: typeof AppRoute
     }
-    '/app/orders/': {
-      id: '/app/orders/'
+    '/app/finance': {
+      id: '/app/finance'
+      path: '/finance'
+      fullPath: '/app/finance'
+      preLoaderRoute: typeof AppFinanceRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/fleet-tracking': {
+      id: '/app/fleet-tracking'
+      path: '/fleet-tracking'
+      fullPath: '/app/fleet-tracking'
+      preLoaderRoute: typeof AppFleetTrackingRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/integrations': {
+      id: '/app/integrations'
+      path: '/integrations'
+      fullPath: '/app/integrations'
+      preLoaderRoute: typeof AppIntegrationsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/my-deliveries': {
+      id: '/app/my-deliveries'
+      path: '/my-deliveries'
+      fullPath: '/app/my-deliveries'
+      preLoaderRoute: typeof AppMyDeliveriesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/notifications': {
+      id: '/app/notifications'
+      path: '/notifications'
+      fullPath: '/app/notifications'
+      preLoaderRoute: typeof AppNotificationsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/reports': {
+      id: '/app/reports'
+      path: '/reports'
+      fullPath: '/app/reports'
+      preLoaderRoute: typeof AppReportsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/settings': {
+      id: '/app/settings'
+      path: '/settings'
+      fullPath: '/app/settings'
+      preLoaderRoute: typeof AppSettingsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/workflows': {
+      id: '/app/workflows'
+      path: '/workflows'
+      fullPath: '/app/workflows'
+      preLoaderRoute: typeof AppWorkflowsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/auth/forgot-password': {
+      id: '/auth/forgot-password'
+      path: '/auth/forgot-password'
+      fullPath: '/auth/forgot-password'
+      preLoaderRoute: typeof AuthForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/reset-password': {
+      id: '/auth/reset-password'
+      path: '/auth/reset-password'
+      fullPath: '/auth/reset-password'
+      preLoaderRoute: typeof AuthResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/sign-in': {
+      id: '/auth/sign-in'
+      path: '/auth/sign-in'
+      fullPath: '/auth/sign-in'
+      preLoaderRoute: typeof AuthSignInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/verify-email': {
+      id: '/auth/verify-email'
+      path: '/auth/verify-email'
+      fullPath: '/auth/verify-email'
+      preLoaderRoute: typeof AuthVerifyEmailRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/invite/$token': {
+      id: '/invite/$token'
+      path: '/invite/$token'
+      fullPath: '/invite/$token'
+      preLoaderRoute: typeof InviteTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/platform/': {
+      id: '/platform/'
+      path: '/'
+      fullPath: '/platform/'
+      preLoaderRoute: typeof PlatformIndexRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/portal/': {
+      id: '/portal/'
+      path: '/'
+      fullPath: '/portal/'
+      preLoaderRoute: typeof PortalIndexRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/portal/accept-invite': {
+      id: '/portal/accept-invite'
+      path: '/accept-invite'
+      fullPath: '/portal/accept-invite'
+      preLoaderRoute: typeof PortalAcceptInviteRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/portal/documents': {
+      id: '/portal/documents'
+      path: '/documents'
+      fullPath: '/portal/documents'
+      preLoaderRoute: typeof PortalDocumentsRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/portal/invoices': {
+      id: '/portal/invoices'
+      path: '/invoices'
+      fullPath: '/portal/invoices'
+      preLoaderRoute: typeof PortalInvoicesRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/portal/login': {
+      id: '/portal/login'
+      path: '/login'
+      fullPath: '/portal/login'
+      preLoaderRoute: typeof PortalLoginRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/portal/notifications': {
+      id: '/portal/notifications'
+      path: '/notifications'
+      fullPath: '/portal/notifications'
+      preLoaderRoute: typeof PortalNotificationsRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/portal/orders': {
+      id: '/portal/orders'
       path: '/orders'
-      fullPath: '/app/orders/'
-      preLoaderRoute: typeof AppOrdersIndexRouteImport
-      parentRoute: typeof AppRoute
+      fullPath: '/portal/orders'
+      preLoaderRoute: typeof PortalOrdersRouteImport
+      parentRoute: typeof PortalRoute
     }
-    '/app/leads/': {
-      id: '/app/leads/'
-      path: '/leads'
-      fullPath: '/app/leads/'
-      preLoaderRoute: typeof AppLeadsIndexRouteImport
-      parentRoute: typeof AppRoute
+    '/portal/profile': {
+      id: '/portal/profile'
+      path: '/profile'
+      fullPath: '/portal/profile'
+      preLoaderRoute: typeof PortalProfileRouteImport
+      parentRoute: typeof PortalRoute
     }
-    '/app/import/': {
-      id: '/app/import/'
-      path: '/import'
-      fullPath: '/app/import/'
-      preLoaderRoute: typeof AppImportIndexRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/geofences/': {
-      id: '/app/geofences/'
-      path: '/geofences'
-      fullPath: '/app/geofences/'
-      preLoaderRoute: typeof AppGeofencesIndexRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/drivers/': {
-      id: '/app/drivers/'
-      path: '/drivers'
-      fullPath: '/app/drivers/'
-      preLoaderRoute: typeof AppDriversIndexRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/dispatches/': {
-      id: '/app/dispatches/'
-      path: '/dispatches'
-      fullPath: '/app/dispatches/'
-      preLoaderRoute: typeof AppDispatchesIndexRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/devices/': {
-      id: '/app/devices/'
-      path: '/devices'
-      fullPath: '/app/devices/'
-      preLoaderRoute: typeof AppDevicesIndexRouteImport
+    '/app/audit-logs/': {
+      id: '/app/audit-logs/'
+      path: '/audit-logs'
+      fullPath: '/app/audit-logs/'
+      preLoaderRoute: typeof AppAuditLogsIndexRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/customers/': {
@@ -1064,137 +1168,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCustomersIndexRouteImport
       parentRoute: typeof AppRoute
     }
-    '/app/audit-logs/': {
-      id: '/app/audit-logs/'
-      path: '/audit-logs'
-      fullPath: '/app/audit-logs/'
-      preLoaderRoute: typeof AppAuditLogsIndexRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/portal/orders/$orderId': {
-      id: '/portal/orders/$orderId'
-      path: '/$orderId'
-      fullPath: '/portal/orders/$orderId'
-      preLoaderRoute: typeof PortalOrdersOrderIdRouteImport
-      parentRoute: typeof PortalOrdersRoute
-    }
-    '/portal/invoices/$invoiceId': {
-      id: '/portal/invoices/$invoiceId'
-      path: '/$invoiceId'
-      fullPath: '/portal/invoices/$invoiceId'
-      preLoaderRoute: typeof PortalInvoicesInvoiceIdRouteImport
-      parentRoute: typeof PortalInvoicesRoute
-    }
-    '/invite/$token_/accept': {
-      id: '/invite/$token_/accept'
-      path: '/invite/$token/accept'
-      fullPath: '/invite/$token/accept'
-      preLoaderRoute: typeof InviteTokenAcceptRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/app/workflows/$workflowId': {
-      id: '/app/workflows/$workflowId'
-      path: '/$workflowId'
-      fullPath: '/app/workflows/$workflowId'
-      preLoaderRoute: typeof AppWorkflowsWorkflowIdRouteImport
-      parentRoute: typeof AppWorkflowsRoute
-    }
-    '/app/vehicles/create': {
-      id: '/app/vehicles/create'
-      path: '/vehicles/create'
-      fullPath: '/app/vehicles/create'
-      preLoaderRoute: typeof AppVehiclesCreateRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/vehicles/$vehicleId': {
-      id: '/app/vehicles/$vehicleId'
-      path: '/vehicles/$vehicleId'
-      fullPath: '/app/vehicles/$vehicleId'
-      preLoaderRoute: typeof AppVehiclesVehicleIdRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/providers/$provider': {
-      id: '/app/providers/$provider'
-      path: '/providers/$provider'
-      fullPath: '/app/providers/$provider'
-      preLoaderRoute: typeof AppProvidersProviderRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/orders/create': {
-      id: '/app/orders/create'
-      path: '/orders/create'
-      fullPath: '/app/orders/create'
-      preLoaderRoute: typeof AppOrdersCreateRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/orders/$orderId': {
-      id: '/app/orders/$orderId'
-      path: '/orders/$orderId'
-      fullPath: '/app/orders/$orderId'
-      preLoaderRoute: typeof AppOrdersOrderIdRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/import/history': {
-      id: '/app/import/history'
-      path: '/import/history'
-      fullPath: '/app/import/history'
-      preLoaderRoute: typeof AppImportHistoryRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/import/$sessionId': {
-      id: '/app/import/$sessionId'
-      path: '/import/$sessionId'
-      fullPath: '/app/import/$sessionId'
-      preLoaderRoute: typeof AppImportSessionIdRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/fleet-tracking_/debug': {
-      id: '/app/fleet-tracking_/debug'
-      path: '/fleet-tracking/debug'
-      fullPath: '/app/fleet-tracking/debug'
-      preLoaderRoute: typeof AppFleetTrackingDebugRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/drivers/create': {
-      id: '/app/drivers/create'
-      path: '/drivers/create'
-      fullPath: '/app/drivers/create'
-      preLoaderRoute: typeof AppDriversCreateRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/drivers/$driverId': {
-      id: '/app/drivers/$driverId'
-      path: '/drivers/$driverId'
-      fullPath: '/app/drivers/$driverId'
-      preLoaderRoute: typeof AppDriversDriverIdRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/dispatches/create': {
-      id: '/app/dispatches/create'
-      path: '/dispatches/create'
-      fullPath: '/app/dispatches/create'
-      preLoaderRoute: typeof AppDispatchesCreateRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/dispatches/board': {
-      id: '/app/dispatches/board'
-      path: '/dispatches/board'
-      fullPath: '/app/dispatches/board'
-      preLoaderRoute: typeof AppDispatchesBoardRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/dispatches/$dispatchId': {
-      id: '/app/dispatches/$dispatchId'
-      path: '/dispatches/$dispatchId'
-      fullPath: '/app/dispatches/$dispatchId'
-      preLoaderRoute: typeof AppDispatchesDispatchIdRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/devices/$deviceId': {
-      id: '/app/devices/$deviceId'
-      path: '/devices/$deviceId'
-      fullPath: '/app/devices/$deviceId'
-      preLoaderRoute: typeof AppDevicesDeviceIdRouteImport
+    '/app/customers/$customerId': {
+      id: '/app/customers/$customerId'
+      path: '/customers/$customerId'
+      fullPath: '/app/customers/$customerId'
+      preLoaderRoute: typeof AppCustomersCustomerIdRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/customers/create': {
@@ -1204,12 +1182,264 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCustomersCreateRouteImport
       parentRoute: typeof AppRoute
     }
-    '/app/customers/$customerId': {
-      id: '/app/customers/$customerId'
-      path: '/customers/$customerId'
-      fullPath: '/app/customers/$customerId'
-      preLoaderRoute: typeof AppCustomersCustomerIdRouteImport
+    '/app/devices/': {
+      id: '/app/devices/'
+      path: '/devices'
+      fullPath: '/app/devices/'
+      preLoaderRoute: typeof AppDevicesIndexRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/app/devices/$deviceId': {
+      id: '/app/devices/$deviceId'
+      path: '/devices/$deviceId'
+      fullPath: '/app/devices/$deviceId'
+      preLoaderRoute: typeof AppDevicesDeviceIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/dispatches/': {
+      id: '/app/dispatches/'
+      path: '/dispatches'
+      fullPath: '/app/dispatches/'
+      preLoaderRoute: typeof AppDispatchesIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/dispatches/$dispatchId': {
+      id: '/app/dispatches/$dispatchId'
+      path: '/dispatches/$dispatchId'
+      fullPath: '/app/dispatches/$dispatchId'
+      preLoaderRoute: typeof AppDispatchesDispatchIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/dispatches/board': {
+      id: '/app/dispatches/board'
+      path: '/dispatches/board'
+      fullPath: '/app/dispatches/board'
+      preLoaderRoute: typeof AppDispatchesBoardRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/dispatches/create': {
+      id: '/app/dispatches/create'
+      path: '/dispatches/create'
+      fullPath: '/app/dispatches/create'
+      preLoaderRoute: typeof AppDispatchesCreateRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/drivers/': {
+      id: '/app/drivers/'
+      path: '/drivers'
+      fullPath: '/app/drivers/'
+      preLoaderRoute: typeof AppDriversIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/drivers/$driverId': {
+      id: '/app/drivers/$driverId'
+      path: '/drivers/$driverId'
+      fullPath: '/app/drivers/$driverId'
+      preLoaderRoute: typeof AppDriversDriverIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/drivers/create': {
+      id: '/app/drivers/create'
+      path: '/drivers/create'
+      fullPath: '/app/drivers/create'
+      preLoaderRoute: typeof AppDriversCreateRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/fleet-tracking_/debug': {
+      id: '/app/fleet-tracking_/debug'
+      path: '/fleet-tracking/debug'
+      fullPath: '/app/fleet-tracking/debug'
+      preLoaderRoute: typeof AppFleetTrackingDebugRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/geofences/': {
+      id: '/app/geofences/'
+      path: '/geofences'
+      fullPath: '/app/geofences/'
+      preLoaderRoute: typeof AppGeofencesIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/import/': {
+      id: '/app/import/'
+      path: '/import'
+      fullPath: '/app/import/'
+      preLoaderRoute: typeof AppImportIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/import/$sessionId': {
+      id: '/app/import/$sessionId'
+      path: '/import/$sessionId'
+      fullPath: '/app/import/$sessionId'
+      preLoaderRoute: typeof AppImportSessionIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/import/history': {
+      id: '/app/import/history'
+      path: '/import/history'
+      fullPath: '/app/import/history'
+      preLoaderRoute: typeof AppImportHistoryRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/leads/': {
+      id: '/app/leads/'
+      path: '/leads'
+      fullPath: '/app/leads/'
+      preLoaderRoute: typeof AppLeadsIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/orders/': {
+      id: '/app/orders/'
+      path: '/orders'
+      fullPath: '/app/orders/'
+      preLoaderRoute: typeof AppOrdersIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/orders/$orderId': {
+      id: '/app/orders/$orderId'
+      path: '/orders/$orderId'
+      fullPath: '/app/orders/$orderId'
+      preLoaderRoute: typeof AppOrdersOrderIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/orders/create': {
+      id: '/app/orders/create'
+      path: '/orders/create'
+      fullPath: '/app/orders/create'
+      preLoaderRoute: typeof AppOrdersCreateRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/providers/': {
+      id: '/app/providers/'
+      path: '/providers'
+      fullPath: '/app/providers/'
+      preLoaderRoute: typeof AppProvidersIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/providers/$provider': {
+      id: '/app/providers/$provider'
+      path: '/providers/$provider'
+      fullPath: '/app/providers/$provider'
+      preLoaderRoute: typeof AppProvidersProviderRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/vehicles/': {
+      id: '/app/vehicles/'
+      path: '/vehicles'
+      fullPath: '/app/vehicles/'
+      preLoaderRoute: typeof AppVehiclesIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/vehicles/$vehicleId': {
+      id: '/app/vehicles/$vehicleId'
+      path: '/vehicles/$vehicleId'
+      fullPath: '/app/vehicles/$vehicleId'
+      preLoaderRoute: typeof AppVehiclesVehicleIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/vehicles/create': {
+      id: '/app/vehicles/create'
+      path: '/vehicles/create'
+      fullPath: '/app/vehicles/create'
+      preLoaderRoute: typeof AppVehiclesCreateRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/workflows/$workflowId': {
+      id: '/app/workflows/$workflowId'
+      path: '/$workflowId'
+      fullPath: '/app/workflows/$workflowId'
+      preLoaderRoute: typeof AppWorkflowsWorkflowIdRouteImport
+      parentRoute: typeof AppWorkflowsRoute
+    }
+    '/invite/$token_/accept': {
+      id: '/invite/$token_/accept'
+      path: '/invite/$token/accept'
+      fullPath: '/invite/$token/accept'
+      preLoaderRoute: typeof InviteTokenAcceptRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/platform/analytics/': {
+      id: '/platform/analytics/'
+      path: '/analytics'
+      fullPath: '/platform/analytics/'
+      preLoaderRoute: typeof PlatformAnalyticsIndexRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/audit/': {
+      id: '/platform/audit/'
+      path: '/audit'
+      fullPath: '/platform/audit/'
+      preLoaderRoute: typeof PlatformAuditIndexRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/leads/': {
+      id: '/platform/leads/'
+      path: '/leads'
+      fullPath: '/platform/leads/'
+      preLoaderRoute: typeof PlatformLeadsIndexRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/organizations/': {
+      id: '/platform/organizations/'
+      path: '/organizations'
+      fullPath: '/platform/organizations/'
+      preLoaderRoute: typeof PlatformOrganizationsIndexRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/organizations/$orgId': {
+      id: '/platform/organizations/$orgId'
+      path: '/organizations/$orgId'
+      fullPath: '/platform/organizations/$orgId'
+      preLoaderRoute: typeof PlatformOrganizationsOrgIdRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/settings/': {
+      id: '/platform/settings/'
+      path: '/settings'
+      fullPath: '/platform/settings/'
+      preLoaderRoute: typeof PlatformSettingsIndexRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/subscriptions/': {
+      id: '/platform/subscriptions/'
+      path: '/subscriptions'
+      fullPath: '/platform/subscriptions/'
+      preLoaderRoute: typeof PlatformSubscriptionsIndexRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/support/': {
+      id: '/platform/support/'
+      path: '/support'
+      fullPath: '/platform/support/'
+      preLoaderRoute: typeof PlatformSupportIndexRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/support/$ticketId': {
+      id: '/platform/support/$ticketId'
+      path: '/support/$ticketId'
+      fullPath: '/platform/support/$ticketId'
+      preLoaderRoute: typeof PlatformSupportTicketIdRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/system/': {
+      id: '/platform/system/'
+      path: '/system'
+      fullPath: '/platform/system/'
+      preLoaderRoute: typeof PlatformSystemIndexRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/portal/invoices/$invoiceId': {
+      id: '/portal/invoices/$invoiceId'
+      path: '/$invoiceId'
+      fullPath: '/portal/invoices/$invoiceId'
+      preLoaderRoute: typeof PortalInvoicesInvoiceIdRouteImport
+      parentRoute: typeof PortalInvoicesRoute
+    }
+    '/portal/orders/$orderId': {
+      id: '/portal/orders/$orderId'
+      path: '/$orderId'
+      fullPath: '/portal/orders/$orderId'
+      preLoaderRoute: typeof PortalOrdersOrderIdRouteImport
+      parentRoute: typeof PortalOrdersRoute
     }
     '/app/fleet-tracking_/replay/$tripId': {
       id: '/app/fleet-tracking_/replay/$tripId'
@@ -1321,6 +1551,38 @@ const AppRouteChildren: AppRouteChildren = {
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
+interface PlatformRouteChildren {
+  PlatformIndexRoute: typeof PlatformIndexRoute
+  PlatformOrganizationsOrgIdRoute: typeof PlatformOrganizationsOrgIdRoute
+  PlatformSupportTicketIdRoute: typeof PlatformSupportTicketIdRoute
+  PlatformAnalyticsIndexRoute: typeof PlatformAnalyticsIndexRoute
+  PlatformAuditIndexRoute: typeof PlatformAuditIndexRoute
+  PlatformLeadsIndexRoute: typeof PlatformLeadsIndexRoute
+  PlatformOrganizationsIndexRoute: typeof PlatformOrganizationsIndexRoute
+  PlatformSettingsIndexRoute: typeof PlatformSettingsIndexRoute
+  PlatformSubscriptionsIndexRoute: typeof PlatformSubscriptionsIndexRoute
+  PlatformSupportIndexRoute: typeof PlatformSupportIndexRoute
+  PlatformSystemIndexRoute: typeof PlatformSystemIndexRoute
+}
+
+const PlatformRouteChildren: PlatformRouteChildren = {
+  PlatformIndexRoute: PlatformIndexRoute,
+  PlatformOrganizationsOrgIdRoute: PlatformOrganizationsOrgIdRoute,
+  PlatformSupportTicketIdRoute: PlatformSupportTicketIdRoute,
+  PlatformAnalyticsIndexRoute: PlatformAnalyticsIndexRoute,
+  PlatformAuditIndexRoute: PlatformAuditIndexRoute,
+  PlatformLeadsIndexRoute: PlatformLeadsIndexRoute,
+  PlatformOrganizationsIndexRoute: PlatformOrganizationsIndexRoute,
+  PlatformSettingsIndexRoute: PlatformSettingsIndexRoute,
+  PlatformSubscriptionsIndexRoute: PlatformSubscriptionsIndexRoute,
+  PlatformSupportIndexRoute: PlatformSupportIndexRoute,
+  PlatformSystemIndexRoute: PlatformSystemIndexRoute,
+}
+
+const PlatformRouteWithChildren = PlatformRoute._addFileChildren(
+  PlatformRouteChildren,
+)
+
 interface PortalInvoicesRouteChildren {
   PortalInvoicesInvoiceIdRoute: typeof PortalInvoicesInvoiceIdRoute
 }
@@ -1373,6 +1635,7 @@ const PortalRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
+  PlatformRoute: PlatformRouteWithChildren,
   PortalRoute: PortalRouteWithChildren,
   PrivacyRoute: PrivacyRoute,
   TermsRoute: TermsRoute,
@@ -1386,13 +1649,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

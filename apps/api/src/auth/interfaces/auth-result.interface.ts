@@ -13,6 +13,7 @@ export interface AuthResult {
     email: string;
     firstName: string;
     lastName: string;
+    isPlatformAdmin: boolean;
   };
   organization: {
     id: string;

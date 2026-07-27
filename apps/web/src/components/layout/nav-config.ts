@@ -11,7 +11,6 @@ import {
   BarChart3,
   PackageCheck,
   Users,
-  Inbox,
   Shield,
   FileUp,
   Zap,
@@ -94,9 +93,8 @@ export const DEFAULT_NAV: NavItem[] = [
   // SubscriptionsController and PlansController's admin routes both
   // @Roles("ADMIN"), so OPERATIONS_MANAGER is excluded to avoid a link that 403s.
   { icon: CreditCard, label: "Billing", path: "/app/billing", roles: ["ADMIN"], group: "Finance" },
-  // Demo requests from the marketing site. They belong to FlowERP, not to any
-  // customer organization, so no MembershipRole can reach them.
-  { icon: Inbox, label: "Leads", path: "/app/leads", platformAdminOnly: true, group: "Workspace" },
+  // Leads live in the Platform Console (/platform/leads) — they belong to
+  // FlowERP, not to any customer organization.
   { icon: Sparkles, label: "AI Assistant", path: "/app/ai-assistant", group: "Workspace" },
   {
     icon: Shield,

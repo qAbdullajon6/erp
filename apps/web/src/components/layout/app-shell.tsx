@@ -13,12 +13,15 @@ export function AppShell({
   navReady,
   currentUser,
   onSignOut,
+  banner,
   children,
 }: {
   nav: NavItem[];
   navReady: boolean;
   currentUser: CurrentUser | null;
   onSignOut: () => void;
+  /// Optional strip between topbar and page content (e.g. support session).
+  banner?: ReactNode;
   children: ReactNode;
 }) {
   const commandPalette = useCommandPalette();
@@ -32,6 +35,7 @@ export function AppShell({
           onSignOut={onSignOut}
           onOpenCommandPalette={() => commandPalette.setOpen(true)}
         />
+        {banner}
 
         {/* Page Content — full-bleed with generous gutters. A narrow centred
             column stranded the tables in the middle of wide monitors, which is

@@ -7,6 +7,7 @@ import type { LeadsConfig } from "../config/configuration";
 import { CreateLeadDto } from "./dto/create-lead.dto";
 import { ListLeadsQueryDto } from "./dto/list-leads-query.dto";
 import { UpdateLeadStatusDto } from "./dto/update-lead-status.dto";
+import { PlatformNotificationsService } from "../platform/platform-notifications.service";
 
 @Injectable()
 export class LeadsService {
@@ -16,6 +17,7 @@ export class LeadsService {
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
     private readonly config: ConfigService,
+    private readonly platformNotifications: PlatformNotificationsService,
   ) {}
 
   /// Returns only an acknowledgement, never the stored row: the endpoint is
@@ -46,6 +48,21 @@ export class LeadsService {
     this.logger.log(
       `New demo request ${lead.id} from ${dto.company} (source: ${dto.source ?? "landing_demo_modal"})`,
     );
+
+    void this.platformNotifications
+      .create({
+        type: "lead.new",
+        severity: "INFO",
+        title: "New Lead",
+        body: `${dto.company} — ${dto.name} (${dto.email})`,
+        entityType: "Lead",
+        entityId: lead.id,
+      })
+      .catch((error) =>
+        this.logger.warn(
+          `Lead saved but platform notification failed: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      );
 
     // Best-effort notifications. A failed/absent mail transport must never
     // fail the visitor's submission — the lead is already safely persisted.

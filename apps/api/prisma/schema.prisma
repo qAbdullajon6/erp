@@ -252,6 +252,9 @@ model Organization {
   usageRecords              UsageRecord[]
   usageSnapshots            UsageSnapshot[]
   paymentProviderConfigs    PaymentProviderConfig[]
+  supportTickets            SupportTicket[]
+  featureFlagOverrides      FeatureFlagOverride[]
+  platformSupportSessions   PlatformSupportSession[]
 
   @@map("organizations")
 }
@@ -313,6 +316,10 @@ model User {
   telematicsAlertsAcknowledged  TelematicsAlert[]          @relation("TelematicsAlertAckBy")
   telematicsAlertsResolved      TelematicsAlert[]          @relation("TelematicsAlertResolvedBy")
   notificationPreferences       NotificationPreferences?
+  supportTicketsAssigned        SupportTicket[]            @relation("SupportTicketAssignee")
+  supportTicketsCreated         SupportTicket[]            @relation("SupportTicketCreatedBy")
+  platformSupportSessions       PlatformSupportSession[]   @relation("PlatformSupportSessionUser")
+  featureFlagsUpdated           FeatureFlag[]              @relation("FeatureFlagUpdatedBy")
 
   @@map("users")
 }
@@ -1221,6 +1228,7 @@ model SubscriptionPlan {
   organizationSubscriptions OrganizationSubscription[]
   historyAsFromPlan         SubscriptionHistory[]      @relation("HistoryFromPlan")
   historyAsToPlan           SubscriptionHistory[]      @relation("HistoryToPlan")
+  featureFlagOverrides      FeatureFlagOverride[]
 
   @@map("subscription_plans")
 }
@@ -2861,4 +2869,134 @@ model EmailTracking {
   @@index([messageId])
   @@index([deliveryQueueId])
   @@map("email_tracking")
+}
+
+// ---------------------------------------------------------------------------
+// Platform Console — multi-tenant ops surface (not tenant ERP).
+// ---------------------------------------------------------------------------
+
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum SupportTicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum PlatformNotificationSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum FeatureFlagScope {
+  ALL
+  PLAN
+  ORG
+}
+
+/// Cross-tenant inbox for FlowERP staff (payment failed, org suspended, …).
+/// Deliberately separate from tenant Notification (which requires organizationId).
+model PlatformNotification {
+  id         String                       @id @default(uuid())
+  type       String
+  severity   PlatformNotificationSeverity @default(INFO)
+  title      String
+  body       String
+  entityType String?
+  entityId   String?
+  isRead     Boolean                      @default(false)
+  readAt     DateTime?
+  metadata   Json?
+  createdAt  DateTime                     @default(now())
+  updatedAt  DateTime                     @updatedAt
+
+  @@index([isRead, createdAt])
+  @@index([type, createdAt])
+  @@map("platform_notifications")
+}
+
+model SupportTicket {
+  id             String                @id @default(uuid())
+  organizationId String?
+  subject        String
+  body           String
+  status         SupportTicketStatus   @default(OPEN)
+  priority       SupportTicketPriority @default(MEDIUM)
+  assigneeUserId String?
+  createdById    String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  resolvedAt     DateTime?
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  assignee     User?         @relation("SupportTicketAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
+  createdBy    User?         @relation("SupportTicketCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([organizationId])
+  @@index([assigneeUserId])
+  @@map("support_tickets")
+}
+
+model FeatureFlag {
+  id             String           @id @default(uuid())
+  key            String           @unique
+  name           String
+  description    String?
+  enabledGlobal  Boolean          @default(false)
+  scope          FeatureFlagScope @default(ALL)
+  updatedById    String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  updatedBy User?                 @relation("FeatureFlagUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  overrides FeatureFlagOverride[]
+
+  @@map("feature_flags")
+}
+
+model FeatureFlagOverride {
+  id             String   @id @default(uuid())
+  featureFlagId  String
+  /// When set, applies to every org on this plan.
+  planId         String?
+  /// When set, applies to one organization.
+  organizationId String?
+  enabled        Boolean
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  featureFlag  FeatureFlag       @relation(fields: [featureFlagId], references: [id], onDelete: Cascade)
+  plan         SubscriptionPlan? @relation(fields: [planId], references: [id], onDelete: Cascade)
+  organization Organization?     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([featureFlagId])
+  @@index([planId])
+  @@index([organizationId])
+  @@map("feature_flag_overrides")
+}
+
+/// Active "Open ERP" support session for a platform admin.
+model PlatformSupportSession {
+  id                   String    @id @default(uuid())
+  userId               String
+  homeMembershipId     String
+  targetOrganizationId String
+  targetMembershipId   String
+  startedAt            DateTime  @default(now())
+  endedAt              DateTime?
+
+  user               User         @relation("PlatformSupportSessionUser", fields: [userId], references: [id], onDelete: Cascade)
+  targetOrganization Organization @relation(fields: [targetOrganizationId], references: [id], onDelete: Cascade)
+
+  @@index([userId, endedAt])
+  @@index([targetOrganizationId])
+  @@map("platform_support_sessions")
 }

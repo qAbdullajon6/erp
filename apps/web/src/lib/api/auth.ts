@@ -19,6 +19,9 @@ export interface AuthResponse {
     email: string;
     firstName: string;
     lastName: string;
+    /// FlowERP staff rather than a customer. Login uses this to land
+    /// platform admins on /platform instead of /app.
+    isPlatformAdmin: boolean;
   };
   organization: {
     id: string;
@@ -31,6 +34,14 @@ export interface AuthResponse {
   };
 }
 
+export interface SupportSession {
+  id: string;
+  organizationId: string;
+  organizationName: string;
+  organizationSlug: string;
+  startedAt: string;
+}
+
 export interface CurrentUser {
   user: {
     id: string;
@@ -38,7 +49,7 @@ export interface CurrentUser {
     firstName: string;
     lastName: string;
     /// FlowERP staff rather than a customer. Used only to decide whether to
-    /// render the Leads screen — the API's PlatformAdminGuard is what actually
+    /// render platform surfaces — the API's PlatformAdminGuard is what actually
     /// protects the data.
     isPlatformAdmin: boolean;
   };
@@ -51,6 +62,8 @@ export interface CurrentUser {
     id: string;
     role: string;
   };
+  /// Present while a platform admin has entered a customer org via Open ERP.
+  supportSession?: SupportSession | null;
 }
 
 class AuthAPI {
