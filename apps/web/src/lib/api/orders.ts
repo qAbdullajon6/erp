@@ -113,6 +113,8 @@ export interface ListOrdersQuery {
   limit?: number;
   search?: string;
   status?: OrderStatus;
+  /// Prefer over multiple parallel single-status fetches for multi-status tabs.
+  statuses?: OrderStatus[];
   customerId?: string;
   driverId?: string;
   vehicleId?: string;
@@ -129,6 +131,7 @@ class OrdersAPI {
     if (query.limit) params.append('limit', query.limit.toString());
     if (query.search) params.append('search', query.search);
     if (query.status) params.append('status', query.status);
+    if (query.statuses?.length) params.append('statuses', query.statuses.join(','));
     if (query.customerId) params.append('customerId', query.customerId);
     if (query.driverId) params.append('driverId', query.driverId);
     if (query.vehicleId) params.append('vehicleId', query.vehicleId);
@@ -215,10 +218,11 @@ export const ordersAPI = new OrdersAPI();
 /// mutation calls `refetch()` on its neighbours. Server state is invalidated, and
 /// React Query refetches whatever is actually on screen.
 
-export function useOrdersList(query: ListOrdersQuery = {}) {
+export function useOrdersList(query: ListOrdersQuery = {}, options: { enabled?: boolean } = {}) {
   const result = useQuery({
     queryKey: orderKeys.list(query),
     queryFn: () => ordersAPI.listOrders(query),
+    enabled: options.enabled ?? true,
   });
 
   return {

@@ -99,7 +99,7 @@ export function Hero() {
 
           <Reveal delay={280}>
             <p className="mt-6 text-sm text-muted-foreground">
-              No credit card required · 14-day trial · Live in under 20 minutes
+              No credit card required · 14-day trial · We reply within one business day
             </p>
           </Reveal>
         </div>
@@ -183,9 +183,27 @@ function AiConsole() {
           >
             {current.q}
           </div>
-          <div className="max-w-lg rounded-2xl rounded-tl-sm border border-brand/25 bg-brand/[0.07] px-4 py-3 text-sm leading-relaxed text-foreground/95">
-            {typed}
-            {!done && <span className="lv2-caret ml-0.5 inline-block h-4 w-0.5 -translate-y-0.5 bg-brand align-middle" />}
+          {/*
+            Grid-stack trick: every full answer renders invisibly in the same
+            cell so the grid auto-sizes to the tallest one. The real, typed
+            bubble sits on top of that reserved space, so the line-wrap that
+            happens mid-typing never grows the container or shifts anything
+            below it.
+          */}
+          <div className="grid">
+            {CONVERSATION.map((c, i) => (
+              <p
+                key={`sizer-${i}`}
+                aria-hidden
+                className="invisible col-start-1 row-start-1 max-w-lg border border-transparent px-4 py-3 text-sm leading-relaxed"
+              >
+                {c.a}
+              </p>
+            ))}
+            <div className="col-start-1 row-start-1 max-w-lg rounded-2xl rounded-tl-sm border border-brand/25 bg-brand/[0.07] px-4 py-3 text-sm leading-relaxed text-foreground/95">
+              {typed}
+              {!done && <span className="lv2-caret ml-0.5 inline-block h-4 w-0.5 -translate-y-0.5 bg-brand align-middle" />}
+            </div>
           </div>
         </div>
 

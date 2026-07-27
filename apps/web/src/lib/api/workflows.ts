@@ -46,6 +46,7 @@ export interface Workflow {
   name: string;
   description: string | null;
   config: WorkflowConfig;
+  status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
   active: boolean;
   createdByUserId: string;
   createdAt: string;

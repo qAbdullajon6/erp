@@ -27,6 +27,7 @@ export function ConfirmDialog({
   onOpenChange,
   title,
   description,
+  children,
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
   onConfirm,
@@ -37,6 +38,9 @@ export function ConfirmDialog({
   onOpenChange?: (open: boolean) => void;
   title: string;
   description: string;
+  /// Extra content between the description and the actions — e.g. an
+  /// optional-reason textarea for a cancellation.
+  children?: ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
   onConfirm: () => void;
@@ -50,6 +54,7 @@ export function ConfirmDialog({
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
+        {children}
         <AlertDialogFooter>
           <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
           <AlertDialogAction

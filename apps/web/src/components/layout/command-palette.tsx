@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { Package, Route as RouteIcon, MapPin, Truck, Users } from "lucide-react";
+import { Package, Route as RouteIcon, MapPin, Truck, Users, Cpu } from "lucide-react";
 import {
   CommandDialog,
   CommandEmpty,
@@ -11,40 +11,53 @@ import {
   CommandShortcut,
 } from "@/components/ui/command";
 import type { NavItem } from "@/components/layout/nav-config";
+import type { MembershipRole } from "@/lib/api/organizations";
+import {
+  ADMIN_OPS_ROLES,
+  CUSTOMER_WRITE_ROLES,
+  DISPATCH_WRITE_ROLES,
+  FLEET_ROLES,
+  ORDER_WRITE_ROLES,
+} from "@/lib/role-access";
 
 type QuickAction = {
   icon: typeof Package;
   label: string;
   path: string;
-  /// Same role gate as the underlying create route/controller — an action a
-  /// role can't use shouldn't be offered, for the same reason nav-config
-  /// hides links the API would 403 on.
-  roles?: NavItem["roles"];
+  roles: readonly MembershipRole[];
 };
 
 const QUICK_ACTIONS: QuickAction[] = [
-  { icon: Package, label: "New order", path: "/app/orders/create" },
+  { icon: Package, label: "New order", path: "/app/orders/create", roles: ORDER_WRITE_ROLES },
   {
     icon: RouteIcon,
     label: "New dispatch",
     path: "/app/dispatches/create",
-    roles: ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER", "ACCOUNTANT"],
+    roles: DISPATCH_WRITE_ROLES,
   },
-  { icon: MapPin, label: "New customer", path: "/app/customers/create" },
-  { icon: Users, label: "New driver", path: "/app/drivers/create", roles: ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER"] },
-  { icon: Truck, label: "New vehicle", path: "/app/vehicles/create", roles: ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER"] },
+  { icon: MapPin, label: "New customer", path: "/app/customers/create", roles: CUSTOMER_WRITE_ROLES },
+  { icon: Users, label: "New driver", path: "/app/drivers/create", roles: FLEET_ROLES },
+  { icon: Truck, label: "New vehicle", path: "/app/vehicles/create", roles: FLEET_ROLES },
+  {
+    icon: Cpu,
+    label: "Register device",
+    path: "/app/devices",
+    roles: ADMIN_OPS_ROLES,
+  },
 ];
 
 export function CommandPalette({
   open,
   onOpenChange,
   nav,
+  role,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /// Already role-filtered by the caller — the palette must not offer a link
   /// the sidebar itself wouldn't show.
   nav: NavItem[];
+  role: MembershipRole | null;
 }) {
   const navigate = useNavigate();
   const navPaths = new Set(nav.map((item) => item.path));
@@ -55,9 +68,7 @@ export function CommandPalette({
   };
 
   const actions = QUICK_ACTIONS.filter((action) => {
-    if (!action.roles) return true;
-    // A quick action's create-path always belongs to the same section as one
-    // of the nav entries, so gate it on that entry being visible.
+    if (!role || !action.roles.includes(role)) return false;
     const section = action.path.split("/").slice(0, 3).join("/");
     return navPaths.has(section);
   });

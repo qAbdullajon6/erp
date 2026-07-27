@@ -9,6 +9,7 @@ export const Route = createFileRoute("/terms")({
       { name: "description", content: `The terms that govern use of the ${siteConfig.name} website and product.` },
       { name: "robots", content: "index, follow" },
     ],
+    links: [{ rel: "canonical", href: `${siteConfig.url}/terms` }],
   }),
   component: TermsPage,
 });

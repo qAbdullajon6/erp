@@ -21,6 +21,7 @@ import { useScrollDepthTracking } from "@/lib/analytics/hooks";
 import { generateMetaTags, generateLinkTags, defaultSEO } from "@/lib/seo/meta-tags";
 import {
   getOrganizationSchema,
+  getWebSiteSchema,
   getSoftwareApplicationSchema,
   getFAQPageSchema,
   serializeSchema,
@@ -33,13 +34,16 @@ export const Route = createFileRoute("/")({
 
     // Generate structured data schemas
     const organizationSchema = getOrganizationSchema();
+    const webSiteSchema = getWebSiteSchema();
     const softwareSchema = getSoftwareApplicationSchema();
     const faqSchema = getFAQPageSchema(FAQS.map((f) => ({ question: f.q, answer: f.a })));
 
     return {
       meta: [
         { charSet: "utf-8" },
-        { name: "viewport", content: "width=device-width, initial-scale=1" },
+        // viewport is already declared once in __root.tsx's head() — this
+        // route inherits it; repeating the identical tag here just produced
+        // a redundant duplicate in the rendered <head>.
         { name: "theme-color", content: "#141726" },
         ...meta,
       ],
@@ -48,6 +52,10 @@ export const Route = createFileRoute("/")({
         {
           type: "application/ld+json",
           children: serializeSchema(organizationSchema as unknown as Record<string, unknown>),
+        },
+        {
+          type: "application/ld+json",
+          children: serializeSchema(webSiteSchema as unknown as Record<string, unknown>),
         },
         {
           type: "application/ld+json",
@@ -79,7 +87,7 @@ function Landing() {
   return (
     <div className="min-h-screen bg-background">
       <Nav />
-      <main>
+      <main id="main-content">
         <Hero />
         <Proof />
         <Platform />

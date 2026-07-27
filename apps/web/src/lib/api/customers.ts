@@ -1,6 +1,8 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { describeError } from './describe-error';
 import { unwrapResponse } from './error';
 import { apiFetch } from './fetch';
+import { customerKeys } from './query-keys';
 
 // Types matching backend contract exactly
 export type CustomerStatus = 'ACTIVE' | 'AT_RISK' | 'INACTIVE' | 'ARCHIVED';
@@ -82,248 +84,158 @@ export interface UpdateCustomerInput {
   internalNotes?: string | null;
 }
 
-interface ApiResponse<T> {
-  data: T;
-}
-
 class CustomersAPI {
   private baseUrl = '/api';
 
-  async list(params?: ListCustomersParams): Promise<CustomerListResponse> {
-    try {
-      const searchParams = new URLSearchParams();
-      if (params?.page) searchParams.set('page', String(params.page));
-      if (params?.limit) searchParams.set('limit', String(params.limit));
-      if (params?.search) searchParams.set('search', params.search);
-      if (params?.status) searchParams.set('status', params.status);
-      if (params?.includeArchived !== undefined) searchParams.set('includeArchived', String(params.includeArchived));
-      if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
-      if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
+  async list(params: ListCustomersParams = {}): Promise<CustomerListResponse> {
+    const searchParams = new URLSearchParams();
+    if (params.page) searchParams.set('page', String(params.page));
+    if (params.limit) searchParams.set('limit', String(params.limit));
+    if (params.search) searchParams.set('search', params.search);
+    if (params.status) searchParams.set('status', params.status);
+    if (params.includeArchived !== undefined) searchParams.set('includeArchived', String(params.includeArchived));
+    if (params.sortBy) searchParams.set('sortBy', params.sortBy);
+    if (params.sortOrder) searchParams.set('sortOrder', params.sortOrder);
 
-      const url = `${this.baseUrl}/customers${searchParams.toString() ? `?${searchParams}` : ''}`;
-
-      const response = await apiFetch(url, { method: 'GET' });
-
-      return unwrapResponse(response, 'Failed to fetch customers');
-    } catch (error) {
-      console.error('Error fetching customers:', error);
-      throw error;
-    }
+    const url = `${this.baseUrl}/customers${searchParams.toString() ? `?${searchParams}` : ''}`;
+    const response = await apiFetch(url, { method: 'GET' });
+    return unwrapResponse(response, 'Failed to fetch customers');
   }
 
   async getById(id: string): Promise<Customer> {
-    try {
-      const response = await apiFetch(`${this.baseUrl}/customers/${id}`, { method: 'GET' });
-
-      return unwrapResponse(response, 'Failed to fetch customer');
-    } catch (error) {
-      console.error('Error fetching customer:', error);
-      throw error;
-    }
+    const response = await apiFetch(`${this.baseUrl}/customers/${id}`, { method: 'GET' });
+    return unwrapResponse(response, 'Failed to fetch customer');
   }
 
   async create(data: CreateCustomerInput): Promise<Customer> {
-    try {
-      const response = await apiFetch(`${this.baseUrl}/customers`, {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
-
-      return unwrapResponse(response, 'Failed to create customer');
-    } catch (error) {
-      console.error('Error creating customer:', error);
-      throw error;
-    }
+    const response = await apiFetch(`${this.baseUrl}/customers`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return unwrapResponse(response, 'Failed to create customer');
   }
 
   async update(id: string, data: UpdateCustomerInput): Promise<Customer> {
-    try {
-      const response = await apiFetch(`${this.baseUrl}/customers/${id}`, {
-        method: 'PATCH',
-        body: JSON.stringify(data),
-      });
-
-      return unwrapResponse(response, 'Failed to update customer');
-    } catch (error) {
-      console.error('Error updating customer:', error);
-      throw error;
-    }
+    const response = await apiFetch(`${this.baseUrl}/customers/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    return unwrapResponse(response, 'Failed to update customer');
   }
 
   async archive(id: string): Promise<Customer> {
-    try {
-      const response = await apiFetch(`${this.baseUrl}/customers/${id}/archive`, {
-        method: 'POST',
-      });
-
-      return unwrapResponse(response, 'Failed to archive customer');
-    } catch (error) {
-      console.error('Error archiving customer:', error);
-      throw error;
-    }
+    const response = await apiFetch(`${this.baseUrl}/customers/${id}/archive`, {
+      method: 'POST',
+    });
+    return unwrapResponse(response, 'Failed to archive customer');
   }
 
   async restore(id: string): Promise<Customer> {
-    try {
-      const response = await apiFetch(`${this.baseUrl}/customers/${id}/restore`, {
-        method: 'POST',
-      });
-
-      return unwrapResponse(response, 'Failed to restore customer');
-    } catch (error) {
-      console.error('Error restoring customer:', error);
-      throw error;
-    }
+    const response = await apiFetch(`${this.baseUrl}/customers/${id}/restore`, {
+      method: 'POST',
+    });
+    return unwrapResponse(response, 'Failed to restore customer');
   }
 }
 
 export const customersAPI = new CustomersAPI();
 
-export function useCustomersList(initialParams?: ListCustomersParams) {
-  const [data, setData] = useState<Customer[]>([]);
-  const [meta, setMeta] = useState<{ page: number; limit: number; total: number; totalPages: number }>({
-    page: 1,
-    limit: 20,
-    total: 0,
-    totalPages: 0,
+/// Hooks — React Query, matching the Orders module's architecture (Task 8.9)
+/// so Customers is on the same standard: one cache shared by the list,
+/// detail, and create screens, automatic refetch-on-param-change instead of
+/// a manual effect, and no mutation reaching into a neighbour's state —
+/// every write invalidates `customerKeys` and whichever screen is mounted
+/// re-reads it.
+
+export function useCustomersList(params: ListCustomersParams = {}, options: { enabled?: boolean } = {}) {
+  const result = useQuery({
+    queryKey: customerKeys.list(params),
+    queryFn: () => customersAPI.list(params),
+    enabled: options.enabled ?? true,
   });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const fetch = useCallback(
-    async (params?: ListCustomersParams) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const result = await customersAPI.list(params || initialParams);
-        setData(result.items);
-        setMeta(result.meta);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load customers');
-        setData([]);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [] // Empty dependency - fetch is stable, params passed explicitly
-  );
-
-  // Auto-fetch on mount with initialParams
-  useEffect(() => {
-    if (initialParams) {
-      fetch(initialParams);
-    }
-  }, [JSON.stringify(initialParams), fetch]);
-
-  return { data, meta, loading, error, refetch: fetch, fetch };
+  return {
+    data: result.data?.items ?? [],
+    meta: result.data?.meta ?? { page: 1, limit: 20, total: 0, totalPages: 0 },
+    loading: result.isPending,
+    error: result.error ? describeError(result.error, 'Failed to load customers') : null,
+    refetch: result.refetch,
+  };
 }
 
 export function useCustomerDetail(id: string) {
-  const [data, setData] = useState<Customer | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const result = useQuery({
+    queryKey: customerKeys.detail(id),
+    queryFn: () => customersAPI.getById(id),
+    enabled: Boolean(id),
+  });
 
-  const fetch = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await customersAPI.getById(id);
-      setData(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load customer');
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
+  return {
+    data: result.data ?? null,
+    loading: result.isPending,
+    error: result.error ? describeError(result.error, 'Failed to load customer') : null,
+    refetch: result.refetch,
+  };
+}
 
-  return { data, loading, error, refetch: fetch, fetch };
+function useInvalidateCustomers() {
+  const queryClient = useQueryClient();
+  return () => queryClient.invalidateQueries({ queryKey: customerKeys.all });
 }
 
 export function useCreateCustomer() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const invalidate = useInvalidateCustomers();
+  const mutation = useMutation({
+    mutationFn: (input: CreateCustomerInput) => customersAPI.create(input),
+    onSuccess: invalidate,
+  });
 
-  const create = useCallback(async (input: CreateCustomerInput) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await customersAPI.create(input);
-      return result;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to create customer';
-      setError(message);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  return { create, loading, error };
+  return {
+    create: mutation.mutateAsync,
+    loading: mutation.isPending,
+    error: mutation.error ? describeError(mutation.error, 'Failed to create customer') : null,
+  };
 }
 
 export function useUpdateCustomer() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const invalidate = useInvalidateCustomers();
+  const mutation = useMutation({
+    mutationFn: ({ id, input }: { id: string; input: UpdateCustomerInput }) =>
+      customersAPI.update(id, input),
+    onSuccess: invalidate,
+  });
 
-  const update = useCallback(async (id: string, input: UpdateCustomerInput) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await customersAPI.update(id, input);
-      return result;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to update customer';
-      setError(message);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  return { update, loading, error };
+  return {
+    update: (id: string, input: UpdateCustomerInput) => mutation.mutateAsync({ id, input }),
+    loading: mutation.isPending,
+    error: mutation.error ? describeError(mutation.error, 'Failed to update customer') : null,
+  };
 }
 
 export function useArchiveCustomer() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const invalidate = useInvalidateCustomers();
+  const mutation = useMutation({
+    mutationFn: (id: string) => customersAPI.archive(id),
+    onSuccess: invalidate,
+  });
 
-  const archive = useCallback(async (id: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await customersAPI.archive(id);
-      return result;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to archive customer';
-      setError(message);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  return { archive, loading, error };
+  return {
+    archive: mutation.mutateAsync,
+    loading: mutation.isPending,
+    error: mutation.error ? describeError(mutation.error, 'Failed to archive customer') : null,
+  };
 }
 
 export function useRestoreCustomer() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const invalidate = useInvalidateCustomers();
+  const mutation = useMutation({
+    mutationFn: (id: string) => customersAPI.restore(id),
+    onSuccess: invalidate,
+  });
 
-  const restore = useCallback(async (id: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await customersAPI.restore(id);
-      return result;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to restore customer';
-      setError(message);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  return { restore, loading, error };
+  return {
+    restore: mutation.mutateAsync,
+    loading: mutation.isPending,
+    error: mutation.error ? describeError(mutation.error, 'Failed to restore customer') : null,
+  };
 }

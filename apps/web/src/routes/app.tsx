@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate, Outlet } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/app-shell";
+import { DriverAppShell } from "@/components/layout/driver-app-shell";
 import { getNavForRole } from "@/components/layout/nav-config";
 import { sessionManager, useLogout, useCurrentUser } from "@/lib/api/auth";
 import { onSessionExpired } from "@/lib/api/session";
@@ -35,6 +36,15 @@ function AppRoute() {
 
   const role = (currentUser?.membership.role ?? "") as MembershipRole;
   const isPlatformAdmin = currentUser?.user.isPlatformAdmin === true;
+
+  if (role === "DRIVER") {
+    return (
+      <DriverAppShell currentUser={currentUser ?? null} onSignOut={() => void handleLogout()}>
+        <Outlet />
+      </DriverAppShell>
+    );
+  }
+
   const nav = getNavForRole(role, isPlatformAdmin);
 
   return (

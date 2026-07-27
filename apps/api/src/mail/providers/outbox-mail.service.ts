@@ -2,7 +2,9 @@ import { Logger } from "@nestjs/common";
 import {
   MailService,
   type CustomerPortalInvitationEmailMessage,
+  type DemoConfirmationEmailMessage,
   type InvitationEmailMessage,
+  type LeadNotificationEmailMessage,
   type RawEmailMessage,
 } from "../mail.service";
 import { MailOutbox } from "../mail.outbox";
@@ -38,6 +40,18 @@ export class OutboxMailService extends MailService {
   sendRawEmail(message: RawEmailMessage): Promise<void> {
     this.outbox.recordRaw(message);
     this.logger.debug(`Raw email captured (not sent). To: ${message.to}, Subject: ${message.subject}`);
+    return Promise.resolve();
+  }
+
+  sendLeadNotificationEmail(message: LeadNotificationEmailMessage): Promise<void> {
+    this.outbox.recordLeadNotification(message);
+    this.logger.debug(`Lead notification email captured (not sent). To: ${message.to}, Company: ${message.company}`);
+    return Promise.resolve();
+  }
+
+  sendDemoConfirmationEmail(message: DemoConfirmationEmailMessage): Promise<void> {
+    this.outbox.recordDemoConfirmation(message);
+    this.logger.debug(`Demo confirmation email captured (not sent). To: ${message.to}`);
     return Promise.resolve();
   }
 }

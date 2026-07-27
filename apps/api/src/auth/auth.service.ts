@@ -6,6 +6,7 @@ import { AuditService } from "../audit/audit.service";
 import type { AuthConfig } from "../config/configuration";
 import { generateUniqueSlug } from "../organizations/slug.util";
 import { PrismaService } from "../prisma/prisma.service";
+import { TrackingService } from "../telematics/tracking/tracking.service";
 import { ChangePasswordDto } from "./dto/change-password.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RefreshDto } from "./dto/refresh.dto";
@@ -28,6 +29,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly auditService: AuditService,
+    private readonly tracking: TrackingService,
   ) {
     this.authConfig = this.configService.get<AuthConfig>("auth")!;
   }
@@ -180,6 +182,10 @@ export class AuthService {
       });
     }
 
+    await this.tracking
+      .endSessionsForUser(currentUser.organizationId, currentUser.userId)
+      .catch(() => undefined);
+
     await this.auditService.log({
       organizationId: currentUser.organizationId,
       actorUserId: currentUser.userId,
@@ -194,6 +200,10 @@ export class AuthService {
       where: { userId: currentUser.userId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+
+    await this.tracking
+      .endSessionsForUser(currentUser.organizationId, currentUser.userId)
+      .catch(() => undefined);
 
     await this.auditService.log({
       organizationId: currentUser.organizationId,

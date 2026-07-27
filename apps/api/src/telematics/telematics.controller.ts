@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Res, UseGuards } from "@nestjs/common";
 import type { Response } from "express";
 import type { MembershipRole } from "@prisma/client";
+import { TrackingSessionSource } from "@prisma/client";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { RawResponse } from "../common/decorators/raw-response.decorator";
@@ -8,14 +9,14 @@ import { SkipTimeout } from "../common/decorators/skip-timeout.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
-import { AnalyticsQueryDto } from "./dto/analytics-query.dto";
 import { EtaQueryDto } from "./dto/eta-query.dto";
 import { IngestPositionsDto } from "./dto/ingest-positions.dto";
 import { PlaybackQueryDto } from "./dto/playback-query.dto";
-import { IngestionService } from "./ingestion/ingestion.service";
 import { normalizeIngestDto } from "./ingestion/normalize-ingest-dto";
+import { openTelematicsSseStream } from "./realtime/open-sse-stream";
 import { TelematicsRealtimeService } from "./realtime/telematics-realtime.service";
 import { TelematicsService } from "./telematics.service";
+import { TrackingService } from "./tracking/tracking.service";
 
 /// Fleet data is dispatcher-and-up, matching VehiclesController / DriversController.
 const OPS: MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER"];
@@ -28,7 +29,7 @@ const OPS: MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER"];
 export class TelematicsController {
   constructor(
     private readonly telematics: TelematicsService,
-    private readonly ingestion: IngestionService,
+    private readonly tracking: TrackingService,
     private readonly realtime: TelematicsRealtimeService,
   ) {}
 
@@ -43,7 +44,7 @@ export class TelematicsController {
   ///   - `vehicleIds`: comma-separated list of vehicle IDs to filter by
   ///     (e.g., `?vehicleIds=uuid1,uuid2`)
   ///
-  /// Events streamed: position, state, alert, geofence, trip.
+  /// Events streamed: position, state, alert, geofence, trip, heartbeat.
   ///
   /// @RawResponse() because the body is an SSE stream, not a JSON document —
   /// TransformInterceptor would otherwise try to wrap it.
@@ -51,58 +52,19 @@ export class TelematicsController {
   @Get("live-stream")
   @SkipTimeout()
   @RawResponse()
-  async liveStream(
+  liveStream(
     @CurrentUser() user: CurrentUserPayload,
     @Query("vehicleIds") vehicleIdsParam: string | undefined,
     @Res() res: Response,
-  ): Promise<void> {
+  ): void {
     const vehicleIds = vehicleIdsParam
       ? new Set(vehicleIdsParam.split(",").map((id) => id.trim()).filter(Boolean))
       : undefined;
 
-    // Admission control BEFORE any SSE header is written. Once headers are
-    // flushed the response is committed to a 200 event-stream and a clean HTTP
-    // status is no longer possible — so an over-limit client must be rejected
-    // here, with 429 + Retry-After, before opening the stream or arming timers.
-    const admitted = this.realtime.tryRegisterClient(res, {
+    openTelematicsSseStream(this.realtime, res, {
       organizationId: user.organizationId,
       vehicleIds,
     });
-    if (!admitted) {
-      res.setHeader("Retry-After", "30");
-      res.status(429).json({
-        statusCode: 429,
-        message: "Too many active telematics streams. Please retry shortly.",
-      });
-      return;
-    }
-
-    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
-    res.setHeader("Cache-Control", "no-cache, no-transform");
-    res.setHeader("Connection", "keep-alive");
-    // Nginx buffers proxied responses by default, which would hold every event
-    // until the stream ended and make streaming pointless in production.
-    res.setHeader("X-Accel-Buffering", "no");
-    res.flushHeaders();
-
-    // The client vanishing (tab closed, navigated away) must remove them from
-    // the registry, otherwise we keep trying to write to a dead stream.
-    res.on("close", () => {
-      this.realtime.removeClient(res);
-    });
-
-    // Send a comment (keep-alive) every 30 seconds to hold the connection open
-    // through proxies that would otherwise timeout an idle stream.
-    const keepAliveInterval = setInterval(() => {
-      if (!res.writableEnded) {
-        res.write(": keep-alive\n\n");
-      } else {
-        clearInterval(keepAliveInterval);
-      }
-    }, 30000);
-
-    // Never end the stream ourselves — it stays open until the client
-    // disconnects or the server shuts down.
   }
 
   @Roles(...OPS)
@@ -134,7 +96,11 @@ export class TelematicsController {
     @Query() query: PlaybackQueryDto,
     @CurrentUser() user: CurrentUserPayload,
   ) {
-    return this.telematics.historicalPlayback(user.organizationId, vehicleId, { from: query.from, to: query.to, limit: query.limit });
+    return this.telematics.historicalPlayback(user.organizationId, vehicleId, {
+      from: query.from,
+      to: query.to,
+      limit: query.limit,
+    });
   }
 
   /// Staff hand-entry / first-party integration for a specific vehicle.
@@ -145,9 +111,11 @@ export class TelematicsController {
     @Body() dto: IngestPositionsDto,
     @CurrentUser() user: CurrentUserPayload,
   ) {
-    return this.ingestion.ingestForVehicle(
-      { organizationId: user.organizationId, vehicleId },
+    return this.tracking.receiveForVehicle(
+      user.organizationId,
+      vehicleId,
       dto.positions.map(normalizeIngestDto),
+      { source: TrackingSessionSource.STAFF },
     );
   }
 
@@ -156,6 +124,10 @@ export class TelematicsController {
   @Roles("DRIVER")
   @Post("my-location")
   ingestMyLocation(@Body() dto: IngestPositionsDto, @CurrentUser() user: CurrentUserPayload) {
-    return this.ingestion.ingestForDriver(user.organizationId, user.userId, dto.positions.map(normalizeIngestDto));
+    return this.tracking.receiveForDriver(
+      user.organizationId,
+      user.userId,
+      dto.positions.map(normalizeIngestDto),
+    );
   }
 }

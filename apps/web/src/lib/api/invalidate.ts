@@ -1,5 +1,13 @@
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { availabilityKeys, dispatchKeys, driverDispatchKeys, orderKeys } from './query-keys';
+import {
+  availabilityKeys,
+  dashboardKeys,
+  dispatchBoardKeys,
+  dispatchKeys,
+  driverDispatchKeys,
+  orderKeys,
+  reportKeys,
+} from './query-keys';
 
 /// The ONE invalidation helper. Every operational mutation goes through it.
 ///
@@ -8,7 +16,7 @@ import { availabilityKeys, dispatchKeys, driverDispatchKeys, orderKeys } from '.
 /// Under ADR-001 there is only ONE operational fact — the Dispatch — and Order and
 /// availability are both *views* of it. Assigning, reassigning, cancelling and
 /// moving a dispatch all change that same fact, so they all invalidate the same
-/// three roots. There is no mutation that moves a dispatch without changing the
+/// roots. There is no mutation that moves a dispatch without changing the
 /// order it projects onto, and none that changes either without changing who is
 /// free. Writing four near-identical invalidation lists would just be four chances
 /// to forget one — and the one people forget is always `availability`, which is how
@@ -17,6 +25,8 @@ import { availabilityKeys, dispatchKeys, driverDispatchKeys, orderKeys } from '.
 /// So: state the rule once, in the place the rule lives.
 ///
 ///   dispatch changed  ->  dispatches.*  +  orders.*  +  availability.*
+///                      +  dispatch-board  +  dashboard  +  driver-dispatches
+///                      +  reports
 ///
 /// Drivers and vehicles are deliberately NOT invalidated. Assigning somebody does
 /// not change their employment status or their number plate — only whether they are
@@ -38,6 +48,15 @@ export function invalidateOperationalState(queryClient: QueryClient): Promise<vo
     // from two ends, and each must move the other's screen. Cheap: these queries
     // only exist while a driver is looking at them.
     queryClient.invalidateQueries({ queryKey: driverDispatchKeys.all }),
+    // Operations Center board summary (unassigned + free/busy) — same fact,
+    // summarized. Without this, assign/cancel leaves the board cards stale.
+    queryClient.invalidateQueries({ queryKey: dispatchBoardKeys.all }),
+    // Command Center KPIs (delayed / unassigned / active) share the same
+    // operational snapshot.
+    queryClient.invalidateQueries({ queryKey: dashboardKeys.all }),
+    // Reports KPIs / exception lists are projections of the same operational
+    // + financial facts.
+    queryClient.invalidateQueries({ queryKey: reportKeys.all }),
   ]).then(() => undefined);
 }
 

@@ -3,14 +3,16 @@ import {
   DispatchAssignmentConflictError,
   DispatchNumberConflictError,
   DriverDoubleBookedError,
+  OrderAlreadyHasDispatchError,
   VehicleDoubleBookedError,
 } from "./dispatch.errors";
 
 /// The database constraints added by
-/// 20260711120000_add_dispatch_assignment_and_overlap_constraints. These names
-/// are the contract between the migration and this translator: we key off the
-/// constraint NAME, never off the human-readable SQL prose around it. If the
-/// migration renames one, this file is the single place that must follow.
+/// 20260711120000_add_dispatch_assignment_and_overlap_constraints (and later
+/// partial uniques). These names are the contract between the migration and
+/// this translator: we key off the constraint NAME, never off the
+/// human-readable SQL prose around it. If the migration renames one, this
+/// file is the single place that must follow.
 export const DISPATCH_CONSTRAINT = {
   /// R5 — GiST EXCLUDE on (organizationId, driverId, scheduled window).
   DRIVER_OVERLAP: "dispatches_driver_no_overlap",
@@ -18,6 +20,8 @@ export const DISPATCH_CONSTRAINT = {
   VEHICLE_OVERLAP: "dispatches_vehicle_no_overlap",
   /// R9 — partial unique on dispatch_assignments(dispatchId) WHERE unassignedAt IS NULL.
   ONE_OPEN_ASSIGNMENT: "dispatch_assignments_one_open_per_dispatch",
+  /// R2 — partial unique on dispatches(orderId) WHERE status NOT IN (CANCELLED, DELIVERED).
+  ONE_LIVE_PER_ORDER: "dispatches_one_live_per_order",
 } as const;
 
 /// Postgres raises 23P01 for an exclusion-constraint violation, and Prisma does
@@ -60,6 +64,11 @@ export function translateDispatchWriteError(error: unknown): never {
   }
   if (isUniqueViolation(error, "Dispatch", "dispatchNumber")) {
     throw new DispatchNumberConflictError();
+  }
+  // Partial unique on orderId — Prisma reports the indexed field, not the
+  // constraint name, so we key off model + field the same way as R9.
+  if (isUniqueViolation(error, "Dispatch", "orderId")) {
+    throw new OrderAlreadyHasDispatchError();
   }
   throw error;
 }

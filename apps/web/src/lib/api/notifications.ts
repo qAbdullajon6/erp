@@ -138,6 +138,9 @@ export const notificationKeys = {
 function invalidateAllNotificationQueries(queryClient: ReturnType<typeof useQueryClient>) {
   queryClient.invalidateQueries({ queryKey: notificationKeys.lists() });
   queryClient.invalidateQueries({ queryKey: notificationKeys.unreadCount() });
+  // Dual stacks: bell uses `/notifications`, full page uses `/notification-center`.
+  // Mutations on either must refresh both so the badge and page never diverge.
+  queryClient.invalidateQueries({ queryKey: ['notification-center'] });
 }
 
 export function useNotificationsQuery(params: ListNotificationsParams = {}, enabled = true) {

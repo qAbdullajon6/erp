@@ -3,11 +3,14 @@
 import { useRef, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { z } from 'zod';
-import { AlertCircle, CheckCircle2, Eye, EyeOff, Truck } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { AlertCircle, CheckCircle2, Mail } from 'lucide-react';
+import { AuthShell } from '@/components/auth/AuthShell';
+import { AuthStatusCard } from '@/components/auth/AuthStatusCard';
+import { TextField } from '@/components/auth/TextField';
+import { PasswordField } from '@/components/auth/PasswordField';
+import { SubmitButton } from '@/components/auth/SubmitButton';
 import { Button } from '@/components/ui/button';
-import { LoadingState, ErrorState } from '@/components/shared/list-states';
+import { FormAlert } from '@/components/shared/form-alert';
 import {
   useAcceptCustomerPortalInvitation,
   useValidateCustomerPortalInvitation,
@@ -37,7 +40,6 @@ function AcceptPortalInvitationPage() {
 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [succeeded, setSucceeded] = useState(false);
@@ -45,53 +47,34 @@ function AcceptPortalInvitationPage() {
   const passwordRef = useRef<HTMLInputElement>(null);
   const confirmRef = useRef<HTMLInputElement>(null);
 
-  const Shell = ({ children }: { children: React.ReactNode }) => (
-    <div className="relative min-h-screen bg-background">
-      <div className="flex min-h-screen items-center justify-center px-4 py-12">
-        <div className="w-full max-w-md">
-          <div className="mb-8 text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-brand/10">
-              <Truck className="h-6 w-6 text-brand" />
-            </div>
-            <h1 className="font-display text-2xl font-bold tracking-tight">Customer Portal</h1>
-            <p className="mt-2 text-sm text-muted-foreground">Activate your account to get started.</p>
-          </div>
-          <div className="rounded-2xl border border-border/60 bg-surface/80 p-8 shadow-elevated backdrop-blur">
-            {children}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
   if (!token) {
     return (
-      <Shell>
-        <ErrorState message="This activation link is missing its token. Please use the link from your invitation email." />
-      </Shell>
+      <AuthShell title="Activate your account">
+        <AuthStatusCard
+          icon={AlertCircle}
+          tone="destructive"
+          title="This link is missing its token"
+          description="Please use the activation link from your invitation email."
+        />
+      </AuthShell>
     );
   }
 
   if (succeeded) {
     return (
-      <Shell>
-        <div className="space-y-6">
-          <div className="flex items-start gap-3 rounded-xl border border-border/60 bg-background/40 p-4">
-            <span className="mt-0.5 shrink-0 rounded-lg bg-brand/10 p-2 text-brand" aria-hidden="true">
-              <CheckCircle2 className="h-4 w-4" />
-            </span>
-            <div className="text-sm">
-              <p className="font-medium text-foreground">Account activated successfully.</p>
-              <p className="mt-1 text-muted-foreground">
-                You can now sign in using your email and the password you just set.
-              </p>
-            </div>
-          </div>
-          <Button asChild className="h-11 w-full bg-gradient-brand text-brand-foreground hover:opacity-90">
-            <Link to="/portal/login">Go to Sign In</Link>
-          </Button>
-        </div>
-      </Shell>
+      <AuthShell title="Account activated" subtitle="Your account is ready to use.">
+        <AuthStatusCard
+          icon={CheckCircle2}
+          tone="success"
+          title="You're all set"
+          description="You can now sign in using your email and the password you just set."
+          action={
+            <Button asChild className="h-11 w-full rounded-xl bg-gradient-brand text-brand-foreground hover:opacity-90">
+              <Link to="/portal/login">Go to Sign In</Link>
+            </Button>
+          }
+        />
+      </AuthShell>
     );
   }
 
@@ -120,115 +103,79 @@ function AcceptPortalInvitationPage() {
   };
 
   return (
-    <Shell>
+    <AuthShell title="Activate your account" subtitle="Set a password to get started.">
       {validation.isLoading ? (
         <div role="status" aria-live="polite" aria-busy="true">
-          <LoadingState label="Checking your invitation…" />
+          <AuthStatusCard icon={AlertCircle} spin tone="brand" title="Checking your invitation…" />
         </div>
       ) : validation.isError || !validation.data ? (
-        <ErrorState
-          message={
+        <AuthStatusCard
+          icon={AlertCircle}
+          tone="destructive"
+          title="This invitation isn't available"
+          description={
             validation.error instanceof Error
               ? validation.error.message
               : 'This invitation could not be loaded. It may be invalid or no longer available.'
           }
         />
       ) : (
-        <form onSubmit={onSubmit} className="space-y-4" noValidate>
+        <form onSubmit={onSubmit} className="space-y-5" noValidate>
           {formError && (
-            <div
-              role="alert"
-              className="flex items-start gap-2 rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
-            >
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{formError}</span>
+            <div key={formError} className="auth-shake">
+              <FormAlert message={formError} />
             </div>
           )}
 
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm leading-relaxed text-muted-foreground">
             <span className="font-medium text-foreground">{validation.data.customerCompanyName}</span> has been
             invited to the {validation.data.organizationName} customer portal.
           </p>
 
-          <div className="grid gap-2">
-            <Label htmlFor="invite-email">Email</Label>
-            <Input
-              id="invite-email"
-              type="email"
-              value={validation.data.email}
-              readOnly
-              disabled
-              autoComplete="email"
-              className="h-11 bg-background/40"
-            />
-          </div>
+          <TextField
+            id="invite-email"
+            label="Email"
+            type="email"
+            value={validation.data.email}
+            readOnly
+            disabled
+            autoComplete="email"
+            icon={<Mail className="h-4 w-4" />}
+          />
 
-          <div className="grid gap-2">
-            <Label htmlFor="password">Password</Label>
-            <div className="relative">
-              <Input
-                id="password"
-                ref={passwordRef}
-                type={showPassword ? 'text' : 'password'}
-                required
-                autoComplete="new-password"
-                placeholder="••••••••"
-                className="h-11 bg-background/40 pr-11"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                disabled={accept.isPending}
-                aria-invalid={fieldErrors.password ? true : undefined}
-                aria-describedby={fieldErrors.password ? 'password-error password-hint' : 'password-hint'}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-2 text-muted-foreground transition-colors hover:text-foreground"
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
-                tabIndex={-1}
-              >
-                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </div>
-            <p id="password-hint" className="text-xs text-muted-foreground">
-              Use at least 8 characters.
-            </p>
-            {fieldErrors.password && (
-              <p id="password-error" className="text-sm text-destructive">
-                {fieldErrors.password}
-              </p>
-            )}
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="confirmPassword">Confirm password</Label>
-            <Input
-              id="confirmPassword"
-              ref={confirmRef}
-              type={showPassword ? 'text' : 'password'}
-              required
-              autoComplete="new-password"
-              placeholder="••••••••"
-              className="h-11 bg-background/40"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              disabled={accept.isPending}
-              aria-invalid={fieldErrors.confirmPassword ? true : undefined}
-            />
-            {fieldErrors.confirmPassword && (
-              <p className="text-sm text-destructive">{fieldErrors.confirmPassword}</p>
-            )}
-          </div>
-
-          <Button
-            type="submit"
+          <PasswordField
+            id="password"
+            ref={passwordRef}
+            label="Password"
+            required
+            autoComplete="new-password"
+            placeholder="••••••••"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
             disabled={accept.isPending}
-            className="h-11 w-full bg-gradient-brand text-brand-foreground hover:opacity-90"
-          >
-            {accept.isPending ? 'Activating…' : 'Activate account'}
-          </Button>
+            error={fieldErrors.password}
+            hint={fieldErrors.password ? undefined : 'Use at least 8 characters.'}
+            showStrength
+          />
+
+          <PasswordField
+            id="confirmPassword"
+            ref={confirmRef}
+            label="Confirm password"
+            required
+            autoComplete="new-password"
+            placeholder="••••••••"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            disabled={accept.isPending}
+            error={fieldErrors.confirmPassword}
+          />
+
+          <SubmitButton loading={accept.isPending} loadingLabel="Activating…">
+            Activate account
+          </SubmitButton>
         </form>
       )}
-    </Shell>
+    </AuthShell>
   );
 }

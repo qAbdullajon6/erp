@@ -59,7 +59,7 @@ export function Closing() {
           </Reveal>
           <Reveal delay={230}>
             <p className="mt-5 text-sm text-muted-foreground">
-              14-day trial · No credit card · 2-hour average response
+              14-day trial · No credit card · We reply within one business day
             </p>
           </Reveal>
 

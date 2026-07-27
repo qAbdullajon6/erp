@@ -10,12 +10,34 @@
 
 import { siteConfig, socialProfiles } from '@/lib/site-config';
 
+/**
+ * Stable JSON-LD `@id` anchors. Giving Organization and WebSite their own
+ * `@id` and cross-referencing them (WebSite.publisher -> Organization,
+ * Organization.url -> WebSite) is what lets Google's Knowledge Graph resolve
+ * "FlowERP" to one entity instead of guessing from the bare domain name —
+ * flowerp.uz reads visually close to "flower" + ".uz", which is why Gemini
+ * has confused it with an unrelated flower-delivery business. `@id` linking
+ * plus `alternateName` are the structured-data levers available to correct
+ * that; the rest is time and re-crawling.
+ */
+const ORGANIZATION_ID = `${siteConfig.url}/#organization`;
+const WEBSITE_ID = `${siteConfig.url}/#website`;
+
+interface ImageObjectSchema {
+  '@type': 'ImageObject';
+  url: string;
+  width?: number;
+  height?: number;
+}
+
 interface OrganizationSchema {
   '@context': 'https://schema.org';
   '@type': 'Organization';
+  '@id': string;
   name: string;
+  alternateName?: string;
   url: string;
-  logo: string;
+  logo: ImageObjectSchema;
   description: string;
   contactPoint?: {
     '@type': 'ContactPoint';
@@ -24,6 +46,18 @@ interface OrganizationSchema {
     email?: string;
   };
   sameAs?: string[]; // Social media profiles
+}
+
+interface WebSiteSchema {
+  '@context': 'https://schema.org';
+  '@type': 'WebSite';
+  '@id': string;
+  name: string;
+  alternateName?: string;
+  url: string;
+  description: string;
+  inLanguage: string;
+  publisher: { '@id': string };
 }
 
 interface SoftwareApplicationSchema {
@@ -39,6 +73,7 @@ interface SoftwareApplicationSchema {
   };
   description: string;
   url: string;
+  provider: { '@id': string };
   screenshot?: string;
   aggregateRating?: {
     '@type': 'AggregateRating';
@@ -76,12 +111,21 @@ interface BreadcrumbListSchema {
  * Tells Google who we are, where to find us, and how to contact us.
  */
 export function getOrganizationSchema(): OrganizationSchema {
+  const sameAs = socialProfiles();
+
   return {
     '@context': 'https://schema.org',
     '@type': 'Organization',
+    '@id': ORGANIZATION_ID,
     name: siteConfig.name,
+    alternateName: siteConfig.legalName,
     url: siteConfig.url,
-    logo: siteConfig.logo,
+    logo: {
+      '@type': 'ImageObject',
+      url: siteConfig.logo,
+      width: 512,
+      height: 512,
+    },
     description:
       'FlowERP orchestrates logistics operations with AI. Orders, dispatch, fleet, and finance unified in one command center.',
     contactPoint: {
@@ -90,13 +134,43 @@ export function getOrganizationSchema(): OrganizationSchema {
       contactType: 'Sales',
       email: siteConfig.contact.email,
     },
-    sameAs: socialProfiles(),
+    // Omit entirely rather than publish `sameAs: []` — an empty array is a
+    // meaningless "we checked and found nothing" signal to crawlers, not a
+    // neutral default. Only appears once real social profiles are configured.
+    ...(sameAs.length > 0 ? { sameAs } : {}),
+  };
+}
+
+/**
+ * Generate WebSite schema for the marketing domain.
+ * Distinct from Organization: this describes the *site*, not the company,
+ * and is the other half of the `@id` graph search engines use to resolve
+ * ambiguous brand names to a single entity.
+ */
+export function getWebSiteSchema(): WebSiteSchema {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    '@id': WEBSITE_ID,
+    name: siteConfig.legalName,
+    alternateName: siteConfig.name,
+    url: siteConfig.url,
+    description: siteConfig.description,
+    inLanguage: 'en',
+    publisher: { '@id': ORGANIZATION_ID },
   };
 }
 
 /**
  * Generate SoftwareApplication schema.
  * Helps Google understand that FlowERP is a software product.
+ *
+ * Deliberately not also emitting a `Product` schema for the same offering:
+ * schema.org's own guidance is that SaaS is modeled as SoftwareApplication,
+ * and `Product` is oriented at physical/e-commerce goods (it expects things
+ * like `sku`/`gtin`/`review` that don't apply here). Publishing both for one
+ * offering creates two competing entities instead of one clear one, which
+ * works against disambiguation rather than for it.
  */
 export function getSoftwareApplicationSchema(): SoftwareApplicationSchema {
   return {
@@ -113,6 +187,7 @@ export function getSoftwareApplicationSchema(): SoftwareApplicationSchema {
     description:
       'AI-powered logistics management platform. Orders, dispatch, fleet tracking, and finance in one unified system. 14-day free trial, no credit card required.',
     url: siteConfig.url,
+    provider: { '@id': ORGANIZATION_ID },
     // screenshot: 'https://flowerp.uz/screenshots/dashboard.png', // Add when available
     // aggregateRating: {
     //   '@type': 'AggregateRating',

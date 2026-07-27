@@ -1,33 +1,45 @@
 import { Link } from "@tanstack/react-router";
-import { Truck, ArrowRight } from "lucide-react";
+import { ArrowRight, Phone, Radio, Truck } from "lucide-react";
 import type { DispatchBoardSummary } from "@/lib/api/dashboard";
+import type { Vehicle as LiveVehicle } from "@/lib/api/telematics";
+import { formatMoney, formatRelativeTime } from "@/lib/format";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SurfaceCard, SurfaceCardHeader } from "@/components/ui/surface-card";
-import { SectionHeader } from "@/components/ui/section-header";
-import { EmptyState } from "@/components/shared/list-states";
-import { StatusBadge } from "@/components/shared/status-badge";
+import { cn } from "@/lib/utils";
 
 interface LiveDispatchProps {
   board: DispatchBoardSummary | null;
   loading: boolean;
+  /// Optional live telematics keyed by vehicleId — speed, GPS age, movement.
+  liveByVehicleId?: Map<string, LiveVehicle>;
 }
 
-/// Shows what the dispatch board's own `busy` lists already carry (a
-/// vehicle plus the order it's on, and separately a driver plus the same
-/// order) — the board endpoint was already returning this; the dashboard
-/// just used to throw it away and keep only `.length`. Vehicle and driver
-/// are correlated by `currentOrder.id`, since that's the one real key both
-/// lists share — no new data, just joining what's already there.
-export function LiveDispatch({ board, loading }: LiveDispatchProps) {
-  if (loading) {
-    return <Skeleton className="h-80 rounded-2xl" />;
-  }
+const STAGE: Record<string, { step: number; label: string }> = {
+  ASSIGNED: { step: 1, label: "Assigned" },
+  PICKED_UP: { step: 2, label: "Picked up" },
+  IN_TRANSIT: { step: 3, label: "In transit" },
+  EN_ROUTE_TO_PICKUP: { step: 1, label: "To pickup" },
+  AT_PICKUP: { step: 2, label: "At pickup" },
+};
 
+function scheduleRisk(deliveryDate: string): { text: string; late: boolean } {
+  const hours = (new Date(deliveryDate).getTime() - Date.now()) / 3_600_000;
+  if (hours < 0) {
+    return { text: `${Math.max(1, Math.floor(-hours / 24))}d late`, late: true };
+  }
+  if (hours < 24) return { text: `Due ${Math.max(1, Math.round(hours))}h`, late: false };
+  return {
+    text: `Due ${new Date(deliveryDate).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`,
+    late: false,
+  };
+}
+
+export function LiveDispatch({ board, loading, liveByVehicleId }: LiveDispatchProps) {
+  if (loading) return <Skeleton className="h-56 rounded-xl" />;
   if (!board) {
     return (
-      <SurfaceCard className="flex h-full flex-col p-6">
-        <SectionHeader title="Live Dispatch" />
-        <p className="mt-3 text-sm text-muted-foreground">Fleet status isn't available for your role.</p>
+      <SurfaceCard className="p-3">
+        <p className="text-sm text-muted-foreground">Fleet not available for your role.</p>
       </SurfaceCard>
     );
   }
@@ -37,50 +49,104 @@ export function LiveDispatch({ board, loading }: LiveDispatchProps) {
 
   return (
     <SurfaceCard className="flex h-full flex-col">
-      <SurfaceCardHeader>
-        <SectionHeader title="Live Dispatch" subtitle="Vehicles on the road right now" />
-        <span className="rounded-full bg-brand/10 px-3 py-1 text-sm font-semibold text-brand">{active.length}</span>
+      <SurfaceCardHeader className="py-2">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">On the road</h3>
+          <p className="text-[11px] text-muted-foreground">Live fleet · GPS when available</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="rounded-md bg-brand/10 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-brand">
+            {active.length}
+          </span>
+          <Link to="/app/fleet-tracking" className="text-[11px] font-medium text-brand hover:underline">
+            Map
+          </Link>
+        </div>
       </SurfaceCardHeader>
 
-      <div className="max-h-80 flex-1 divide-y divide-brand/10 overflow-y-auto scrollbar-thin">
+      <div className="max-h-64 flex-1 divide-y divide-border/60 overflow-y-auto scrollbar-thin">
         {active.length === 0 && (
-          <EmptyState icon={Truck} title="No vehicle is out on a trip right now" />
+          <div className="flex flex-col items-center gap-1 px-4 py-6 text-center">
+            <Truck className="h-5 w-5 text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">No vehicles out</p>
+          </div>
         )}
 
         {active.map(({ vehicle, currentOrder }) => {
           const driver = driverByOrderId.get(currentOrder.id);
+          const stage = STAGE[currentOrder.status] ?? { step: 1, label: currentOrder.status };
+          const risk = scheduleRisk(currentOrder.deliveryDate);
+          const live = liveByVehicleId?.get(vehicle.id);
+          const gpsAge = live?.lastReceivedAt ? formatRelativeTime(live.lastReceivedAt) : null;
+
           return (
-            <Link
-              key={vehicle.id}
-              to="/app/orders/$orderId"
-              params={{ orderId: currentOrder.id }}
-              className="flex items-center gap-4 px-6 py-4 transition-colors hover:bg-background/40"
-            >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
-                <Truck className="h-4 w-4" />
+            <div key={vehicle.id} className="flex items-start gap-2 px-3 py-2">
+              <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-brand/10 text-brand">
+                <Truck className="h-3 w-3" />
               </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 truncate">
-                  <span className="truncate font-mono text-sm font-semibold text-foreground">
-                    {vehicle.plateNumber}
-                  </span>
-                  {driver ? (
-                    <span className="truncate text-xs text-muted-foreground">
+              <Link
+                to="/app/orders/$orderId"
+                params={{ orderId: currentOrder.id }}
+                className="min-w-0 flex-1"
+              >
+                <div className="flex items-center gap-1.5 truncate text-[13px] font-medium text-foreground">
+                  <span className="font-mono font-semibold">{vehicle.plateNumber}</span>
+                  {driver && (
+                    <span className="truncate text-muted-foreground">
                       {driver.firstName} {driver.lastName}
                     </span>
-                  ) : null}
+                  )}
                 </div>
-                <div className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-muted-foreground">
-                  <span className="truncate">{currentOrder.pickupCity}</span>
-                  <ArrowRight className="h-3 w-3 shrink-0" />
-                  <span className="truncate">{currentOrder.deliveryCity}</span>
+                <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[10px] text-muted-foreground">
+                  {currentOrder.customerName && <span className="truncate">{currentOrder.customerName}</span>}
+                  <span className="inline-flex items-center gap-0.5">
+                    {currentOrder.pickupCity}
+                    <ArrowRight className="h-2.5 w-2.5" />
+                    {currentOrder.deliveryCity}
+                  </span>
                 </div>
-              </div>
-              <div className="flex shrink-0 flex-col items-end gap-1">
-                <StatusBadge status={currentOrder.status} />
-                <span className="font-mono text-xs text-muted-foreground">{currentOrder.orderNumber}</span>
-              </div>
-            </Link>
+                <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[10px] text-muted-foreground">
+                  <span>
+                    Stop: <span className="font-medium text-foreground">{stage.label}</span>
+                  </span>
+                  <span className={cn(risk.late && "font-semibold text-destructive")}>
+                    {risk.late ? "Late" : "Remaining"}: {risk.text}
+                  </span>
+                  {live?.movementState && live.movementState !== "UNKNOWN" && (
+                    <span className="inline-flex items-center gap-0.5 capitalize">
+                      <Radio className="h-2.5 w-2.5" />
+                      {live.movementState.toLowerCase()}
+                    </span>
+                  )}
+                  {live?.speedKph != null && <span>{Math.round(live.speedKph)} km/h</span>}
+                  {gpsAge && (
+                    <span className={cn(live?.isStale && "text-warning")}>GPS {gpsAge}</span>
+                  )}
+                  {currentOrder.price != null && (
+                    <span className="tabular-nums">
+                      {formatMoney(currentOrder.price, currentOrder.currency ?? "USD")}
+                    </span>
+                  )}
+                </div>
+                <div className="mt-1 flex gap-0.5" aria-label={`Stage: ${stage.label}`}>
+                  {[1, 2, 3, 4].map((s) => (
+                    <span
+                      key={s}
+                      className={cn("h-1 flex-1 rounded-full", s <= stage.step ? "bg-brand" : "bg-border")}
+                    />
+                  ))}
+                </div>
+              </Link>
+              {driver?.phone && (
+                <a
+                  href={`tel:${driver.phone}`}
+                  aria-label={`Call ${driver.firstName}`}
+                  className="rounded p-1 text-brand hover:bg-brand/10"
+                >
+                  <Phone className="h-3.5 w-3.5" />
+                </a>
+              )}
+            </div>
           );
         })}
       </div>

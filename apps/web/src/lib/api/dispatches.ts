@@ -110,13 +110,21 @@ class DispatchesAPI {
   async list(
     page = 1,
     limit = 10,
-    params?: { search?: string; status?: string; orderId?: string; driverId?: string; vehicleId?: string },
+    params?: {
+      search?: string;
+      status?: string;
+      statuses?: string[];
+      orderId?: string;
+      driverId?: string;
+      vehicleId?: string;
+    },
   ): Promise<ListDispatchesResponse> {
     const query = new URLSearchParams();
     if (page) query.append('page', String(page));
     if (limit) query.append('limit', String(limit));
     if (params?.search) query.append('search', params.search);
     if (params?.status) query.append('status', params.status);
+    if (params?.statuses?.length) query.append('statuses', params.statuses.join(','));
     if (params?.orderId) query.append('orderId', params.orderId);
     if (params?.driverId) query.append('driverId', params.driverId);
     if (params?.vehicleId) query.append('vehicleId', params.vehicleId);

@@ -9,9 +9,13 @@ import { useNotifications, useMarkAllAsRead } from '@/lib/api/notification-cente
 import { NotificationFilters } from './notification-filters';
 import { NotificationList } from './notification-list';
 import { NotificationActions } from './notification-actions';
+import { useCurrentUser } from '@/lib/api/auth';
+import { NotificationPreferences } from './notification-preferences';
 import type { NotificationCategory, NotificationSeverity } from '@/lib/api/notifications';
 
 export function NotificationsView() {
+  const { data: currentUser } = useCurrentUser();
+  const isAdmin = currentUser?.membership.role === 'ADMIN';
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<NotificationCategory | undefined>();
   const [severity, setSeverity] = useState<NotificationSeverity | undefined>();
@@ -132,6 +136,12 @@ export function NotificationsView() {
           pagination={pagination}
           onPageChange={setPage}
         />
+      )}
+
+      {isAdmin && (
+        <div className="border-t border-brand/10 pt-6">
+          <NotificationPreferences />
+        </div>
       )}
     </div>
   );

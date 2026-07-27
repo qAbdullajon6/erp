@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { DispatchBoard } from "@/components/dispatch/dispatch-board";
 import { ProtectedApiRoute } from "@/components/layout/protected-api-route";
+import { DISPATCH_ROLES } from "@/lib/role-access";
 
 export const Route = createFileRoute("/app/dispatches/board")({
   component: DispatchBoardPage,
@@ -8,7 +9,7 @@ export const Route = createFileRoute("/app/dispatches/board")({
 
 function DispatchBoardPage() {
   return (
-    <ProtectedApiRoute>
+    <ProtectedApiRoute requireRoles={DISPATCH_ROLES}>
       <DispatchBoard />
     </ProtectedApiRoute>
   );

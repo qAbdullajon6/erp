@@ -14,6 +14,13 @@ export interface AppConfig {
   /// Server-Sent Events (SSE) endpoints (AI streaming, telematics live-stream)
   /// which are long-lived by design. Default 30000ms (30 seconds).
   requestTimeoutMs: number;
+  /// Public marketing-site URL — used only for branding inside transactional
+  /// emails (the logo image, footer "visit site" link, the demo-confirmation
+  /// email's CTA button). Distinct from InvitationConfig.appPublicUrl, which
+  /// points at the authenticated app shell, not the marketing site. Safe to
+  /// default in every environment (unlike appPublicUrl) since it's public,
+  /// non-sensitive information, not a security-relevant link target.
+  marketingUrl: string;
 }
 
 export interface AuthConfig {
@@ -109,6 +116,9 @@ export interface TelematicsConfig {
   /// Max concurrent SSE connections across all organizations on this instance.
   /// A process-safety ceiling against memory / file-descriptor exhaustion. Default 500.
   sseMaxConnectionsGlobal: number;
+  /// Mapbox secret token (sk.*) for Directions / Geocoding. Never expose to browsers —
+  /// the web app uses VITE_MAPBOX_ACCESS_TOKEN (pk.*) for tiles only.
+  mapboxSecretToken?: string;
 }
 
 export default (): {
@@ -263,6 +273,7 @@ export default (): {
     telematics: {
       sseMaxConnectionsPerOrg: telematicsSseMaxPerOrg,
       sseMaxConnectionsGlobal: telematicsSseMaxGlobal,
+      mapboxSecretToken: process.env.MAPBOX_SECRET_TOKEN?.trim() || undefined,
     },
     app: {
       port: parseInt(process.env.PORT ?? "4000", 10),
@@ -274,6 +285,7 @@ export default (): {
       databaseUrl: process.env.DATABASE_URL ?? "",
       shutdownTimeoutMs,
       requestTimeoutMs,
+      marketingUrl: (process.env.MARKETING_PUBLIC_URL || "https://flowerp.uz").replace(/\/$/, ""),
     },
     auth: {
       jwtAccessSecret,

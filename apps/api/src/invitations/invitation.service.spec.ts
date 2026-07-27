@@ -238,6 +238,10 @@ function buildService(configOverrides: Partial<typeof INVITATION_CONFIG> = {}) {
     sendEmailVerificationEmail: jest.fn().mockResolvedValue(undefined),
     sendCustomerPortalInvitationEmail: jest.fn().mockResolvedValue(undefined),
     sendRawEmail: jest.fn().mockResolvedValue(undefined),
+    // Unused by InvitationService — present only so this mock satisfies the
+    // MailService shape after the lead-notification email system added them.
+    sendLeadNotificationEmail: jest.fn().mockResolvedValue(undefined),
+    sendDemoConfirmationEmail: jest.fn().mockResolvedValue(undefined),
   };
   const config = {
     get: jest.fn().mockReturnValue({ ...INVITATION_CONFIG, ...configOverrides }),

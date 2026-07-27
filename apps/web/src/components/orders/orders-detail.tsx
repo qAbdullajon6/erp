@@ -1,273 +1,370 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useNavigate } from '@tanstack/react-router';
+import { useMemo, useRef, useState } from 'react';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
+import { Separator } from '@/components/ui/separator';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
+import { LoadingState, ErrorState } from '@/components/shared/list-states';
+import { StatusBadge } from '@/components/shared/status-badge';
+import { OrderTimeline } from '@/components/orders/order-timeline';
+import { OrdersEditSheet } from '@/components/orders/orders-edit-sheet';
 import {
   useOrder,
-  useUpdateOrder,
   useAssignOrder,
   useUpdateOrderStatus,
   useCancelOrder,
-  type UpdateOrderInput,
+  type Order,
   type OrderStatus,
 } from '@/lib/api/orders';
 import { useAvailability } from '@/lib/api/availability';
-import { driversAPI, type Driver } from '@/lib/api/drivers';
-import { vehiclesAPI, type Vehicle } from '@/lib/api/vehicles';
-import { customersAPI, type Customer } from '@/lib/api/customers';
+import { useDriver, type Driver } from '@/lib/api/drivers';
+import { useVehicle, type Vehicle } from '@/lib/api/vehicles';
+import { useCustomerDetail } from '@/lib/api/customers';
 import { useDispatches } from '@/lib/hooks/use-dispatches';
-import { useInvoicesQuery, useCreateInvoiceFromOrderMutation } from '@/lib/api/invoices';
+import { useInvoicesQuery, useCreateInvoiceFromOrderMutation, type Invoice } from '@/lib/api/invoices';
+import { useExpensesQuery, type Expense } from '@/lib/api/expenses';
+import { useLiveFleetQuery } from '@/lib/api/telematics';
 import { useCurrentUser } from '@/lib/api/auth';
-import { INVOICE_READ_ROLES, FLEET_ROLES } from '@/lib/role-access';
-import type { MembershipRole } from '@/lib/api/organizations';
-import { StatusBadge } from '@/components/shared/status-badge';
-import { Link } from '@tanstack/react-router';
 import {
+  INVOICE_READ_ROLES,
+  FLEET_ROLES,
+  DISPATCH_ROLES,
+  DISPATCH_WRITE_ROLES,
+  ORDER_WRITE_ROLES,
+  ORDER_OPERATIONAL_ROLES,
+  EXPENSE_READ_ROLES,
+} from '@/lib/role-access';
+import type { MembershipRole } from '@/lib/api/organizations';
+import type { ApiDispatch } from '@/lib/api/dispatches';
+import {
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  Box,
+  Building2,
+  CheckCircle2,
+  ChevronRight,
+  Clock,
+  Edit2,
+  FileText,
+  Mail,
   MapPin,
-  Truck,
-  User,
+  Navigation,
   Package,
+  Phone,
+  Radio,
   Receipt,
   Route as RouteIcon,
-  Clock,
-  CheckCircle2,
+  Ruler,
+  Scale,
+  StickyNote,
+  Truck,
+  User,
+  UserPlus,
+  Wallet,
+  Workflow,
   XCircle,
-  Edit2,
-  ChevronRight,
 } from 'lucide-react';
-import { formatMoney, formatDate, formatDateTime } from '@/lib/format';
+import { formatMoney, formatDate, formatDateTime, formatRelativeTime } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 interface OrderDetailProps {
   orderId: string;
 }
 
-const STATUS_STEP_MAP: Record<OrderStatus, number> = {
-  DRAFT: 0,
-  PENDING: 1,
-  ASSIGNED: 2,
-  PICKED_UP: 3,
-  IN_TRANSIT: 4,
-  DELIVERED: 5,
-  CANCELLED: -1,
+type ActivityKind = 'status' | 'assignment' | 'invoice' | 'dispatch' | 'payment' | 'workflow' | 'note';
+
+type ActivityItem = {
+  id: string;
+  at: string;
+  title: string;
+  detail?: string | null;
+  status?: OrderStatus;
+  kind: ActivityKind;
 };
 
-function JourneyProgress({ status }: { status: OrderStatus }) {
-  if (status === 'CANCELLED') {
-    return (
-      <div className="flex items-center gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
-        <XCircle className="h-4 w-4" />
-        Order Cancelled
-      </div>
-    );
-  }
-  const step = STATUS_STEP_MAP[status];
-  const steps = ['Draft', 'Pending', 'Assigned', 'Picked Up', 'In Transit', 'Delivered'];
+const ACTIVITY_STYLE: Record<
+  ActivityKind,
+  { icon: typeof Clock; className: string }
+> = {
+  status: { icon: CheckCircle2, className: 'bg-brand/15 text-brand' },
+  assignment: { icon: UserPlus, className: 'bg-success/15 text-success' },
+  invoice: { icon: Receipt, className: 'bg-warning/15 text-warning' },
+  dispatch: { icon: RouteIcon, className: 'bg-brand/15 text-brand' },
+  payment: { icon: Wallet, className: 'bg-success/15 text-success' },
+  workflow: { icon: Workflow, className: 'bg-muted text-muted-foreground' },
+  note: { icon: StickyNote, className: 'bg-muted text-muted-foreground' },
+};
 
+function kindForStatus(status: OrderStatus): ActivityKind {
+  if (status === 'ASSIGNED') return 'assignment';
+  if (status === 'CANCELLED') return 'note';
+  return 'status';
+}
+
+function buildActivity(
+  order: Order,
+  invoice?: Invoice | null,
+  dispatch?: ApiDispatch | null,
+): ActivityItem[] {
+  const items: ActivityItem[] = (order.statusHistory ?? []).map((e) => ({
+    id: e.id,
+    at: e.createdAt,
+    title: e.status.replace(/_/g, ' '),
+    detail: e.note,
+    status: e.status,
+    kind: kindForStatus(e.status),
+  }));
+  if (invoice) {
+    items.push({
+      id: `invoice-${invoice.id}`,
+      at: invoice.createdAt,
+      title: `Invoice ${invoice.invoiceNumber}`,
+      detail: invoice.status.replace(/_/g, ' '),
+      kind: 'invoice',
+    });
+    if (Number(invoice.paidAmount) > 0) {
+      items.push({
+        id: `paid-${invoice.id}`,
+        at: invoice.updatedAt,
+        title: 'Payment recorded',
+        detail: formatMoney(invoice.paidAmount, invoice.currency),
+        kind: 'payment',
+      });
+    }
+  }
+  if (dispatch) {
+    items.push({
+      id: `dispatch-${dispatch.id}`,
+      at: dispatch.createdAt,
+      title: `Dispatch ${dispatch.dispatchNumber}`,
+      detail: dispatch.status.replace(/_/g, ' '),
+      kind: 'dispatch',
+    });
+  }
+  return items.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+}
+
+function Avatar({
+  initials,
+  tone = 'brand',
+}: {
+  initials: string;
+  tone?: 'brand' | 'success' | 'muted';
+}) {
   return (
-    <div className="flex items-center gap-1">
-      {steps.map((label, i) => {
-        const isComplete = i <= step;
-        const isCurrent = i === step;
-        return (
-          <div key={label} className="flex items-center gap-1">
-            <div className="flex flex-col items-center">
-              <div
-                className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
-                  isComplete
-                    ? isCurrent
-                      ? 'bg-brand text-brand-foreground'
-                      : 'bg-brand/20 text-brand'
-                    : 'bg-muted text-muted-foreground'
-                }`}
-              >
-                {isComplete && !isCurrent ? (
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                ) : (
-                  i + 1
-                )}
-              </div>
-              <span className={`mt-1 text-[10px] ${isCurrent ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>
-                {label}
-              </span>
-            </div>
-            {i < steps.length - 1 && (
-              <div className={`mx-0.5 mb-4 h-0.5 w-4 ${i < step ? 'bg-brand/40' : 'bg-muted'}`} />
-            )}
-          </div>
-        );
-      })}
+    <span
+      className={cn(
+        'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold',
+        tone === 'brand' && 'bg-brand/15 text-brand',
+        tone === 'success' && 'bg-success/15 text-success',
+        tone === 'muted' && 'bg-muted text-muted-foreground',
+      )}
+    >
+      {initials || '?'}
+    </span>
+  );
+}
+
+function MetricBadge({
+  label,
+  value,
+  tone = 'default',
+}: {
+  label: string;
+  value: React.ReactNode;
+  tone?: 'default' | 'good' | 'warn' | 'bad' | 'brand';
+}) {
+  return (
+    <div
+      className={cn(
+        'rounded-lg border px-2.5 py-2',
+        tone === 'default' && 'border-border/70 bg-background/40',
+        tone === 'good' && 'border-success/25 bg-success/[0.07]',
+        tone === 'warn' && 'border-warning/25 bg-warning/[0.07]',
+        tone === 'bad' && 'border-destructive/25 bg-destructive/[0.07]',
+        tone === 'brand' && 'border-brand/25 bg-brand/[0.07]',
+      )}
+    >
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p
+        className={cn(
+          'mt-0.5 text-sm font-semibold tabular-nums',
+          tone === 'good' && 'text-success',
+          tone === 'warn' && 'text-warning',
+          tone === 'bad' && 'text-destructive',
+          tone === 'brand' && 'text-brand',
+          tone === 'default' && 'text-foreground',
+        )}
+      >
+        {value}
+      </p>
     </div>
   );
 }
 
+function CargoStat({
+  icon: Icon,
+  label,
+  value,
+  empty,
+}: {
+  icon: typeof Scale;
+  label: string;
+  value: string;
+  empty?: boolean;
+}) {
+  return (
+    <div className="flex items-start gap-2.5 rounded-lg border border-border/60 bg-background/30 px-3 py-2.5">
+      <span
+        className={cn(
+          'mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md',
+          empty ? 'bg-muted text-muted-foreground' : 'bg-brand/10 text-brand',
+        )}
+      >
+        <Icon className="h-3.5 w-3.5" />
+      </span>
+      <div className="min-w-0">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+        <p className={cn('mt-0.5 text-sm font-semibold', empty ? 'text-muted-foreground' : 'text-foreground')}>
+          {value}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function licenseLabel(expiry: string | null | undefined): { text: string; bad: boolean } | null {
+  if (!expiry) return null;
+  const days = Math.ceil((new Date(expiry).getTime() - Date.now()) / 86_400_000);
+  if (days < 0) return { text: 'Expired', bad: true };
+  if (days <= 30) return { text: `${days}d left`, bad: true };
+  return { text: formatDate(expiry), bad: false };
+}
+
 export function OrdersDetail({ orderId }: OrderDetailProps) {
   const navigate = useNavigate();
+  const activityRef = useRef<HTMLElement>(null);
   const { data: order, loading, error, refetch } = useOrder(orderId);
-  const { update: updateOrder, loading: updateLoading } = useUpdateOrder();
   const { assign, loading: assignLoading } = useAssignOrder();
   const { updateStatus, loading: statusLoading } = useUpdateOrderStatus();
   const { cancel, loading: cancelLoading } = useCancelOrder();
 
-  const { data: dispatchesForOrder } = useDispatches(1, 1, { orderId });
-  const dispatch = dispatchesForOrder?.[0] ?? null;
   const { data: currentUser } = useCurrentUser();
-  // Dispatcher and Driver can view an order, but InvoicesController's own
-  // READ_ROLES 403s them — asking anyway just logs a doomed request on every
-  // order-detail view for those two roles.
-  const canViewInvoices = Boolean(
-    currentUser && INVOICE_READ_ROLES.includes(currentUser.membership.role as MembershipRole),
+  const role = currentUser?.membership.role as MembershipRole | undefined;
+  const canViewInvoices = Boolean(role && INVOICE_READ_ROLES.includes(role));
+  const canViewFleet = Boolean(role && FLEET_ROLES.includes(role));
+  const canViewDispatch = Boolean(role && DISPATCH_ROLES.includes(role));
+  const canWriteDispatch = Boolean(role && DISPATCH_WRITE_ROLES.includes(role));
+  const canWriteOrder = Boolean(role && ORDER_WRITE_ROLES.includes(role));
+  const canOperateOrder = Boolean(role && ORDER_OPERATIONAL_ROLES.includes(role));
+  const canViewExpenses = Boolean(role && EXPENSE_READ_ROLES.includes(role));
+
+  const { data: dispatchesForOrder, loading: dispatchesLoading } = useDispatches(
+    1,
+    5,
+    { orderId },
+    { enabled: canViewDispatch },
   );
-  // Same reasoning as canViewInvoices: Accountant and Sales can view an order
-  // but DriversController/VehiclesController's own ROLES 403 them — this order
-  // page must not fire a doomed driver/vehicle lookup for those two roles.
-  const canViewFleet = Boolean(
-    currentUser && FLEET_ROLES.includes(currentUser.membership.role as MembershipRole),
-  );
-  const { data: invoicesForOrder } = useInvoicesQuery({ orderId, limit: 1 }, canViewInvoices);
+  const dispatch: ApiDispatch | null = dispatchesForOrder?.[0] ?? null;
+
+  const { data: invoicesForOrder, isPending: invoicesLoading, isError: invoicesError, refetch: refetchInvoices } =
+    useInvoicesQuery({ orderId, limit: 1 }, canViewInvoices);
   const invoice = invoicesForOrder?.items[0] ?? null;
   const { mutateAsync: createInvoiceFromOrder, isPending: creatingInvoice } = useCreateInvoiceFromOrderMutation();
 
-  const { data: availability, loading: availabilityLoading } = useAvailability(
-    order ? { pickupDate: order.pickupDate, deliveryDate: order.deliveryDate } : undefined,
+  const expensesQuery = useExpensesQuery(
+    { orderId, limit: 50 },
+    { enabled: canViewExpenses && Boolean(orderId) },
+  );
+  const expenses: Expense[] = expensesQuery.data?.items ?? [];
+
+  const {
+    data: availability,
+    loading: availabilityLoading,
+    error: availabilityError,
+    refetch: refetchAvailability,
+  } = useAvailability(
+    order && canOperateOrder
+      ? { pickupDate: order.pickupDate, deliveryDate: order.deliveryDate }
+      : undefined,
+    { enabled: canOperateOrder },
   );
 
-  const [isEditing, setIsEditing] = useState(false);
-  const [editData, setEditData] = useState<UpdateOrderInput>({});
-  const [editErrors, setEditErrors] = useState<Record<string, string>>({});
+  const liveFleet = useLiveFleetQuery({
+    enabled: canViewFleet && Boolean(order?.vehicleId),
+    refetchInterval: order?.vehicleId ? 30_000 : undefined,
+  });
+  const liveVehicle = useMemo(() => {
+    if (!order?.vehicleId || !liveFleet.data) return null;
+    return liveFleet.data.find((v) => v.vehicleId === order.vehicleId) ?? null;
+  }, [liveFleet.data, order?.vehicleId]);
 
+  const [editOpen, setEditOpen] = useState(false);
   const [showAssign, setShowAssign] = useState(false);
   const [driverId, setDriverId] = useState('');
   const [vehicleId, setVehicleId] = useState('');
   const [assignError, setAssignError] = useState('');
-
   const [showCancel, setShowCancel] = useState(false);
   const [cancelNote, setCancelNote] = useState('');
+  const [pendingDeliverConfirm, setPendingDeliverConfirm] = useState(false);
+  const [highlightStatus, setHighlightStatus] = useState<OrderStatus | null>(null);
 
-  const [customer, setCustomer] = useState<Customer | null>(null);
-  const [assignedDriver, setAssignedDriver] = useState<Driver | null>(null);
-  const [assignedVehicle, setAssignedVehicle] = useState<Vehicle | null>(null);
+  const { data: customer, loading: customerLoading } = useCustomerDetail(order?.customerId ?? '');
+  const { data: assignedDriver } = useDriver(canViewFleet && order?.driverId ? order.driverId : '');
+  const { data: assignedVehicle } = useVehicle(canViewFleet && order?.vehicleId ? order.vehicleId : '');
 
-  useEffect(() => {
-    if (!order?.customerId) return;
-    customersAPI.getById(order.customerId).then(setCustomer).catch(() => setCustomer(null));
-  }, [order?.customerId]);
-
-  useEffect(() => {
-    if (!order?.driverId || !canViewFleet) { setAssignedDriver(null); return; }
-    driversAPI.getById(order.driverId).then(setAssignedDriver).catch(() => setAssignedDriver(null));
-  }, [order?.driverId, canViewFleet]);
-
-  useEffect(() => {
-    if (!order?.vehicleId || !canViewFleet) { setAssignedVehicle(null); return; }
-    vehiclesAPI.getById(order.vehicleId).then(setAssignedVehicle).catch(() => setAssignedVehicle(null));
-  }, [order?.vehicleId, canViewFleet]);
-
-  useEffect(() => {
-    if (order && !isEditing) setEditData({});
-  }, [order, isEditing]);
-
-  const handleStartEdit = () => {
-    if (!order) return;
-    setEditData({
-      pickupAddress: order.pickupAddress,
-      pickupCity: order.pickupCity,
-      pickupDate: order.pickupDate.slice(0, 10),
-      deliveryAddress: order.deliveryAddress,
-      deliveryCity: order.deliveryCity,
-      deliveryDate: order.deliveryDate.slice(0, 10),
-      cargoDescription: order.cargoDescription,
-      cargoWeightKg: order.cargoWeightKg ? Number(order.cargoWeightKg) : undefined,
-      cargoVolumeM3: order.cargoVolumeM3 ? Number(order.cargoVolumeM3) : undefined,
-      price: Number(order.price),
-      currency: order.currency,
-      notes: order.notes ?? '',
-      deliveryNotes: order.deliveryNotes ?? '',
-    });
-    setEditErrors({});
-    setIsEditing(true);
-  };
-
-  const handleEditChange = (field: keyof UpdateOrderInput, value: string | number) => {
-    setEditData((prev) => ({ ...prev, [field]: value }));
-    setEditErrors((prev) => { const next = { ...prev }; delete next[field]; return next; });
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-brand/20 border-t-brand" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="rounded-lg bg-destructive/10 p-6 text-sm text-destructive">
-        {error}
-        <Button onClick={() => refetch()} variant="ghost" size="sm" className="ml-4">Retry</Button>
-      </div>
-    );
-  }
-
-  if (!order) {
-    return <div className="text-center py-12 text-muted-foreground">Order not found</div>;
-  }
+  if (loading) return <LoadingState label="Loading order..." />;
+  if (error) return <ErrorState message={error} onRetry={refetch} />;
+  if (!order) return <div className="py-12 text-center text-muted-foreground">Order not found</div>;
 
   const allowedTransitions = order.allowedTransitions.filter(
     (status) => status !== 'ASSIGNED' || (order.driverId && order.vehicleId),
   );
-  const canEdit = order.status !== 'DELIVERED' && order.status !== 'CANCELLED';
-  const canAssign = ['PENDING', 'ASSIGNED'].includes(order.status);
-  const canCancel = order.status !== 'DELIVERED' && order.status !== 'CANCELLED';
+  const canEdit = canWriteOrder && order.status !== 'DELIVERED' && order.status !== 'CANCELLED';
+  const canAssign = canOperateOrder && ['PENDING', 'ASSIGNED'].includes(order.status);
+  const canCancel = canOperateOrder && order.status !== 'DELIVERED' && order.status !== 'CANCELLED';
+  const canAdvanceStatus = canOperateOrder && allowedTransitions.length > 0;
 
-  const validateEdit = (): boolean => {
-    const errors: Record<string, string> = {};
-    if (!editData.pickupAddress?.trim()) errors.pickupAddress = 'Required';
-    if (!editData.pickupCity?.trim()) errors.pickupCity = 'Required';
-    if (!editData.pickupDate) errors.pickupDate = 'Required';
-    if (!editData.deliveryAddress?.trim()) errors.deliveryAddress = 'Required';
-    if (!editData.deliveryCity?.trim()) errors.deliveryCity = 'Required';
-    if (!editData.deliveryDate) errors.deliveryDate = 'Required';
-    if (editData.pickupDate && editData.deliveryDate && new Date(editData.deliveryDate) < new Date(editData.pickupDate)) {
-      errors.deliveryDate = 'Must be after pickup';
-    }
-    if (!editData.cargoDescription?.trim()) errors.cargoDescription = 'Required';
-    if (editData.price === undefined || editData.price < 0) errors.price = 'Invalid price';
-    setEditErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
+  const customerLabel = customerLoading ? '…' : customer?.companyName ?? '—';
+  const activity = buildActivity(order, invoice, dispatch);
 
-  const handleSaveEdit = async () => {
-    if (!validateEdit()) { toast.error('Fix validation errors'); return; }
-    try {
-      await updateOrder(orderId, editData);
-      toast.success('Order updated');
-      setIsEditing(false);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update');
-    }
+  const approvedExpenseTotal = expenses
+    .filter((e) => e.status === 'APPROVED')
+    .reduce((sum, e) => sum + Number(e.amount), 0);
+  const pendingExpenseCount = expenses.filter((e) => e.status === 'PENDING').length;
+  const revenue = Number(order.price);
+  const hasExpenseData = canViewExpenses && !expensesQuery.isPending;
+  const margin =
+    hasExpenseData && Number.isFinite(revenue) ? revenue - approvedExpenseTotal : null;
+  const outstanding = invoice ? Number(invoice.balanceDue) : null;
+  const collected = invoice ? Number(invoice.paidAmount) : null;
+
+  const openAssign = () => {
+    setShowAssign(true);
+    setAssignError('');
   };
 
   const handleAssign = async () => {
-    if (!driverId || !vehicleId) { setAssignError('Both required'); return; }
+    if (!driverId || !vehicleId) {
+      setAssignError('Driver and vehicle required');
+      return;
+    }
     try {
       await assign(orderId, { driverId, vehicleId });
-      toast.success('Assigned successfully');
+      toast.success(order.driverId ? 'Reassigned' : 'Assigned');
       setShowAssign(false);
       setDriverId('');
       setVehicleId('');
@@ -296,338 +393,940 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
     }
   };
 
+  const jumpToActivity = (status: OrderStatus) => {
+    setHighlightStatus(status);
+    activityRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(() => setHighlightStatus(null), 2500);
+  };
+
   return (
-    <div className="mx-auto max-w-6xl">
-      {/* Breadcrumb header */}
-      <div className="mb-6 flex items-center gap-2 text-sm text-muted-foreground">
-        <button onClick={() => navigate({ to: '/app/orders' })} className="hover:text-foreground transition-colors">
+    <div className="mx-auto max-w-[1440px] space-y-2 pb-8">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <button
+          type="button"
+          onClick={() => navigate({ to: '/app/orders', search: {} })}
+          className="transition-colors hover:text-foreground"
+        >
           <ArrowLeft className="mr-1 inline h-3.5 w-3.5" />
-          Shipments
+          Orders
         </button>
         <ChevronRight className="h-3 w-3" />
         <span className="font-mono text-foreground">{order.orderNumber}</span>
       </div>
 
-      {/* Two-column layout: Main content + Action sidebar */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
-        {/* LEFT: Order content */}
-        <div className="space-y-6">
-          {/* Journey visual */}
-          <div className="rounded-xl border border-border bg-surface p-6">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h1 className="text-xl font-bold text-foreground">{order.orderNumber}</h1>
-                <p className="text-sm text-muted-foreground">{customer?.companyName ?? 'Loading...'}</p>
-              </div>
+      {/* ===== ONE workspace shell — not a stack of disconnected cards ===== */}
+      <div className="overflow-hidden rounded-xl border border-border bg-surface">
+        {/* Header band */}
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/70 px-4 py-3">
+          <div className="min-w-0 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="font-mono text-xl font-bold tracking-tight text-foreground">
+                {order.orderNumber}
+              </h1>
               <StatusBadge status={order.status} />
+              {order.isDelayed && (
+                <Badge variant="destructive" className="gap-1 text-[10px]">
+                  <AlertTriangle className="h-3 w-3" />
+                  Delayed
+                </Badge>
+              )}
+              {order.status === 'PENDING' && !order.driverId && (
+                <Badge className="bg-warning/15 text-[10px] text-warning hover:bg-warning/15">
+                  Needs assignment
+                </Badge>
+              )}
             </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm">
+              <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
+                {order.pickupCity}
+                <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
+                {order.deliveryCity}
+              </span>
+              <Link
+                to="/app/customers/$customerId"
+                params={{ customerId: order.customerId }}
+                className="inline-flex items-center gap-1 text-muted-foreground hover:text-brand hover:underline"
+              >
+                <Building2 className="h-3.5 w-3.5" />
+                {customerLabel}
+              </Link>
+              <span className="font-mono text-xs font-semibold tabular-nums text-foreground">
+                {formatMoney(order.price, order.currency)}
+              </span>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {canAssign && (
+              <Button size="sm" onClick={openAssign} data-testid="orders-assign-toggle">
+                <UserPlus className="mr-1.5 h-3.5 w-3.5" />
+                {order.driverId ? 'Reassign' : 'Assign'}
+              </Button>
+            )}
+            {canEdit && (
+              <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
+                <Edit2 className="mr-1.5 h-3.5 w-3.5" />
+                Edit
+              </Button>
+            )}
+            {canViewInvoices && !invoice && order.status === 'DELIVERED' && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={creatingInvoice || invoicesLoading}
+                onClick={async () => {
+                  try {
+                    await createInvoiceFromOrder(orderId);
+                    toast.success('Invoice created');
+                  } catch (err) {
+                    toast.error(err instanceof Error ? err.message : 'Failed');
+                  }
+                }}
+              >
+                <Receipt className="mr-1.5 h-3.5 w-3.5" />
+                Invoice
+              </Button>
+            )}
+            {canCancel && (
+              <ConfirmDialog
+                open={showCancel}
+                onOpenChange={setShowCancel}
+                trigger={
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-destructive/30 text-destructive hover:bg-destructive/10"
+                    disabled={cancelLoading}
+                  >
+                    Cancel
+                  </Button>
+                }
+                title={`Cancel ${order.orderNumber}?`}
+                description="This cannot be undone."
+                confirmLabel={cancelLoading ? 'Cancelling…' : 'Cancel order'}
+                cancelLabel="Keep"
+                onConfirm={handleCancel}
+                destructive
+              >
+                <Textarea
+                  placeholder="Reason (optional)"
+                  value={cancelNote}
+                  onChange={(e) => setCancelNote(e.target.value)}
+                  rows={3}
+                  maxLength={2000}
+                />
+              </ConfirmDialog>
+            )}
+          </div>
+        </div>
 
-            <JourneyProgress status={order.status} />
+        {/* Mission timeline — dense, with live context chips */}
+        <div className="border-b border-border/70 px-4 py-3">
+          <OrderTimeline
+            order={order}
+            driver={assignedDriver}
+            vehicle={assignedVehicle}
+            dispatch={dispatch}
+            live={liveVehicle}
+            onStageClick={jumpToActivity}
+          />
+        </div>
 
-            {/* Route visualization */}
-            <div className="mt-6 grid grid-cols-[1fr_auto_1fr] items-center gap-4">
-              <div className="rounded-lg border border-brand/10 bg-brand/5 p-4">
-                <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-brand">
+        {/* Body: work surface | ops rail — shared shell, section dividers only */}
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px]">
+          {/* -------- LEFT WORK SURFACE -------- */}
+          <div className="divide-y divide-border/70 border-r-0 lg:border-r lg:border-border/70">
+            {/* Pickup / Delivery */}
+            <div className="grid grid-cols-1 md:grid-cols-2">
+              <div className="space-y-2 border-b border-border/70 p-4 md:border-b-0 md:border-r md:border-border/70">
+                <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-brand">
                   <MapPin className="h-3.5 w-3.5" />
                   Pickup
                 </div>
-                {isEditing ? (
-                  <div className="mt-2 space-y-2">
-                    <Input size={1} value={editData.pickupAddress ?? ''} onChange={(e) => handleEditChange('pickupAddress', e.target.value)} placeholder="Address" className={editErrors.pickupAddress ? 'border-red-500' : ''} />
-                    <Input size={1} value={editData.pickupCity ?? ''} onChange={(e) => handleEditChange('pickupCity', e.target.value)} placeholder="City" className={editErrors.pickupCity ? 'border-red-500' : ''} />
-                    <Input type="date" value={editData.pickupDate ?? ''} onChange={(e) => handleEditChange('pickupDate', e.target.value)} className={editErrors.pickupDate ? 'border-red-500' : ''} />
+                <p className="text-base font-semibold text-foreground">{order.pickupCity}</p>
+                <p className="text-xs text-muted-foreground">{order.pickupAddress}</p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 text-xs">
+                  <span>
+                    <span className="text-muted-foreground">Planned </span>
+                    <span className="font-medium tabular-nums">{formatDate(order.pickupDate)}</span>
+                  </span>
+                  {dispatch?.pickupDateActual && (
+                    <span>
+                      <span className="text-muted-foreground">Actual </span>
+                      <span className="font-medium tabular-nums">{formatDate(dispatch.pickupDateActual)}</span>
+                    </span>
+                  )}
+                </div>
+                {(customer?.contactName || customer?.phone) && (
+                  <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
+                    {customer?.contactName && (
+                      <span className="text-muted-foreground">{customer.contactName}</span>
+                    )}
+                    {customer?.phone && (
+                      <a href={`tel:${customer.phone}`} className="inline-flex items-center gap-1 font-medium text-brand hover:underline">
+                        <Phone className="h-3 w-3" />
+                        {customer.phone}
+                      </a>
+                    )}
                   </div>
-                ) : (
-                  <>
-                    <p className="mt-2 text-sm font-medium text-foreground">{order.pickupCity}</p>
-                    <p className="text-xs text-muted-foreground">{order.pickupAddress}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{formatDate(order.pickupDate)}</p>
-                  </>
                 )}
               </div>
-
-              <div className="flex flex-col items-center gap-1">
-                <div className="h-px w-12 bg-brand/30" />
-                <Truck className="h-4 w-4 text-brand" />
-                <div className="h-px w-12 bg-brand/30" />
-              </div>
-
-              <div className="rounded-lg border border-success/10 bg-success/5 p-4">
-                <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-success">
+              <div className="space-y-2 p-4">
+                <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-success">
                   <MapPin className="h-3.5 w-3.5" />
                   Delivery
+                  {order.isDelayed && (
+                    <Badge variant="destructive" className="ml-auto h-5 gap-1 px-1.5 text-[10px]">
+                      <AlertTriangle className="h-3 w-3" />
+                      Delayed
+                    </Badge>
+                  )}
                 </div>
-                {isEditing ? (
-                  <div className="mt-2 space-y-2">
-                    <Input size={1} value={editData.deliveryAddress ?? ''} onChange={(e) => handleEditChange('deliveryAddress', e.target.value)} placeholder="Address" className={editErrors.deliveryAddress ? 'border-red-500' : ''} />
-                    <Input size={1} value={editData.deliveryCity ?? ''} onChange={(e) => handleEditChange('deliveryCity', e.target.value)} placeholder="City" className={editErrors.deliveryCity ? 'border-red-500' : ''} />
-                    <Input type="date" value={editData.deliveryDate ?? ''} onChange={(e) => handleEditChange('deliveryDate', e.target.value)} className={editErrors.deliveryDate ? 'border-red-500' : ''} />
-                  </div>
-                ) : (
-                  <>
-                    <p className="mt-2 text-sm font-medium text-foreground">{order.deliveryCity}</p>
-                    <p className="text-xs text-muted-foreground">{order.deliveryAddress}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{formatDate(order.deliveryDate)}</p>
-                  </>
-                )}
+                <p className="text-base font-semibold text-foreground">{order.deliveryCity}</p>
+                <p className="text-xs text-muted-foreground">{order.deliveryAddress}</p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 text-xs">
+                  <span>
+                    <span className="text-muted-foreground">Planned </span>
+                    <span className={cn('font-medium tabular-nums', order.isDelayed && 'text-destructive')}>
+                      {formatDate(order.deliveryDate)}
+                    </span>
+                  </span>
+                  {(dispatch?.deliveryDateActual || order.deliveredAt) && (
+                    <span>
+                      <span className="text-muted-foreground">Actual </span>
+                      <span className="font-medium tabular-nums">
+                        {formatDate(dispatch?.deliveryDateActual || order.deliveredAt!)}
+                      </span>
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
-            {isEditing && (
-              <div className="mt-4 flex gap-2">
-                <Button size="sm" onClick={handleSaveEdit} disabled={updateLoading}>
-                  {updateLoading ? 'Saving...' : 'Save'}
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => { setIsEditing(false); setEditErrors({}); }}>
-                  Cancel
-                </Button>
+            {/* Cargo — strong layout even when empty */}
+            <div className="p-4">
+              <div className="mb-2.5 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <Package className="h-3.5 w-3.5" />
+                Cargo
               </div>
-            )}
-          </div>
-
-          {/* Cargo & Notes */}
-          <div className="rounded-xl border border-border bg-surface p-6">
-            <div className="flex items-center justify-between">
-              <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                <Package className="h-4 w-4 text-muted-foreground" />
-                Cargo Details
-              </h2>
-              {canEdit && !isEditing && (
-                <button onClick={handleStartEdit} className="text-xs text-brand hover:text-brand/80">
-                  <Edit2 className="mr-1 inline h-3 w-3" />Edit
-                </button>
-              )}
-            </div>
-
-            {isEditing ? (
-              <div className="mt-4 space-y-3">
-                <Textarea value={editData.cargoDescription ?? ''} onChange={(e) => handleEditChange('cargoDescription', e.target.value)} rows={2} placeholder="Cargo description" className={editErrors.cargoDescription ? 'border-red-500' : ''} />
-                <div className="grid grid-cols-2 gap-3">
-                  <Input type="number" step="0.01" value={editData.cargoWeightKg ?? ''} onChange={(e) => handleEditChange('cargoWeightKg', e.target.value ? parseFloat(e.target.value) : 0)} placeholder="Weight (kg)" />
-                  <Input type="number" step="0.01" value={editData.cargoVolumeM3 ?? ''} onChange={(e) => handleEditChange('cargoVolumeM3', e.target.value ? parseFloat(e.target.value) : 0)} placeholder="Volume (m³)" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Input type="number" step="0.01" value={editData.price ?? 0} onChange={(e) => handleEditChange('price', parseFloat(e.target.value) || 0)} placeholder="Price" className={editErrors.price ? 'border-red-500' : ''} />
-                  <Input maxLength={3} value={editData.currency ?? ''} onChange={(e) => handleEditChange('currency', e.target.value)} placeholder="Currency" />
-                </div>
+              <p className="mb-3 text-sm text-foreground">{order.cargoDescription}</p>
+              <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+                <CargoStat
+                  icon={Scale}
+                  label="Weight"
+                  value={order.cargoWeightKg ? `${order.cargoWeightKg} kg` : 'Not set'}
+                  empty={!order.cargoWeightKg}
+                />
+                <CargoStat
+                  icon={Ruler}
+                  label="Volume"
+                  value={order.cargoVolumeM3 ? `${order.cargoVolumeM3} m³` : 'Not set'}
+                  empty={!order.cargoVolumeM3}
+                />
+                <CargoStat
+                  icon={Truck}
+                  label="Vehicle type"
+                  value={
+                    assignedVehicle
+                      ? assignedVehicle.type.toLowerCase().replace(/_/g, ' ')
+                      : 'Unassigned'
+                  }
+                  empty={!assignedVehicle}
+                />
+                <CargoStat
+                  icon={Box}
+                  label="Value"
+                  value={formatMoney(order.price, order.currency)}
+                />
               </div>
-            ) : (
-              <div className="mt-4 space-y-3">
-                <p className="text-sm text-foreground">{order.cargoDescription}</p>
-                <div className="flex gap-4 text-sm text-muted-foreground">
-                  {order.cargoWeightKg && <span>{order.cargoWeightKg} kg</span>}
-                  {order.cargoVolumeM3 && <span>{order.cargoVolumeM3} m³</span>}
-                </div>
-                {order.notes && (
-                  <div className="border-t border-border pt-3">
-                    <p className="text-xs font-medium text-muted-foreground">Notes</p>
-                    <p className="mt-1 text-sm text-foreground">{order.notes}</p>
-                  </div>
-                )}
-                {order.deliveryNotes && (
-                  <div className="border-t border-border pt-3">
-                    <p className="text-xs font-medium text-muted-foreground">Delivery Instructions</p>
-                    <p className="mt-1 text-sm text-foreground">{order.deliveryNotes}</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Timeline */}
-          {order.statusHistory && order.statusHistory.length > 0 && (
-            <div className="rounded-xl border border-border bg-surface p-6">
-              <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                <Clock className="h-4 w-4 text-muted-foreground" />
-                Activity
-              </h2>
-              <div className="mt-4 space-y-0">
-                {order.statusHistory.map((entry, index) => {
-                  const isLast = index === order.statusHistory!.length - 1;
-                  const isLatest = index === 0;
-                  return (
-                    <div key={entry.id} className="relative flex gap-3 pb-4 last:pb-0">
-                      {!isLast && <div className="absolute left-[5px] top-3 h-full w-px bg-border" />}
-                      <div className={`relative z-10 mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${isLatest ? 'bg-brand ring-3 ring-brand/15' : 'bg-muted-foreground/40'}`} />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-foreground">{entry.status.replace(/_/g, ' ')}</span>
-                          <span className="text-xs text-muted-foreground">{formatDateTime(entry.createdAt)}</span>
-                        </div>
-                        {entry.note && <p className="mt-0.5 text-xs text-muted-foreground italic">{entry.note}</p>}
-                      </div>
+              {(order.notes || order.deliveryNotes) && (
+                <div className="mt-3 grid grid-cols-1 gap-3 border-t border-border/60 pt-3 sm:grid-cols-2">
+                  {order.notes && (
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Internal notes
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm">{order.notes}</p>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* RIGHT: Action sidebar — sticky, always visible */}
-        <div className="lg:sticky lg:top-6 space-y-4">
-          {/* Quick facts */}
-          <div className="rounded-xl border border-border bg-surface p-5 space-y-4">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Order Value</span>
-              <span className="font-semibold text-foreground">{formatMoney(order.price, order.currency)}</span>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Customer</span>
-              <span className="font-medium text-foreground">{customer?.companyName ?? '—'}</span>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Created</span>
-              <span className="text-foreground">{formatDate(order.createdAt)}</span>
-            </div>
-            {order.isDelayed && (
-              <div className="flex items-center gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
-                <Clock className="h-3.5 w-3.5" />
-                This order is delayed
-              </div>
-            )}
-          </div>
-
-          {/* Assignment */}
-          <div className="rounded-xl border border-border bg-surface p-5 space-y-3">
-            <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Assignment</h3>
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand/10">
-                <User className="h-4 w-4 text-brand" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-foreground">
-                  {assignedDriver
-                    ? `${assignedDriver.firstName} ${assignedDriver.lastName}`
-                    : order?.driverId && !canViewFleet
-                      ? 'Assigned'
-                      : 'No driver'}
-                </p>
-                {assignedDriver && <p className="text-xs text-muted-foreground">{assignedDriver.employeeCode}</p>}
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand/10">
-                <Truck className="h-4 w-4 text-brand" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-foreground">
-                  {assignedVehicle
-                    ? assignedVehicle.plateNumber
-                    : order?.vehicleId && !canViewFleet
-                      ? 'Assigned'
-                      : 'No vehicle'}
-                </p>
-                {assignedVehicle && <p className="text-xs text-muted-foreground">{assignedVehicle.type}</p>}
-              </div>
+                  )}
+                  {order.deliveryNotes && (
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Delivery instructions
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm">{order.deliveryNotes}</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
-            {canAssign && (
-              <>
-                <Button size="sm" variant="outline" className="w-full" onClick={() => setShowAssign(!showAssign)}>
-                  {order.driverId ? 'Reassign' : 'Assign Driver & Vehicle'}
-                </Button>
+            {/* Dispatch assignment — rich entity panels */}
+            {(canViewFleet || canViewDispatch || canAssign) && (
+              <div className="p-4">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    <RouteIcon className="h-3.5 w-3.5" />
+                    Dispatch assignment
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {canViewFleet && order.vehicleId && (
+                      <Button asChild size="sm" variant="ghost" className="h-7 px-2 text-xs">
+                        <Link to="/app/fleet-tracking">
+                          <Navigation className="mr-1 h-3 w-3" />
+                          Map
+                        </Link>
+                      </Button>
+                    )}
+                    {canViewDispatch && dispatch && (
+                      <Button asChild size="sm" variant="ghost" className="h-7 px-2 text-xs">
+                        <Link to="/app/dispatches/$dispatchId" params={{ dispatchId: dispatch.id }}>
+                          Open
+                        </Link>
+                      </Button>
+                    )}
+                    {canAssign && (
+                      <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={openAssign}>
+                        {order.driverId ? 'Replace' : 'Assign'}
+                      </Button>
+                    )}
+                  </div>
+                </div>
 
-                {showAssign && (
-                  <div className="space-y-2 rounded-lg border border-border bg-background p-3">
-                    <select value={driverId} onChange={(e) => setDriverId(e.target.value)} disabled={availabilityLoading} className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm" data-testid="orders-assign-driver-select">
-                      <option value="">{availabilityLoading ? 'Loading...' : 'Select driver'}</option>
-                      {availability?.drivers.map((d) => (
-                        <option key={d.id} value={d.id}>{d.firstName} {d.lastName}</option>
-                      ))}
-                    </select>
-                    <select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} disabled={availabilityLoading} className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm" data-testid="orders-assign-vehicle-select">
-                      <option value="">{availabilityLoading ? 'Loading...' : 'Select vehicle'}</option>
-                      {availability?.vehicles.map((v) => (
-                        <option key={v.id} value={v.id}>{v.plateNumber} - {v.type}</option>
-                      ))}
-                    </select>
-                    {assignError && <p className="text-xs text-destructive">{assignError}</p>}
-                    <Button size="sm" className="w-full" onClick={handleAssign} disabled={assignLoading || !driverId || !vehicleId}>
-                      {assignLoading ? 'Assigning...' : 'Confirm'}
-                    </Button>
+                {dispatchesLoading && canViewDispatch ? (
+                  <Skeleton className="h-24 w-full" />
+                ) : (
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    <AssignmentDriver
+                      driver={assignedDriver}
+                      fallbackAssigned={Boolean(order.driverId && !canViewFleet)}
+                    />
+                    <AssignmentVehicle
+                      vehicle={assignedVehicle}
+                      fallbackAssigned={Boolean(order.vehicleId && !canViewFleet)}
+                    />
+                    <AssignmentDispatch dispatch={canViewDispatch ? dispatch : null} hidden={!canViewDispatch} />
                   </div>
                 )}
-              </>
-            )}
-          </div>
 
-          {/* Cross-references */}
-          <div className="rounded-xl border border-border bg-surface p-5 space-y-3">
-            <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Linked</h3>
-            {dispatch ? (
-              <Link to="/app/dispatches/$dispatchId" params={{ dispatchId: dispatch.id }} className="flex items-center justify-between rounded-lg border border-border p-3 transition-colors hover:bg-muted/50">
-                <div className="flex items-center gap-2">
-                  <RouteIcon className="h-4 w-4 text-brand" />
-                  <span className="text-sm font-medium text-foreground">{dispatch.dispatchNumber}</span>
-                </div>
-                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-              </Link>
-            ) : (
-              <p className="text-xs text-muted-foreground">No dispatch created</p>
-            )}
-            {canViewInvoices && (
-              invoice ? (
-                <Link to="/app/finance" className="flex items-center justify-between rounded-lg border border-border p-3 transition-colors hover:bg-muted/50">
-                  <div className="flex items-center gap-2">
-                    <Receipt className="h-4 w-4 text-brand" />
-                    <span className="text-sm font-medium text-foreground">{invoice.invoiceNumber}</span>
+                {showAssign && canAssign && (
+                  <div className="mt-3 space-y-2 rounded-lg border border-brand/20 bg-brand/[0.04] p-3">
+                    <p className="text-xs font-semibold text-foreground">
+                      {order.driverId ? 'Replace assignment' : 'Assign driver & vehicle'}
+                    </p>
+                    {availabilityError ? (
+                      <div className="space-y-2">
+                        <p className="text-xs text-destructive">{availabilityError}</p>
+                        <Button size="sm" variant="outline" onClick={() => refetchAvailability()}>
+                          Retry
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
+                        <Select value={driverId} onValueChange={setDriverId} disabled={availabilityLoading}>
+                          <SelectTrigger className="h-9" data-testid="orders-assign-driver-select">
+                            <SelectValue placeholder={availabilityLoading ? 'Loading…' : 'Select driver'} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availability?.drivers.map((d) => (
+                              <SelectItem key={d.id} value={d.id}>
+                                {d.firstName} {d.lastName} ({d.employeeCode})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Select value={vehicleId} onValueChange={setVehicleId} disabled={availabilityLoading}>
+                          <SelectTrigger className="h-9" data-testid="orders-assign-vehicle-select">
+                            <SelectValue placeholder={availabilityLoading ? 'Loading…' : 'Select vehicle'} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availability?.vehicles.map((v) => (
+                              <SelectItem key={v.id} value={v.id}>
+                                {v.plateNumber} — {v.type}
+                                {v.capacityKg ? ` · ${v.capacityKg} kg` : ''}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {assignError && <p className="text-xs text-destructive">{assignError}</p>}
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            onClick={handleAssign}
+                            disabled={assignLoading || availabilityLoading || !driverId || !vehicleId}
+                          >
+                            {assignLoading ? 'Assigning…' : 'Confirm'}
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => setShowAssign(false)}>
+                            Close
+                          </Button>
+                        </div>
+                      </>
+                    )}
                   </div>
-                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-                </Link>
-              ) : order.status === 'DELIVERED' ? (
-                <Button size="sm" variant="outline" className="w-full" disabled={creatingInvoice} onClick={async () => {
-                  try { await createInvoiceFromOrder(orderId); toast.success('Invoice created'); }
-                  catch (err) { toast.error(err instanceof Error ? err.message : 'Failed'); }
-                }}>
-                  <Receipt className="mr-1.5 h-3.5 w-3.5" />
-                  {creatingInvoice ? 'Creating...' : 'Create Invoice'}
-                </Button>
-              ) : (
-                <p className="text-xs text-muted-foreground">Invoice available after delivery</p>
-              )
+                )}
+              </div>
             )}
-          </div>
 
-          {/* Status transitions */}
-          {(allowedTransitions.length > 0 || canCancel) && (
-            <div className="rounded-xl border border-border bg-surface p-5 space-y-3">
-              <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Actions</h3>
-              {allowedTransitions.length > 0 && (
-                <div className="space-y-2">
-                  {allowedTransitions.map((nextStatus) => (
-                    <Button key={nextStatus} size="sm" className="w-full" onClick={() => handleStatusTransition(nextStatus)} disabled={statusLoading}>
-                      Move to {nextStatus.replace(/_/g, ' ')}
-                    </Button>
-                  ))}
+            {/* Activity */}
+            <section ref={activityRef} className="p-4">
+              <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <Clock className="h-3.5 w-3.5" />
+                Shipment activity
+              </div>
+              {activity.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No activity yet.</p>
+              ) : (
+                <div className="space-y-0">
+                  {activity.map((item, index) => {
+                    const style = ACTIVITY_STYLE[item.kind];
+                    const Icon = style.icon;
+                    const lit = item.status && item.status === highlightStatus;
+                    return (
+                      <div
+                        key={item.id}
+                        className={cn(
+                          'relative flex gap-3 rounded-md py-2 pl-1',
+                          lit && 'bg-brand/10 ring-1 ring-brand/25',
+                        )}
+                      >
+                        {index < activity.length - 1 && (
+                          <div className="absolute left-[18px] top-10 h-[calc(100%-12px)] w-px bg-border" />
+                        )}
+                        <span
+                          className={cn(
+                            'relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full',
+                            style.className,
+                          )}
+                        >
+                          <Icon className="h-3.5 w-3.5" />
+                        </span>
+                        <div className="min-w-0 flex-1 pt-0.5">
+                          <div className="flex flex-wrap items-baseline gap-x-2">
+                            <span className="text-sm font-medium text-foreground">{item.title}</span>
+                            <span className="text-[11px] tabular-nums text-muted-foreground">
+                              {formatDateTime(item.at)}
+                            </span>
+                          </div>
+                          {item.detail && (
+                            <p className="mt-0.5 text-xs text-muted-foreground">{item.detail}</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
-              {canCancel && (
-                <Dialog open={showCancel} onOpenChange={setShowCancel}>
-                  <DialogTrigger asChild>
-                    <Button size="sm" variant="outline" className="w-full border-destructive/30 text-destructive hover:bg-destructive/10" disabled={cancelLoading}>
-                      Cancel Order
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Cancel {order.orderNumber}?</DialogTitle>
-                      <DialogDescription>This cannot be undone.</DialogDescription>
-                    </DialogHeader>
-                    <Textarea placeholder="Reason (optional)" value={cancelNote} onChange={(e) => setCancelNote(e.target.value)} rows={3} maxLength={2000} />
-                    <DialogFooter>
-                      <Button variant="outline" onClick={() => setShowCancel(false)}>Keep</Button>
-                      <Button variant="destructive" onClick={handleCancel} disabled={cancelLoading}>
-                        {cancelLoading ? 'Cancelling...' : 'Cancel Order'}
+            </section>
+          </div>
+
+          {/* -------- RIGHT OPS RAIL -------- */}
+          <aside className="divide-y divide-border/70 bg-muted/10">
+            {/* Customer */}
+            <div className="p-3.5">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Customer
+                </h3>
+                <Link
+                  to="/app/customers/$customerId"
+                  params={{ customerId: order.customerId }}
+                  className="text-[11px] font-medium text-brand hover:underline"
+                >
+                  Open
+                </Link>
+              </div>
+              {customerLoading ? (
+                <Skeleton className="h-14 w-full" />
+              ) : customer ? (
+                <div className="space-y-1.5">
+                  <p className="text-sm font-semibold">{customer.companyName}</p>
+                  <p className="text-xs text-muted-foreground">{customer.contactName}</p>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {customer.phone && (
+                      <Button asChild size="sm" variant="outline" className="h-7 px-2 text-xs">
+                        <a href={`tel:${customer.phone}`}>
+                          <Phone className="mr-1 h-3 w-3" />
+                          Call
+                        </a>
                       </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
+                    )}
+                    {customer.email && (
+                      <Button asChild size="sm" variant="outline" className="h-7 px-2 text-xs">
+                        <a href={`mailto:${customer.email}`}>
+                          <Mail className="mr-1 h-3 w-3" />
+                          Email
+                        </a>
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Unavailable</p>
               )}
             </div>
-          )}
+
+            {/* Financial — badge metrics */}
+            <div className="p-3.5">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Financial
+                </h3>
+                {canViewInvoices && (
+                  <Link to="/app/finance" className="text-[11px] font-medium text-brand hover:underline">
+                    Finance
+                  </Link>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <MetricBadge label="Revenue" value={formatMoney(order.price, order.currency)} tone="brand" />
+                {canViewInvoices &&
+                  (invoicesLoading ? (
+                    <Skeleton className="h-[52px] w-full" />
+                  ) : invoicesError ? (
+                    <Button size="sm" variant="outline" className="h-[52px]" onClick={() => refetchInvoices()}>
+                      Retry
+                    </Button>
+                  ) : (
+                    <MetricBadge
+                      label="Outstanding"
+                      value={invoice ? formatMoney(outstanding!, invoice.currency) : '—'}
+                      tone={outstanding && outstanding > 0 ? 'warn' : 'good'}
+                    />
+                  ))}
+                {canViewInvoices && invoice && (
+                  <MetricBadge
+                    label="Collected"
+                    value={formatMoney(collected!, invoice.currency)}
+                    tone="good"
+                  />
+                )}
+                {margin != null && (
+                  <MetricBadge
+                    label="Margin"
+                    value={formatMoney(margin, order.currency)}
+                    tone={margin >= 0 ? 'good' : 'bad'}
+                  />
+                )}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {canViewInvoices && invoice && (
+                  <Badge variant="outline" className="text-[10px] capitalize">
+                    Invoice · {invoice.status.toLowerCase()}
+                  </Badge>
+                )}
+                {canViewInvoices && !invoice && !invoicesLoading && (
+                  <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                    No invoice
+                  </Badge>
+                )}
+                {canViewExpenses && !expensesQuery.isPending && (
+                  <Badge variant="outline" className="text-[10px]">
+                    {pendingExpenseCount > 0
+                      ? `${pendingExpenseCount} expense pending`
+                      : expenses.length > 0
+                        ? `${expenses.length} expenses`
+                        : 'No expenses'}
+                  </Badge>
+                )}
+              </div>
+            </div>
+
+            {/* Live tracking */}
+            {canViewFleet && order.vehicleId && liveVehicle && (
+              <div className="p-3.5">
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Live tracking
+                  </h3>
+                  <Link to="/app/fleet-tracking" className="text-[11px] font-medium text-brand hover:underline">
+                    Map
+                  </Link>
+                </div>
+                <div className="space-y-1 text-sm">
+                  <p className="inline-flex items-center gap-1.5 capitalize">
+                    <Radio className="h-3.5 w-3.5 text-brand" />
+                    <span className="font-medium">{liveVehicle.movementState.toLowerCase()}</span>
+                    {liveVehicle.speedKph != null && (
+                      <span className="tabular-nums text-muted-foreground">
+                        · {Math.round(liveVehicle.speedKph)} km/h
+                      </span>
+                    )}
+                  </p>
+                  {liveVehicle.lastReceivedAt && (
+                    <p className={cn('text-xs', liveVehicle.isStale && 'text-warning')}>
+                      GPS {formatRelativeTime(liveVehicle.lastReceivedAt)}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Schedule */}
+            <div className="p-3.5">
+              <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Schedule
+              </h3>
+              <dl className="space-y-1.5 text-sm">
+                <div className="flex justify-between gap-2">
+                  <dt className="text-muted-foreground">Pickup</dt>
+                  <dd className="font-medium tabular-nums">{formatDate(order.pickupDate)}</dd>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <dt className="text-muted-foreground">Delivery</dt>
+                  <dd className={cn('font-medium tabular-nums', order.isDelayed && 'text-destructive')}>
+                    {formatDate(order.deliveryDate)}
+                  </dd>
+                </div>
+                <Separator className="my-1" />
+                <div className="flex justify-between gap-2">
+                  <dt className="text-muted-foreground">Created</dt>
+                  <dd className="tabular-nums text-muted-foreground">{formatDate(order.createdAt)}</dd>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <dt className="text-muted-foreground">Updated</dt>
+                  <dd className="tabular-nums text-muted-foreground">{formatDate(order.updatedAt)}</dd>
+                </div>
+              </dl>
+            </div>
+
+            {/* Quick actions — operator hotbar */}
+            {(canAssign || canAdvanceStatus || canWriteDispatch || canViewInvoices || canCancel || canEdit) && (
+              <div className="p-3.5">
+                <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Quick actions
+                </h3>
+                <div className="grid grid-cols-1 gap-1.5">
+                  {canAssign && (
+                    <>
+                      <Button size="sm" className="w-full justify-start" onClick={openAssign}>
+                        <User className="mr-2 h-3.5 w-3.5" />
+                        Assign driver
+                      </Button>
+                      <Button size="sm" variant="outline" className="w-full justify-start" onClick={openAssign}>
+                        <Truck className="mr-2 h-3.5 w-3.5" />
+                        Assign vehicle
+                      </Button>
+                    </>
+                  )}
+                  {canWriteDispatch && !dispatch && order.status !== 'DRAFT' && order.status !== 'CANCELLED' && (
+                    <Button asChild size="sm" variant="outline" className="w-full justify-start">
+                      <Link to="/app/dispatches/create" search={{ orderId: order.id }}>
+                        <RouteIcon className="mr-2 h-3.5 w-3.5" />
+                        Create dispatch
+                      </Link>
+                    </Button>
+                  )}
+                  {canViewDispatch && dispatch && (
+                    <Button asChild size="sm" variant="outline" className="w-full justify-start">
+                      <Link to="/app/dispatches/$dispatchId" params={{ dispatchId: dispatch.id }}>
+                        <RouteIcon className="mr-2 h-3.5 w-3.5" />
+                        Open dispatch
+                      </Link>
+                    </Button>
+                  )}
+                  {canViewInvoices && !invoice && order.status === 'DELIVERED' && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full justify-start"
+                      disabled={creatingInvoice}
+                      onClick={async () => {
+                        try {
+                          await createInvoiceFromOrder(orderId);
+                          toast.success('Invoice created');
+                        } catch (err) {
+                          toast.error(err instanceof Error ? err.message : 'Failed');
+                        }
+                      }}
+                    >
+                      <Receipt className="mr-2 h-3.5 w-3.5" />
+                      {creatingInvoice ? 'Creating…' : 'Generate invoice'}
+                    </Button>
+                  )}
+                  {canViewInvoices && invoice && (
+                    <Button asChild size="sm" variant="outline" className="w-full justify-start">
+                      <Link to="/app/finance">
+                        <FileText className="mr-2 h-3.5 w-3.5" />
+                        Open invoice
+                      </Link>
+                    </Button>
+                  )}
+                  {canEdit && (
+                    <Button size="sm" variant="outline" className="w-full justify-start" onClick={() => setEditOpen(true)}>
+                      <Edit2 className="mr-2 h-3.5 w-3.5" />
+                      Edit order
+                    </Button>
+                  )}
+                  {canAdvanceStatus &&
+                    allowedTransitions.map((nextStatus) =>
+                      nextStatus === 'DELIVERED' ? (
+                        <ConfirmDialog
+                          key={nextStatus}
+                          open={pendingDeliverConfirm}
+                          onOpenChange={setPendingDeliverConfirm}
+                          trigger={
+                            <Button size="sm" className="w-full justify-start" disabled={statusLoading}>
+                              <CheckCircle2 className="mr-2 h-3.5 w-3.5" />
+                              Mark delivered
+                            </Button>
+                          }
+                          title={`Mark ${order.orderNumber} delivered?`}
+                          description="This closes the shipment."
+                          confirmLabel={statusLoading ? 'Updating…' : 'Mark delivered'}
+                          cancelLabel="Keep open"
+                          onConfirm={() => handleStatusTransition('DELIVERED')}
+                        />
+                      ) : (
+                        <Button
+                          key={nextStatus}
+                          size="sm"
+                          variant="outline"
+                          className="w-full justify-start"
+                          onClick={() => handleStatusTransition(nextStatus)}
+                          disabled={statusLoading}
+                        >
+                          Move to {nextStatus.replace(/_/g, ' ')}
+                        </Button>
+                      ),
+                    )}
+                  {canCancel && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full justify-start border-destructive/30 text-destructive hover:bg-destructive/10"
+                      onClick={() => setShowCancel(true)}
+                    >
+                      <XCircle className="mr-2 h-3.5 w-3.5" />
+                      Cancel order
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+          </aside>
         </div>
       </div>
+
+      {canEdit && <OrdersEditSheet open={editOpen} onOpenChange={setEditOpen} order={order} />}
+    </div>
+  );
+}
+
+function AssignmentDriver({
+  driver,
+  fallbackAssigned,
+}: {
+  driver?: Driver | null;
+  fallbackAssigned: boolean;
+}) {
+  if (!driver && !fallbackAssigned) {
+    return (
+      <div className="rounded-lg border border-dashed border-border/80 bg-background/20 p-3">
+        <div className="flex items-center gap-2.5">
+          <Avatar initials="—" tone="muted" />
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Driver</p>
+            <p className="text-sm text-muted-foreground">Unassigned</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  if (!driver) {
+    return (
+      <div className="rounded-lg border border-border/70 bg-background/40 p-3">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Driver</p>
+        <p className="mt-1 text-sm font-medium">Assigned</p>
+      </div>
+    );
+  }
+  const lic = licenseLabel(driver.licenseExpiry);
+  return (
+    <div className="rounded-lg border border-border/70 bg-background/40 p-3">
+      <div className="flex items-start gap-2.5">
+        <Avatar initials={(driver.firstName[0] ?? '') + (driver.lastName[0] ?? '')} />
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Driver</p>
+          <Link
+            to="/app/drivers/$driverId"
+            params={{ driverId: driver.id }}
+            className="block truncate text-sm font-semibold hover:text-brand hover:underline"
+          >
+            {driver.firstName} {driver.lastName}
+          </Link>
+          <div className="mt-1 flex flex-wrap items-center gap-1">
+            <Badge variant="outline" className="h-5 text-[10px] capitalize">
+              {driver.status.toLowerCase().replace(/_/g, ' ')}
+            </Badge>
+            <span className="text-[10px] text-muted-foreground">{driver.employeeCode}</span>
+          </div>
+        </div>
+      </div>
+      <dl className="mt-2.5 space-y-1 text-[11px]">
+        {driver.phone && (
+          <div className="flex justify-between gap-2">
+            <dt className="text-muted-foreground">Phone</dt>
+            <dd>
+              <a href={`tel:${driver.phone}`} className="font-medium text-brand hover:underline">
+                {driver.phone}
+              </a>
+            </dd>
+          </div>
+        )}
+        {driver.licenseNumber && (
+          <div className="flex justify-between gap-2">
+            <dt className="text-muted-foreground">License</dt>
+            <dd className="font-mono">{driver.licenseNumber}</dd>
+          </div>
+        )}
+        {lic && (
+          <div className="flex justify-between gap-2">
+            <dt className="text-muted-foreground">Expiry</dt>
+            <dd className={cn('font-medium', lic.bad && 'text-warning')}>{lic.text}</dd>
+          </div>
+        )}
+      </dl>
+    </div>
+  );
+}
+
+function AssignmentVehicle({
+  vehicle,
+  fallbackAssigned,
+}: {
+  vehicle?: Vehicle | null;
+  fallbackAssigned: boolean;
+}) {
+  if (!vehicle && !fallbackAssigned) {
+    return (
+      <div className="rounded-lg border border-dashed border-border/80 bg-background/20 p-3">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-9 w-9 items-center justify-center rounded-md bg-muted text-muted-foreground">
+            <Truck className="h-4 w-4" />
+          </span>
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Vehicle</p>
+            <p className="text-sm text-muted-foreground">Unassigned</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  if (!vehicle) {
+    return (
+      <div className="rounded-lg border border-border/70 bg-background/40 p-3">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Vehicle</p>
+        <p className="mt-1 text-sm font-medium">Assigned</p>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-lg border border-border/70 bg-background/40 p-3">
+      <div className="flex items-start gap-2.5">
+        <span className="flex h-9 w-9 items-center justify-center rounded-md bg-brand/10 text-brand">
+          <Truck className="h-4 w-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Vehicle</p>
+          <Link
+            to="/app/vehicles/$vehicleId"
+            params={{ vehicleId: vehicle.id }}
+            className="block font-mono text-sm font-semibold hover:text-brand hover:underline"
+          >
+            {vehicle.plateNumber}
+          </Link>
+          <div className="mt-1 flex flex-wrap items-center gap-1">
+            <Badge variant="outline" className="h-5 text-[10px] capitalize">
+              {vehicle.status.toLowerCase().replace(/_/g, ' ')}
+            </Badge>
+            <span className="text-[10px] capitalize text-muted-foreground">
+              {vehicle.type.toLowerCase().replace(/_/g, ' ')}
+            </span>
+          </div>
+        </div>
+      </div>
+      <dl className="mt-2.5 space-y-1 text-[11px]">
+        <div className="flex justify-between gap-2">
+          <dt className="text-muted-foreground">Capacity</dt>
+          <dd className="font-medium tabular-nums">
+            {vehicle.capacityKg ? `${vehicle.capacityKg} kg` : '—'}
+            {vehicle.capacityM3 ? ` · ${vehicle.capacityM3} m³` : ''}
+          </dd>
+        </div>
+        {(vehicle.make || vehicle.model) && (
+          <div className="flex justify-between gap-2">
+            <dt className="text-muted-foreground">Unit</dt>
+            <dd className="truncate font-medium">
+              {[vehicle.make, vehicle.model, vehicle.year].filter(Boolean).join(' ')}
+            </dd>
+          </div>
+        )}
+        <div className="flex justify-between gap-2">
+          <dt className="text-muted-foreground">Code</dt>
+          <dd className="font-mono">{vehicle.vehicleCode}</dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
+
+function AssignmentDispatch({
+  dispatch,
+  hidden,
+}: {
+  dispatch: ApiDispatch | null;
+  hidden?: boolean;
+}) {
+  if (hidden) return null;
+  if (!dispatch) {
+    return (
+      <div className="rounded-lg border border-dashed border-border/80 bg-background/20 p-3">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-9 w-9 items-center justify-center rounded-md bg-muted text-muted-foreground">
+            <RouteIcon className="h-4 w-4" />
+          </span>
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Dispatch</p>
+            <p className="text-sm text-muted-foreground">Not created</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-lg border border-border/70 bg-background/40 p-3">
+      <div className="flex items-start gap-2.5">
+        <span className="flex h-9 w-9 items-center justify-center rounded-md bg-brand/10 text-brand">
+          <RouteIcon className="h-4 w-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Dispatch</p>
+          <Link
+            to="/app/dispatches/$dispatchId"
+            params={{ dispatchId: dispatch.id }}
+            className="block font-mono text-sm font-semibold hover:text-brand hover:underline"
+          >
+            {dispatch.dispatchNumber}
+          </Link>
+          <Badge variant="outline" className="mt-1 h-5 text-[10px] capitalize">
+            {dispatch.status.toLowerCase().replace(/_/g, ' ')}
+          </Badge>
+        </div>
+      </div>
+      <dl className="mt-2.5 space-y-1 text-[11px]">
+        {dispatch.createdBy && (
+          <div className="flex justify-between gap-2">
+            <dt className="text-muted-foreground">Dispatcher</dt>
+            <dd className="truncate font-medium">
+              {dispatch.createdBy.firstName} {dispatch.createdBy.lastName}
+            </dd>
+          </div>
+        )}
+        <div className="flex justify-between gap-2">
+          <dt className="text-muted-foreground">Created</dt>
+          <dd className="tabular-nums">{formatDate(dispatch.createdAt)}</dd>
+        </div>
+      </dl>
     </div>
   );
 }

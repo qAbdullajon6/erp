@@ -24,7 +24,9 @@ import { Route as PortalInvoicesRouteImport } from './routes/portal.invoices'
 import { Route as PortalDocumentsRouteImport } from './routes/portal.documents'
 import { Route as PortalAcceptInviteRouteImport } from './routes/portal.accept-invite'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
+import { Route as AuthVerifyEmailRouteImport } from './routes/auth.verify-email'
 import { Route as AuthSignInRouteImport } from './routes/auth.sign-in'
+import { Route as AuthResetPasswordRouteImport } from './routes/auth.reset-password'
 import { Route as AuthForgotPasswordRouteImport } from './routes/auth.forgot-password'
 import { Route as AppWorkflowsRouteImport } from './routes/app.workflows'
 import { Route as AppSettingsRouteImport } from './routes/app.settings'
@@ -38,11 +40,14 @@ import { Route as AppDeveloperRouteImport } from './routes/app.developer'
 import { Route as AppBillingRouteImport } from './routes/app.billing'
 import { Route as AppAiAssistantRouteImport } from './routes/app.ai-assistant'
 import { Route as AppVehiclesIndexRouteImport } from './routes/app.vehicles.index'
+import { Route as AppProvidersIndexRouteImport } from './routes/app.providers.index'
 import { Route as AppOrdersIndexRouteImport } from './routes/app.orders.index'
 import { Route as AppLeadsIndexRouteImport } from './routes/app.leads.index'
 import { Route as AppImportIndexRouteImport } from './routes/app.import.index'
+import { Route as AppGeofencesIndexRouteImport } from './routes/app.geofences.index'
 import { Route as AppDriversIndexRouteImport } from './routes/app.drivers.index'
 import { Route as AppDispatchesIndexRouteImport } from './routes/app.dispatches.index'
+import { Route as AppDevicesIndexRouteImport } from './routes/app.devices.index'
 import { Route as AppCustomersIndexRouteImport } from './routes/app.customers.index'
 import { Route as AppAuditLogsIndexRouteImport } from './routes/app.audit-logs.index'
 import { Route as PortalOrdersOrderIdRouteImport } from './routes/portal.orders.$orderId'
@@ -51,17 +56,21 @@ import { Route as InviteTokenAcceptRouteImport } from './routes/invite.$token_.a
 import { Route as AppWorkflowsWorkflowIdRouteImport } from './routes/app.workflows.$workflowId'
 import { Route as AppVehiclesCreateRouteImport } from './routes/app.vehicles.create'
 import { Route as AppVehiclesVehicleIdRouteImport } from './routes/app.vehicles.$vehicleId'
+import { Route as AppProvidersProviderRouteImport } from './routes/app.providers.$provider'
 import { Route as AppOrdersCreateRouteImport } from './routes/app.orders.create'
 import { Route as AppOrdersOrderIdRouteImport } from './routes/app.orders.$orderId'
 import { Route as AppImportHistoryRouteImport } from './routes/app.import.history'
 import { Route as AppImportSessionIdRouteImport } from './routes/app.import.$sessionId'
+import { Route as AppFleetTrackingDebugRouteImport } from './routes/app.fleet-tracking_.debug'
 import { Route as AppDriversCreateRouteImport } from './routes/app.drivers.create'
 import { Route as AppDriversDriverIdRouteImport } from './routes/app.drivers.$driverId'
 import { Route as AppDispatchesCreateRouteImport } from './routes/app.dispatches.create'
 import { Route as AppDispatchesBoardRouteImport } from './routes/app.dispatches.board'
 import { Route as AppDispatchesDispatchIdRouteImport } from './routes/app.dispatches.$dispatchId'
+import { Route as AppDevicesDeviceIdRouteImport } from './routes/app.devices.$deviceId'
 import { Route as AppCustomersCreateRouteImport } from './routes/app.customers.create'
 import { Route as AppCustomersCustomerIdRouteImport } from './routes/app.customers.$customerId'
+import { Route as AppFleetTrackingReplayTripIdRouteImport } from './routes/app.fleet-tracking_.replay.$tripId'
 
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
@@ -138,9 +147,19 @@ const InviteTokenRoute = InviteTokenRouteImport.update({
   path: '/invite/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthVerifyEmailRoute = AuthVerifyEmailRouteImport.update({
+  id: '/auth/verify-email',
+  path: '/auth/verify-email',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthSignInRoute = AuthSignInRouteImport.update({
   id: '/auth/sign-in',
   path: '/auth/sign-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthResetPasswordRoute = AuthResetPasswordRouteImport.update({
+  id: '/auth/reset-password',
+  path: '/auth/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthForgotPasswordRoute = AuthForgotPasswordRouteImport.update({
@@ -208,6 +227,11 @@ const AppVehiclesIndexRoute = AppVehiclesIndexRouteImport.update({
   path: '/vehicles/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppProvidersIndexRoute = AppProvidersIndexRouteImport.update({
+  id: '/providers/',
+  path: '/providers/',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppOrdersIndexRoute = AppOrdersIndexRouteImport.update({
   id: '/orders/',
   path: '/orders/',
@@ -223,6 +247,11 @@ const AppImportIndexRoute = AppImportIndexRouteImport.update({
   path: '/import/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppGeofencesIndexRoute = AppGeofencesIndexRouteImport.update({
+  id: '/geofences/',
+  path: '/geofences/',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppDriversIndexRoute = AppDriversIndexRouteImport.update({
   id: '/drivers/',
   path: '/drivers/',
@@ -231,6 +260,11 @@ const AppDriversIndexRoute = AppDriversIndexRouteImport.update({
 const AppDispatchesIndexRoute = AppDispatchesIndexRouteImport.update({
   id: '/dispatches/',
   path: '/dispatches/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDevicesIndexRoute = AppDevicesIndexRouteImport.update({
+  id: '/devices/',
+  path: '/devices/',
   getParentRoute: () => AppRoute,
 } as any)
 const AppCustomersIndexRoute = AppCustomersIndexRouteImport.update({
@@ -273,6 +307,11 @@ const AppVehiclesVehicleIdRoute = AppVehiclesVehicleIdRouteImport.update({
   path: '/vehicles/$vehicleId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppProvidersProviderRoute = AppProvidersProviderRouteImport.update({
+  id: '/providers/$provider',
+  path: '/providers/$provider',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppOrdersCreateRoute = AppOrdersCreateRouteImport.update({
   id: '/orders/create',
   path: '/orders/create',
@@ -291,6 +330,11 @@ const AppImportHistoryRoute = AppImportHistoryRouteImport.update({
 const AppImportSessionIdRoute = AppImportSessionIdRouteImport.update({
   id: '/import/$sessionId',
   path: '/import/$sessionId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppFleetTrackingDebugRoute = AppFleetTrackingDebugRouteImport.update({
+  id: '/fleet-tracking_/debug',
+  path: '/fleet-tracking/debug',
   getParentRoute: () => AppRoute,
 } as any)
 const AppDriversCreateRoute = AppDriversCreateRouteImport.update({
@@ -318,6 +362,11 @@ const AppDispatchesDispatchIdRoute = AppDispatchesDispatchIdRouteImport.update({
   path: '/dispatches/$dispatchId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppDevicesDeviceIdRoute = AppDevicesDeviceIdRouteImport.update({
+  id: '/devices/$deviceId',
+  path: '/devices/$deviceId',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppCustomersCreateRoute = AppCustomersCreateRouteImport.update({
   id: '/customers/create',
   path: '/customers/create',
@@ -328,6 +377,12 @@ const AppCustomersCustomerIdRoute = AppCustomersCustomerIdRouteImport.update({
   path: '/customers/$customerId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppFleetTrackingReplayTripIdRoute =
+  AppFleetTrackingReplayTripIdRouteImport.update({
+    id: '/fleet-tracking_/replay/$tripId',
+    path: '/fleet-tracking/replay/$tripId',
+    getParentRoute: () => AppRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -347,7 +402,9 @@ export interface FileRoutesByFullPath {
   '/app/settings': typeof AppSettingsRoute
   '/app/workflows': typeof AppWorkflowsRouteWithChildren
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
+  '/auth/reset-password': typeof AuthResetPasswordRoute
   '/auth/sign-in': typeof AuthSignInRoute
+  '/auth/verify-email': typeof AuthVerifyEmailRoute
   '/invite/$token': typeof InviteTokenRoute
   '/portal/accept-invite': typeof PortalAcceptInviteRoute
   '/portal/documents': typeof PortalDocumentsRoute
@@ -360,15 +417,18 @@ export interface FileRoutesByFullPath {
   '/portal/': typeof PortalIndexRoute
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
   '/app/customers/create': typeof AppCustomersCreateRoute
+  '/app/devices/$deviceId': typeof AppDevicesDeviceIdRoute
   '/app/dispatches/$dispatchId': typeof AppDispatchesDispatchIdRoute
   '/app/dispatches/board': typeof AppDispatchesBoardRoute
   '/app/dispatches/create': typeof AppDispatchesCreateRoute
   '/app/drivers/$driverId': typeof AppDriversDriverIdRoute
   '/app/drivers/create': typeof AppDriversCreateRoute
+  '/app/fleet-tracking/debug': typeof AppFleetTrackingDebugRoute
   '/app/import/$sessionId': typeof AppImportSessionIdRoute
   '/app/import/history': typeof AppImportHistoryRoute
   '/app/orders/$orderId': typeof AppOrdersOrderIdRoute
   '/app/orders/create': typeof AppOrdersCreateRoute
+  '/app/providers/$provider': typeof AppProvidersProviderRoute
   '/app/vehicles/$vehicleId': typeof AppVehiclesVehicleIdRoute
   '/app/vehicles/create': typeof AppVehiclesCreateRoute
   '/app/workflows/$workflowId': typeof AppWorkflowsWorkflowIdRoute
@@ -377,12 +437,16 @@ export interface FileRoutesByFullPath {
   '/portal/orders/$orderId': typeof PortalOrdersOrderIdRoute
   '/app/audit-logs/': typeof AppAuditLogsIndexRoute
   '/app/customers/': typeof AppCustomersIndexRoute
+  '/app/devices/': typeof AppDevicesIndexRoute
   '/app/dispatches/': typeof AppDispatchesIndexRoute
   '/app/drivers/': typeof AppDriversIndexRoute
+  '/app/geofences/': typeof AppGeofencesIndexRoute
   '/app/import/': typeof AppImportIndexRoute
   '/app/leads/': typeof AppLeadsIndexRoute
   '/app/orders/': typeof AppOrdersIndexRoute
+  '/app/providers/': typeof AppProvidersIndexRoute
   '/app/vehicles/': typeof AppVehiclesIndexRoute
+  '/app/fleet-tracking/replay/$tripId': typeof AppFleetTrackingReplayTripIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -400,7 +464,9 @@ export interface FileRoutesByTo {
   '/app/settings': typeof AppSettingsRoute
   '/app/workflows': typeof AppWorkflowsRouteWithChildren
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
+  '/auth/reset-password': typeof AuthResetPasswordRoute
   '/auth/sign-in': typeof AuthSignInRoute
+  '/auth/verify-email': typeof AuthVerifyEmailRoute
   '/invite/$token': typeof InviteTokenRoute
   '/portal/accept-invite': typeof PortalAcceptInviteRoute
   '/portal/documents': typeof PortalDocumentsRoute
@@ -413,15 +479,18 @@ export interface FileRoutesByTo {
   '/portal': typeof PortalIndexRoute
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
   '/app/customers/create': typeof AppCustomersCreateRoute
+  '/app/devices/$deviceId': typeof AppDevicesDeviceIdRoute
   '/app/dispatches/$dispatchId': typeof AppDispatchesDispatchIdRoute
   '/app/dispatches/board': typeof AppDispatchesBoardRoute
   '/app/dispatches/create': typeof AppDispatchesCreateRoute
   '/app/drivers/$driverId': typeof AppDriversDriverIdRoute
   '/app/drivers/create': typeof AppDriversCreateRoute
+  '/app/fleet-tracking/debug': typeof AppFleetTrackingDebugRoute
   '/app/import/$sessionId': typeof AppImportSessionIdRoute
   '/app/import/history': typeof AppImportHistoryRoute
   '/app/orders/$orderId': typeof AppOrdersOrderIdRoute
   '/app/orders/create': typeof AppOrdersCreateRoute
+  '/app/providers/$provider': typeof AppProvidersProviderRoute
   '/app/vehicles/$vehicleId': typeof AppVehiclesVehicleIdRoute
   '/app/vehicles/create': typeof AppVehiclesCreateRoute
   '/app/workflows/$workflowId': typeof AppWorkflowsWorkflowIdRoute
@@ -430,12 +499,16 @@ export interface FileRoutesByTo {
   '/portal/orders/$orderId': typeof PortalOrdersOrderIdRoute
   '/app/audit-logs': typeof AppAuditLogsIndexRoute
   '/app/customers': typeof AppCustomersIndexRoute
+  '/app/devices': typeof AppDevicesIndexRoute
   '/app/dispatches': typeof AppDispatchesIndexRoute
   '/app/drivers': typeof AppDriversIndexRoute
+  '/app/geofences': typeof AppGeofencesIndexRoute
   '/app/import': typeof AppImportIndexRoute
   '/app/leads': typeof AppLeadsIndexRoute
   '/app/orders': typeof AppOrdersIndexRoute
+  '/app/providers': typeof AppProvidersIndexRoute
   '/app/vehicles': typeof AppVehiclesIndexRoute
+  '/app/fleet-tracking/replay/$tripId': typeof AppFleetTrackingReplayTripIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -456,7 +529,9 @@ export interface FileRoutesById {
   '/app/settings': typeof AppSettingsRoute
   '/app/workflows': typeof AppWorkflowsRouteWithChildren
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
+  '/auth/reset-password': typeof AuthResetPasswordRoute
   '/auth/sign-in': typeof AuthSignInRoute
+  '/auth/verify-email': typeof AuthVerifyEmailRoute
   '/invite/$token': typeof InviteTokenRoute
   '/portal/accept-invite': typeof PortalAcceptInviteRoute
   '/portal/documents': typeof PortalDocumentsRoute
@@ -469,15 +544,18 @@ export interface FileRoutesById {
   '/portal/': typeof PortalIndexRoute
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
   '/app/customers/create': typeof AppCustomersCreateRoute
+  '/app/devices/$deviceId': typeof AppDevicesDeviceIdRoute
   '/app/dispatches/$dispatchId': typeof AppDispatchesDispatchIdRoute
   '/app/dispatches/board': typeof AppDispatchesBoardRoute
   '/app/dispatches/create': typeof AppDispatchesCreateRoute
   '/app/drivers/$driverId': typeof AppDriversDriverIdRoute
   '/app/drivers/create': typeof AppDriversCreateRoute
+  '/app/fleet-tracking_/debug': typeof AppFleetTrackingDebugRoute
   '/app/import/$sessionId': typeof AppImportSessionIdRoute
   '/app/import/history': typeof AppImportHistoryRoute
   '/app/orders/$orderId': typeof AppOrdersOrderIdRoute
   '/app/orders/create': typeof AppOrdersCreateRoute
+  '/app/providers/$provider': typeof AppProvidersProviderRoute
   '/app/vehicles/$vehicleId': typeof AppVehiclesVehicleIdRoute
   '/app/vehicles/create': typeof AppVehiclesCreateRoute
   '/app/workflows/$workflowId': typeof AppWorkflowsWorkflowIdRoute
@@ -486,12 +564,16 @@ export interface FileRoutesById {
   '/portal/orders/$orderId': typeof PortalOrdersOrderIdRoute
   '/app/audit-logs/': typeof AppAuditLogsIndexRoute
   '/app/customers/': typeof AppCustomersIndexRoute
+  '/app/devices/': typeof AppDevicesIndexRoute
   '/app/dispatches/': typeof AppDispatchesIndexRoute
   '/app/drivers/': typeof AppDriversIndexRoute
+  '/app/geofences/': typeof AppGeofencesIndexRoute
   '/app/import/': typeof AppImportIndexRoute
   '/app/leads/': typeof AppLeadsIndexRoute
   '/app/orders/': typeof AppOrdersIndexRoute
+  '/app/providers/': typeof AppProvidersIndexRoute
   '/app/vehicles/': typeof AppVehiclesIndexRoute
+  '/app/fleet-tracking_/replay/$tripId': typeof AppFleetTrackingReplayTripIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -513,7 +595,9 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/workflows'
     | '/auth/forgot-password'
+    | '/auth/reset-password'
     | '/auth/sign-in'
+    | '/auth/verify-email'
     | '/invite/$token'
     | '/portal/accept-invite'
     | '/portal/documents'
@@ -526,15 +610,18 @@ export interface FileRouteTypes {
     | '/portal/'
     | '/app/customers/$customerId'
     | '/app/customers/create'
+    | '/app/devices/$deviceId'
     | '/app/dispatches/$dispatchId'
     | '/app/dispatches/board'
     | '/app/dispatches/create'
     | '/app/drivers/$driverId'
     | '/app/drivers/create'
+    | '/app/fleet-tracking/debug'
     | '/app/import/$sessionId'
     | '/app/import/history'
     | '/app/orders/$orderId'
     | '/app/orders/create'
+    | '/app/providers/$provider'
     | '/app/vehicles/$vehicleId'
     | '/app/vehicles/create'
     | '/app/workflows/$workflowId'
@@ -543,12 +630,16 @@ export interface FileRouteTypes {
     | '/portal/orders/$orderId'
     | '/app/audit-logs/'
     | '/app/customers/'
+    | '/app/devices/'
     | '/app/dispatches/'
     | '/app/drivers/'
+    | '/app/geofences/'
     | '/app/import/'
     | '/app/leads/'
     | '/app/orders/'
+    | '/app/providers/'
     | '/app/vehicles/'
+    | '/app/fleet-tracking/replay/$tripId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -566,7 +657,9 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/workflows'
     | '/auth/forgot-password'
+    | '/auth/reset-password'
     | '/auth/sign-in'
+    | '/auth/verify-email'
     | '/invite/$token'
     | '/portal/accept-invite'
     | '/portal/documents'
@@ -579,15 +672,18 @@ export interface FileRouteTypes {
     | '/portal'
     | '/app/customers/$customerId'
     | '/app/customers/create'
+    | '/app/devices/$deviceId'
     | '/app/dispatches/$dispatchId'
     | '/app/dispatches/board'
     | '/app/dispatches/create'
     | '/app/drivers/$driverId'
     | '/app/drivers/create'
+    | '/app/fleet-tracking/debug'
     | '/app/import/$sessionId'
     | '/app/import/history'
     | '/app/orders/$orderId'
     | '/app/orders/create'
+    | '/app/providers/$provider'
     | '/app/vehicles/$vehicleId'
     | '/app/vehicles/create'
     | '/app/workflows/$workflowId'
@@ -596,12 +692,16 @@ export interface FileRouteTypes {
     | '/portal/orders/$orderId'
     | '/app/audit-logs'
     | '/app/customers'
+    | '/app/devices'
     | '/app/dispatches'
     | '/app/drivers'
+    | '/app/geofences'
     | '/app/import'
     | '/app/leads'
     | '/app/orders'
+    | '/app/providers'
     | '/app/vehicles'
+    | '/app/fleet-tracking/replay/$tripId'
   id:
     | '__root__'
     | '/'
@@ -621,7 +721,9 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/workflows'
     | '/auth/forgot-password'
+    | '/auth/reset-password'
     | '/auth/sign-in'
+    | '/auth/verify-email'
     | '/invite/$token'
     | '/portal/accept-invite'
     | '/portal/documents'
@@ -634,15 +736,18 @@ export interface FileRouteTypes {
     | '/portal/'
     | '/app/customers/$customerId'
     | '/app/customers/create'
+    | '/app/devices/$deviceId'
     | '/app/dispatches/$dispatchId'
     | '/app/dispatches/board'
     | '/app/dispatches/create'
     | '/app/drivers/$driverId'
     | '/app/drivers/create'
+    | '/app/fleet-tracking_/debug'
     | '/app/import/$sessionId'
     | '/app/import/history'
     | '/app/orders/$orderId'
     | '/app/orders/create'
+    | '/app/providers/$provider'
     | '/app/vehicles/$vehicleId'
     | '/app/vehicles/create'
     | '/app/workflows/$workflowId'
@@ -651,12 +756,16 @@ export interface FileRouteTypes {
     | '/portal/orders/$orderId'
     | '/app/audit-logs/'
     | '/app/customers/'
+    | '/app/devices/'
     | '/app/dispatches/'
     | '/app/drivers/'
+    | '/app/geofences/'
     | '/app/import/'
     | '/app/leads/'
     | '/app/orders/'
+    | '/app/providers/'
     | '/app/vehicles/'
+    | '/app/fleet-tracking_/replay/$tripId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -666,7 +775,9 @@ export interface RootRouteChildren {
   PrivacyRoute: typeof PrivacyRoute
   TermsRoute: typeof TermsRoute
   AuthForgotPasswordRoute: typeof AuthForgotPasswordRoute
+  AuthResetPasswordRoute: typeof AuthResetPasswordRoute
   AuthSignInRoute: typeof AuthSignInRoute
+  AuthVerifyEmailRoute: typeof AuthVerifyEmailRoute
   InviteTokenRoute: typeof InviteTokenRoute
   InviteTokenAcceptRoute: typeof InviteTokenAcceptRoute
 }
@@ -778,11 +889,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InviteTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/auth/verify-email': {
+      id: '/auth/verify-email'
+      path: '/auth/verify-email'
+      fullPath: '/auth/verify-email'
+      preLoaderRoute: typeof AuthVerifyEmailRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/auth/sign-in': {
       id: '/auth/sign-in'
       path: '/auth/sign-in'
       fullPath: '/auth/sign-in'
       preLoaderRoute: typeof AuthSignInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/reset-password': {
+      id: '/auth/reset-password'
+      path: '/auth/reset-password'
+      fullPath: '/auth/reset-password'
+      preLoaderRoute: typeof AuthResetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth/forgot-password': {
@@ -876,6 +1001,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppVehiclesIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/providers/': {
+      id: '/app/providers/'
+      path: '/providers'
+      fullPath: '/app/providers/'
+      preLoaderRoute: typeof AppProvidersIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/orders/': {
       id: '/app/orders/'
       path: '/orders'
@@ -897,6 +1029,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppImportIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/geofences/': {
+      id: '/app/geofences/'
+      path: '/geofences'
+      fullPath: '/app/geofences/'
+      preLoaderRoute: typeof AppGeofencesIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/drivers/': {
       id: '/app/drivers/'
       path: '/drivers'
@@ -909,6 +1048,13 @@ declare module '@tanstack/react-router' {
       path: '/dispatches'
       fullPath: '/app/dispatches/'
       preLoaderRoute: typeof AppDispatchesIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/devices/': {
+      id: '/app/devices/'
+      path: '/devices'
+      fullPath: '/app/devices/'
+      preLoaderRoute: typeof AppDevicesIndexRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/customers/': {
@@ -967,6 +1113,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppVehiclesVehicleIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/providers/$provider': {
+      id: '/app/providers/$provider'
+      path: '/providers/$provider'
+      fullPath: '/app/providers/$provider'
+      preLoaderRoute: typeof AppProvidersProviderRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/orders/create': {
       id: '/app/orders/create'
       path: '/orders/create'
@@ -993,6 +1146,13 @@ declare module '@tanstack/react-router' {
       path: '/import/$sessionId'
       fullPath: '/app/import/$sessionId'
       preLoaderRoute: typeof AppImportSessionIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/fleet-tracking_/debug': {
+      id: '/app/fleet-tracking_/debug'
+      path: '/fleet-tracking/debug'
+      fullPath: '/app/fleet-tracking/debug'
+      preLoaderRoute: typeof AppFleetTrackingDebugRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/drivers/create': {
@@ -1030,6 +1190,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDispatchesDispatchIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/devices/$deviceId': {
+      id: '/app/devices/$deviceId'
+      path: '/devices/$deviceId'
+      fullPath: '/app/devices/$deviceId'
+      preLoaderRoute: typeof AppDevicesDeviceIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/customers/create': {
       id: '/app/customers/create'
       path: '/customers/create'
@@ -1042,6 +1209,13 @@ declare module '@tanstack/react-router' {
       path: '/customers/$customerId'
       fullPath: '/app/customers/$customerId'
       preLoaderRoute: typeof AppCustomersCustomerIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/fleet-tracking_/replay/$tripId': {
+      id: '/app/fleet-tracking_/replay/$tripId'
+      path: '/fleet-tracking/replay/$tripId'
+      fullPath: '/app/fleet-tracking/replay/$tripId'
+      preLoaderRoute: typeof AppFleetTrackingReplayTripIdRouteImport
       parentRoute: typeof AppRoute
     }
   }
@@ -1074,25 +1248,32 @@ interface AppRouteChildren {
   AppIndexRoute: typeof AppIndexRoute
   AppCustomersCustomerIdRoute: typeof AppCustomersCustomerIdRoute
   AppCustomersCreateRoute: typeof AppCustomersCreateRoute
+  AppDevicesDeviceIdRoute: typeof AppDevicesDeviceIdRoute
   AppDispatchesDispatchIdRoute: typeof AppDispatchesDispatchIdRoute
   AppDispatchesBoardRoute: typeof AppDispatchesBoardRoute
   AppDispatchesCreateRoute: typeof AppDispatchesCreateRoute
   AppDriversDriverIdRoute: typeof AppDriversDriverIdRoute
   AppDriversCreateRoute: typeof AppDriversCreateRoute
+  AppFleetTrackingDebugRoute: typeof AppFleetTrackingDebugRoute
   AppImportSessionIdRoute: typeof AppImportSessionIdRoute
   AppImportHistoryRoute: typeof AppImportHistoryRoute
   AppOrdersOrderIdRoute: typeof AppOrdersOrderIdRoute
   AppOrdersCreateRoute: typeof AppOrdersCreateRoute
+  AppProvidersProviderRoute: typeof AppProvidersProviderRoute
   AppVehiclesVehicleIdRoute: typeof AppVehiclesVehicleIdRoute
   AppVehiclesCreateRoute: typeof AppVehiclesCreateRoute
   AppAuditLogsIndexRoute: typeof AppAuditLogsIndexRoute
   AppCustomersIndexRoute: typeof AppCustomersIndexRoute
+  AppDevicesIndexRoute: typeof AppDevicesIndexRoute
   AppDispatchesIndexRoute: typeof AppDispatchesIndexRoute
   AppDriversIndexRoute: typeof AppDriversIndexRoute
+  AppGeofencesIndexRoute: typeof AppGeofencesIndexRoute
   AppImportIndexRoute: typeof AppImportIndexRoute
   AppLeadsIndexRoute: typeof AppLeadsIndexRoute
   AppOrdersIndexRoute: typeof AppOrdersIndexRoute
+  AppProvidersIndexRoute: typeof AppProvidersIndexRoute
   AppVehiclesIndexRoute: typeof AppVehiclesIndexRoute
+  AppFleetTrackingReplayTripIdRoute: typeof AppFleetTrackingReplayTripIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -1110,25 +1291,32 @@ const AppRouteChildren: AppRouteChildren = {
   AppIndexRoute: AppIndexRoute,
   AppCustomersCustomerIdRoute: AppCustomersCustomerIdRoute,
   AppCustomersCreateRoute: AppCustomersCreateRoute,
+  AppDevicesDeviceIdRoute: AppDevicesDeviceIdRoute,
   AppDispatchesDispatchIdRoute: AppDispatchesDispatchIdRoute,
   AppDispatchesBoardRoute: AppDispatchesBoardRoute,
   AppDispatchesCreateRoute: AppDispatchesCreateRoute,
   AppDriversDriverIdRoute: AppDriversDriverIdRoute,
   AppDriversCreateRoute: AppDriversCreateRoute,
+  AppFleetTrackingDebugRoute: AppFleetTrackingDebugRoute,
   AppImportSessionIdRoute: AppImportSessionIdRoute,
   AppImportHistoryRoute: AppImportHistoryRoute,
   AppOrdersOrderIdRoute: AppOrdersOrderIdRoute,
   AppOrdersCreateRoute: AppOrdersCreateRoute,
+  AppProvidersProviderRoute: AppProvidersProviderRoute,
   AppVehiclesVehicleIdRoute: AppVehiclesVehicleIdRoute,
   AppVehiclesCreateRoute: AppVehiclesCreateRoute,
   AppAuditLogsIndexRoute: AppAuditLogsIndexRoute,
   AppCustomersIndexRoute: AppCustomersIndexRoute,
+  AppDevicesIndexRoute: AppDevicesIndexRoute,
   AppDispatchesIndexRoute: AppDispatchesIndexRoute,
   AppDriversIndexRoute: AppDriversIndexRoute,
+  AppGeofencesIndexRoute: AppGeofencesIndexRoute,
   AppImportIndexRoute: AppImportIndexRoute,
   AppLeadsIndexRoute: AppLeadsIndexRoute,
   AppOrdersIndexRoute: AppOrdersIndexRoute,
+  AppProvidersIndexRoute: AppProvidersIndexRoute,
   AppVehiclesIndexRoute: AppVehiclesIndexRoute,
+  AppFleetTrackingReplayTripIdRoute: AppFleetTrackingReplayTripIdRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
@@ -1189,7 +1377,9 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyRoute: PrivacyRoute,
   TermsRoute: TermsRoute,
   AuthForgotPasswordRoute: AuthForgotPasswordRoute,
+  AuthResetPasswordRoute: AuthResetPasswordRoute,
   AuthSignInRoute: AuthSignInRoute,
+  AuthVerifyEmailRoute: AuthVerifyEmailRoute,
   InviteTokenRoute: InviteTokenRoute,
   InviteTokenAcceptRoute: InviteTokenAcceptRoute,
 }

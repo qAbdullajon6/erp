@@ -5,18 +5,23 @@ interface DateRangeFilterProps {
   value: DateRangeValue;
   onPresetChange: (preset: DateRangePreset) => void;
   onCustomChange: (dateFrom: string, dateTo: string) => void;
-  isFetching?: boolean;
 }
 
 const PRESETS: DateRangePreset[] = ['today', 'last_7_days', 'last_30_days', 'this_month', 'custom'];
 
-export function DateRangeFilter({ value, onPresetChange, onCustomChange, isFetching }: DateRangeFilterProps) {
+export function DateRangeFilter({ value, onPresetChange, onCustomChange }: DateRangeFilterProps) {
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-brand/10 bg-surface p-4">
+    <div
+      className="flex flex-wrap items-center gap-3 rounded-lg border border-brand/10 bg-surface p-4"
+      role="group"
+      aria-label="Report date range"
+    >
       <div className="flex flex-wrap gap-2">
         {PRESETS.map((preset) => (
           <button
             key={preset}
+            type="button"
+            aria-pressed={value.preset === preset}
             onClick={() => onPresetChange(preset)}
             className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
               value.preset === preset
@@ -45,13 +50,6 @@ export function DateRangeFilter({ value, onPresetChange, onCustomChange, isFetch
             className="w-auto"
           />
         </div>
-      )}
-
-      {isFetching && (
-        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span className="h-3 w-3 animate-spin rounded-full border-2 border-brand/30 border-t-brand" />
-          Updating...
-        </span>
       )}
     </div>
   );

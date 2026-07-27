@@ -7,7 +7,9 @@ import {
   IsISO8601,
   IsNumber,
   IsOptional,
+  IsString,
   Max,
+  MaxLength,
   Min,
   ValidateNested,
 } from "class-validator";
@@ -72,6 +74,13 @@ export class IngestPositionDto {
   @IsNumber()
   @Min(0)
   satellites?: number;
+
+  /// Client-generated key for offline replay / reconnect dedupe. Optional —
+  /// when present, duplicate keys in the same batch are rejected.
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  idempotencyKey?: string;
 }
 
 export class IngestPositionsDto {

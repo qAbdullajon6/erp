@@ -100,24 +100,30 @@ export const dispatchBoardKeys = {
   all: ['dispatch-board'] as const,
 };
 
+/// The Operations Command Center's own summary — totals, revenue time
+/// series, orders-by-status, and the capped delayed-orders list from
+/// GET /reports/dashboard-summary (Task: Dashboard vertical audit). No
+/// params: unlike the filterable Reports page, the dashboard's overview is
+/// always "right now, last 30 days."
 export const dashboardKeys = {
   all: ['dashboard'] as const,
-  kpis: (params: unknown = {}) => [...dashboardKeys.all, 'kpis', params] as const,
-  revenue: (params: unknown = {}) => [...dashboardKeys.all, 'revenue', params] as const,
-  operations: (params: unknown = {}) => [...dashboardKeys.all, 'operations', params] as const,
-  customers: (params: unknown = {}) => [...dashboardKeys.all, 'customers', params] as const,
-  drivers: (params: unknown = {}) => [...dashboardKeys.all, 'drivers', params] as const,
-  vehicles: (params: unknown = {}) => [...dashboardKeys.all, 'vehicles', params] as const,
-  finance: (params: unknown = {}) => [...dashboardKeys.all, 'finance', params] as const,
-  insights: (params: unknown = {}) => [...dashboardKeys.all, 'insights', params] as const,
-  full: (params: unknown = {}) => [...dashboardKeys.all, 'full', params] as const,
-  export: (params: unknown = {}) => [...dashboardKeys.all, 'export', params] as const,
+  summary: () => [...dashboardKeys.all, 'summary'] as const,
 };
 
 /// Finance summary — distinct from dashboard finance (which is scoped to the
 /// dashboard's date range), this is the standalone /api/finance/summary endpoint.
 export const financeSummaryKeys = {
   all: ['finance-summary'] as const,
+};
+
+/// Reports page — executive / operations / financial. Invalidated with
+/// operational + finance writes so KPIs don't stay stale after mutations.
+export const reportKeys = {
+  all: ['reports'] as const,
+  executiveOverview: (params: unknown = {}) => [...reportKeys.all, 'executive-overview', params] as const,
+  operations: (params: unknown = {}) => [...reportKeys.all, 'operations', params] as const,
+  financial: (params: unknown = {}) => [...reportKeys.all, 'financial', params] as const,
+  fleetTelematics: (params: unknown = {}) => [...reportKeys.all, 'fleet-telematics', params] as const,
 };
 
 export const workflowKeys = {

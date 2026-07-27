@@ -1,16 +1,21 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatMoney } from '@/lib/format';
-import { useFinancialReportQuery, type ReportFilterParams, type ProfitabilityGroupRow } from '@/lib/api/reports';
+import {
+  useFinancialReportQuery,
+  type ReportFilterParams,
+  type ProfitabilityGroupRow,
+  type ProfitabilityOrderRow,
+} from '@/lib/api/reports';
 import { ExportCsvButton } from './export-csv-button';
 
 interface FinancialTabProps {
   params: ReportFilterParams;
 }
 
-function ProfitabilityTable({ rows }: { rows: ProfitabilityGroupRow[] }) {
+function ProfitabilityTable({ rows, currency }: { rows: ProfitabilityGroupRow[]; currency: string }) {
   if (rows.length === 0) {
     return <p className="px-6 py-8 text-center text-sm text-muted-foreground">No delivered orders in this period</p>;
   }
@@ -31,10 +36,42 @@ function ProfitabilityTable({ rows }: { rows: ProfitabilityGroupRow[] }) {
             <tr key={row.id}>
               <td className="px-6 py-3 font-medium text-foreground">{row.label}</td>
               <td className="px-6 py-3 text-right">{row.orderCount}</td>
-              <td className="px-6 py-3 text-right">{formatMoney(row.revenue)}</td>
-              <td className="px-6 py-3 text-right">{formatMoney(row.approvedExpenses)}</td>
+              <td className="px-6 py-3 text-right">{formatMoney(row.revenue, currency)}</td>
+              <td className="px-6 py-3 text-right">{formatMoney(row.approvedExpenses, currency)}</td>
               <td className={`px-6 py-3 text-right font-medium ${Number(row.estimatedGrossProfit) < 0 ? 'text-destructive' : ''}`}>
-                {formatMoney(row.estimatedGrossProfit)}
+                {formatMoney(row.estimatedGrossProfit, currency)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function OrderProfitabilityTable({ rows }: { rows: ProfitabilityOrderRow[] }) {
+  if (rows.length === 0) {
+    return <p className="px-6 py-8 text-center text-sm text-muted-foreground">No delivered orders in this period</p>;
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-brand/10 bg-surface/50 text-left text-xs uppercase text-muted-foreground">
+            <th className="px-6 py-3">Order</th>
+            <th className="px-6 py-3 text-right">Revenue</th>
+            <th className="px-6 py-3 text-right">Expenses</th>
+            <th className="px-6 py-3 text-right">Est. Profit</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-brand/10">
+          {rows.map((row) => (
+            <tr key={row.orderId}>
+              <td className="px-6 py-3 font-medium text-foreground">{row.orderNumber}</td>
+              <td className="px-6 py-3 text-right">{formatMoney(row.revenue, row.currency)}</td>
+              <td className="px-6 py-3 text-right">{formatMoney(row.approvedExpenses, row.currency)}</td>
+              <td className={`px-6 py-3 text-right font-medium ${Number(row.estimatedGrossProfit) < 0 ? 'text-destructive' : ''}`}>
+                {formatMoney(row.estimatedGrossProfit, row.currency)}
               </td>
             </tr>
           ))}
@@ -46,7 +83,9 @@ function ProfitabilityTable({ rows }: { rows: ProfitabilityGroupRow[] }) {
 
 export function FinancialTab({ params }: FinancialTabProps) {
   const { data, isLoading, isFetching, isError, error, refetch } = useFinancialReportQuery(params);
-  const [profitabilityView, setProfitabilityView] = useState<'byCustomer' | 'byRoute' | 'byDriver' | 'byVehicle'>('byCustomer');
+  const [profitabilityView, setProfitabilityView] = useState<
+    'byCustomer' | 'byRoute' | 'byDriver' | 'byVehicle' | 'byOrder'
+  >('byCustomer');
 
   if (isLoading) {
     return (
@@ -73,12 +112,17 @@ export function FinancialTab({ params }: FinancialTabProps) {
   }
 
   const { invoiceCollectionPerformance: icp } = data;
+  const currency = data.filters.currency || 'USD';
+  const money = (amount: string | number) => formatMoney(amount, currency);
   const totalAging = data.receivablesAging.reduce((sum, b) => sum + Number(b.amount), 0);
   const totalExpenses = data.expenseBreakdown.reduce((sum, e) => sum + Number(e.amount), 0);
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          Money totals in <span className="font-semibold text-foreground">{currency}</span> only
+        </p>
         <ExportCsvButton type="financial" params={params} />
       </div>
       {isFetching && !isLoading && <p className="text-xs text-muted-foreground">Refreshing for the new date range...</p>}
@@ -93,7 +137,7 @@ export function FinancialTab({ params }: FinancialTabProps) {
           <div className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Collection Rate</div>
           <div className="mt-3 font-display text-2xl font-bold text-foreground">{icp.collectionRate.toFixed(1)}%</div>
           <div className="mt-2 text-sm text-muted-foreground">
-            {formatMoney(icp.totalCollected)} of {formatMoney(icp.totalInvoiced)}
+            {money(icp.totalCollected)} of {money(icp.totalInvoiced)}
           </div>
         </div>
         <div className="rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50 p-6">
@@ -115,7 +159,7 @@ export function FinancialTab({ params }: FinancialTabProps) {
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">{bucket.bucket === 'current' ? 'Current' : `${bucket.bucket} days`}</span>
                   <span className="font-semibold text-foreground">
-                    {formatMoney(bucket.amount)} ({bucket.invoiceCount})
+                    {money(bucket.amount)} ({bucket.invoiceCount})
                   </span>
                 </div>
                 <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-background/40">
@@ -138,7 +182,7 @@ export function FinancialTab({ params }: FinancialTabProps) {
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">{e.category.replace(/_/g, ' ')}</span>
                   <span className="font-semibold text-foreground">
-                    {formatMoney(e.amount)} ({e.count})
+                    {money(e.amount)} ({e.count})
                   </span>
                 </div>
                 <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-background/40">
@@ -162,10 +206,15 @@ export function FinancialTab({ params }: FinancialTabProps) {
               <TabsTrigger value="byRoute">By Route</TabsTrigger>
               <TabsTrigger value="byDriver">By Driver</TabsTrigger>
               <TabsTrigger value="byVehicle">By Vehicle</TabsTrigger>
+              <TabsTrigger value="byOrder">By Order</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
-        <ProfitabilityTable rows={data.profitability[profitabilityView]} />
+        {profitabilityView === 'byOrder' ? (
+          <OrderProfitabilityTable rows={data.profitability.byOrder} />
+        ) : (
+          <ProfitabilityTable rows={data.profitability[profitabilityView]} currency={currency} />
+        )}
       </div>
     </div>
   );

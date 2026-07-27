@@ -1,7 +1,8 @@
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatMoney } from '@/lib/format';
+import { revenueExpensesChartConfig } from '@/lib/chart-theme';
 import { useExecutiveOverviewQuery, type ReportFilterParams, type ComparisonPair } from '@/lib/api/reports';
 import { ExportCsvButton } from './export-csv-button';
 
@@ -9,17 +10,14 @@ interface ExecutiveOverviewTabProps {
   params: ReportFilterParams;
 }
 
-function ChangeBadge({ pair }: { pair?: ComparisonPair }) {
-  // The type says `number | null`, but a comparison period with nothing to
-  // compare against (e.g. a new org, or a date range with no prior period)
-  // can omit the field entirely — `=== null` alone let `undefined` through
-  // to `.toFixed`, crashing the whole tab.
+function ChangeBadge({ pair, label }: { pair?: ComparisonPair; label: string }) {
   if (!pair || pair.changePercent === null || pair.changePercent === undefined) return null;
   const positive = pair.changePercent >= 0;
+  const sign = positive ? '+' : '';
   return (
     <span className={`text-xs font-medium ${positive ? 'text-success' : 'text-destructive'}`}>
-      {positive ? '+' : ''}
-      {pair.changePercent.toFixed(1)}% vs prior period
+      {sign}
+      {pair.changePercent.toFixed(1)}% {label}
     </span>
   );
 }
@@ -62,25 +60,60 @@ export function ExecutiveOverviewTab({ params }: ExecutiveOverviewTabProps) {
   }
 
   const { totals, comparison } = data;
+  const currency = data.filters.currency || 'USD';
+  const money = (amount: string | number) => formatMoney(amount, currency);
+  const comparisonLabel =
+    data.filters.comparisonPeriod === 'previous_year'
+      ? 'vs prior year'
+      : data.filters.comparisonPeriod === 'previous_period'
+        ? 'vs prior period'
+        : 'vs comparison';
   const kpis = [
     { label: 'Total Orders', value: totals.totalOrders.toLocaleString(), pair: comparison?.totalOrders },
     { label: 'Delivered', value: totals.deliveredOrders.toLocaleString(), pair: comparison?.deliveredOrders },
     { label: 'Active', value: totals.activeOrders.toLocaleString() },
     { label: 'Delayed', value: totals.delayedOrders.toLocaleString(), warn: totals.delayedOrders > 0 },
-    { label: 'Revenue', value: formatMoney(totals.totalRevenue), pair: comparison?.totalRevenue },
-    { label: 'Collected', value: formatMoney(totals.totalCollected), pair: comparison?.totalCollected },
-    { label: 'Outstanding Receivables', value: formatMoney(totals.outstandingReceivables) },
-    { label: 'Est. Gross Profit', value: formatMoney(totals.estimatedGrossProfit), pair: comparison?.estimatedGrossProfit },
+    { label: 'Revenue', value: money(totals.totalRevenue), pair: comparison?.totalRevenue },
+    { label: 'Approved Expenses', value: money(totals.approvedExpenses), pair: comparison?.approvedExpenses },
+    { label: 'Total Invoiced', value: money(totals.totalInvoiced), pair: comparison?.totalInvoiced },
+    { label: 'Collected', value: money(totals.totalCollected), pair: comparison?.totalCollected },
+    { label: 'Outstanding Receivables', value: money(totals.outstandingReceivables) },
+    {
+      label: 'Est. Gross Profit',
+      value: money(totals.estimatedGrossProfit),
+      pair: comparison?.estimatedGrossProfit,
+      hint: 'delivered revenue − approved expenses',
+    },
     { label: 'Delivery Completion', value: `${totals.deliveryCompletionRate.toFixed(1)}%`, pair: comparison?.deliveryCompletionRate },
     { label: 'On-Time Rate', value: `${totals.onTimeDeliveryRate.toFixed(1)}%`, pair: comparison?.onTimeDeliveryRate },
   ];
 
   const hasRevenueData = data.revenueVsExpensesTimeSeries.some((b) => b.revenue > 0 || b.expenses > 0);
+  const hasDeliveryData = data.deliveryPerformanceTimeSeries.some((b) => b.delivered > 0 || b.delayed > 0);
   const totalStatusCount = data.ordersByStatus.reduce((sum, s) => sum + s.count, 0);
+  const seriesLegend = [
+    {
+      key: 'revenue',
+      label: revenueExpensesChartConfig.revenue.label as string,
+      color: revenueExpensesChartConfig.revenue.color as string,
+    },
+    {
+      key: 'expenses',
+      label: revenueExpensesChartConfig.expenses.label as string,
+      color: revenueExpensesChartConfig.expenses.color as string,
+    },
+  ];
+  const deliveryLegend = [
+    { key: 'delivered', label: 'Delivered', color: 'var(--color-series-revenue)' },
+    { key: 'delayed', label: 'Delayed', color: 'var(--color-destructive)' },
+  ];
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          Money totals in <span className="font-semibold text-foreground">{currency}</span> only
+        </p>
         <ExportCsvButton type="executive-overview" params={params} />
       </div>
 
@@ -94,8 +127,12 @@ export function ExecutiveOverviewTab({ params }: ExecutiveOverviewTabProps) {
             <div className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{kpi.label}</div>
             <div className="mt-3 font-display text-2xl font-bold text-foreground">{kpi.value}</div>
             <div className="mt-2">
-              {kpi.pair ? <ChangeBadge pair={kpi.pair} /> : kpi.warn ? (
+              {kpi.pair ? (
+                <ChangeBadge pair={kpi.pair} label={comparisonLabel} />
+              ) : kpi.warn ? (
                 <span className="text-xs font-medium text-destructive">needs attention</span>
+              ) : kpi.hint ? (
+                <span className="text-xs text-muted-foreground">{kpi.hint}</span>
               ) : (
                 <span className="text-xs text-muted-foreground">&nbsp;</span>
               )}
@@ -106,26 +143,67 @@ export function ExecutiveOverviewTab({ params }: ExecutiveOverviewTabProps) {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50 p-6">
-          <h3 className="font-display text-lg font-bold text-foreground">Revenue vs Expenses</h3>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className="font-display text-lg font-bold text-foreground">Revenue vs Expenses</h3>
+            <div className="flex items-center gap-4">
+              {seriesLegend.map((s) => (
+                <span key={s.key} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: s.color }} aria-hidden />
+                  {s.label}
+                </span>
+              ))}
+            </div>
+          </div>
           <div className="mt-4 h-64">
             {hasRevenueData ? (
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={data.revenueVsExpensesTimeSeries} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="reportRevenueFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--color-brand)" stopOpacity={0.35} />
-                      <stop offset="95%" stopColor="var(--color-brand)" stopOpacity={0} />
+                      <stop offset="5%" stopColor={seriesLegend[0].color} stopOpacity={0.35} />
+                      <stop offset="95%" stopColor={seriesLegend[0].color} stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" opacity={0.4} />
-                  <XAxis dataKey="bucket" tick={{ fontSize: 11, fill: 'var(--color-muted-foreground)' }} tickLine={false} axisLine={false} minTickGap={24} />
-                  <YAxis tick={{ fontSize: 11, fill: 'var(--color-muted-foreground)' }} tickLine={false} axisLine={false} width={48} />
-                  <Tooltip
-                    formatter={(value: number, name: string) => [formatMoney(value), name === 'revenue' ? 'Revenue' : 'Expenses']}
-                    contentStyle={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, fontSize: 12 }}
+                  <XAxis
+                    dataKey="bucket"
+                    tick={{ fontSize: 11, fill: 'var(--color-muted-foreground)' }}
+                    tickLine={false}
+                    axisLine={false}
+                    minTickGap={24}
                   />
-                  <Area type="monotone" dataKey="revenue" stroke="var(--color-brand)" fill="url(#reportRevenueFill)" strokeWidth={2} />
-                  <Area type="monotone" dataKey="expenses" stroke="var(--color-warning)" fill="transparent" strokeWidth={2} />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: 'var(--color-muted-foreground)' }}
+                    tickLine={false}
+                    axisLine={false}
+                    width={48}
+                  />
+                  <Tooltip
+                    formatter={(value: number, name: string) => [
+                      money(value),
+                      name === 'revenue' ? 'Revenue' : 'Expenses',
+                    ]}
+                    contentStyle={{
+                      background: 'var(--color-surface)',
+                      border: '1px solid var(--color-border)',
+                      borderRadius: 12,
+                      fontSize: 12,
+                    }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="revenue"
+                    stroke={seriesLegend[0].color}
+                    fill="url(#reportRevenueFill)"
+                    strokeWidth={2}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="expenses"
+                    stroke={seriesLegend[1].color}
+                    fill="transparent"
+                    strokeWidth={2}
+                  />
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
@@ -158,6 +236,57 @@ export function ExecutiveOverviewTab({ params }: ExecutiveOverviewTabProps) {
         </div>
       </div>
 
+      <div className="rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50 p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="font-display text-lg font-bold text-foreground">Delivery Performance</h3>
+          <div className="flex items-center gap-4">
+            {deliveryLegend.map((s) => (
+              <span key={s.key} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: s.color }} aria-hidden />
+                {s.label}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="mt-4 h-64">
+          {hasDeliveryData ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data.deliveryPerformanceTimeSeries} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" opacity={0.4} />
+                <XAxis
+                  dataKey="bucket"
+                  tick={{ fontSize: 11, fill: 'var(--color-muted-foreground)' }}
+                  tickLine={false}
+                  axisLine={false}
+                  minTickGap={24}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fontSize: 11, fill: 'var(--color-muted-foreground)' }}
+                  tickLine={false}
+                  axisLine={false}
+                  width={36}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: 'var(--color-surface)',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: 12,
+                    fontSize: 12,
+                  }}
+                />
+                <Bar dataKey="delivered" fill={deliveryLegend[0].color} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="delayed" fill={deliveryLegend[1].color} radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              No delivery activity in this period
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="overflow-hidden rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50">
           <div className="border-b border-brand/10 px-6 py-4">
@@ -173,7 +302,7 @@ export function ExecutiveOverviewTab({ params }: ExecutiveOverviewTabProps) {
                     <p className="text-sm font-medium text-foreground">{c.companyName}</p>
                     <p className="text-xs text-muted-foreground">{c.orderCount} orders</p>
                   </div>
-                  <p className="text-sm font-semibold text-foreground">{formatMoney(c.revenue)}</p>
+                  <p className="text-sm font-semibold text-foreground">{money(c.revenue)}</p>
                 </div>
               ))}
             </div>
@@ -196,7 +325,7 @@ export function ExecutiveOverviewTab({ params }: ExecutiveOverviewTabProps) {
                     </p>
                     <p className="text-xs text-muted-foreground">{r.orderCount} orders</p>
                   </div>
-                  <p className="text-sm font-semibold text-foreground">{formatMoney(r.revenue)}</p>
+                  <p className="text-sm font-semibold text-foreground">{money(r.revenue)}</p>
                 </div>
               ))}
             </div>

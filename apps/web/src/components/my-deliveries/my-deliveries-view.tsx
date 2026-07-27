@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Truck } from 'lucide-react';
 import { useCurrentUser } from '@/lib/api/auth';
 import { useMyDriverProfileQuery, useMyDeliveriesQuery, type MyDelivery } from '@/lib/api/my-deliveries';
+import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-states';
 import { DeliveryCard } from './delivery-card';
 import { DeliveryDetail } from './delivery-detail';
 
@@ -28,25 +27,19 @@ export function MyDeliveriesView() {
   const { data: deliveries, isLoading, isError, error, refetch } = useMyDeliveriesQuery(isDriver && !!driverProfile);
 
   if (userLoading) {
-    return <Skeleton className="h-96 rounded-lg" />;
+    return <LoadingState label="Loading account…" />;
   }
 
   if (userError || !currentUser) {
-    return (
-      <div className="rounded-lg bg-destructive/10 p-6 text-sm text-destructive">
-        {userError || 'Failed to load your account'}
-        <Button onClick={() => refetchUser()} variant="ghost" size="sm" className="ml-4">
-          Retry
-        </Button>
-      </div>
-    );
+    return <ErrorState message={userError || 'Failed to load your account'} onRetry={() => void refetchUser()} />;
   }
 
   if (!isDriver) {
     return (
-      <div className="rounded-lg border border-brand/10 bg-surface p-8 text-center text-sm text-muted-foreground">
-        My Deliveries is only available for the Driver role.
-      </div>
+      <EmptyState
+        title="Drivers only"
+        description="My Deliveries is only available for the Driver role."
+      />
     );
   }
 
@@ -55,26 +48,21 @@ export function MyDeliveriesView() {
   }
 
   if (profileLoading) {
-    return <Skeleton className="h-96 rounded-lg" />;
+    return <LoadingState label="Loading your profile…" />;
   }
 
   if (profileError) {
     return (
-      <div className="rounded-lg border border-warning/20 bg-warning/5 p-8 text-center">
-        <p className="text-sm font-medium text-foreground">
-          {profileErrorObj instanceof Error ? profileErrorObj.message : 'No driver profile is linked to your account yet'}
-        </p>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Ask an admin or dispatcher to link your account to a driver profile.
-        </p>
-      </div>
+      <ErrorState
+        message={
+          profileErrorObj instanceof Error
+            ? profileErrorObj.message
+            : 'No driver profile is linked to your account yet. Ask an admin or dispatcher to link your login on Drivers.'
+        }
+      />
     );
   }
 
-  // "Active" is now a fact about the DISPATCH, not a guess from a date: a driver who
-  // has set off, arrived, or loaded is on the job, whatever the calendar says. The
-  // `isDelayed` flag is gone with the order (Task 8.12) — being late is something the
-  // dispatcher's board reasons about, not something the driver needs told twice.
   const IN_PROGRESS = ['EN_ROUTE_TO_PICKUP', 'AT_PICKUP', 'IN_TRANSIT'];
 
   const buckets = { active: [] as MyDelivery[], upcoming: [] as MyDelivery[], completed: [] as MyDelivery[] };
@@ -94,38 +82,30 @@ export function MyDeliveriesView() {
     <div className="space-y-6">
       <div>
         <h1 className="font-display text-2xl font-bold text-foreground">
-          {driverProfile ? `Welcome, ${driverProfile.firstName}` : 'My Deliveries'}
+          {driverProfile ? `Jobs for ${driverProfile.firstName}` : 'My jobs'}
         </h1>
-        <p className="mt-1 text-sm text-muted-foreground">Your assigned pickups and deliveries</p>
+        <p className="mt-1 text-sm text-muted-foreground">Tap a job to navigate, update status, or share GPS</p>
       </div>
 
-      {isLoading && (
-        <div className="space-y-3">
-          <Skeleton className="h-28 rounded-xl" />
-          <Skeleton className="h-28 rounded-xl" />
-        </div>
-      )}
+      {isLoading ? <LoadingState label="Loading jobs…" /> : null}
 
-      {isError && !isLoading && (
-        <div className="rounded-lg bg-destructive/10 p-4 text-sm text-destructive">
-          {error instanceof Error ? error.message : 'Failed to load deliveries'}
-          <button onClick={() => refetch()} className="ml-2 font-semibold underline hover:no-underline">
-            Retry
-          </button>
-        </div>
-      )}
+      {isError && !isLoading ? (
+        <ErrorState
+          message={error instanceof Error ? error.message : 'Failed to load deliveries'}
+          onRetry={() => void refetch()}
+        />
+      ) : null}
 
-      {!isLoading && !isError && totalCount === 0 && (
-        <div className="rounded-xl border border-brand/10 bg-surface p-10 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-brand/10 text-brand">
-            <Truck className="h-6 w-6" />
-          </div>
-          <p className="mt-4 font-medium text-foreground">No deliveries assigned yet</p>
-          <p className="mt-1 text-sm text-muted-foreground">New assignments from dispatch will show up here.</p>
-        </div>
-      )}
+      {!isLoading && !isError && totalCount === 0 ? (
+        <EmptyState
+          icon={Truck}
+          title="No jobs yet"
+          description="New assignments from dispatch will show up here."
+          compact
+        />
+      ) : null}
 
-      {!isLoading && !isError && buckets.active.length > 0 && (
+      {!isLoading && !isError && buckets.active.length > 0 ? (
         <div>
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Today / Active</h2>
           <div className="space-y-3">
@@ -134,9 +114,9 @@ export function MyDeliveriesView() {
             ))}
           </div>
         </div>
-      )}
+      ) : null}
 
-      {!isLoading && !isError && buckets.upcoming.length > 0 && (
+      {!isLoading && !isError && buckets.upcoming.length > 0 ? (
         <div>
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Upcoming</h2>
           <div className="space-y-3">
@@ -145,9 +125,9 @@ export function MyDeliveriesView() {
             ))}
           </div>
         </div>
-      )}
+      ) : null}
 
-      {!isLoading && !isError && buckets.completed.length > 0 && (
+      {!isLoading && !isError && buckets.completed.length > 0 ? (
         <div>
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Completed</h2>
           <div className="space-y-3">
@@ -156,7 +136,7 @@ export function MyDeliveriesView() {
             ))}
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

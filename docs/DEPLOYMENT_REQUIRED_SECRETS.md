@@ -28,6 +28,9 @@
 | `LEADS_NOTIFY_EMAIL` | Recommended (falls back to `MAIL_FROM`) |
 | `AI_PROVIDER` + matching API key | Only if Copilot is enabled |
 | `STRIPE_*` / `CLICK_*` / `PAYME_*` | Only if that payment provider is live |
+| `MAPBOX_SECRET_TOKEN` | Recommended for Fleet Tracking Directions / reverse-geocode (`sk.*`). Injected into the API container. Leave empty to disable those API features only. |
+| `VITE_MAPBOX_ACCESS_TOKEN` | Recommended for Fleet Tracking map tiles (`pk.*`). Passed as a **web Docker build-arg** (Vite inlines at image build time). Rebuild the web image after changing it. |
+| `TELEMATICS_SSE_MAX_CONNECTIONS_PER_ORG` / `_GLOBAL` | Optional (defaults 20 / 500) |
 
 ## Vercel / frontend build
 
@@ -35,6 +38,7 @@
 | --- | --- |
 | `VITE_MARKETING_URL` | Recommended |
 | `VITE_APP_URL` | Recommended |
+| `VITE_MAPBOX_ACCESS_TOKEN` | Recommended if Fleet Tracking maps are used on Vercel |
 | `VITE_GA4_MEASUREMENT_ID` / `VITE_GTM_CONTAINER_ID` | Only if analytics enabled |
 | Other `VITE_*` | Optional |
 

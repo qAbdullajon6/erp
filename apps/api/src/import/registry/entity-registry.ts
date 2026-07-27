@@ -118,13 +118,15 @@ const DRIVER: EntityDefinition = {
   label: "Drivers",
   prismaModel: "driver",
   naturalKey: "employeeCode",
-  naturalKeyPrefix: "DRV",
+  /// Matches DriversService / generateUniqueDriverCode (`EMP-####`), not a
+  /// separate DRV- namespace that diverged from interactive creates.
+  naturalKeyPrefix: "EMP",
   allowedRoles: ADMIN_OPS_DISPATCHER,
   fields: [
     {
       fieldName: "employeeCode", label: "Employee Code", type: "string", required: false,
       aliases: ["employee code", "code", "employee id", "driver code", "driver id", "staff id"],
-      maxLength: 50, example: "DRV-0001",
+      maxLength: 50, example: "EMP-0001",
     },
     {
       fieldName: "firstName", label: "First Name", type: "string", required: true,
@@ -176,11 +178,11 @@ const VEHICLE: EntityDefinition = {
     {
       fieldName: "plateNumber", label: "Plate Number", type: "string", required: true,
       aliases: ["plate number", "plate", "licence plate", "license plate", "registration", "reg", "number plate"],
-      maxLength: 20, example: "01A123BC",
+      maxLength: 50, example: "01A123BC",
     },
     {
       fieldName: "type", label: "Type", type: "string", required: true,
-      aliases: ["type", "vehicle type", "body type", "category"], maxLength: 50, example: "Truck",
+      aliases: ["type", "vehicle type", "body type", "category"], maxLength: 100, example: "Truck",
     },
     {
       fieldName: "capacityKg", label: "Capacity (kg)", type: "decimal", required: false,
@@ -200,16 +202,16 @@ const VEHICLE: EntityDefinition = {
     },
     {
       fieldName: "make", label: "Make", type: "string", required: false,
-      aliases: ["make", "manufacturer", "brand"], maxLength: 50, example: "Volvo",
+      aliases: ["make", "manufacturer", "brand"], maxLength: 100, example: "Volvo",
     },
     {
       fieldName: "model", label: "Model", type: "string", required: false,
-      aliases: ["model"], maxLength: 50, example: "FH16",
+      aliases: ["model"], maxLength: 100, example: "FH16",
     },
     {
       fieldName: "year", label: "Year", type: "integer", required: false,
       aliases: ["year", "model year", "manufacture year"],
-      min: 1900, max: 2100, example: "2021",
+      min: 1980, max: new Date().getUTCFullYear() + 1, example: "2021",
     },
     {
       fieldName: "insuranceExpiry", label: "Insurance Expiry", type: "date", required: false,
@@ -269,7 +271,7 @@ const EXPENSE: EntityDefinition = {
     {
       fieldName: "driverId", label: "Driver (code)", type: "reference", required: false,
       aliases: ["driver", "driver code", "employee code", "driver id"],
-      referenceEntity: "Driver", example: "DRV-0001",
+      referenceEntity: "Driver", example: "EMP-0001",
     },
     {
       fieldName: "vehicleId", label: "Vehicle (code)", type: "reference", required: false,

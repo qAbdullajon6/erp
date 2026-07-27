@@ -5,6 +5,9 @@ interface SessionGuardOptions {
   hasValidSession: () => boolean;
   onExpired: (listener: () => void) => () => void;
   loginPath: string;
+  /// Paths that must render without a session (login, invite activation).
+  /// Defaults to `[loginPath]` when omitted.
+  publicPaths?: string[];
 }
 
 /// Architecture review fix: AppShell and PortalShell each re-implemented
@@ -25,9 +28,14 @@ interface SessionGuardOptions {
 /// closure, re-running the effect, and navigating again: an infinite loop
 /// (reproduced as a real "Maximum update depth exceeded" crash on
 /// /portal/login). Refs keep the effect from re-running on every render for
-/// no reason, and the loginPath check makes "redirect to login" a no-op
-/// when already there, which is the actual fix — belt and braces.
-export function useSessionGuard({ hasValidSession, onExpired, loginPath }: SessionGuardOptions): boolean {
+/// no reason, and the public-path check makes "redirect to login" a no-op
+/// when already on an auth screen, which is the actual fix — belt and braces.
+export function useSessionGuard({
+  hasValidSession,
+  onExpired,
+  loginPath,
+  publicPaths,
+}: SessionGuardOptions): boolean {
   const navigate = useNavigate();
   const location = useLocation();
   const [ready, setReady] = useState(false);
@@ -37,10 +45,11 @@ export function useSessionGuard({ hasValidSession, onExpired, loginPath }: Sessi
   const onExpiredRef = useRef(onExpired);
   onExpiredRef.current = onExpired;
 
-  const atLoginPath = location.pathname === loginPath;
+  const allowedPublic = publicPaths ?? [loginPath];
+  const onPublicPath = allowedPublic.some((path) => location.pathname === path);
 
   useEffect(() => {
-    if (atLoginPath) {
+    if (onPublicPath) {
       setReady(true);
       return;
     }
@@ -49,14 +58,14 @@ export function useSessionGuard({ hasValidSession, onExpired, loginPath }: Sessi
     } else {
       setReady(true);
     }
-  }, [navigate, loginPath, atLoginPath]);
+  }, [navigate, loginPath, onPublicPath]);
 
   useEffect(() => {
     return onExpiredRef.current(() => {
-      if (atLoginPath) return;
+      if (onPublicPath) return;
       navigate({ to: loginPath as any, replace: true });
     });
-  }, [navigate, loginPath, atLoginPath]);
+  }, [navigate, loginPath, onPublicPath]);
 
   return ready;
 }

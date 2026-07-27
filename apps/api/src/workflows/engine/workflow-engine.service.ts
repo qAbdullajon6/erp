@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { ActionExecutor } from '../actions/action-executor';
@@ -41,6 +41,14 @@ export class WorkflowEngineService {
       where: { id: workflowId, organizationId },
     });
     if (!workflow) throw new NotFoundException('Workflow not found');
+    if (workflow.status === 'ARCHIVED') {
+      throw new ConflictException('Cannot execute an archived workflow');
+    }
+    // Manual run is allowed on DRAFT (operator test-before-publish) but
+    // not on inactive PUBLISHED workflows — that would bypass the toggle.
+    if (workflow.status === 'PUBLISHED' && !workflow.active) {
+      throw new ConflictException('Workflow is inactive');
+    }
 
     if (idempotencyKey) {
       const existing = await this.prisma.workflowExecution.findUnique({

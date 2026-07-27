@@ -34,6 +34,7 @@ export const WORKFLOW_TRIGGER_TYPES = [
   "payment.received",
   "driver.assigned",
   "driver.unassigned",
+  "vehicle.created",
   "vehicle.maintenance_due",
   "schedule.cron",
   "manual.trigger",

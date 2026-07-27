@@ -16,8 +16,11 @@ import {
   FileUp,
   Zap,
   Code2,
-  Plug,
   CreditCard,
+  Bug,
+  Cpu,
+  Hexagon,
+  Plug,
 } from "lucide-react";
 import type { MembershipRole } from "@/lib/api/organizations";
 
@@ -49,6 +52,8 @@ export const DRIVER_NAV: NavItem[] = [
 ///   Customers   CustomersController.READ_ROLES     — all five
 ///   Drivers     DriversController.ROLES            — ADMIN/OPS/DISPATCHER
 ///   Vehicles    VehiclesController.ROLES           — ADMIN/OPS/DISPATCHER
+///   Devices     TelematicsDevicesController        — ADMIN/OPS
+///   Geofences   GeofencesController (read)         — ADMIN/OPS/DISPATCHER
 ///   Finance     FinanceController.ROLES            — all five
 ///   Reports     ReportsController.ROLES            — all five
 export const FLEET_ROLES: MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER"];
@@ -69,6 +74,20 @@ export const DEFAULT_NAV: NavItem[] = [
   // in: nothing anywhere linked to /app/vehicles.
   { icon: Truck, label: "Vehicles", path: "/app/vehicles", roles: FLEET_ROLES, group: "Operations" },
   { icon: MapPin, label: "Fleet Tracking", path: "/app/fleet-tracking", roles: FLEET_ROLES, group: "Operations" },
+  // Phase 11 observability console — ADMIN/OPS only; API is development-gated.
+  {
+    icon: Bug,
+    label: "Tracking Debug",
+    path: "/app/fleet-tracking/debug",
+    roles: ["ADMIN", "OPERATIONS_MANAGER"],
+    group: "Operations",
+  },
+  // GeofencesController read: ADMIN/OPS/DISPATCHER; writes gated in UI to ADMIN/OPS.
+  { icon: Hexagon, label: "Geofences", path: "/app/geofences", roles: FLEET_ROLES, group: "Operations" },
+  // Device registration mints ingest secrets — ADMIN/OPS only (TelematicsDevicesController).
+  { icon: Cpu, label: "Devices", path: "/app/devices", roles: ["ADMIN", "OPERATIONS_MANAGER"], group: "Operations" },
+  // Provider roster is the same device API, grouped by TelematicsProviderType — ADMIN/OPS.
+  { icon: Plug, label: "GPS Providers", path: "/app/providers", roles: ["ADMIN", "OPERATIONS_MANAGER"], group: "Operations" },
   { icon: Wallet, label: "Finance", path: "/app/finance", group: "Finance" },
   { icon: BarChart3, label: "Reports", path: "/app/reports", group: "Finance" },
   // Billing management (subscription, plans, usage) is ADMIN-only —

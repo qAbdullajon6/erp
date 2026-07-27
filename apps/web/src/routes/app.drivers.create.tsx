@@ -1,15 +1,18 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { DriversCreateForm } from "@/components/drivers/drivers-create-form";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { ProtectedApiRoute } from "@/components/layout/protected-api-route";
+import { FLEET_ROLES } from "@/lib/role-access";
 
 export const Route = createFileRoute("/app/drivers/create")({
-  component: DriversCreatePage,
+  beforeLoad: () => {
+    throw redirect({ to: "/app/drivers", search: { create: true } as const });
+  },
+  component: CreateDriverRedirect,
 });
 
-function DriversCreatePage() {
+function CreateDriverRedirect() {
   return (
-    <ProtectedApiRoute>
-      <DriversCreateForm />
+    <ProtectedApiRoute requireRoles={FLEET_ROLES}>
+      <div className="p-6 text-sm text-muted-foreground">Opening new driver…</div>
     </ProtectedApiRoute>
   );
 }

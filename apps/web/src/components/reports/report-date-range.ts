@@ -7,7 +7,12 @@ export interface DateRangeValue {
 }
 
 function toDateString(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  // Local calendar day — toISOString() is UTC and shifts the date for
+  // orgs east of UTC (e.g. Asia/Tashkent) when picking "Today".
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 export function resolvePreset(preset: DateRangePreset, custom?: { dateFrom: string; dateTo: string }): DateRangeValue {

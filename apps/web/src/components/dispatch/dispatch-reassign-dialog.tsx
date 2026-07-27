@@ -57,7 +57,7 @@ export function DispatchReassignDialog({ dispatch, onClose, onSuccess }: Props) 
   const [vehicleId, setVehicleId] = useState('');
   const [error, setError] = useState('');
 
-  const { data: availability, loading: availabilityLoading } = useAvailability(
+  const { data: availability, loading: availabilityLoading, error: availabilityError } = useAvailability(
     dispatch
       ? {
           pickupDate: dispatch.pickupDateScheduled,
@@ -124,11 +124,15 @@ export function DispatchReassignDialog({ dispatch, onClose, onSuccess }: Props) 
 
         {error ? <FormAlert message={error} /> : null}
 
+        {availabilityError ? (
+          <FormAlert message={availabilityError} />
+        ) : null}
+
         {/* The "nobody is free" case used to be readable only by opening the select.
             It is the single most important thing this dialog can tell you, so it is
             said out loud — and it explains WHY, which is that everyone else is on
             another trip in these same dates. */}
-        {!availabilityLoading && noneFree ? (
+        {!availabilityLoading && !availabilityError && noneFree ? (
           <div className="rounded-md border border-dashed border-border bg-muted/40 p-3 text-sm text-muted-foreground">
             Nobody is free for {formatWindow(dispatch)}. Every other driver and vehicle is
             already committed to an overlapping trip.
@@ -142,14 +146,16 @@ export function DispatchReassignDialog({ dispatch, onClose, onSuccess }: Props) 
               className={SELECT_CLASS}
               value={driverId}
               onChange={(e) => setDriverId(e.target.value)}
-              disabled={availabilityLoading}
+              disabled={availabilityLoading || Boolean(availabilityError)}
             >
               <option value="">
                 {availabilityLoading
                   ? 'Checking who is free...'
-                  : (availability?.drivers.length ?? 0) === 0
-                    ? 'No other driver is free for these dates'
-                    : 'Keep current driver'}
+                  : availabilityError
+                    ? 'Availability unavailable'
+                    : (availability?.drivers.length ?? 0) === 0
+                      ? 'No other driver is free for these dates'
+                      : 'Keep current driver'}
               </option>
               {availability?.drivers.map((driver) => (
                 <option key={driver.id} value={driver.id}>
@@ -165,14 +171,16 @@ export function DispatchReassignDialog({ dispatch, onClose, onSuccess }: Props) 
               className={SELECT_CLASS}
               value={vehicleId}
               onChange={(e) => setVehicleId(e.target.value)}
-              disabled={availabilityLoading}
+              disabled={availabilityLoading || Boolean(availabilityError)}
             >
               <option value="">
                 {availabilityLoading
                   ? 'Checking what is free...'
-                  : (availability?.vehicles.length ?? 0) === 0
-                    ? 'No other vehicle is free for these dates'
-                    : 'Keep current vehicle'}
+                  : availabilityError
+                    ? 'Availability unavailable'
+                    : (availability?.vehicles.length ?? 0) === 0
+                      ? 'No other vehicle is free for these dates'
+                      : 'Keep current vehicle'}
               </option>
               {availability?.vehicles.map((vehicle) => (
                 <option key={vehicle.id} value={vehicle.id}>
@@ -192,7 +200,7 @@ export function DispatchReassignDialog({ dispatch, onClose, onSuccess }: Props) 
               it IS consequential for two people's day, so it is confirmed like one. */}
           <ConfirmDialog
             trigger={
-              <Button disabled={saving || availabilityLoading || !hasChoice}>
+              <Button disabled={saving || availabilityLoading || Boolean(availabilityError) || !hasChoice}>
                 {saving ? 'Reassigning...' : 'Reassign'}
               </Button>
             }

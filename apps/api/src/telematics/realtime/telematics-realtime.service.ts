@@ -30,7 +30,13 @@ import type { TelematicsConfig } from "../../config/configuration";
 /// sticky-session config at the load balancer. The realtime architecture is
 /// shared with the AI Copilot module.
 
-export type TelematicsEventType = "position" | "state" | "alert" | "geofence" | "trip";
+export type TelematicsEventType =
+  | "position"
+  | "state"
+  | "alert"
+  | "geofence"
+  | "trip"
+  | "heartbeat";
 
 export interface TelematicsRealtimeEvent {
   type: TelematicsEventType;
@@ -135,6 +141,26 @@ export class TelematicsRealtimeService implements OnModuleInit, OnModuleDestroy 
 
   clientCount(): number {
     return this.clients.size;
+  }
+
+  orgClientCount(organizationId: string): number {
+    return this.orgCounts.get(organizationId) ?? 0;
+  }
+
+  /// Snapshot of this process's SSE clients for the debug console.
+  clientSnapshot(organizationId?: string): Array<{
+    organizationId: string;
+    vehicleFilterCount: number | null;
+  }> {
+    const out: Array<{ organizationId: string; vehicleFilterCount: number | null }> = [];
+    for (const ctx of this.clients.values()) {
+      if (organizationId && ctx.organizationId !== organizationId) continue;
+      out.push({
+        organizationId: ctx.organizationId,
+        vehicleFilterCount: ctx.vehicleIds ? ctx.vehicleIds.size : null,
+      });
+    }
+    return out;
   }
 
   /// The single de-registration path: removes the client from the registry and

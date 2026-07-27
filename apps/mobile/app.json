@@ -1,0 +1,84 @@
+{
+  "expo": {
+    "name": "FlowERP Driver",
+    "slug": "flowerp-driver",
+    "scheme": "flowerp-driver",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0a1423",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "uz.flowerp.driver",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "location",
+          "remote-notification"
+        ],
+        "LSApplicationQueriesSchemes": [
+          "comgooglemaps",
+          "waze",
+          "maps"
+        ]
+      }
+    },
+    "android": {
+      "package": "uz.flowerp.driver",
+      "adaptiveIcon": {
+        "backgroundColor": "#0a1423",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-splash-screen",
+      "expo-font",
+      "expo-image",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "FlowERP uses your location to track your delivery route in real time while you're on a dispatch, and to tag proof-of-delivery photos.",
+          "locationAlwaysAndWhenInUsePermission": "FlowERP continues sharing your location in the background while you're on an active dispatch, so dispatch can see your live position on the map even when the app isn't open.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      "expo-task-manager",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#319cfc"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "6a338bf3-37a6-405b-89b2-89465ff62fda"
+      }
+    }
+  }
+}

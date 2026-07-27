@@ -1,9 +1,9 @@
 import { BadRequestException, Body, Controller, Headers, Param, Post, Query, UnauthorizedException } from "@nestjs/common";
 import { SkipThrottle } from "@nestjs/throttler";
 import { DeviceService } from "./devices/device.service";
-import { IngestionService } from "./ingestion/ingestion.service";
 import { ProviderRegistry } from "./providers/provider-registry";
 import { ProviderNormalizationError } from "./providers/telematics-provider.interface";
+import { TrackingService } from "./tracking/tracking.service";
 
 /// The device ingestion endpoint — NOT session-authenticated.
 ///
@@ -26,7 +26,7 @@ import { ProviderNormalizationError } from "./providers/telematics-provider.inte
 export class TelematicsIngestController {
   constructor(
     private readonly devices: DeviceService,
-    private readonly ingestion: IngestionService,
+    private readonly tracking: TrackingService,
     private readonly providers: ProviderRegistry,
   ) {}
 
@@ -62,8 +62,9 @@ export class TelematicsIngestController {
       throw err;
     }
 
-    return this.ingestion.ingestForVehicle(
-      { organizationId: device.organizationId, vehicleId: device.vehicleId, deviceId: device.deviceId },
+    return this.tracking.receiveForDevice(
+      device.organizationId,
+      { vehicleId: device.vehicleId, deviceId: device.deviceId },
       positions,
     );
   }

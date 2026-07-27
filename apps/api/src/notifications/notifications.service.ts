@@ -388,11 +388,23 @@ export class NotificationsService {
     await this.refresh(organizationId);
     const allowedCategories = categoriesForRole(role);
 
+    // Intersect client category filter with role ACL — never overwrite
+    // `{ in: allowedCategories }` with an unrestricted `query.category`.
+    let categoryFilter: Prisma.NotificationWhereInput['category'] = {
+      in: allowedCategories,
+    };
+    if (query.category) {
+      if (!allowedCategories.includes(query.category)) {
+        categoryFilter = { in: [] };
+      } else {
+        categoryFilter = query.category;
+      }
+    }
+
     const where: Prisma.NotificationWhereInput = {
       organizationId,
-      category: { in: allowedCategories },
+      category: categoryFilter,
       isArchived: query.isArchived,
-      ...(query.category ? { category: query.category } : {}),
       ...(query.severity ? { severity: query.severity } : {}),
       ...(query.isRead !== undefined ? { isRead: query.isRead } : {}),
     };

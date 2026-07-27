@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from './fetch';
+import { dashboardKeys, financeSummaryKeys, reportKeys } from './query-keys';
 
 export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PARTIALLY_PAID' | 'PAID' | 'OVERDUE' | 'CANCELLED';
 
@@ -182,7 +183,9 @@ export function useCreateInvoiceMutation() {
     mutationFn: (input: CreateInvoiceInput) => invoicesAPI.create(input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: invoiceKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: ['finance-summary'] });
+      queryClient.invalidateQueries({ queryKey: financeSummaryKeys.all });
+      queryClient.invalidateQueries({ queryKey: reportKeys.all });
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
     },
   });
 }
@@ -193,7 +196,9 @@ export function useCreateInvoiceFromOrderMutation() {
     mutationFn: (orderId: string) => invoicesAPI.createFromOrder(orderId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: invoiceKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: ['finance-summary'] });
+      queryClient.invalidateQueries({ queryKey: financeSummaryKeys.all });
+      queryClient.invalidateQueries({ queryKey: reportKeys.all });
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
     },
   });
 }
@@ -216,7 +221,9 @@ export function useSendInvoiceMutation(id: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: invoiceKeys.detail(id) });
       queryClient.invalidateQueries({ queryKey: invoiceKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: ['finance-summary'] });
+      queryClient.invalidateQueries({ queryKey: financeSummaryKeys.all });
+      queryClient.invalidateQueries({ queryKey: reportKeys.all });
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
     },
   });
 }
@@ -228,7 +235,9 @@ export function useCancelInvoiceMutation(id: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: invoiceKeys.detail(id) });
       queryClient.invalidateQueries({ queryKey: invoiceKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: ['finance-summary'] });
+      queryClient.invalidateQueries({ queryKey: financeSummaryKeys.all });
+      queryClient.invalidateQueries({ queryKey: reportKeys.all });
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
     },
   });
 }

@@ -1,165 +1,327 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { KpiCards } from "@/components/dashboard/kpi-cards";
-import { RevenueChart } from "@/components/dashboard/revenue-chart";
-import { DeliveryStatusChart } from "@/components/dashboard/delivery-status-chart";
-import { DriverFleetStatus } from "@/components/dashboard/driver-fleet-status";
-import { RecentOrdersTable } from "@/components/dashboard/recent-orders-table";
+import { useEffect, useMemo, useState } from "react";
+import { AiOpsSuggestions } from "@/components/dashboard/ai-ops-suggestions";
+import { ExceptionHero, SecondaryPulse } from "@/components/dashboard/exception-hero";
+import { FinancialWarnings } from "@/components/dashboard/financial-warnings";
+import { FleetReady } from "@/components/dashboard/fleet-ready";
 import { DelayedDeliveries } from "@/components/dashboard/delayed-deliveries";
 import { DriverDashboardSummary } from "@/components/dashboard/driver-dashboard-summary";
 import { LiveDispatch } from "@/components/dashboard/live-dispatch";
+import { UnassignedQueue } from "@/components/dashboard/unassigned-queue";
 import { useCurrentUser } from "@/lib/api/auth";
-import { useDashboardData } from "@/lib/api/dashboard";
+import { useDashboardSummary } from "@/lib/api/dashboard";
+import { useFinanceSummaryQuery } from "@/lib/api/finance";
+import { useLiveFleetQuery } from "@/lib/api/telematics";
+import { useDispatchBoardSummary } from "@/lib/hooks/use-dispatches";
+import { LoadingState, ErrorState } from "@/components/shared/list-states";
+import { ORDER_WRITE_ROLES, DISPATCH_WRITE_ROLES, FLEET_ROLES } from "@/lib/role-access";
 import type { MembershipRole } from "@/lib/api/organizations";
-import { formatMoney } from "@/lib/format";
-import {
-  AlertTriangle,
-  ArrowRight,
-  CheckCircle2,
-  Clock,
-  DollarSign,
-  Package,
-  Plus,
-  Route as RouteIcon,
-  Truck,
-  Users,
-} from "lucide-react";
+import { formatRelativeTime } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { Plus, RefreshCw, Sparkles } from "lucide-react";
+
+const LIVE_REFRESH_MS = 30_000;
+const FLEET_VISIBLE_ROLES = new Set(["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER", "ACCOUNTANT"]);
+
+function shiftLabel(date: Date): string {
+  const h = date.getHours();
+  if (h < 6) return "Night";
+  if (h < 14) return "Morning";
+  if (h < 22) return "Afternoon";
+  return "Night";
+}
+
+function OpsClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const time = new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(now);
+  const weekday = new Intl.DateTimeFormat(undefined, { weekday: "long" }).format(now);
+  const day = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" }).format(now);
+
+  return (
+    <div className="min-w-0">
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <h1 className="text-lg font-semibold tracking-tight text-foreground">Today</h1>
+        <span className="text-lg font-semibold tabular-nums text-foreground">{time}</span>
+      </div>
+      <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[12px] text-muted-foreground">
+        <span>
+          {day} · {weekday}
+        </span>
+        <span className="text-border" aria-hidden>
+          ·
+        </span>
+        <span>Shift: {shiftLabel(now)}</span>
+        <span className="text-border" aria-hidden>
+          ·
+        </span>
+        <span className="font-medium text-foreground">Operations Center</span>
+      </p>
+    </div>
+  );
+}
+
+function FreshnessControl({
+  updatedAt,
+  isFetching,
+  onRefresh,
+}: {
+  updatedAt: number;
+  isFetching: boolean;
+  onRefresh: () => void;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const secs = updatedAt ? Math.max(0, Math.round((now - updatedAt) / 1000)) : 0;
+  const label = isFetching ? "Updating" : secs < 15 ? "Live" : secs < 60 ? `${secs}s` : `${Math.round(secs / 60)}m`;
+
+  return (
+    <button
+      type="button"
+      onClick={onRefresh}
+      disabled={isFetching}
+      title="Refresh now"
+      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border/80 bg-surface/50 px-2.5 text-[11px] font-medium text-muted-foreground hover:border-brand hover:text-brand disabled:opacity-70"
+    >
+      <span className={cn("h-1.5 w-1.5 rounded-full", isFetching ? "animate-pulse bg-warning" : "bg-success")} />
+      <RefreshCw className={cn("h-3 w-3", isFetching && "animate-spin")} />
+      <span className="tabular-nums">{label}</span>
+    </button>
+  );
+}
 
 export const Route = createFileRoute("/app/")({
-  head: () => ({
-    meta: [{ title: "Operations — Command Center" }],
-  }),
+  head: () => ({ meta: [{ title: "Operations — Command Center" }] }),
   component: DashboardPage,
 });
-
-const FLEET_VISIBLE_ROLES = new Set(["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER", "ACCOUNTANT"]);
 
 function DashboardPage() {
   const { data: currentUser, loading: userLoading, error: userError, refetch: refetchUser } = useCurrentUser();
   const role = currentUser?.membership.role;
-  const isDriver = role === "DRIVER";
 
-  if (userLoading) {
-    return <div className="h-40 animate-pulse rounded-2xl bg-primary/5" />;
-  }
-
+  if (userLoading) return <LoadingState label="Loading dashboard..." />;
   if (userError || !currentUser) {
-    return (
-      <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-6 text-center">
-        <p className="text-sm text-destructive">{userError || "Failed to load account."}</p>
-        <button onClick={() => refetchUser()} className="mt-3 rounded-lg bg-destructive/10 px-4 py-2 text-sm font-semibold text-destructive hover:bg-destructive/20">
-          Retry
-        </button>
-      </div>
-    );
+    return <ErrorState message={userError || "Failed to load account."} onRetry={() => refetchUser()} />;
   }
-
-  if (isDriver) return <DriverDashboardSummary firstName={currentUser.user.firstName} />;
+  if (role === "DRIVER") return <DriverDashboardSummary firstName={currentUser.user.firstName} />;
 
   return (
     <OperationsCommandCenter
-      role={role as MembershipRole}
-      firstName={currentUser.user.firstName}
       includeFleet={FLEET_VISIBLE_ROLES.has(role ?? "")}
+      includeTelematics={FLEET_ROLES.includes(role as MembershipRole)}
+      role={role as MembershipRole}
     />
   );
 }
 
 function OperationsCommandCenter({
-  role,
-  firstName,
   includeFleet,
+  includeTelematics,
+  role,
 }: {
-  role: MembershipRole;
-  firstName?: string;
   includeFleet: boolean;
+  includeTelematics: boolean;
+  role: MembershipRole;
 }) {
-  const { overview, delayedOrders, recentOrders, board, loading, error, refetch } = useDashboardData(includeFleet);
-  const totals = overview?.totals;
+  const canCreateOrder = ORDER_WRITE_ROLES.includes(role);
+  const canCreateDispatch = DISPATCH_WRITE_ROLES.includes(role);
 
-  const fleet = board && includeFleet ? {
-    available: board.drivers.available.length,
-    total: board.drivers.available.length + board.drivers.busy.length + board.drivers.onLeave.length,
-  } : null;
+  const summary = useDashboardSummary({ refetchInterval: LIVE_REFRESH_MS });
+  const board = useDispatchBoardSummary({
+    enabled: includeFleet,
+    refetchInterval: includeFleet ? LIVE_REFRESH_MS : undefined,
+  });
+  const finance = useFinanceSummaryQuery();
+  const liveFleet = useLiveFleetQuery({
+    enabled: includeTelematics,
+    refetchInterval: includeTelematics ? LIVE_REFRESH_MS : undefined,
+  });
 
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const totals = summary.data?.totals;
+  const today = summary.data?.today;
+  const boardData = includeFleet ? board.data : null;
+  const unassigned = boardData ? boardData.unassignedOrders.length : null;
+
+  const liveByVehicleId = useMemo(() => {
+    if (!includeTelematics || !liveFleet.data) return undefined;
+    return new Map(liveFleet.data.map((v) => [v.vehicleId, v]));
+  }, [includeTelematics, liveFleet.data]);
+
+  const unassignedIds = useMemo(
+    () => new Set(boardData?.unassignedOrders.map((o) => o.id) ?? []),
+    [boardData],
+  );
+
+  const worstDelayDays = useMemo(() => {
+    const items = summary.data?.delayedOrders.items ?? [];
+    if (items.length === 0) return null;
+    return Math.max(
+      ...items.map((o) => Math.max(1, Math.floor((Date.now() - new Date(o.deliveryDate).getTime()) / 86_400_000))),
+    );
+  }, [summary.data?.delayedOrders.items]);
+
+  const oldestUnassignedWait = useMemo(() => {
+    const orders = boardData?.unassignedOrders ?? [];
+    if (orders.length === 0) return null;
+    let oldest = Infinity;
+    let iso: string | null = null;
+    for (const o of orders) {
+      const t = new Date(o.createdAt ?? o.pickupDate).getTime();
+      if (t < oldest) {
+        oldest = t;
+        iso = o.createdAt ?? o.pickupDate;
+      }
+    }
+    return iso ? formatRelativeTime(iso) : null;
+  }, [boardData?.unassignedOrders]);
+
+  const errors = [summary.error, includeFleet ? board.error : null].filter((e): e is string => Boolean(e));
+  const error =
+    errors.length > 0
+      ? errors.length > 1
+        ? `${errors[0]} (+${errors.length - 1} more)`
+        : errors[0]
+      : null;
+
+  const retryAll = () => {
+    summary.refetch();
+    if (includeFleet) board.refetch();
+    void finance.refetch();
+    if (includeTelematics) void liveFleet.refetch();
+  };
+
+  const updatedAt = Math.max(
+    summary.dataUpdatedAt ?? 0,
+    includeFleet ? board.dataUpdatedAt ?? 0 : 0,
+    includeTelematics ? liveFleet.dataUpdatedAt ?? 0 : 0,
+  );
+  const isRefreshing =
+    summary.isFetching || (includeFleet && board.isFetching) || (includeTelematics && liveFleet.isFetching);
+  const loading = summary.loading || (includeFleet && board.loading && !board.data);
 
   return (
-    <div className="space-y-5">
-      {/* Compact header: greeting + urgent alerts inline */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-foreground">
-            {greeting}{firstName ? `, ${firstName}` : ""}
-          </h1>
-          <p className="text-sm text-muted-foreground">Operations overview</p>
-        </div>
-        {/* Quick create shortcuts */}
-        <div className="flex items-center gap-2">
-          <Link to="/app/orders/create" className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-brand hover:text-brand">
-            <Plus className="h-3 w-3" />
-            Order
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/60 pb-3">
+        <OpsClock />
+        <div className="flex flex-wrap items-center gap-1.5">
+          <FreshnessControl updatedAt={updatedAt} isFetching={isRefreshing} onRefresh={retryAll} />
+          <Link
+            to="/app/ai-assistant"
+            className="inline-flex h-8 items-center gap-1 rounded-lg border border-border/80 px-2.5 text-[11px] font-medium text-muted-foreground hover:border-brand hover:text-brand"
+          >
+            <Sparkles className="h-3 w-3" />
+            Ask AI
           </Link>
-          <Link to="/app/dispatches/create" className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-brand hover:text-brand">
-            <Plus className="h-3 w-3" />
-            Dispatch
-          </Link>
+          {canCreateOrder && (
+            <Link
+              to="/app/orders"
+              search={{ create: true }}
+              className="inline-flex h-8 items-center gap-1 rounded-lg border border-border/80 px-2.5 text-[11px] font-medium text-muted-foreground hover:border-brand hover:text-brand"
+            >
+              <Plus className="h-3 w-3" />
+              Order
+            </Link>
+          )}
+          {canCreateDispatch && (
+            <Link
+              to="/app/dispatches/create"
+              className="inline-flex h-8 items-center gap-1 rounded-lg bg-brand px-3 text-[11px] font-semibold text-brand-foreground hover:opacity-90"
+            >
+              <Plus className="h-3 w-3" />
+              Dispatch
+            </Link>
+          )}
         </div>
       </div>
 
       {error && (
-        <div className="flex items-center justify-between rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3">
-          <p className="text-sm text-destructive">{error}</p>
-          <button onClick={() => refetch()} className="text-xs font-medium text-destructive hover:underline">Retry</button>
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-1.5 text-sm text-destructive">
+          <span>{error}</span>
+          <button type="button" onClick={retryAll} className="text-xs font-medium underline">
+            Retry
+          </button>
         </div>
       )}
 
-      {/* Urgent alerts banner — only shows if there are delayed orders or unassigned orders */}
-      {!loading && totals && ((totals.delayedOrders > 0) || (board && board.unassignedOrders.length > 0)) && (
-        <div className="flex flex-wrap items-center gap-4 rounded-lg border border-warning/20 bg-warning/5 px-4 py-2.5">
-          {totals.delayedOrders > 0 && (
-            <Link to="/app/orders" search={{ tab: 'action' }} className="flex items-center gap-2 text-sm font-medium text-warning hover:text-warning/80">
-              <AlertTriangle className="h-4 w-4" />
-              {totals.delayedOrders} delayed order{totals.delayedOrders === 1 ? '' : 's'}
-              <ArrowRight className="h-3 w-3" />
-            </Link>
-          )}
-          {board && board.unassignedOrders.length > 0 && (
-            <Link to="/app/orders" search={{ tab: 'action' }} className="flex items-center gap-2 text-sm font-medium text-warning hover:text-warning/80">
-              <Clock className="h-4 w-4" />
-              {board.unassignedOrders.length} unassigned
-              <ArrowRight className="h-3 w-3" />
-            </Link>
-          )}
-        </div>
+      <ExceptionHero
+        delayed={totals?.delayedOrders ?? 0}
+        worstDelayDays={worstDelayDays}
+        unassigned={unassigned}
+        oldestUnassignedWait={oldestUnassignedWait}
+        readyDrivers={boardData ? boardData.drivers.available.length : null}
+        readyVehicles={boardData ? boardData.vehicles.available.length : null}
+        includeFleet={includeFleet}
+        loading={loading}
+      />
+
+      {!loading && today && (
+        <SecondaryPulse
+          dueToday={today.dueToday}
+          deliveredToday={today.deliveredToday}
+          pickups={today.pickupsDueToday}
+          freeDrivers={boardData ? boardData.drivers.available.length : null}
+          freeVehicles={boardData ? boardData.vehicles.available.length : null}
+          includeFleet={includeFleet}
+        />
       )}
 
-      {/* KPI strip — compact, one row */}
-      <KpiCards totals={totals ?? null} fleet={fleet} loading={loading} />
-
-      {/* Primary operational grid — 2 columns */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
-        {/* Left: 3/5 — charts stacked */}
-        <div className="space-y-5 lg:col-span-3">
-          <RevenueChart
-            data={overview?.revenueVsExpensesTimeSeries ?? []}
-            totalRevenue={totals?.totalRevenue ?? null}
-            loading={loading}
-          />
-          {/* Fleet + Live dispatch side by side within the left column */}
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-            <LiveDispatch board={includeFleet ? board : null} loading={includeFleet && loading} />
-            <DriverFleetStatus board={includeFleet ? board : null} loading={includeFleet && loading} />
+      {includeFleet ? (
+        <section className="grid grid-cols-1 gap-3 min-[960px]:grid-cols-12 min-[960px]:items-start">
+          {/* Dominant ops column — Needs Dispatch / Ready / Delayed */}
+          <div className="flex flex-col gap-3 min-[960px]:col-span-7">
+            <UnassignedQueue
+              orders={boardData?.unassignedOrders ?? []}
+              loading={board.loading}
+              canDispatch={canCreateDispatch}
+            />
+            <FleetReady board={boardData} loading={board.loading} canDispatch={canCreateDispatch} />
+            <DelayedDeliveries
+              orders={summary.data?.delayedOrders.items ?? []}
+              total={summary.data?.delayedOrders.total ?? 0}
+              loading={summary.loading}
+              unassignedIds={unassignedIds}
+              canDispatch={canCreateDispatch}
+            />
           </div>
-        </div>
 
-        {/* Right: 2/5 — priority info stack */}
-        <div className="space-y-5 lg:col-span-2">
-          <DeliveryStatusChart data={overview?.ordersByStatus ?? []} loading={loading} />
-          <DelayedDeliveries orders={delayedOrders} loading={loading} />
-          <RecentOrdersTable orders={recentOrders} loading={loading} />
-        </div>
-      </div>
+          {/* Secondary monitoring — AI / On Road / Money */}
+          <div className="flex flex-col gap-3 min-[960px]:col-span-5">
+            <AiOpsSuggestions board={boardData ?? null} canDispatch={canCreateDispatch} />
+            <LiveDispatch
+              board={boardData}
+              loading={board.loading}
+              liveByVehicleId={liveByVehicleId}
+            />
+            <FinancialWarnings finance={finance.data} loading={finance.isPending} />
+          </div>
+        </section>
+      ) : (
+        <section className="grid grid-cols-1 gap-3 min-[960px]:grid-cols-12 min-[960px]:items-start">
+          <div className="min-[960px]:col-span-7">
+            <DelayedDeliveries
+              orders={summary.data?.delayedOrders.items ?? []}
+              total={summary.data?.delayedOrders.total ?? 0}
+              loading={summary.loading}
+              canDispatch={canCreateDispatch}
+            />
+          </div>
+          <div className="min-[960px]:col-span-5">
+            <FinancialWarnings finance={finance.data} loading={finance.isPending} />
+          </div>
+        </section>
+      )}
     </div>
   );
 }

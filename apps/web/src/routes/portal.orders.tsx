@@ -39,6 +39,7 @@ export const Route = createFileRoute("/portal/orders")({
 
 const STATUS_OPTIONS: { value: PortalOrderStatus | ""; label: string }[] = [
   { value: "", label: "All Statuses" },
+  { value: "DRAFT", label: "Draft" },
   { value: "PENDING", label: "Pending" },
   { value: "ASSIGNED", label: "Assigned" },
   { value: "PICKED_UP", label: "Picked Up" },
@@ -49,6 +50,7 @@ const STATUS_OPTIONS: { value: PortalOrderStatus | ""; label: string }[] = [
 
 function StatusBadge({ status }: { status: string }) {
   const variantMap: Record<string, "warning" | "brand" | "success" | "secondary" | "destructive" | "muted"> = {
+    DRAFT: "muted",
     PENDING: "warning",
     ASSIGNED: "brand",
     PICKED_UP: "brand",

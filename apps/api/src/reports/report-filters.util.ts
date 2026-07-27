@@ -3,6 +3,7 @@ import { ReportFilterDto } from "./dto/report-filter.dto";
 
 const DEFAULT_RANGE_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
 export interface DateRange {
   from: Date;
@@ -32,19 +33,37 @@ function shiftYears(date: Date, years: number): Date {
   return shifted;
 }
 
+/// Calendar date strings from the Reports UI (`YYYY-MM-DD`) must cover the
+/// whole UTC day. `new Date("2026-07-26")` is midnight, so `lte` would drop
+/// almost every event that day — treat start as 00:00:00.000Z and end as
+/// 23:59:59.999Z. Full ISO timestamps are left as-is for API callers.
+export function parseReportDateBound(value: string, bound: "start" | "end"): Date {
+  if (DATE_ONLY.test(value)) {
+    return new Date(bound === "start" ? `${value}T00:00:00.000Z` : `${value}T23:59:59.999Z`);
+  }
+  return new Date(value);
+}
+
 /// No date filter at all resolves to "the last 30 days" — a bounded,
 /// sensible default rather than an unbounded all-time scan, and one that
 /// makes `comparisonPeriod` meaningful without forcing the caller to
 /// always specify explicit dates.
 export function resolveReportFilter(dto: ReportFilterDto, organizationTimezone: string): ResolvedReportFilter {
   const now = new Date();
-  const to = dto.dateTo ? new Date(dto.dateTo) : now;
-  const from = dto.dateFrom ? new Date(dto.dateFrom) : new Date(to.getTime() - DEFAULT_RANGE_DAYS * DAY_MS);
+  const to = dto.dateTo ? parseReportDateBound(dto.dateTo, "end") : now;
+  const from = dto.dateFrom
+    ? parseReportDateBound(dto.dateFrom, "start")
+    : new Date(to.getTime() - DEFAULT_RANGE_DAYS * DAY_MS);
 
   let comparisonRange: DateRange | null = null;
   if (dto.comparisonPeriod === "previous_period") {
     const rangeMs = to.getTime() - from.getTime();
-    comparisonRange = { from: new Date(from.getTime() - rangeMs), to: new Date(from.getTime()) };
+    // End 1ms before `from` so the shared boundary day is not counted in
+    // both current and previous (build*Where uses inclusive gte/lte).
+    comparisonRange = {
+      from: new Date(from.getTime() - rangeMs),
+      to: new Date(from.getTime() - 1),
+    };
   } else if (dto.comparisonPeriod === "previous_year") {
     comparisonRange = { from: shiftYears(from, -1), to: shiftYears(to, -1) };
   }
@@ -62,6 +81,52 @@ export function resolveReportFilter(dto: ReportFilterDto, organizationTimezone: 
     currency: dto.currency,
     timezone: dto.timezone || organizationTimezone || "UTC",
   };
+}
+
+/// The UTC [from, to] instants that cover "today" in the given IANA
+/// timezone. The Command Center's today-focused metrics need "due today" to
+/// mean the operator's local calendar day, not a UTC day that rolls over
+/// mid-afternoon in +05:00 regions. Uses Intl (built into Node) — no new
+/// date-timezone dependency, same approach as bucketKeyFor above.
+export function resolveZonedDayRange(now: Date, timezone: string): DateRange {
+  try {
+    const dtf = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+    const parts = dtf.formatToParts(now);
+    const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+    const year = get("year");
+    const month = get("month");
+    const day = get("day");
+    const hour = get("hour");
+    const minute = get("minute");
+    const second = get("second");
+    if ([year, month, day, hour, minute, second].some((n) => Number.isNaN(n))) {
+      throw new Error("Intl returned no parts");
+    }
+    // The wall-clock reading of `now` in tz, interpreted as if it were UTC.
+    const wallClockAsUtc = Date.UTC(year, month - 1, day, hour, minute, second);
+    // formatToParts has no milliseconds, so compare against a truncated `now`.
+    const nowSeconds = now.getTime() - (now.getTime() % 1000);
+    const offsetMs = wallClockAsUtc - nowSeconds;
+    // Local midnight (that same calendar day, 00:00 local) as a real UTC instant.
+    const localMidnightAsUtc = Date.UTC(year, month - 1, day, 0, 0, 0, 0);
+    const from = new Date(localMidnightAsUtc - offsetMs);
+    const to = new Date(from.getTime() + DAY_MS - 1);
+    return { from, to };
+  } catch {
+    // Bad IANA tz → fall back to a UTC calendar day rather than throwing.
+    const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
+    const to = new Date(from.getTime() + DAY_MS - 1);
+    return { from, to };
+  }
 }
 
 /// Orders are anchored to `deliveryDate` for date-range filtering — the

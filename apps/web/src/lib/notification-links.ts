@@ -2,9 +2,8 @@
 /// field) to a real, existing detail route. There is no `actionUrl` field on the
 /// backend model — only `entityType`/`entityId` — so this list must stay in sync
 /// with what routes actually exist. Deliberately returns null (no link shown) for
-/// any entity type without a confirmed 1:1 detail route, e.g. "Invoice" — invoice
-/// detail is a client-state Sheet inside /app/finance, not an addressable route,
-/// so no navigable link is offered for it rather than guessing one.
+/// any entity type without a confirmed addressable route (Invoice/Expense live
+/// inside client-state sheets on /app/finance, not deep-linkable URLs).
 export interface EntityLink {
   to: string;
   params: Record<string, string>;
@@ -23,6 +22,10 @@ export function getEntityLink(entityType: string | null, entityId: string | null
       return { to: '/app/vehicles/$vehicleId', params: { vehicleId: entityId }, label: 'View Vehicle' };
     case 'Driver':
       return { to: '/app/drivers/$driverId', params: { driverId: entityId }, label: 'View Driver' };
+    case 'Dispatch':
+      return { to: '/app/dispatches/$dispatchId', params: { dispatchId: entityId }, label: 'View Dispatch' };
+    case 'Workflow':
+      return { to: '/app/workflows/$workflowId', params: { workflowId: entityId }, label: 'View Workflow' };
     default:
       return null;
   }

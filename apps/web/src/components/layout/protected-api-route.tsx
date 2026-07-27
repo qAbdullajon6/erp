@@ -3,6 +3,7 @@ import { ShieldAlert } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useCurrentUser } from "@/lib/api/auth";
 import type { MembershipRole } from "@/lib/api/organizations";
+import { LoadingState } from "@/components/shared/list-states";
 
 function CenteredNotice({ children }: { children: React.ReactNode }) {
   return (
@@ -76,7 +77,9 @@ export function ProtectedApiRoute({ children, requireRoles, platformAdminOnly }:
   // useCurrentUser has resolved by the time any child route mounts under it
   // in practice — this loading guard just avoids a flash of the restricted
   // notice while the shared query is still in flight.
-  if (loading || !currentUser) return null;
+  if (loading || !currentUser) {
+    return <LoadingState label="Checking access..." />;
+  }
 
   const role = currentUser.membership.role as MembershipRole;
   const isPlatformAdmin = currentUser.user.isPlatformAdmin === true;

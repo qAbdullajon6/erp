@@ -3,9 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { invalidateOperationalState } from './invalidate';
 import {
   availabilityKeys,
+  dashboardKeys,
+  dispatchBoardKeys,
   dispatchKeys,
   driverKeys,
   orderKeys,
+  reportKeys,
   vehicleKeys,
 } from './query-keys';
 
@@ -58,6 +61,18 @@ describe('invalidateOperationalState — the invalidation matrix', () => {
     expect(isStale(dispatchKeys.list({ page: 1 }))).toBe(true);
     expect(isStale(dispatchKeys.detail('dispatch-1'))).toBe(true);
     expect(isStale(availabilityKeys.window(WINDOW))).toBe(true);
+  });
+
+  it('also marks board summary, dashboard, and reports stale', async () => {
+    await seed(dispatchBoardKeys.all);
+    await seed(dashboardKeys.summary());
+    await seed(reportKeys.all);
+
+    await invalidateOperationalState(queryClient);
+
+    expect(isStale(dispatchBoardKeys.all)).toBe(true);
+    expect(isStale(dashboardKeys.summary())).toBe(true);
+    expect(isStale(reportKeys.all)).toBe(true);
   });
 
   it('invalidates EVERY cached availability window, not just the one on screen', async () => {

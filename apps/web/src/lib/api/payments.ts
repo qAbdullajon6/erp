@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from './fetch';
 import { invoiceKeys, type Invoice } from './invoices';
+import { dashboardKeys, financeSummaryKeys, reportKeys } from './query-keys';
 
 export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'CARD' | 'OTHER';
 
@@ -118,7 +119,9 @@ export function useRecordPaymentMutation(invoiceId: string) {
       queryClient.invalidateQueries({ queryKey: paymentKeys.lists() });
       queryClient.invalidateQueries({ queryKey: invoiceKeys.detail(invoiceId) });
       queryClient.invalidateQueries({ queryKey: invoiceKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: ['finance-summary'] });
+      queryClient.invalidateQueries({ queryKey: financeSummaryKeys.all });
+      queryClient.invalidateQueries({ queryKey: reportKeys.all });
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
     },
   });
 }

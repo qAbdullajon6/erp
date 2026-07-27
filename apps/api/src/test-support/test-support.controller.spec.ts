@@ -1,7 +1,8 @@
 import { NotFoundException } from "@nestjs/common";
-import { renderInvitationEmail } from "../mail/invitation-email.template";
+import { renderInvitationEmail } from "../mail/templates/invitation-email.template";
 import { MailOutbox } from "../mail/mail.outbox";
 import type { InvitationEmailMessage } from "../mail/mail.service";
+import { DEFAULT_EMAIL_BRANDING } from "../mail/components/theme";
 import type { PrismaService } from "../prisma/prisma.service";
 import { TestSupportController } from "./test-support.controller";
 
@@ -37,7 +38,7 @@ describe("TestSupportController — GET /test/mail/outbox", () => {
       {
         to: "invitee@example.com",
         // Rendered with the same template the real provider uses.
-        subject: renderInvitationEmail(MESSAGE).subject,
+        subject: renderInvitationEmail(MESSAGE, DEFAULT_EMAIL_BRANDING).subject,
         acceptUrl: "https://app.flowerp.uz/invite/RAW-TOKEN",
       },
     ]);

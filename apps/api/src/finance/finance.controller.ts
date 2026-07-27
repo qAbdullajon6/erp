@@ -7,11 +7,8 @@ import { RolesGuard } from "../auth/guards/roles.guard";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { FinanceService } from "./finance.service";
 
-/// The broadest finance read scope in this phase — every role except
-/// DRIVER, since "DISPATCHER: read-only finance summary only" means this
-/// (plus order-profitability, an equally coarse read-only aggregate) is
-/// the *entirety* of Dispatcher's finance access, unlike the raw invoice/
-/// payment/expense lists which Dispatcher cannot see at all.
+/// The broadest finance read scope — every role except DRIVER. Dispatcher
+/// only reaches summary / profitability (not invoice/expense lists).
 const ROLES: MembershipRole[] = [
   "ADMIN",
   "ACCOUNTANT",
@@ -19,6 +16,10 @@ const ROLES: MembershipRole[] = [
   "SALES_CRM_MANAGER",
   "DISPATCHER",
 ];
+
+/// Matches ExpensesController.WRITE_ROLES — accountants need fleet labels
+/// when attributing fuel/driver costs without FLEET_ROLES access.
+const LOOKUP_ROLES: MembershipRole[] = ["ADMIN", "ACCOUNTANT", "OPERATIONS_MANAGER"];
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller("finance")
@@ -35,5 +36,17 @@ export class FinanceController {
   @Get("order-profitability/:orderId")
   orderProfitability(@Param("orderId") orderId: string, @CurrentUser() user: CurrentUserPayload) {
     return this.financeService.orderProfitability(user.organizationId, orderId);
+  }
+
+  @Roles(...LOOKUP_ROLES)
+  @Get("lookups/drivers")
+  lookupDrivers(@CurrentUser() user: CurrentUserPayload) {
+    return this.financeService.lookupDrivers(user.organizationId);
+  }
+
+  @Roles(...LOOKUP_ROLES)
+  @Get("lookups/vehicles")
+  lookupVehicles(@CurrentUser() user: CurrentUserPayload) {
+    return this.financeService.lookupVehicles(user.organizationId);
   }
 }

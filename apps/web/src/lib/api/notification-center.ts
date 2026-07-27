@@ -106,10 +106,14 @@ export function useNotificationPreferences() {
 // ── Mutations ──────────────────────────────────────────────────────
 
 /// Any notification mutation can change the list, the unread badge, or both, so
-/// each invalidates the whole notification-center root.
+/// each invalidates the whole notification-center root — and the bell's
+/// `/notifications` cache, which shares the same underlying rows.
 function useInvalidateNotifications() {
   const qc = useQueryClient();
-  return () => qc.invalidateQueries({ queryKey: notificationCenterKeys.all });
+  return () => {
+    qc.invalidateQueries({ queryKey: notificationCenterKeys.all });
+    qc.invalidateQueries({ queryKey: ["notifications"] });
+  };
 }
 
 function usePost(path: (id: string) => string, fallback: string) {

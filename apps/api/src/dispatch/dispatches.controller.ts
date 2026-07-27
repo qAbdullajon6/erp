@@ -14,7 +14,9 @@ import { UpdateDispatchStatusDto } from "./dto/update-dispatch-status.dto";
 /// "ACCOUNTANT: read-only orders and dispatch" per the phase spec;
 /// DISPATCHER gets full create/manage access.
 const ROLES_READ: MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER", "ACCOUNTANT"];
-const ROLES_WRITE: MembershipRole[] = ["ADMIN", "DISPATCHER"];
+/// Matches OrdersController.OPERATIONAL_ROLES and DISPATCH_API.md — OPS managers
+/// run the same day-of fulfillment path as dispatchers (assign / status / cancel).
+const ROLES_WRITE: MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER"];
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller("dispatches")

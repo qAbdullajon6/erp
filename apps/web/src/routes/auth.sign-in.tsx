@@ -2,13 +2,14 @@
 
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AuthShell } from "@/components/auth/AuthShell";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
+import { TextField } from "@/components/auth/TextField";
+import { PasswordField } from "@/components/auth/PasswordField";
+import { SubmitButton } from "@/components/auth/SubmitButton";
+import { FormAlert } from "@/components/shared/form-alert";
 import { useLogin } from "@/lib/api/auth";
 import { useState } from "react";
 import { toast } from "sonner";
-import { AlertCircle, Eye, EyeOff } from "lucide-react";
+import { Mail } from "lucide-react";
 
 export const Route = createFileRoute("/auth/sign-in")({
   head: () => ({ meta: [{ title: "Sign In — FlowERP AI" }] }),
@@ -20,7 +21,6 @@ function SignInPage() {
   const { login, loading } = useLogin();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -51,71 +51,46 @@ function SignInPage() {
         </>
       }
     >
-      <form onSubmit={onSubmit} className="space-y-4" noValidate>
+      <form onSubmit={onSubmit} className="space-y-5" noValidate>
         {error && (
-          <div
-            role="alert"
-            className="flex items-start gap-2 rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
-          >
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>{error}</span>
+          <div key={error} className="auth-shake">
+            <FormAlert message={error} />
           </div>
         )}
 
-        <div className="grid gap-2">
-          <Label htmlFor="email">Work Email</Label>
-          <Input
-            id="email"
-            type="email"
-            required
-            autoComplete="email"
-            autoFocus
-            placeholder="you@company.com"
-            className="h-11 bg-background/40"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            disabled={loading}
-          />
-        </div>
+        <TextField
+          id="email"
+          label="Work Email"
+          type="email"
+          required
+          autoComplete="email"
+          autoFocus
+          placeholder="you@company.com"
+          icon={<Mail className="h-4 w-4" />}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          disabled={loading}
+        />
 
-        <div className="grid gap-2">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="password">Password</Label>
-            <Link to="/auth/forgot-password" className="text-xs text-muted-foreground hover:text-brand">
+        <PasswordField
+          id="password"
+          label="Password"
+          required
+          autoComplete="current-password"
+          placeholder="••••••••"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          disabled={loading}
+          labelExtra={
+            <Link to="/auth/forgot-password" className="text-xs text-muted-foreground transition-colors hover:text-brand">
               Forgot password?
             </Link>
-          </div>
-          <div className="relative">
-            <Input
-              id="password"
-              type={showPassword ? "text" : "password"}
-              required
-              autoComplete="current-password"
-              placeholder="••••••••"
-              className="h-11 bg-background/40 pr-11"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={loading}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword((v) => !v)}
-              className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-2 text-muted-foreground transition-colors hover:text-foreground"
-              aria-label={showPassword ? "Hide password" : "Show password"}
-              tabIndex={-1}
-            >
-              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
-          </div>
-        </div>
+          }
+        />
 
-        <Button
-          type="submit"
-          disabled={loading}
-          className="h-11 w-full bg-gradient-brand text-brand-foreground hover:opacity-90"
-        >
-          {loading ? "Signing in…" : "Sign In"}
-        </Button>
+        <SubmitButton loading={loading} loadingLabel="Signing in…">
+          Sign In
+        </SubmitButton>
       </form>
     </AuthShell>
   );

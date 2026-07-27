@@ -4,10 +4,16 @@ import { toast } from 'sonner';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useInvoiceQuery, useSendInvoiceMutation, useCancelInvoiceMutation, type InvoiceStatus } from '@/lib/api/invoices';
+import { useCurrentUser } from '@/lib/api/auth';
+import { useInvoiceQuery, useSendInvoiceMutation, useCancelInvoiceMutation } from '@/lib/api/invoices';
 import { customersAPI } from '@/lib/api/customers';
 import { ordersAPI } from '@/lib/api/orders';
+import type { MembershipRole } from '@/lib/api/organizations';
 import { formatMoney } from '@/lib/format';
+import { INVOICE_FINALIZE_ROLES } from '@/lib/role-access';
+import { ErrorState } from '@/components/shared/list-states';
+import { StatusBadge } from '@/components/shared/status-badge';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { RecordPaymentDialog } from './record-payment-dialog';
 
 interface InvoiceDetailSheetProps {
@@ -15,17 +21,12 @@ interface InvoiceDetailSheetProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const STATUS_COLORS: Record<InvoiceStatus, string> = {
-  DRAFT: 'bg-gray-100 text-gray-800',
-  SENT: 'bg-blue-100 text-blue-800',
-  PARTIALLY_PAID: 'bg-yellow-100 text-yellow-800',
-  PAID: 'bg-green-100 text-green-800',
-  OVERDUE: 'bg-red-100 text-red-800',
-  CANCELLED: 'bg-red-100 text-red-800',
-};
-
 export function InvoiceDetailSheet({ invoiceId, onOpenChange }: InvoiceDetailSheetProps) {
   const open = !!invoiceId;
+  const { data: currentUser } = useCurrentUser();
+  const canFinalize = Boolean(
+    currentUser && INVOICE_FINALIZE_ROLES.includes(currentUser.membership.role as MembershipRole),
+  );
   const { data: invoice, isLoading, isError, error, refetch } = useInvoiceQuery(invoiceId ?? '');
 
   const { data: customer } = useQuery({
@@ -46,9 +47,9 @@ export function InvoiceDetailSheet({ invoiceId, onOpenChange }: InvoiceDetailShe
   const handleSend = async () => {
     try {
       await sendInvoice();
-      toast.success('Invoice sent');
+      toast.success('Invoice marked as sent');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to send invoice');
+      toast.error(err instanceof Error ? err.message : 'Failed to mark invoice as sent');
     }
   };
 
@@ -73,12 +74,10 @@ export function InvoiceDetailSheet({ invoiceId, onOpenChange }: InvoiceDetailShe
         )}
 
         {isError && (
-          <div className="mt-6 rounded-lg bg-destructive/10 p-4 text-sm text-destructive">
-            {error instanceof Error ? error.message : 'Failed to load invoice'}
-            <Button onClick={() => refetch()} variant="ghost" size="sm" className="ml-2">
-              Retry
-            </Button>
-          </div>
+          <ErrorState
+            message={error instanceof Error ? error.message : 'Failed to load invoice'}
+            onRetry={() => refetch()}
+          />
         )}
 
         {invoice && (
@@ -86,9 +85,7 @@ export function InvoiceDetailSheet({ invoiceId, onOpenChange }: InvoiceDetailShe
             <SheetHeader>
               <div className="flex items-center gap-3">
                 <SheetTitle>{invoice.invoiceNumber}</SheetTitle>
-                <span className={`inline-block rounded-full px-3 py-1 text-xs font-medium ${STATUS_COLORS[invoice.status]}`}>
-                  {invoice.status.replace(/_/g, ' ')}
-                </span>
+                <StatusBadge status={invoice.status} />
               </div>
               <SheetDescription>{customer?.companyName ?? invoice.customerId}</SheetDescription>
             </SheetHeader>
@@ -194,18 +191,29 @@ export function InvoiceDetailSheet({ invoiceId, onOpenChange }: InvoiceDetailShe
             </div>
 
             <div className="flex flex-wrap gap-2 border-t border-brand/10 pt-4">
-              {invoice.status === 'DRAFT' && (
+              {canFinalize && invoice.status === 'DRAFT' && (
                 <Button size="sm" onClick={handleSend} disabled={sending}>
-                  {sending ? 'Sending...' : 'Send Invoice'}
+                  {sending ? 'Updating...' : 'Mark as sent'}
                 </Button>
               )}
-              {invoice.status !== 'DRAFT' && invoice.status !== 'CANCELLED' && Number(invoice.balanceDue) > 0 && (
+              {canFinalize && invoice.status !== 'DRAFT' && invoice.status !== 'CANCELLED' && Number(invoice.balanceDue) > 0 && (
                 <RecordPaymentDialog invoiceId={invoice.id} balanceDue={invoice.balanceDue} currency={invoice.currency} />
               )}
-              {invoice.status !== 'PAID' && invoice.status !== 'CANCELLED' && (
-                <Button size="sm" variant="destructive" onClick={handleCancel} disabled={cancelling}>
-                  {cancelling ? 'Cancelling...' : 'Cancel Invoice'}
-                </Button>
+              {canFinalize && invoice.status !== 'PAID' && invoice.status !== 'CANCELLED' && (
+                <ConfirmDialog
+                  trigger={
+                    <Button size="sm" variant="destructive" disabled={cancelling}>
+                      {cancelling ? 'Cancelling...' : 'Cancel Invoice'}
+                    </Button>
+                  }
+                  title="Cancel this invoice?"
+                  description="Cancelled invoices cannot be sent or receive payments. This cannot be undone from the UI."
+                  confirmLabel="Cancel invoice"
+                  destructive
+                  onConfirm={() => {
+                    void handleCancel();
+                  }}
+                />
               )}
             </div>
           </div>

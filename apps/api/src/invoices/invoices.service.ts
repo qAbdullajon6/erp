@@ -81,6 +81,9 @@ export class InvoicesService {
     if (!customer) {
       throw new NotFoundException("Customer not found");
     }
+    if (customer.archivedAt || customer.status === "ARCHIVED") {
+      throw new ConflictException("Cannot invoice an archived customer — restore the customer first");
+    }
     if (dto.orderId) {
       await this.assertOrderEligibleForInvoice(organizationId, dto.orderId);
     }
@@ -249,12 +252,16 @@ export class InvoicesService {
   }
 
   async send(organizationId: string, id: string, actor: CurrentUserPayload) {
-    const existing = await this.findOrThrow(organizationId, id);
-    if (existing.status !== "DRAFT") {
+    const result = await this.prisma.invoice.updateMany({
+      where: { id, organizationId, status: "DRAFT" },
+      data: { status: "SENT" },
+    });
+    if (result.count === 0) {
+      const existing = await this.findOrThrow(organizationId, id);
       throw new ConflictException(`Only DRAFT invoices can be sent (this one is ${existing.status})`);
     }
 
-    const invoice = await this.prisma.invoice.update({ where: { id }, data: { status: "SENT" } });
+    const invoice = await this.findOrThrow(organizationId, id);
 
     await this.auditService.log({
       organizationId,
@@ -272,11 +279,26 @@ export class InvoicesService {
     if (existing.status === "PAID" || existing.status === "CANCELLED") {
       throw new ConflictException(`Cannot cancel an invoice with status ${existing.status}`);
     }
+    if (existing.paidAmount.gt(0)) {
+      throw new ConflictException(
+        "Cannot cancel an invoice that already has payments — reverse or credit the payments first",
+      );
+    }
 
-    const invoice = await this.prisma.invoice.update({
-      where: { id },
+    const result = await this.prisma.invoice.updateMany({
+      where: {
+        id,
+        organizationId,
+        status: { notIn: ["PAID", "CANCELLED"] },
+        paidAmount: 0,
+      },
       data: { status: "CANCELLED", cancelledAt: new Date() },
     });
+    if (result.count === 0) {
+      throw new ConflictException(`Cannot cancel an invoice with status ${existing.status}`);
+    }
+
+    const invoice = await this.findOrThrow(organizationId, id);
 
     await this.auditService.log({
       organizationId,
@@ -354,7 +376,15 @@ export class InvoicesService {
       return { description: item.description, quantity, unitPrice, lineTotal: quantity.mul(unitPrice) };
     });
     const subtotal = lineItems.reduce((sum, li) => sum.add(li.lineTotal), new Prisma.Decimal(0));
-    const totalAmount = subtotal.sub(discountAmount).add(taxAmount);
+    const discount = new Prisma.Decimal(discountAmount);
+    const tax = new Prisma.Decimal(taxAmount);
+    if (discount.gt(subtotal.add(tax))) {
+      throw new BadRequestException("Discount cannot exceed subtotal plus tax");
+    }
+    const totalAmount = subtotal.sub(discount).add(tax);
+    if (totalAmount.lte(0)) {
+      throw new BadRequestException("Invoice total must be greater than zero");
+    }
     return { lineItems, subtotal, totalAmount };
   }
 

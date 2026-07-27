@@ -1,5 +1,11 @@
 import { Injectable } from "@nestjs/common";
-import type { CustomerPortalInvitationEmailMessage, InvitationEmailMessage, RawEmailMessage } from "./mail.service";
+import type {
+  CustomerPortalInvitationEmailMessage,
+  DemoConfirmationEmailMessage,
+  InvitationEmailMessage,
+  LeadNotificationEmailMessage,
+  RawEmailMessage,
+} from "./mail.service";
 
 export interface StoredInvitationEmail extends InvitationEmailMessage {
   /// When the outbox captured the message (not a real send timestamp).
@@ -7,6 +13,16 @@ export interface StoredInvitationEmail extends InvitationEmailMessage {
 }
 
 export interface StoredCustomerPortalInvitationEmail extends CustomerPortalInvitationEmailMessage {
+  /// When the outbox captured the message (not a real send timestamp).
+  capturedAt: Date;
+}
+
+export interface StoredLeadNotificationEmail extends LeadNotificationEmailMessage {
+  /// When the outbox captured the message (not a real send timestamp).
+  capturedAt: Date;
+}
+
+export interface StoredDemoConfirmationEmail extends DemoConfirmationEmailMessage {
   /// When the outbox captured the message (not a real send timestamp).
   capturedAt: Date;
 }
@@ -61,9 +77,39 @@ export class MailOutbox {
     return [...this.rawMessages];
   }
 
+  private readonly leadNotifications: StoredLeadNotificationEmail[] = [];
+
+  recordLeadNotification(message: LeadNotificationEmailMessage): void {
+    this.leadNotifications.push({ ...message, capturedAt: new Date() });
+  }
+
+  listLeadNotifications(): readonly StoredLeadNotificationEmail[] {
+    return [...this.leadNotifications];
+  }
+
+  lastLeadNotification(): StoredLeadNotificationEmail | undefined {
+    return this.leadNotifications[this.leadNotifications.length - 1];
+  }
+
+  private readonly demoConfirmations: StoredDemoConfirmationEmail[] = [];
+
+  recordDemoConfirmation(message: DemoConfirmationEmailMessage): void {
+    this.demoConfirmations.push({ ...message, capturedAt: new Date() });
+  }
+
+  listDemoConfirmations(): readonly StoredDemoConfirmationEmail[] {
+    return [...this.demoConfirmations];
+  }
+
+  lastDemoConfirmation(): StoredDemoConfirmationEmail | undefined {
+    return this.demoConfirmations[this.demoConfirmations.length - 1];
+  }
+
   clear(): void {
     this.messages.length = 0;
     this.customerPortalMessages.length = 0;
     this.rawMessages.length = 0;
+    this.leadNotifications.length = 0;
+    this.demoConfirmations.length = 0;
   }
 }

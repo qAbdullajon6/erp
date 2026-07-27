@@ -2,12 +2,14 @@ import { Injectable, NotFoundException, ConflictException, BadRequestException }
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { WorkflowStatus, WorkflowExecutionStatus, Prisma } from '@prisma/client';
+import { WorkflowEngineService } from './engine/workflow-engine.service';
 
 @Injectable()
 export class WorkflowsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly engine: WorkflowEngineService,
   ) {}
 
   async list(organizationId: string, query: {
@@ -62,6 +64,8 @@ export class WorkflowsService {
     config: Record<string, unknown>;
     active?: boolean;
   }) {
+    // Always create as inactive DRAFT. Activation goes through toggle → publish
+    // so event triggers cannot silently no-op on a DRAFT-with-active=true row.
     const workflow = await this.prisma.workflow.create({
       data: {
         organizationId,
@@ -69,7 +73,7 @@ export class WorkflowsService {
         name: input.name,
         description: input.description ?? null,
         config: input.config as Prisma.InputJsonValue,
-        active: input.active ?? false,
+        active: false,
         status: 'DRAFT',
       },
     });
@@ -80,7 +84,7 @@ export class WorkflowsService {
       action: 'workflow.created',
       entityType: 'Workflow',
       entityId: workflow.id,
-      metadata: { name: workflow.name },
+      metadata: { name: workflow.name, requestedActive: input.active ?? false },
     });
 
     return workflow;
@@ -98,13 +102,25 @@ export class WorkflowsService {
       throw new ConflictException('Cannot update an archived workflow');
     }
 
+    // Activating via PATCH must publish a DRAFT the same way toggle does.
+    if (input.active === true && workflow.status === 'DRAFT') {
+      const published = await this.publish(organizationId, userId, id);
+      const needsMetaUpdate =
+        input.name !== undefined ||
+        input.description !== undefined ||
+        input.config !== undefined;
+      if (!needsMetaUpdate) return published;
+      // Fall through to apply remaining field updates on the now-PUBLISHED row.
+    }
+
     const updated = await this.prisma.workflow.update({
       where: { id },
       data: {
         ...(input.name !== undefined && { name: input.name }),
         ...(input.description !== undefined && { description: input.description }),
         ...(input.config !== undefined && { config: input.config as Prisma.InputJsonValue }),
-        ...(input.active !== undefined && { active: input.active }),
+        ...(input.active !== undefined &&
+          !(input.active === true && workflow.status === 'DRAFT') && { active: input.active }),
         updatedSeq: { increment: 1 },
       },
     });
@@ -148,6 +164,13 @@ export class WorkflowsService {
 
     if (workflow.status === 'ARCHIVED') {
       throw new ConflictException('Cannot toggle an archived workflow');
+    }
+
+    // Activating a DRAFT must publish — event triggers only match
+    // `active && PUBLISHED`. Without this, the UI "active" switch never
+    // made workflows fire on domain events.
+    if (!workflow.active && workflow.status === 'DRAFT') {
+      return this.publish(organizationId, userId, id);
     }
 
     const updated = await this.prisma.workflow.update({
@@ -404,6 +427,10 @@ export class WorkflowsService {
       entityId: newExecution.id,
       metadata: { originalExecutionId: executionId },
     });
+
+    // Previously created a PENDING row and never ran it — retries appeared
+    // stuck forever in the executions UI.
+    this.engine.executeAsync(newExecution.id);
 
     return newExecution;
   }

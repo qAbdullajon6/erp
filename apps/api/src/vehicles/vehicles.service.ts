@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { Prisma, Vehicle } from "@prisma/client";
+import { DispatchStatus, Prisma, Vehicle } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { isValidEntityCode } from "../common/sequential-code.util";
@@ -9,6 +9,16 @@ import { CreateVehicleDto } from "./dto/create-vehicle.dto";
 import { ListVehiclesQueryDto } from "./dto/list-vehicles-query.dto";
 import { UpdateVehicleDto } from "./dto/update-vehicle.dto";
 import { generateUniqueVehicleCode } from "./vehicle-code.util";
+
+/// Must stay aligned with Drivers' LIVE_DISPATCH_STATUSES / AssignmentQueries
+/// active set plus DRAFT (GiST already reserves the vehicle).
+const LIVE_DISPATCH_STATUSES: DispatchStatus[] = [
+  "DRAFT",
+  "ASSIGNED",
+  "EN_ROUTE_TO_PICKUP",
+  "AT_PICKUP",
+  "IN_TRANSIT",
+];
 
 @Injectable()
 export class VehiclesService {
@@ -64,22 +74,29 @@ export class VehiclesService {
 
   async create(organizationId: string, dto: CreateVehicleDto, actor: CurrentUserPayload) {
     const vehicleCode = await this.resolveCodeForCreate(organizationId, dto.vehicleCode);
+    await this.assertPlateAvailable(organizationId, dto.plateNumber);
 
-    const vehicle = await this.prisma.vehicle.create({
-      data: {
-        organizationId,
-        vehicleCode,
-        plateNumber: dto.plateNumber,
-        type: dto.type,
-        capacityKg: dto.capacityKg !== undefined ? new Prisma.Decimal(dto.capacityKg) : undefined,
-        capacityM3: dto.capacityM3 !== undefined ? new Prisma.Decimal(dto.capacityM3) : undefined,
-        make: dto.make,
-        model: dto.model,
-        year: dto.year,
-        insuranceExpiry: dto.insuranceExpiry ? new Date(dto.insuranceExpiry) : undefined,
-        inspectionExpiry: dto.inspectionExpiry ? new Date(dto.inspectionExpiry) : undefined,
-      },
-    });
+    let vehicle: Vehicle;
+    try {
+      vehicle = await this.prisma.vehicle.create({
+        data: {
+          organizationId,
+          vehicleCode,
+          plateNumber: dto.plateNumber,
+          type: dto.type,
+          capacityKg: dto.capacityKg !== undefined ? new Prisma.Decimal(dto.capacityKg) : undefined,
+          capacityM3: dto.capacityM3 !== undefined ? new Prisma.Decimal(dto.capacityM3) : undefined,
+          make: dto.make,
+          model: dto.model,
+          year: dto.year,
+          insuranceExpiry: dto.insuranceExpiry ? new Date(dto.insuranceExpiry) : undefined,
+          inspectionExpiry: dto.inspectionExpiry ? new Date(dto.inspectionExpiry) : undefined,
+        },
+      });
+    } catch (err) {
+      this.rethrowUniqueConflict(err);
+      throw err;
+    }
 
     await this.auditService.log({
       organizationId,
@@ -90,7 +107,11 @@ export class VehiclesService {
       metadata: { vehicleCode: vehicle.vehicleCode, plateNumber: vehicle.plateNumber },
     });
 
-    this.workflowEvents.emit(organizationId, "vehicle.created", { id: vehicle.id, vehicleCode: vehicle.vehicleCode, plateNumber: vehicle.plateNumber });
+    this.workflowEvents.emit(organizationId, "vehicle.created", {
+      id: vehicle.id,
+      vehicleCode: vehicle.vehicleCode,
+      plateNumber: vehicle.plateNumber,
+    });
 
     return this.toResponse(vehicle);
   }
@@ -105,23 +126,32 @@ export class VehiclesService {
     if (dto.vehicleCode && dto.vehicleCode !== existing.vehicleCode) {
       await this.assertCodeAvailable(organizationId, dto.vehicleCode);
     }
+    if (dto.plateNumber && dto.plateNumber !== existing.plateNumber) {
+      await this.assertPlateAvailable(organizationId, dto.plateNumber, id);
+    }
 
-    const updated = await this.prisma.vehicle.update({
-      where: { id },
-      data: {
-        vehicleCode: dto.vehicleCode,
-        plateNumber: dto.plateNumber,
-        type: dto.type,
-        capacityKg: dto.capacityKg !== undefined ? new Prisma.Decimal(dto.capacityKg) : undefined,
-        capacityM3: dto.capacityM3 !== undefined ? new Prisma.Decimal(dto.capacityM3) : undefined,
-        status: dto.status,
-        make: dto.make,
-        model: dto.model,
-        year: dto.year,
-        insuranceExpiry: dto.insuranceExpiry ? new Date(dto.insuranceExpiry) : undefined,
-        inspectionExpiry: dto.inspectionExpiry ? new Date(dto.inspectionExpiry) : undefined,
-      },
-    });
+    let updated: Vehicle;
+    try {
+      updated = await this.prisma.vehicle.update({
+        where: { id },
+        data: {
+          vehicleCode: dto.vehicleCode,
+          plateNumber: dto.plateNumber,
+          type: dto.type,
+          capacityKg: dto.capacityKg !== undefined ? new Prisma.Decimal(dto.capacityKg) : undefined,
+          capacityM3: dto.capacityM3 !== undefined ? new Prisma.Decimal(dto.capacityM3) : undefined,
+          status: dto.status,
+          make: dto.make,
+          model: dto.model,
+          year: dto.year,
+          insuranceExpiry: dto.insuranceExpiry ? new Date(dto.insuranceExpiry) : undefined,
+          inspectionExpiry: dto.inspectionExpiry ? new Date(dto.inspectionExpiry) : undefined,
+        },
+      });
+    } catch (err) {
+      this.rethrowUniqueConflict(err);
+      throw err;
+    }
 
     await this.auditService.log({
       organizationId,
@@ -139,6 +169,19 @@ export class VehiclesService {
     const existing = await this.findOrThrow(organizationId, id);
     if (existing.archivedAt) {
       throw new ConflictException("Vehicle is already archived");
+    }
+
+    const liveDispatches = await this.prisma.dispatch.count({
+      where: {
+        organizationId,
+        vehicleId: id,
+        status: { in: [...LIVE_DISPATCH_STATUSES] },
+      },
+    });
+    if (liveDispatches > 0) {
+      throw new ConflictException(
+        `Cannot archive — this vehicle has ${liveDispatches} live dispatch${liveDispatches === 1 ? "" : "es"}. Reassign or cancel them first.`,
+      );
     }
 
     const vehicle = await this.prisma.vehicle.update({
@@ -162,6 +205,10 @@ export class VehiclesService {
     if (!existing.archivedAt) {
       throw new ConflictException("Vehicle is not archived");
     }
+
+    /// Restoring must not collide with a live vehicle that reused the plate
+    /// while this one was archived (partial unique index).
+    await this.assertPlateAvailable(organizationId, existing.plateNumber, id);
 
     const vehicle = await this.prisma.vehicle.update({
       where: { id },
@@ -195,6 +242,36 @@ export class VehiclesService {
       where: { organizationId_vehicleCode: { organizationId, vehicleCode } },
     });
     if (conflict) {
+      throw new ConflictException("A vehicle with this vehicleCode already exists in this organization");
+    }
+  }
+
+  /// Live (non-archived) plate uniqueness — matches the partial unique index.
+  private async assertPlateAvailable(
+    organizationId: string,
+    plateNumber: string,
+    excludeId?: string,
+  ): Promise<void> {
+    const conflict = await this.prisma.vehicle.findFirst({
+      where: {
+        organizationId,
+        plateNumber,
+        archivedAt: null,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+      select: { id: true },
+    });
+    if (conflict) {
+      throw new ConflictException("A vehicle with this plate number already exists in this organization");
+    }
+  }
+
+  private rethrowUniqueConflict(err: unknown): void {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      const target = Array.isArray(err.meta?.target) ? err.meta.target.join(",") : String(err.meta?.target ?? "");
+      if (target.includes("plateNumber")) {
+        throw new ConflictException("A vehicle with this plate number already exists in this organization");
+      }
       throw new ConflictException("A vehicle with this vehicleCode already exists in this organization");
     }
   }

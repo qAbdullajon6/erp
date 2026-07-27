@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import type { MembershipRole } from "@prisma/client";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { Roles } from "../auth/decorators/roles.decorator";
@@ -7,6 +7,7 @@ import { RolesGuard } from "../auth/guards/roles.guard";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { DriversService } from "./drivers.service";
 import { CreateDriverDto } from "./dto/create-driver.dto";
+import { LinkDriverUserDto } from "./dto/link-driver-user.dto";
 import { ListDriversQueryDto } from "./dto/list-drivers-query.dto";
 import { UpdateDriverDto } from "./dto/update-driver.dto";
 
@@ -44,14 +45,14 @@ export class DriversController {
 
   @Roles(...ROLES)
   @Get(":id")
-  getById(@Param("id") id: string, @CurrentUser() user: CurrentUserPayload) {
+  getById(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {
     return this.driversService.getById(user.organizationId, id);
   }
 
   @Roles(...ROLES)
   @Patch(":id")
   update(
-    @Param("id") id: string,
+    @Param("id", ParseUUIDPipe) id: string,
     @Body() dto: UpdateDriverDto,
     @CurrentUser() user: CurrentUserPayload,
   ) {
@@ -59,16 +60,34 @@ export class DriversController {
   }
 
   @Roles(...ROLES)
+  @Post(":id/link-user")
+  @HttpCode(200)
+  linkUser(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: LinkDriverUserDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.driversService.linkUser(user.organizationId, id, dto.userId, user);
+  }
+
+  @Roles(...ROLES)
+  @Post(":id/unlink-user")
+  @HttpCode(200)
+  unlinkUser(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {
+    return this.driversService.unlinkUser(user.organizationId, id, user);
+  }
+
+  @Roles(...ROLES)
   @Post(":id/archive")
   @HttpCode(200)
-  archive(@Param("id") id: string, @CurrentUser() user: CurrentUserPayload) {
+  archive(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {
     return this.driversService.archive(user.organizationId, id, user);
   }
 
   @Roles(...ROLES)
   @Post(":id/restore")
   @HttpCode(200)
-  restore(@Param("id") id: string, @CurrentUser() user: CurrentUserPayload) {
+  restore(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {
     return this.driversService.restore(user.organizationId, id, user);
   }
 }

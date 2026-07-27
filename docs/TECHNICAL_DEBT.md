@@ -692,3 +692,70 @@ SSE infrastructure exists, notification channel not integrated.
 
 **Payoff point:** When realtime updates required.
 
+---
+
+## TD-WORKFLOW-01 — Schedule / webhook trigger CRUD not exposed
+
+**Status:** OPEN, medium severity, accepted.
+**Found:** Workflows + Notifications production audit, 2026-07-26.
+
+`WorkflowSchedule` rows are polled every 60s and `WorkflowWebhook` inbound
+routing exists, but there is no authenticated API/UI to create or manage
+schedules or workflow webhook paths. Operators cannot turn on cron or inbound
+webhook triggers from the product surface.
+
+**Why not fixed now:** Event-driven workflows (order/dispatch/invoice/…) cover
+first-customer automations. Schedule/webhook are infrastructure for a later
+ops-automation phase.
+
+**Payoff point:** When a customer needs recurring or external-system-triggered
+workflows.
+
+---
+
+## TD-WORKFLOW-02 — Manual approval has no resume path
+
+**Status:** OPEN, medium severity, accepted.
+**Found:** Workflows + Notifications production audit, 2026-07-26.
+
+The `approval` action parks an execution in WAITING / PENDING. There is no
+API to approve/reject and continue the remaining steps.
+
+**Why not fixed now:** Action registry now documents the limitation. Operators
+should not configure approval steps until resume ships.
+
+**Payoff point:** When multi-step human-in-the-loop approvals are required.
+
+---
+
+## TD-WORKFLOW-03 — Webhook SSRF hardening is hostname-regex only
+
+**Status:** OPEN, low severity, accepted.
+**Found:** Workflows + Notifications production audit, 2026-07-26.
+
+Outbound workflow webhooks block private hostname patterns but do not resolve
+DNS and re-check the resolved IP (DNS rebinding).
+
+**Why not fixed now:** First customers are expected to point webhooks at known
+HTTPS SaaS endpoints; private-IP regex covers the common mistake class.
+
+**Payoff point:** Before allowing untrusted tenant-configured webhook URLs at
+scale.
+
+---
+
+## TD-NOTIF-09 — Dual notification API stacks retained
+
+**Status:** OPEN, low severity, accepted (mitigated).
+**Found:** Workflows + Notifications production audit, 2026-07-26.
+
+`/notifications` (bell + rule reconcile) and `/notification-center` (full page,
+search, bulk, preferences) remain separate. Cross-invalidation and shared
+category ACL were added; full unification is deferred.
+
+**Why not fixed now:** Both surfaces work for first customers after the ACL/
+refresh fixes. Unifying would be a larger API contract change.
+
+**Payoff point:** Next notifications refactor milestone.
+
+

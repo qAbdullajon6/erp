@@ -43,6 +43,18 @@
   --color-series-revenue: var(--series-revenue);
   --color-series-expenses: var(--series-expenses);
 
+  /* Expose the existing sidebar palette to Tailwind utilities. The primitive
+     already consumes bg-/text-/ring-sidebar-* classes; without these mappings
+     those active, hover, and focus states compile to no color declaration. */
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Manrope", "Inter", ui-sans-serif, system-ui, sans-serif;
 }
@@ -125,11 +137,15 @@
     scroll-behavior: smooth;
   }
   /* Vestibular safety: honour the OS "reduce motion" setting. */
-  @media (prefers-reduced-motion: reduce) {
-    html {
-      scroll-behavior: auto;
-    }
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
   }
+
+  .animate-spin {
+    animation: none !important;
+  }
+}
   /* The landing navbar is sticky and 4rem tall, so an anchored section would
      otherwise land with its heading tucked underneath it. */
   section[id] {
@@ -143,6 +159,23 @@
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-display);
     letter-spacing: -0.02em;
+  }
+
+  /* The whole app is dark-mode-only, but Chrome/Safari paint autofilled
+     inputs with their own opaque light background regardless of page
+     theme — a jarring light pill on every dark card otherwise. The
+     "9999s transition" is the standard trick to defeat that paint before
+     the browser's own repaint happens. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active,
+  input:autofill {
+    -webkit-text-fill-color: var(--color-foreground) !important;
+    caret-color: var(--color-foreground) !important;
+    -webkit-box-shadow: 0 0 0px 1000px var(--color-background) inset !important;
+    box-shadow: 0 0 0px 1000px var(--color-background) inset !important;
+    transition: background-color 9999s ease-in-out 0s;
   }
 }
 
@@ -229,10 +262,6 @@
   70% { transform: scale(2.1); opacity: 0; }
   100% { transform: scale(2.1); opacity: 0; }
 }
-@keyframes lv2-shimmer {
-  from { background-position: -180% 0; }
-  to { background-position: 180% 0; }
-}
 @keyframes lv2-dash { to { stroke-dashoffset: 0; } }
 @keyframes lv2-flow { to { stroke-dashoffset: -240; } }
 @keyframes lv2-rise {
@@ -241,17 +270,10 @@
 }
 
 .lv2-marquee { animation: lv2-marquee 46s linear infinite; }
-.lv2-marquee-slow { animation: lv2-marquee 68s linear infinite; }
-.lv2-pause:hover .lv2-marquee,
-.lv2-pause:hover .lv2-marquee-slow { animation-play-state: paused; }
+.lv2-pause:hover .lv2-marquee { animation-play-state: paused; }
 .lv2-caret { animation: lv2-blink 1.05s steps(1, end) infinite; }
 .lv2-float { animation: lv2-float 6.5s ease-in-out infinite; }
 .lv2-float-slow { animation: lv2-float-slow 9s ease-in-out infinite; }
-.lv2-shimmer {
-  background: linear-gradient(90deg, transparent, oklch(1 0 0 / 0.07), transparent);
-  background-size: 180% 100%;
-  animation: lv2-shimmer 2.4s ease-in-out infinite;
-}
 .lv2-pulse-ring { animation: lv2-pulse-ring 2.6s cubic-bezier(0.16, 1, 0.3, 1) infinite; }
 .lv2-flow { stroke-dasharray: 5 11; animation: lv2-flow 14s linear infinite; }
 
@@ -264,17 +286,43 @@
 
 @media (prefers-reduced-motion: reduce) {
   .lv2-marquee,
-  .lv2-marquee-slow,
   .lv2-caret,
   .lv2-float,
   .lv2-float-slow,
-  .lv2-shimmer,
   .lv2-pulse-ring,
   .lv2-flow,
   .lv2-draw.is-in {
     animation: none !important;
   }
   .lv2-draw { stroke-dashoffset: 0 !important; }
+}
+
+/* ============================================================
+   Auth — premium authentication screens (sign in, invitations,
+   password reset, email verification). Reuses the lv2- tokens/masks
+   above; adds only the few motions those screens need that landing
+   doesn't: an error shake and a staggered form entrance.
+   ============================================================ */
+
+@keyframes auth-shake {
+  10%, 90% { transform: translate3d(-1px, 0, 0); }
+  20%, 80% { transform: translate3d(2px, 0, 0); }
+  30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+  40%, 60% { transform: translate3d(4px, 0, 0); }
+}
+@keyframes auth-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.auth-shake { animation: auth-shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both; }
+.auth-rise { animation: auth-rise 0.45s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-shake,
+  .auth-rise {
+    animation: none !important;
+  }
 }
 
 /* A scrollable panel (sidebar nav, board columns) with the default browser

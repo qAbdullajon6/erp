@@ -2,7 +2,9 @@ import { Logger } from "@nestjs/common";
 import {
   MailService,
   type CustomerPortalInvitationEmailMessage,
+  type DemoConfirmationEmailMessage,
   type InvitationEmailMessage,
+  type LeadNotificationEmailMessage,
   type RawEmailMessage,
 } from "../mail.service";
 import { redactEmail } from "../mail.util";
@@ -34,6 +36,20 @@ export class UnavailableMailService extends MailService {
   sendRawEmail(message: RawEmailMessage): Promise<void> {
     this.logger.error(
       `Email not sent: no mail transport is configured (recipient ${redactEmail(message.to)})`,
+    );
+    return Promise.reject(new Error("Email delivery is not configured"));
+  }
+
+  sendLeadNotificationEmail(message: LeadNotificationEmailMessage): Promise<void> {
+    this.logger.error(
+      `Lead notification email not sent: no mail transport is configured (recipient ${redactEmail(message.to)})`,
+    );
+    return Promise.reject(new Error("Email delivery is not configured"));
+  }
+
+  sendDemoConfirmationEmail(message: DemoConfirmationEmailMessage): Promise<void> {
+    this.logger.error(
+      `Demo confirmation email not sent: no mail transport is configured (recipient ${redactEmail(message.to)})`,
     );
     return Promise.reject(new Error("Email delivery is not configured"));
   }

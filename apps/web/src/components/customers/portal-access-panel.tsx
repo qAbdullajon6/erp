@@ -26,7 +26,14 @@ const STATUS_STYLES: Record<string, string> = {
 /// account itself is never created here directly; inviting only creates a
 /// CustomerPortalInvitation, and the customer's own activation (setting a
 /// password) is what creates the CustomerPortalAccount.
-export function PortalAccessPanel({ customerId }: { customerId: string }) {
+export function PortalAccessPanel({
+  customerId,
+  embedded = false,
+}: {
+  customerId: string;
+  /// When true, omit the outer title — parent section already labels "Customer Access".
+  embedded?: boolean;
+}) {
   const { data: status, loading } = useCustomerPortalAccessStatus(customerId);
   const { invite, loading: inviting } = useInviteToPortal(customerId);
   const { resend, loading: resending } = useResendPortalInvitation(customerId);
@@ -37,8 +44,12 @@ export function PortalAccessPanel({ customerId }: { customerId: string }) {
 
   if (loading || !status) {
     return (
-      <div className="space-y-4 rounded-lg border border-brand/10 bg-surface p-6">
-        <h3 className="font-semibold text-foreground">Portal Access</h3>
+      <div className="space-y-3 rounded-xl border border-border/50 bg-muted/10 p-4">
+        {!embedded && (
+          <h3 className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Customer access
+          </h3>
+        )}
         <p className="text-sm text-muted-foreground">Loading…</p>
       </div>
     );
@@ -109,9 +120,15 @@ export function PortalAccessPanel({ customerId }: { customerId: string }) {
   const anyBusy = busy || inviting || resending || revoking || suspending || reactivating;
 
   return (
-    <div className="space-y-4 rounded-lg border border-brand/10 bg-surface p-6">
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-foreground">Portal Access</h3>
+    <div className="space-y-3 rounded-xl border border-border/50 bg-muted/10 p-4">
+      <div className="flex items-center justify-between gap-2">
+        {!embedded ? (
+          <h3 className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Customer access
+          </h3>
+        ) : (
+          <p className="text-xs text-muted-foreground">Customer portal login</p>
+        )}
         {status.hasAccount && status.accountStatus && (
           <Badge className={STATUS_STYLES[status.accountStatus]} variant="outline">
             {status.accountStatus}

@@ -1,4 +1,14 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { HttpException, Injectable, Logger } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
+import type { MembershipRole } from '@prisma/client';
+import type { CurrentUserPayload } from '../../auth/interfaces/current-user.interface';
+// Type-only: importing these as VALUES here creates an ES-module cycle
+// (orders.service -> workflow-event.service -> ... ) that leaves OrdersService's
+// own injected deps undefined at metadata time. The runtime class tokens are
+// pulled lazily inside the resolver methods below via dynamic import.
+import type { DispatchesService } from '../../dispatch/dispatches.service';
+import type { InvoicesService } from '../../invoices/invoices.service';
+import type { OrdersService } from '../../orders/orders.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../../mail/mail.service';
 import { NotificationDispatcherService } from '../../notifications/dispatcher/notification-dispatcher.service';
@@ -13,7 +23,7 @@ const BLOCKED_IP_RANGES = [
 const ALLOWED_UPDATE_FIELDS: Record<string, string[]> = {
   order: ['notes', 'deliveryNotes', 'cargoDescription'],
   customer: ['notes', 'contactName', 'contactEmail', 'contactPhone'],
-  dispatch: ['notes', 'deliveryNotes'],
+  dispatch: ['notes'],
 };
 
 @Injectable()
@@ -24,7 +34,77 @@ export class ActionExecutor {
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
     private readonly notificationDispatcher: NotificationDispatcherService,
+    /// Lazy-resolved to avoid a circular Nest module graph:
+    /// OrdersModule/DispatchModule both import WorkflowsModule.
+    private readonly moduleRef: ModuleRef,
   ) {}
+
+  /// System actor for workflow-driven domain writes. History/audit columns
+  /// accept a null actor (schema: changedByUserId / actorUserId nullable for
+  /// system-initiated changes). Prefer a real org ADMIN when one exists so
+  /// audit trails name a person instead of "unknown".
+  private async workflowActor(organizationId: string): Promise<CurrentUserPayload> {
+    const membership = await this.prisma.membership.findFirst({
+      where: { organizationId, role: 'ADMIN', status: 'ACTIVE' },
+      include: { user: { select: { email: true } } },
+      orderBy: { createdAt: 'asc' },
+    }) ?? await this.prisma.membership.findFirst({
+      where: { organizationId, status: 'ACTIVE' },
+      include: { user: { select: { email: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (!membership) {
+      return {
+        userId: null as unknown as string,
+        membershipId: '',
+        organizationId,
+        role: 'ADMIN' as MembershipRole,
+        email: 'workflow@system',
+        isPlatformAdmin: false,
+      };
+    }
+
+    return {
+      userId: membership.userId,
+      membershipId: membership.id,
+      organizationId,
+      role: membership.role,
+      email: membership.user.email,
+      isPlatformAdmin: false,
+    };
+  }
+
+  private async ordersService(): Promise<OrdersService> {
+    const { OrdersService } = await import('../../orders/orders.service');
+    return this.moduleRef.get(OrdersService, { strict: false });
+  }
+
+  private async dispatchesService(): Promise<DispatchesService> {
+    const { DispatchesService } = await import('../../dispatch/dispatches.service');
+    return this.moduleRef.get(DispatchesService, { strict: false });
+  }
+
+  private async invoicesService(): Promise<InvoicesService> {
+    const { InvoicesService } = await import('../../invoices/invoices.service');
+    return this.moduleRef.get(InvoicesService, { strict: false });
+  }
+
+  private rethrowDomain(error: unknown): never {
+    if (error instanceof HttpException) {
+      const body = error.getResponse();
+      const message =
+        typeof body === 'string'
+          ? body
+          : typeof body === 'object' && body && 'message' in body
+            ? Array.isArray((body as { message: unknown }).message)
+              ? (body as { message: string[] }).message.join(', ')
+              : String((body as { message: unknown }).message)
+            : error.message;
+      throw new Error(message);
+    }
+    throw error;
+  }
 
   private validateWebhookUrl(url: string): void {
     let parsed: URL;
@@ -227,45 +307,77 @@ export class ActionExecutor {
     const entityId = this.interpolate(String(config.entityId ?? ''), context) ||
       (context.eventPayload.id as string);
     const newStatus = String(config.status ?? config.newStatus ?? '');
+    const note = config.note
+      ? this.interpolate(String(config.note), context)
+      : `Workflow ${context.workflowId}`;
 
     if (!entityId) throw new Error('Entity ID is required for change_status');
     if (!newStatus) throw new Error('New status is required');
 
-    switch (entityType) {
-      case 'order': {
-        const result = await this.prisma.order.updateMany({
-          where: { id: entityId, organizationId: context.organizationId },
-          data: { status: newStatus as any },
-        });
-        if (result.count === 0) throw new Error(`Order ${entityId} not found in this organization`);
-        break;
+    const actor = await this.workflowActor(context.organizationId);
+
+    try {
+      switch (entityType) {
+        case 'order': {
+          // ADR-001: order status is a projection of dispatch. Route through
+          // OrdersService so TransitionPolicy, OrderWriter, history, and
+          // dispatch advancement all run — never raw prisma.order.updateMany.
+          const orders = await this.ordersService();
+          if (newStatus === 'CANCELLED') {
+            await orders.cancel(context.organizationId, entityId, { note }, actor);
+          } else {
+            await orders.updateStatus(
+              context.organizationId,
+              entityId,
+              { status: newStatus as any, note },
+              actor,
+            );
+          }
+          break;
+        }
+        case 'dispatch': {
+          const dispatches = await this.dispatchesService();
+          if (newStatus === 'CANCELLED') {
+            await dispatches.cancel(context.organizationId, entityId, actor);
+          } else {
+            await dispatches.updateStatus(
+              context.organizationId,
+              entityId,
+              { status: newStatus as any, note },
+              actor,
+            );
+          }
+          break;
+        }
+        case 'invoice': {
+          // Never raw-update invoice status — that bypasses send/cancel/payment
+          // rules and ACCOUNTANT finalization. Route through InvoicesService.
+          const invoices = await this.invoicesService();
+          const normalized = newStatus.toUpperCase();
+          if (normalized === 'SENT' || normalized === 'SEND') {
+            await invoices.send(context.organizationId, entityId, actor);
+          } else if (normalized === 'CANCELLED' || normalized === 'CANCEL') {
+            await invoices.cancel(context.organizationId, entityId, actor);
+          } else {
+            throw new Error(
+              `Workflow change_status for invoices only supports SENT or CANCELLED (got ${newStatus})`,
+            );
+          }
+          break;
+        }
+        case 'customer': {
+          const result = await this.prisma.customer.updateMany({
+            where: { id: entityId, organizationId: context.organizationId },
+            data: { status: newStatus as any },
+          });
+          if (result.count === 0) throw new Error(`Customer ${entityId} not found in this organization`);
+          break;
+        }
+        default:
+          throw new Error(`Unsupported entity type for status change: ${entityType}`);
       }
-      case 'dispatch': {
-        const result = await this.prisma.dispatch.updateMany({
-          where: { id: entityId, organizationId: context.organizationId },
-          data: { status: newStatus as any },
-        });
-        if (result.count === 0) throw new Error(`Dispatch ${entityId} not found in this organization`);
-        break;
-      }
-      case 'invoice': {
-        const result = await this.prisma.invoice.updateMany({
-          where: { id: entityId, organizationId: context.organizationId },
-          data: { status: newStatus as any },
-        });
-        if (result.count === 0) throw new Error(`Invoice ${entityId} not found in this organization`);
-        break;
-      }
-      case 'customer': {
-        const result = await this.prisma.customer.updateMany({
-          where: { id: entityId, organizationId: context.organizationId },
-          data: { status: newStatus as any },
-        });
-        if (result.count === 0) throw new Error(`Customer ${entityId} not found in this organization`);
-        break;
-      }
-      default:
-        throw new Error(`Unsupported entity type for status change: ${entityType}`);
+    } catch (error) {
+      this.rethrowDomain(error);
     }
 
     return { entityType, entityId, newStatus };
@@ -276,22 +388,52 @@ export class ActionExecutor {
     context: ExecutionContext,
   ): Promise<Record<string, unknown>> {
     const driverId = this.interpolate(String(config.driverId ?? ''), context);
+    const vehicleId = this.interpolate(String(config.vehicleId ?? ''), context);
     const dispatchId = this.interpolate(String(config.dispatchId ?? ''), context) ||
       (context.eventPayload.id as string) ||
       (context.eventPayload.dispatchId as string);
+    const orderId = this.interpolate(String(config.orderId ?? ''), context) ||
+      (context.eventPayload.orderId as string);
 
-    if (!dispatchId) throw new Error('Dispatch ID is required for assign_driver');
-
-    if (driverId) {
-      const result = await this.prisma.dispatch.updateMany({
-        where: { id: dispatchId, organizationId: context.organizationId },
-        data: { driverId },
-      });
-      if (result.count === 0) throw new Error(`Dispatch ${dispatchId} not found in this organization`);
-      return { dispatchId, driverId, method: 'explicit' };
+    if (!driverId) {
+      return { dispatchId: dispatchId || null, driverId: null, method: 'skipped_no_driver' };
     }
 
-    return { dispatchId, driverId: null, method: 'skipped_no_driver' };
+    const actor = await this.workflowActor(context.organizationId);
+
+    try {
+      // Prefer order-level assign when we have both resources — that path
+      // creates/activates the dispatch under ADR-001. Dispatch-only reassign
+      // when the trip already exists and we only have a driver (vehicle kept).
+      if (orderId && vehicleId) {
+        const orders = await this.ordersService();
+        await orders.assign(
+          context.organizationId,
+          orderId,
+          { driverId, vehicleId },
+          actor,
+        );
+        return { orderId, driverId, vehicleId, method: 'order_assign' };
+      }
+
+      if (!dispatchId) {
+        throw new Error('Dispatch ID (or orderId + vehicleId) is required for assign_driver');
+      }
+
+      const dispatches = await this.dispatchesService();
+      await dispatches.update(
+        context.organizationId,
+        dispatchId,
+        {
+          driverId,
+          ...(vehicleId ? { vehicleId } : {}),
+        },
+        actor,
+      );
+      return { dispatchId, driverId, vehicleId: vehicleId || null, method: 'dispatch_reassign' };
+    } catch (error) {
+      this.rethrowDomain(error);
+    }
   }
 
   private async executeCreateInvoice(
@@ -304,28 +446,19 @@ export class ActionExecutor {
 
     if (!orderId) throw new Error('Order ID is required for create_invoice');
 
-    const order = await this.prisma.order.findFirst({
-      where: { id: orderId, organizationId: context.organizationId },
-    });
-    if (!order) throw new Error(`Order ${orderId} not found`);
-
-    const invoice = await this.prisma.invoice.create({
-      data: {
-        organizationId: context.organizationId,
-        customerId: order.customerId,
-        orderId: order.id,
-        invoiceNumber: `INV-WF-${Date.now()}`,
-        status: 'DRAFT',
-        issueDate: new Date(),
-        dueDate: new Date(Date.now() + 30 * 86_400_000),
-        subtotal: order.price,
-        taxAmount: 0,
-        totalAmount: order.price,
-        balanceDue: order.price,
-      },
-    });
-
-    return { invoiceId: invoice.id, orderId, total: order.price.toString() };
+    const actor = await this.workflowActor(context.organizationId);
+    try {
+      const invoices = await this.invoicesService();
+      const invoice = await invoices.createFromOrder(context.organizationId, orderId, actor);
+      return {
+        invoiceId: invoice.id,
+        orderId,
+        total: invoice.totalAmount,
+        method: 'invoices_create_from_order',
+      };
+    } catch (error) {
+      this.rethrowDomain(error);
+    }
   }
 
   private async executeUpdateEntity(
@@ -467,7 +600,14 @@ export class ActionExecutor {
     context: ExecutionContext,
   ): Promise<Record<string, unknown>> {
     const reportType = String(config.reportType ?? 'summary');
-    return { reportType, generated: true, note: 'Report generation placeholder' };
+    this.logger.warn(
+      `[Workflow ${context.workflowId}] generate_report is a placeholder (type=${reportType})`,
+    );
+    return {
+      reportType,
+      generated: false,
+      note: 'Report generation via workflow is not implemented; action recorded but no report was produced',
+    };
   }
 
   private async executeSendSms(
@@ -477,7 +617,17 @@ export class ActionExecutor {
     const to = this.interpolate(String(config.to ?? ''), context);
     const message = this.interpolate(String(config.message ?? ''), context);
     if (!to) throw new Error('SMS recipient (to) is required');
-    return { sent: true, to, message, note: 'SMS delivery requires external provider configuration' };
+    // Honest stub: no SMS provider is wired. Claiming `sent: true` made
+    // failed customer notifications look successful in execution history.
+    this.logger.warn(
+      `[Workflow ${context.workflowId}] SMS not delivered — no provider configured (to=${to})`,
+    );
+    return {
+      sent: false,
+      to,
+      message,
+      note: 'SMS delivery is not configured; action recorded but message was not sent',
+    };
   }
 
   private async executeDeleteEntity(

@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/**
+ * Dark-first palette, converted from the web app's OKLCH design tokens
+ * (apps/web/src/styles.css) to sRGB triplets so the driver app reads as the
+ * same product, not a reskin. Space-separated so Tailwind's `<alpha-value>`
+ * opacity modifiers (e.g. `bg-primary/10`) work.
+ */
+:root {
+  --color-background: 10 20 35;
+  --color-foreground: 246 249 251;
+
+  --color-surface: 18 29 47;
+  --color-surface-elevated: 27 39 58;
+
+  --color-card: 18 29 47;
+  --color-card-foreground: 246 249 251;
+
+  --color-primary: 49 156 252;
+  --color-primary-foreground: 5 11 24;
+
+  --color-secondary: 29 41 61;
+  --color-secondary-foreground: 246 249 251;
+
+  --color-muted: 28 39 56;
+  --color-muted-foreground: 155 166 177;
+
+  --color-accent: 28 47 70;
+  --color-accent-foreground: 246 249 251;
+
+  --color-destructive: 238 52 59;
+  --color-destructive-foreground: 246 249 251;
+
+  --color-success: 53 193 119;
+  --color-warning: 242 166 24;
+
+  --color-border: 39 51 74;
+}

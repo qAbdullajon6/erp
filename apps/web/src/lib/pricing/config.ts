@@ -53,7 +53,7 @@ export const PRICING_TIERS: PricingTier[] = [
       { text: 'Priority support', included: false },
     ],
     cta: {
-      text: 'Start Free Trial',
+      text: 'Request a Trial',
       variant: 'default',
     },
   },
@@ -83,7 +83,7 @@ export const PRICING_TIERS: PricingTier[] = [
       { text: 'Dedicated account manager', included: false },
     ],
     cta: {
-      text: 'Start Free Trial',
+      text: 'Request a Trial',
       variant: 'gradient',
     },
     popular: true,

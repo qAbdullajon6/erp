@@ -18,6 +18,9 @@ export interface MetricCardProps {
   /// row) vs. the tighter tile style used for a row of related figures
   /// (Financial Overview) where a hover glow per-tile would be noisy.
   variant?: "default" | "compact";
+  /// Dense strip for command-center / dashboard KPI rows — same content,
+  /// less chrome, so four tiles fit without dominating the first viewport.
+  size?: "default" | "sm";
   /// A single note line with its own icon — status never travels as colour
   /// alone (see kpi-cards.tsx's original TONE_STYLES this generalizes).
   note?: { icon: LucideIcon; text: string; tone: MetricTone };
@@ -30,7 +33,15 @@ export interface MetricCardProps {
 /// Consolidates two near-identical tiles (kpi-cards.tsx's KPI tile and
 /// financial-overview.tsx's figure tile) that had drifted into separate,
 /// slightly different implementations of the same idea.
-export function MetricCard({ label, value, icon: Icon, variant = "default", note, emphasis = "default" }: MetricCardProps) {
+export function MetricCard({
+  label,
+  value,
+  icon: Icon,
+  variant = "default",
+  size = "default",
+  note,
+  emphasis = "default",
+}: MetricCardProps) {
   if (variant === "compact") {
     return (
       <SurfaceCard
@@ -54,22 +65,49 @@ export function MetricCard({ label, value, icon: Icon, variant = "default", note
     );
   }
 
+  const dense = size === "sm";
+
   return (
-    <SurfaceCard className="group relative p-5 transition-all duration-200 hover:border-brand/30 hover:shadow-lg hover:shadow-brand/10">
-      <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-brand/5 blur-3xl transition-all duration-200 group-hover:bg-brand/10" />
-      <div className="relative flex items-start justify-between gap-4">
+    <SurfaceCard
+      className={cn(
+        "group relative transition-all duration-200 hover:border-brand/30 hover:shadow-lg hover:shadow-brand/10",
+        dense ? "p-3.5" : "p-5",
+      )}
+    >
+      {!dense && (
+        <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-brand/5 blur-3xl transition-all duration-200 group-hover:bg-brand/10" />
+      )}
+      <div className={cn("relative flex items-start justify-between", dense ? "gap-2" : "gap-4")}>
         <div className="min-w-0">
-          <p className="text-sm font-medium text-muted-foreground">{label}</p>
-          <p className="mt-2 text-3xl font-semibold leading-none text-foreground">{value}</p>
+          <p className={cn("font-medium text-muted-foreground", dense ? "text-xs" : "text-sm")}>{label}</p>
+          <p
+            className={cn(
+              "font-semibold leading-none tabular-nums text-foreground",
+              dense ? "mt-1.5 text-2xl" : "mt-2 text-3xl",
+            )}
+          >
+            {value}
+          </p>
           {note ? (
-            <p className={cn("mt-3 flex items-center gap-1.5 text-sm font-medium", NOTE_TONE_CLASS[note.tone])}>
-              <note.icon className="h-3.5 w-3.5 shrink-0" />
+            <p
+              className={cn(
+                "flex items-center gap-1.5 font-medium",
+                dense ? "mt-1.5 text-xs" : "mt-3 text-sm",
+                NOTE_TONE_CLASS[note.tone],
+              )}
+            >
+              <note.icon className={cn("shrink-0", dense ? "h-3 w-3" : "h-3.5 w-3.5")} />
               <span className="truncate">{note.text}</span>
             </p>
           ) : null}
         </div>
-        <span className="shrink-0 rounded-xl bg-brand/10 p-2.5 text-brand">
-          <Icon className="h-5 w-5" />
+        <span
+          className={cn(
+            "shrink-0 rounded-xl bg-brand/10 text-brand",
+            dense ? "p-2" : "p-2.5",
+          )}
+        >
+          <Icon className={dense ? "h-4 w-4" : "h-5 w-5"} />
         </span>
       </div>
     </SurfaceCard>

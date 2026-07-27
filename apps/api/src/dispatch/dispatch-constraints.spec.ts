@@ -5,6 +5,7 @@ import {
   DispatchAssignmentConflictError,
   DispatchNumberConflictError,
   DriverDoubleBookedError,
+  OrderAlreadyHasDispatchError,
   VehicleDoubleBookedError,
 } from "./dispatch.errors";
 
@@ -68,6 +69,12 @@ describe("translateDispatchWriteError", () => {
     });
   });
 
+  it("maps a concurrent second-live-dispatch collision to a conflict", () => {
+    expect(() =>
+      translateDispatchWriteError(uniqueViolation("Dispatch", ["orderId"])),
+    ).toThrow(OrderAlreadyHasDispatchError);
+  });
+
   it("maps a dispatch-number collision to a retryable conflict", () => {
     expect(() =>
       translateDispatchWriteError(uniqueViolation("Dispatch", ["organizationId", "dispatchNumber"])),
@@ -80,6 +87,7 @@ describe("translateDispatchWriteError", () => {
       exclusionViolation(DISPATCH_CONSTRAINT.VEHICLE_OVERLAP),
       uniqueViolation("DispatchAssignment", ["dispatchId"]),
       uniqueViolation("Dispatch", ["organizationId", "dispatchNumber"]),
+      uniqueViolation("Dispatch", ["orderId"]),
     ])("case %#", (violation) => {
       const error = translateCaught(violation);
       expect(error).toBeInstanceOf(ConflictException);

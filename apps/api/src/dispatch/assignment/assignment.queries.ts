@@ -65,6 +65,11 @@ export interface TripSummary {
   pickupDate: Date;
   deliveryDate: Date;
   status: OrderStatus;
+  /// Board / live-fleet enrichment — optional so assignment conflict paths
+  /// that only need the trip window stay lightweight.
+  customerName?: string;
+  price?: string;
+  currency?: string;
 }
 
 /// One resource commitment: "<reference> is holding this driver and this vehicle
@@ -125,6 +130,9 @@ export class AssignmentQueries {
             pickupDate: true,
             deliveryDate: true,
             status: true,
+            price: true,
+            currency: true,
+            customer: { select: { companyName: true } },
           },
         },
       },
@@ -134,7 +142,18 @@ export class AssignmentQueries {
       reference: dispatch.dispatchNumber,
       driverId: dispatch.driverId,
       vehicleId: dispatch.vehicleId,
-      trip: dispatch.order,
+      trip: {
+        id: dispatch.order.id,
+        orderNumber: dispatch.order.orderNumber,
+        pickupCity: dispatch.order.pickupCity,
+        deliveryCity: dispatch.order.deliveryCity,
+        pickupDate: dispatch.order.pickupDate,
+        deliveryDate: dispatch.order.deliveryDate,
+        status: dispatch.order.status,
+        customerName: dispatch.order.customer.companyName,
+        price: dispatch.order.price.toString(),
+        currency: dispatch.order.currency,
+      },
     }));
   }
 

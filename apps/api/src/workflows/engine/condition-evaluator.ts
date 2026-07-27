@@ -84,7 +84,10 @@ export class ConditionEvaluator {
   }
 
   private resolveField(path: string, payload: Record<string, unknown>): unknown {
-    const parts = path.split('.');
+    // Match ActionExecutor template paths: UI/conditions often use
+    // `payload.status` while the event payload is already unwrapped.
+    const normalized = path.startsWith('payload.') ? path.slice(8) : path;
+    const parts = normalized.split('.');
     let current: unknown = payload;
     for (const part of parts) {
       if (current === null || current === undefined) return undefined;

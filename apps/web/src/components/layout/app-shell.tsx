@@ -6,6 +6,7 @@ import { CommandPalette } from "@/components/layout/command-palette";
 import { useCommandPalette } from "@/hooks/use-command-palette";
 import type { NavItem } from "@/components/layout/nav-config";
 import type { CurrentUser } from "@/lib/api/auth";
+import type { MembershipRole } from "@/lib/api/organizations";
 
 export function AppShell({
   nav,
@@ -25,7 +26,7 @@ export function AppShell({
   return (
     <SidebarProvider>
       <AppSidebar nav={nav} navReady={navReady} />
-      <SidebarInset>
+      <SidebarInset id="main-content">
         <Topbar
           currentUser={currentUser}
           onSignOut={onSignOut}
@@ -41,7 +42,12 @@ export function AppShell({
         </div>
       </SidebarInset>
 
-      <CommandPalette open={commandPalette.open} onOpenChange={commandPalette.setOpen} nav={nav} />
+      <CommandPalette
+        open={commandPalette.open}
+        onOpenChange={commandPalette.setOpen}
+        nav={nav}
+        role={(currentUser?.membership.role as MembershipRole | undefined) ?? null}
+      />
     </SidebarProvider>
   );
 }

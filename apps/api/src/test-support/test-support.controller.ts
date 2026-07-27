@@ -1,8 +1,9 @@
 import { Controller, Delete, Get, HttpCode, NotFoundException, Param, Post } from "@nestjs/common";
-import { renderInvitationEmail } from "../mail/invitation-email.template";
-import { renderCustomerPortalInvitationEmail } from "../mail/customer-portal-invitation-email.template";
+import { renderInvitationEmail } from "../mail/templates/invitation-email.template";
+import { renderCustomerPortalInvitationEmail } from "../mail/templates/customer-portal-invitation-email.template";
 import { MailOutbox } from "../mail/mail.outbox";
 import { PrismaService } from "../prisma/prisma.service";
+import { DEFAULT_EMAIL_BRANDING } from "../mail/components/theme";
 
 /// What GET /test/mail/outbox returns: exactly enough for an e2e test to open
 /// the invitation link, and nothing more.
@@ -37,7 +38,7 @@ export class TestSupportController {
   listOutbox(): OutboxEmail[] {
     return this.outbox.list().map((message) => ({
       to: message.to,
-      subject: renderInvitationEmail(message).subject,
+      subject: renderInvitationEmail(message, DEFAULT_EMAIL_BRANDING).subject,
       acceptUrl: message.acceptUrl,
     }));
   }
@@ -77,7 +78,7 @@ export class TestSupportController {
   listCustomerPortalOutbox(): OutboxEmail[] {
     return this.outbox.listCustomerPortalInvitations().map((message) => ({
       to: message.to,
-      subject: renderCustomerPortalInvitationEmail(message).subject,
+      subject: renderCustomerPortalInvitationEmail(message, DEFAULT_EMAIL_BRANDING).subject,
       acceptUrl: message.acceptUrl,
     }));
   }

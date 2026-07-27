@@ -33,7 +33,7 @@ const writer = new OrderWriter();
 const auditLog = jest.fn().mockResolvedValue(undefined);
 const audit = { log: auditLog } as unknown as AuditService;
 const wfEvents = { emit: () => {} } as any;
-const dispatches = new DispatchesService(prisma, audit, policy, writer, wfEvents);
+const dispatches = new DispatchesService(prisma, audit, policy, writer, wfEvents, { endSessionsForDispatch: async () => 0, endSessionsOnVehicleReassign: async () => 0, endSessionsForUser: async () => 0 } as any);
 const orders = new OrdersService(prisma, audit, writer, dispatches, policy, wfEvents);
 
 const PICKUP = new Date("2036-06-01T08:00:00.000Z");

@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/commo
 import { PrismaService } from "../../prisma/prisma.service";
 import { AlertService } from "../alerts/alert.service";
 import { TelematicsRealtimeService } from "../realtime/telematics-realtime.service";
+import { TrackingService } from "../tracking/tracking.service";
 import { TripService } from "../trips/trip.service";
 
 /// The time-based side of telematics that no incoming ping can trigger:
@@ -33,6 +34,7 @@ export class TelematicsSweeperService implements OnModuleInit, OnModuleDestroy {
     private readonly trips: TripService,
     private readonly alerts: AlertService,
     private readonly realtime: TelematicsRealtimeService,
+    private readonly tracking: TrackingService,
   ) {}
 
   onModuleInit() {
@@ -57,6 +59,7 @@ export class TelematicsSweeperService implements OnModuleInit, OnModuleDestroy {
       for (const settings of settingsRows) {
         await this.detectOffline(settings.organizationId, settings.offlineThresholdSec, settings.offlineAlertsEnabled);
         await this.autoCloseTrips(settings.organizationId, settings.tripAutoCloseSec);
+        await this.tracking.endStaleSessions(settings.organizationId, settings.offlineThresholdSec);
       }
 
       this.tickCount += 1;

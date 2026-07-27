@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { InvoiceStatus, Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
@@ -64,78 +64,110 @@ export class PaymentsService {
     });
   }
 
-  /// Records a payment and atomically updates the invoice's paidAmount,
-  /// balanceDue, and status in a single transaction — never two separate
-  /// writes that could leave the invoice inconsistent if one failed.
+  /// Records a payment and updates invoice paidAmount / balanceDue / status
+  /// inside one Serializable transaction. Balance is recomputed from the
+  /// payment ledger after insert so concurrent payments cannot both pass a
+  /// stale balanceDue check and overwrite each other's totals.
   async record(organizationId: string, invoiceId: string, dto: CreatePaymentDto, actor: CurrentUserPayload) {
-    const invoice = await this.invoicesService.findOrThrow(organizationId, invoiceId);
+    const result = await this.prisma.$transaction(
+      async (tx) => {
+        const invoice = await tx.invoice.findFirst({ where: { id: invoiceId, organizationId } });
+        if (!invoice) {
+          throw new NotFoundException("Invoice not found");
+        }
 
-    if (invoice.status === "DRAFT" || invoice.status === "CANCELLED") {
-      throw new ConflictException(
-        `Cannot record a payment on an invoice with status ${invoice.status} — send it first`,
-      );
-    }
+        if (invoice.status === "DRAFT" || invoice.status === "CANCELLED") {
+          throw new ConflictException(
+            `Cannot record a payment on an invoice with status ${invoice.status} — send it first`,
+          );
+        }
 
-    const currency = dto.currency ?? invoice.currency;
-    if (currency !== invoice.currency) {
-      throw new BadRequestException(
-        `Payment currency (${currency}) must match the invoice's currency (${invoice.currency}) — cross-currency payments aren't supported in this phase`,
-      );
-    }
+        const currency = dto.currency ?? invoice.currency;
+        if (currency !== invoice.currency) {
+          throw new BadRequestException(
+            `Payment currency (${currency}) must match the invoice's currency (${invoice.currency}) — cross-currency payments aren't supported in this phase`,
+          );
+        }
 
-    const amount = new Prisma.Decimal(dto.amount);
-    if (amount.gt(invoice.balanceDue)) {
-      throw new BadRequestException(
-        `Payment amount (${amount.toString()}) exceeds the invoice's balance due (${invoice.balanceDue.toString()})`,
-      );
-    }
+        const amount = new Prisma.Decimal(dto.amount);
+        if (amount.lte(0)) {
+          throw new BadRequestException("Payment amount must be greater than 0");
+        }
 
-    const newPaidAmount = invoice.paidAmount.add(amount);
-    const newBalanceDue = invoice.totalAmount.sub(newPaidAmount);
+        const payment = await tx.payment.create({
+          data: {
+            organizationId,
+            invoiceId,
+            paymentDate: dto.paymentDate ? new Date(dto.paymentDate) : undefined,
+            amount,
+            currency,
+            method: dto.method,
+            reference: dto.reference,
+            notes: dto.notes,
+          },
+        });
 
-    let newStatus: InvoiceStatus;
-    if (newBalanceDue.lte(0)) {
-      newStatus = "PAID";
-    } else if (invoice.dueDate && invoice.dueDate.getTime() < Date.now()) {
-      newStatus = "OVERDUE";
-    } else {
-      newStatus = "PARTIALLY_PAID";
-    }
+        const paidAgg = await tx.payment.aggregate({
+          where: { organizationId, invoiceId },
+          _sum: { amount: true },
+        });
+        const newPaidAmount = paidAgg._sum.amount ?? new Prisma.Decimal(0);
+        if (newPaidAmount.gt(invoice.totalAmount)) {
+          throw new BadRequestException(
+            `Payment amount would exceed the invoice total (${invoice.totalAmount.toString()})`,
+          );
+        }
 
-    const [payment, updatedInvoice] = await this.prisma.$transaction([
-      this.prisma.payment.create({
-        data: {
-          organizationId,
-          invoiceId,
-          paymentDate: dto.paymentDate ? new Date(dto.paymentDate) : undefined,
-          amount,
-          currency,
-          method: dto.method,
-          reference: dto.reference,
-          notes: dto.notes,
-        },
-      }),
-      this.prisma.invoice.update({
-        where: { id: invoiceId },
-        data: { paidAmount: newPaidAmount, balanceDue: newBalanceDue, status: newStatus },
-      }),
-    ]);
+        const newBalanceDue = invoice.totalAmount.sub(newPaidAmount);
+        let newStatus: InvoiceStatus;
+        if (newBalanceDue.lte(0)) {
+          newStatus = "PAID";
+        } else if (invoice.dueDate && invoice.dueDate.getTime() < Date.now()) {
+          newStatus = "OVERDUE";
+        } else {
+          newStatus = "PARTIALLY_PAID";
+        }
+
+        const updatedInvoice = await tx.invoice.update({
+          where: { id: invoiceId },
+          data: { paidAmount: newPaidAmount, balanceDue: newBalanceDue, status: newStatus },
+        });
+
+        return { payment, updatedInvoice, newStatus };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
 
     await this.auditService.log({
       organizationId,
       actorUserId: actor.userId,
       action: "payment.record",
       entityType: "Payment",
-      entityId: payment.id,
-      metadata: { invoiceId, amount: amount.toString(), resultingInvoiceStatus: newStatus },
+      entityId: result.payment.id,
+      metadata: {
+        invoiceId,
+        amount: result.payment.amount.toString(),
+        resultingInvoiceStatus: result.newStatus,
+      },
     });
 
-    this.workflowEvents.emit(organizationId, "payment.received", { id: payment.id, invoiceId, amount: amount.toString(), resultingInvoiceStatus: newStatus });
-    if (newStatus === "PAID") {
-      this.workflowEvents.emit(organizationId, "invoice.paid", { id: invoiceId, invoiceNumber: updatedInvoice.invoiceNumber });
+    this.workflowEvents.emit(organizationId, "payment.received", {
+      id: result.payment.id,
+      invoiceId,
+      amount: result.payment.amount.toString(),
+      resultingInvoiceStatus: result.newStatus,
+    });
+    if (result.newStatus === "PAID") {
+      this.workflowEvents.emit(organizationId, "invoice.paid", {
+        id: invoiceId,
+        invoiceNumber: result.updatedInvoice.invoiceNumber,
+      });
     }
 
-    return { payment: this.toResponse(payment), invoice: this.invoicesService.toResponse(updatedInvoice) };
+    return {
+      payment: this.toResponse(result.payment),
+      invoice: this.invoicesService.toResponse(result.updatedInvoice),
+    };
   }
 
   private toResponse(payment: {

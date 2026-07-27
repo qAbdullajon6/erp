@@ -20,6 +20,10 @@ export const ALL_STAFF_ROLES: MembershipRole[] = [
 /// DispatchesController.ROLES_READ — every non-DRIVER role except SALES_CRM_MANAGER.
 export const DISPATCH_ROLES: MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER", "ACCOUNTANT"];
 
+/// DispatchesController.ROLES_WRITE — assign / status / cancel / create / reassign.
+/// Matches OrdersController.OPERATIONAL_ROLES (ACCOUNTANT is read-only on dispatch).
+export const DISPATCH_WRITE_ROLES: MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER"];
+
 /// DriversController.ROLES / VehiclesController.ROLES.
 export const FLEET_ROLES: MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER"];
 
@@ -29,7 +33,8 @@ export const AUDIT_ROLES: MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER", "AC
 /// ImportController's role set.
 export const IMPORT_ROLES: MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER"];
 
-/// WorkflowController.WORKFLOW_ROLES / developer-portal admin controllers.
+/// WorkflowController.WORKFLOW_ROLES / developer-portal admin controllers /
+/// TelematicsDevicesController.
 export const ADMIN_OPS_ROLES: MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER"];
 
 /// SubscriptionsController (@Roles("ADMIN")) and PlansController's admin routes —
