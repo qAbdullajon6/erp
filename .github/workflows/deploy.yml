@@ -142,16 +142,23 @@ jobs:
             echo "==> Repository state"
             pwd
             git rev-parse HEAD
+            git rev-parse --short HEAD
 
             echo "==> Script permissions"
             ls -lah scripts
 
+            # deploy.sh treats API + WEB as one application: local builds always
+            # rebuild both (Docker layer cache keeps unchanged layers cheap).
+            # When API_IMAGE is set, API is pulled and WEB is still rebuilt when
+            # apps/web changed since the last successful deploy.
+            export GIT_COMMIT_SHA="$(git rev-parse HEAD)"
+
             if [ -n "${API_IMAGE:-}" ]; then
               export API_IMAGE
-              echo "==> deploying with prebuilt image $API_IMAGE (ref ${DEPLOY_REF})"
+              echo "==> deploying with prebuilt API image $API_IMAGE (ref ${DEPLOY_REF})"
             else
               unset API_IMAGE || true
-              echo "==> deploying with local build (ref ${DEPLOY_REF})"
+              echo "==> deploying with local API+WEB build (ref ${DEPLOY_REF})"
             fi
 
             ./scripts/deploy.sh "${DEPLOY_REF}"

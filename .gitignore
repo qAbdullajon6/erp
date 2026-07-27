@@ -29,6 +29,9 @@ build
 a.out
 *.out
 
+# Last successful production deploy SHA (written by scripts/deploy.sh on the VPS).
+.flowerp-deployed-sha
+
 # debug
 npm-debug.log*
 yarn-debug.log*

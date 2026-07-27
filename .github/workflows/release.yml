@@ -2,9 +2,13 @@ name: Release
 
 # Cutting a release = pushing a semver tag (v1.2.3). This builds the API image
 # ONCE, pushes it to GHCR, and creates a GitHub Release. The VPS later PULLS that
-# exact image (deploy.yml) — it never rebuilds, so what ships is bit-identical to
-# what was tagged. The frontend is not built here: it is on Vercel (see
-# DEPLOYMENT_PIPELINE.md → Vercel).
+# exact API image (deploy.yml with API_IMAGE set) — it never rebuilds the API, so
+# what ships is bit-identical to what was tagged.
+#
+# The WEB image is still built on the VPS by scripts/deploy.sh whenever
+# apps/web (or shared build inputs) changed since the last successful deploy.
+# That keeps release-tagged API deploys from leaving a stale frontend.
+# See docs/DEPLOYMENT_PIPELINE.md.
 on:
   push:
     tags: ["v*.*.*"]

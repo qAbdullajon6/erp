@@ -112,6 +112,9 @@ services:
       NODE_ENV: production
       PORT: 3000
       HOST: 0.0.0.0
+      # Set by scripts/deploy.sh (export GIT_COMMIT_SHA) so post-deploy
+      # verification can prove the running web matches the deployed git SHA.
+      GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-unknown}
     expose:
       - "3000"
 

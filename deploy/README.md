@@ -47,7 +47,20 @@ docker compose --env-file .env.production logs api | grep -i migration
 
 ## Ongoing deploys
 
-Push to `main` runs `.github/workflows/deploy.yml`: SSH → `git pull` → `./scripts/deploy.sh` (build on VPS unless a prebuilt `API_IMAGE` is supplied) → health checks.
+Push to `main` runs `.github/workflows/deploy.yml`: SSH → sync git →
+`./scripts/deploy.sh`.
+
+That script treats **API + WEB as one application**:
+
+- Local build path: `compose build api web` (Docker layer cache kept).
+- Prebuilt `API_IMAGE` path: pull API; rebuild WEB when `apps/web` changed
+  since the last successful deploy (git diff vs `.flowerp-deployed-sha`).
+- Health-gates API, then WEB, then recreates Caddy.
+- Verifies `/health`, `/health/database`, web probe, and matching
+  `GIT_COMMIT_SHA` in both containers.
+- On failure: `scripts/rollback.sh --auto`.
+
+See `docs/DEPLOYMENT_PIPELINE.md` for rebuild rules and the stale-frontend fix.
 
 Manual on the box:
 

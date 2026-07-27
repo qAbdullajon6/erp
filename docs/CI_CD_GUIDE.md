@@ -10,7 +10,7 @@ GITHUB_SETUP.md; the end-to-end map is DEPLOYMENT_PIPELINE.md.
 | --- | --- | --- |
 | `ci.yml` | PR to `main`, push to `main` | Validates a change: lint, typecheck, unit tests, builds, migration apply, Docker build |
 | `release.yml` | push tag `v*.*.*` | Builds + pushes the API image to GHCR, creates the GitHub Release |
-| `deploy.yml` | manual (`workflow_dispatch`) or release published | SSHes to the VPS and runs `scripts/deploy.sh` (approval-gated) |
+| `deploy.yml` | push to `main`, manual (`workflow_dispatch`), or release published | SSHes to the VPS and runs `scripts/deploy.sh` (API+WEB, approval-gated) |
 | `rollback.yml` | manual (`workflow_dispatch`) | SSHes to the VPS and runs `scripts/rollback.sh` (approval-gated) |
 
 ## CI jobs — blocking vs. non-blocking
@@ -25,7 +25,7 @@ perpetually red for reasons unrelated to it.
 | `Web · typecheck · lint · unit · build` | The frontend typechecks, lints clean, unit tests pass (30), and the production `vite build` succeeds. |
 | `API · build` | `nest build` compiles `src` — this **is** the API `src` typecheck (it uses `tsconfig.build.json`, which excludes `test/`). |
 | `Migrations · apply … + status` | All migrations apply cleanly to a fresh Postgres via the exact `prisma migrate deploy` the API runs on boot, and `migrate status` shows no drift. |
-| `Docker · build API image` | The production API image builds (multi-stage, non-root, tini, HEALTHCHECK). |
+| `Docker · build API + WEB images` | The production API **and** WEB images build (multi-stage, non-root, tini, HEALTHCHECK). |
 
 **Non-blocking (`continue-on-error: true` — visible, not gating):**
 
@@ -69,8 +69,9 @@ npm run build:api
 # Migrations (blocking) — needs a Postgres; the dev one works
 cd apps/api && npx prisma migrate deploy && npx prisma migrate status
 
-# Docker image (blocking)
+# Docker images (blocking) — API and WEB
 docker build -f apps/api/Dockerfile -t flowerp-api:local .
+docker build -f apps/web/Dockerfile -t flowerp-web:local .
 
 # Non-blocking signal
 cd apps/api && npx eslint "src/**/*.ts"   # green
@@ -87,7 +88,8 @@ npm run typecheck:api                      # red on the test-spec debt
   certainly the pre-existing debt, not your change. Confirm by checking whether
   the failing files are the telematics `*.e2e-spec.ts` set.
 - **`Deploy`/`Rollback` red** → see ROLLBACK_GUIDE.md; deploy.sh auto-rolls-back
-  on a failed health check, so the VPS is not left half-deployed.
+  on a failed health check **or failed post-deploy verification** (including
+  API/WEB `GIT_COMMIT_SHA` mismatch), so the VPS is not left with a stale UI.
 
 ## Caching & runners
 

@@ -1,47 +1,41 @@
 #!/usr/bin/env bash
-# Deploy the FlowERP API stack on the VPS, health-gated, with automatic rollback.
+# Deploy the FlowERP API + WEB stack on the VPS, health-gated, with automatic rollback.
 #
 #   ./scripts/deploy.sh                       # build locally + deploy current checkout
 #   ./scripts/deploy.sh v1.4.0                # checkout a ref, then build + deploy
-#   API_IMAGE=ghcr.io/OWNER/erp-api:v1.4.0 ./scripts/deploy.sh v1.4.0   # pull prebuilt
+#   API_IMAGE=ghcr.io/OWNER/erp-api:v1.4.0 ./scripts/deploy.sh v1.4.0   # pull prebuilt API
 #   ENV_FILE=.env.production ./scripts/deploy.sh
 #
-# What it does, in order:
-#   1. (optional) checks out the requested git ref
-#   2. records the running API image and tags it `<repo>:previous` (rollback point)
-#   3. gets the new image: PULLS it if API_IMAGE is set (CI built it and pushed to
-#      GHCR), otherwise BUILDS it locally — the original single-VPS behaviour
-#   4. recreates the stack; the API container runs `prisma migrate deploy` on
-#      start, so the migration happens as part of the swap, before it serves
-#   5. polls /health then /health/database until the new API is ready
-#   6. if it never becomes healthy, delegates to scripts/rollback.sh --auto
+# API and WEB are one deployable application. Local builds always run
+# `compose build api web` so the frontend cannot stay on a stale image while
+# Git HEAD moves. When API_IMAGE is set, the API is pulled from the registry
+# and WEB is still rebuilt whenever apps/web (or shared build inputs) changed
+# since the last successful deploy (git diff vs .flowerp-deployed-sha).
 #
-# Prebuilt vs. local build: pointing API_IMAGE at a GHCR tag CI pushed removes the
-# build from the VPS entirely (the memory spike deploy/README.md warns about) and
-# makes the deployed artifact bit-identical to what CI tested. Leaving API_IMAGE
-# unset preserves the original build-on-the-box path unchanged.
+# Order:
+#   1. optional git checkout
+#   2. detect API/WEB changes (git)
+#   3. tag running api+web images as :previous
+#   4. up postgres + redis
+#   5. pull/build images
+#   6. recreate api → wait /health + /health/database
+#   7. recreate web → wait web healthy
+#   8. recreate caddy
+#   9. verify (health + GIT_COMMIT_SHA in both containers)
+#  10. on failure → scripts/rollback.sh --auto
 #
 # Migration ordering assumption: migrations are additive / backward-compatible
-# (the project's standing rule). That is what makes step 4 safe and rollback
-# safe: the previous code still runs against the migrated schema. A destructive
-# migration breaks this and must be staged across two deploys (add nullable ->
-# backfill -> constrain), never shipped in one.
-#
-# Single-instance caveat (honest): with one API container, recreating it is a
-# brief connection reset, not true zero-downtime — Caddy health-gates new traffic
-# (health_uri /health) but the old container does stop. For genuine zero-downtime,
-# run two API replicas behind Caddy and recreate them one at a time; the
-# in-process schedulers must then move to a single-runner (TD-018 / the deployment
-# report) so crons do not double-fire. Correct and safe for single-instance.
+# (the project's standing rule). Destructive migrations must be staged.
 
 set -Eeuo pipefail
 
 cd "$(dirname "$0")/.."          # repo root, so compose/env paths resolve
 # shellcheck source=scripts/lib.sh
-source "$(dirname "$0")/lib.sh"  # compose(), log(), die(), wait_healthy(), api_live_ref()
+source "$(dirname "$0")/lib.sh"  # compose(), log(), die(), wait_healthy(), …
 
-API_IMAGE="${API_IMAGE:-}"       # set -> pull a prebuilt image; unset -> build locally
+API_IMAGE="${API_IMAGE:-}"       # set -> pull a prebuilt API image; unset -> build locally
 GIT_REF="${1:-}"
+FORCE_REBUILD_WEB="${FORCE_REBUILD_WEB:-0}"
 
 # Validate and load .env.production before any docker compose call.
 require_env_file
@@ -52,63 +46,129 @@ if [[ -n "$GIT_REF" ]]; then
   git fetch --all --tags --prune
   git checkout "$GIT_REF"
 fi
-DEPLOY_REF="$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
-log "deploying $DEPLOY_REF ${API_IMAGE:+(image: $API_IMAGE)}"
 
-# --- 2. record the current API image as the rollback point -------------------
-# Tag the running image `<repo>:previous` so rollback.sh can find it after the
-# swap re-points the live tag at the new image.
-PREV_LIVE_REF="$(api_live_ref || true)"
-if [[ -n "$PREV_LIVE_REF" ]]; then
-  PREV_ROLLBACK_REF="${PREV_LIVE_REF%:*}:previous"
-  docker tag "$PREV_LIVE_REF" "$PREV_ROLLBACK_REF"
-  log "rollback point tagged: $PREV_ROLLBACK_REF (was $PREV_LIVE_REF)"
-else
-  log "no running api container — first deploy, no rollback point"
+DEPLOY_SHA="$(git rev-parse HEAD 2>/dev/null || echo '')"
+DEPLOY_REF="$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+[[ -n "$DEPLOY_SHA" ]] || die "unable to resolve git HEAD"
+export GIT_COMMIT_SHA="$DEPLOY_SHA"
+
+PREV_DEPLOY_SHA="$(read_previous_deploy_sha || true)"
+
+# --- 2. change detection (git diff vs last successful deploy) ----------------
+API_CHANGED=NO
+WEB_CHANGED=NO
+if paths_changed_between "$PREV_DEPLOY_SHA" "$DEPLOY_SHA" "${API_WATCH_PATHS[@]}"; then
+  API_CHANGED=YES
+fi
+if paths_changed_between "$PREV_DEPLOY_SHA" "$DEPLOY_SHA" "${WEB_WATCH_PATHS[@]}"; then
+  WEB_CHANGED=YES
 fi
 
-# --- 3. get the new image: pull (prebuilt) or build (local) ------------------
+# First deploy / missing prior SHA / missing web image ⇒ treat WEB as changed.
+if [[ -z "$PREV_DEPLOY_SHA" ]] || ! image_exists "flowerp-web:local"; then
+  WEB_CHANGED=YES
+fi
+if [[ "$FORCE_REBUILD_WEB" == "1" ]]; then
+  WEB_CHANGED=YES
+fi
+
+deploy_log "Deploy ref ........... $DEPLOY_REF ($DEPLOY_SHA)"
+deploy_log "Previous deploy ...... ${PREV_DEPLOY_SHA:-none}"
+deploy_log "API_IMAGE ............ ${API_IMAGE:-build-on-vps}"
+deploy_log "API changed .......... $API_CHANGED"
+deploy_log "WEB changed .......... $WEB_CHANGED"
+
+# --- 3. record rollback points -----------------------------------------------
+tag_rollback_point api
+tag_rollback_point web
+
+# --- 4. datastores -----------------------------------------------------------
+deploy_log "Starting postgres + redis..."
+compose up -d postgres redis
+
+# --- 5. get images: pull and/or build ----------------------------------------
 API_UP_ARGS=""
+WEB_BUILT=0
+
 if [[ -n "$API_IMAGE" ]]; then
-  log "pulling prebuilt API image"
+  deploy_log "Pulling prebuilt API image..."
   compose pull api
   API_UP_ARGS="--no-build"
+
+  if [[ "$WEB_CHANGED" == "YES" ]]; then
+    deploy_log "Building WEB ........."
+    compose build web
+    WEB_BUILT=1
+  else
+    deploy_log "Skipping WEB rebuild (unchanged since last deploy)"
+  fi
 else
-  log "building API image locally"
-  compose build api
+  # Local path: API + WEB are one unit. Always invoke build for both so a
+  # frontend-only change cannot be skipped by an API-only habit; Docker layer
+  # cache keeps the unchanged side cheap.
+  deploy_log "Building API ........."
+  deploy_log "Building WEB ........."
+  compose build api web
+  WEB_BUILT=1
 fi
 
-# --- 4. recreate the stack (API migrates on start) ---------------------------
-log "starting datastores"
-compose up -d postgres redis
-log "recreating api (runs prisma migrate deploy, then serves)"
+# --- 6. recreate API (migrates on start) -------------------------------------
+deploy_log "Recreating API ......."
 # shellcheck disable=SC2086  # API_UP_ARGS is intentionally word-split (empty or --no-build)
 compose up -d $API_UP_ARGS api
 
-# --- 5. health verification --------------------------------------------------
+# --- 7. health + web + caddy -------------------------------------------------
 if wait_healthy; then
-  log "ensuring web is up"
-  compose up -d web
-  # The Caddyfile is bind-mounted from the host
-  # (${CADDYFILE:-./deploy/Caddyfile} → /etc/caddy/Caddyfile:ro). Editing that
-  # file (git pull) does not change the compose service hash, so plain
-  # `up -d caddy` leaves the existing container running with its previous
-  # in-memory config and the existing cert set in the caddy_data volume.
-  # That is why www.flowerp.uz can be in the repo Caddyfile while TLS still
-  # fails: the process never re-read the file or reconciled ACME SANs.
-  # Force-recreate (same volumes) so Caddy reloads the Caddyfile and obtains
-  # any missing names (e.g. www) without touching deploy architecture.
-  log "recreating caddy so Caddyfile + ACME certs are reconciled"
+  deploy_log "Starting WEB........."
+  if [[ "$WEB_BUILT" -eq 1 || "$WEB_CHANGED" == "YES" ]]; then
+    # Force recreate so compose cannot keep a stale container on an old image id.
+    compose up -d --force-recreate --no-deps web
+  else
+    # Even when the image is unchanged, recreate if the running container still
+    # carries a stale GIT_COMMIT_SHA (env-only drift after git pull).
+    RUNNING_WEB_SHA="$(container_env web GIT_COMMIT_SHA 2>/dev/null || true)"
+    if [[ "$RUNNING_WEB_SHA" != "$DEPLOY_SHA" ]]; then
+      compose up -d --force-recreate --no-deps web
+    else
+      compose up -d --no-deps web
+    fi
+  fi
+
+  if ! wait_web_healthy; then
+    echo "error: web did not become healthy" >&2
+    compose logs --tail=50 web >&2 || true
+    if service_live_ref api >/dev/null 2>&1; then
+      log "auto-rollback via scripts/rollback.sh"
+      ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" bash "$(dirname "$0")/rollback.sh" --auto || true
+    fi
+    die "deploy failed; web unhealthy. Auto-rollback attempted."
+  fi
+
+  # The Caddyfile is bind-mounted from the host. Force-recreate so Caddy
+  # reloads the file and reconciles ACME SANs after git pull.
+  deploy_log "Restarting Caddy....."
   compose up -d --force-recreate --no-deps caddy
+
+  if ! verify_deployment "$DEPLOY_SHA"; then
+    compose logs --tail=50 api web >&2 || true
+    if service_live_ref api >/dev/null 2>&1; then
+      log "auto-rollback via scripts/rollback.sh"
+      ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" bash "$(dirname "$0")/rollback.sh" --auto || true
+    fi
+    die "deploy failed verification; auto-rollback attempted."
+  fi
+
+  write_deployed_sha "$DEPLOY_SHA"
+  deploy_log "Deployment complete."
   log "deploy of $DEPLOY_REF complete and healthy"
   compose ps
   exit 0
 fi
 
-# --- 6. rollback on failure (single implementation, in rollback.sh) ----------
+      # --- 8. rollback on API health failure ---------------------------------------
 echo "error: new api did not become healthy" >&2
 compose logs --tail=50 api >&2 || true
-if [[ -n "$PREV_LIVE_REF" ]]; then
+if api_live_ref >/dev/null 2>&1; then
   log "auto-rollback via scripts/rollback.sh"
   ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" bash "$(dirname "$0")/rollback.sh" --auto || true
   die "deploy failed; auto-rollback attempted. Investigate before retrying."

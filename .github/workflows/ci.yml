@@ -88,7 +88,7 @@ jobs:
         run: npx prisma migrate status
 
   docker-build:
-    name: Docker · build API image (no push)
+    name: Docker · build API + WEB images (no push)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -102,6 +102,18 @@ jobs:
           tags: flowerp-api:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Build WEB image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: false
+          tags: flowerp-web:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Public Mapbox token is optional in CI; empty keeps the image buildable.
+          build-args: |
+            VITE_MAPBOX_ACCESS_TOKEN=
 
   api-quality:
     # Name kept stable: if this job is (mistakenly) a required status check,
