@@ -505,5 +505,17 @@ describe("Notifications (e2e)", () => {
         .set("Authorization", `Bearer ${driver.accessToken}`)
         .expect(403);
     });
+
+    it("notification-center accepts the same query-string booleans/ints as /notifications", async () => {
+      const admin = await registerAdmin(`Notif Center Query Org ${randomUUID()}`);
+      await request(app.getHttpServer())
+        .get("/notification-center/notifications?isArchived=false&page=1&limit=20")
+        .set("Authorization", `Bearer ${admin.accessToken}`)
+        .expect(200);
+      await request(app.getHttpServer())
+        .get("/notifications?isArchived=false&page=1&limit=20")
+        .set("Authorization", `Bearer ${admin.accessToken}`)
+        .expect(200);
+    });
   });
 });

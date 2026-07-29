@@ -19,6 +19,7 @@ import { Route as PortalIndexRouteImport } from './routes/portal.index'
 import { Route as PlatformIndexRouteImport } from './routes/platform.index'
 import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as PortalProfileRouteImport } from './routes/portal.profile'
+import { Route as PortalPaymentsRouteImport } from './routes/portal.payments'
 import { Route as PortalOrdersRouteImport } from './routes/portal.orders'
 import { Route as PortalNotificationsRouteImport } from './routes/portal.notifications'
 import { Route as PortalLoginRouteImport } from './routes/portal.login'
@@ -38,6 +39,7 @@ import { Route as AppMyDeliveriesRouteImport } from './routes/app.my-deliveries'
 import { Route as AppIntegrationsRouteImport } from './routes/app.integrations'
 import { Route as AppFleetTrackingRouteImport } from './routes/app.fleet-tracking'
 import { Route as AppFinanceRouteImport } from './routes/app.finance'
+import { Route as AppDriverRouteImport } from './routes/app.driver'
 import { Route as AppDeveloperRouteImport } from './routes/app.developer'
 import { Route as AppBillingRouteImport } from './routes/app.billing'
 import { Route as AppAiAssistantRouteImport } from './routes/app.ai-assistant'
@@ -56,6 +58,7 @@ import { Route as AppLeadsIndexRouteImport } from './routes/app.leads.index'
 import { Route as AppImportIndexRouteImport } from './routes/app.import.index'
 import { Route as AppGeofencesIndexRouteImport } from './routes/app.geofences.index'
 import { Route as AppDriversIndexRouteImport } from './routes/app.drivers.index'
+import { Route as AppDriverIndexRouteImport } from './routes/app.driver.index'
 import { Route as AppDispatchesIndexRouteImport } from './routes/app.dispatches.index'
 import { Route as AppDevicesIndexRouteImport } from './routes/app.devices.index'
 import { Route as AppCustomersIndexRouteImport } from './routes/app.customers.index'
@@ -76,6 +79,7 @@ import { Route as AppImportSessionIdRouteImport } from './routes/app.import.$ses
 import { Route as AppFleetTrackingDebugRouteImport } from './routes/app.fleet-tracking_.debug'
 import { Route as AppDriversCreateRouteImport } from './routes/app.drivers.create'
 import { Route as AppDriversDriverIdRouteImport } from './routes/app.drivers.$driverId'
+import { Route as AppDriverDispatchIdRouteImport } from './routes/app.driver.$dispatchId'
 import { Route as AppDispatchesCreateRouteImport } from './routes/app.dispatches.create'
 import { Route as AppDispatchesCalendarRouteImport } from './routes/app.dispatches.calendar'
 import { Route as AppDispatchesBoardRouteImport } from './routes/app.dispatches.board'
@@ -134,6 +138,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
 const PortalProfileRoute = PortalProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalPaymentsRoute = PortalPaymentsRouteImport.update({
+  id: '/payments',
+  path: '/payments',
   getParentRoute: () => PortalRoute,
 } as any)
 const PortalOrdersRoute = PortalOrdersRouteImport.update({
@@ -231,6 +240,11 @@ const AppFinanceRoute = AppFinanceRouteImport.update({
   path: '/finance',
   getParentRoute: () => AppRoute,
 } as any)
+const AppDriverRoute = AppDriverRouteImport.update({
+  id: '/driver',
+  path: '/driver',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppDeveloperRoute = AppDeveloperRouteImport.update({
   id: '/developer',
   path: '/developer',
@@ -322,6 +336,11 @@ const AppDriversIndexRoute = AppDriversIndexRouteImport.update({
   id: '/drivers/',
   path: '/drivers/',
   getParentRoute: () => AppRoute,
+} as any)
+const AppDriverIndexRoute = AppDriverIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppDriverRoute,
 } as any)
 const AppDispatchesIndexRoute = AppDispatchesIndexRouteImport.update({
   id: '/dispatches/',
@@ -424,6 +443,11 @@ const AppDriversDriverIdRoute = AppDriversDriverIdRouteImport.update({
   path: '/drivers/$driverId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppDriverDispatchIdRoute = AppDriverDispatchIdRouteImport.update({
+  id: '/$dispatchId',
+  path: '/$dispatchId',
+  getParentRoute: () => AppDriverRoute,
+} as any)
 const AppDispatchesCreateRoute = AppDispatchesCreateRouteImport.update({
   id: '/dispatches/create',
   path: '/dispatches/create',
@@ -481,6 +505,7 @@ export interface FileRoutesByFullPath {
   '/app/ai-assistant': typeof AppAiAssistantRoute
   '/app/billing': typeof AppBillingRoute
   '/app/developer': typeof AppDeveloperRoute
+  '/app/driver': typeof AppDriverRouteWithChildren
   '/app/finance': typeof AppFinanceRoute
   '/app/fleet-tracking': typeof AppFleetTrackingRoute
   '/app/integrations': typeof AppIntegrationsRoute
@@ -500,6 +525,7 @@ export interface FileRoutesByFullPath {
   '/portal/login': typeof PortalLoginRoute
   '/portal/notifications': typeof PortalNotificationsRoute
   '/portal/orders': typeof PortalOrdersRouteWithChildren
+  '/portal/payments': typeof PortalPaymentsRoute
   '/portal/profile': typeof PortalProfileRoute
   '/app/': typeof AppIndexRoute
   '/platform/': typeof PlatformIndexRoute
@@ -512,6 +538,7 @@ export interface FileRoutesByFullPath {
   '/app/dispatches/board': typeof AppDispatchesBoardRoute
   '/app/dispatches/calendar': typeof AppDispatchesCalendarRoute
   '/app/dispatches/create': typeof AppDispatchesCreateRoute
+  '/app/driver/$dispatchId': typeof AppDriverDispatchIdRoute
   '/app/drivers/$driverId': typeof AppDriversDriverIdRoute
   '/app/drivers/create': typeof AppDriversCreateRoute
   '/app/fleet-tracking/debug': typeof AppFleetTrackingDebugRoute
@@ -532,6 +559,7 @@ export interface FileRoutesByFullPath {
   '/app/customers/': typeof AppCustomersIndexRoute
   '/app/devices/': typeof AppDevicesIndexRoute
   '/app/dispatches/': typeof AppDispatchesIndexRoute
+  '/app/driver/': typeof AppDriverIndexRoute
   '/app/drivers/': typeof AppDriversIndexRoute
   '/app/geofences/': typeof AppGeofencesIndexRoute
   '/app/import/': typeof AppImportIndexRoute
@@ -575,6 +603,7 @@ export interface FileRoutesByTo {
   '/portal/login': typeof PortalLoginRoute
   '/portal/notifications': typeof PortalNotificationsRoute
   '/portal/orders': typeof PortalOrdersRouteWithChildren
+  '/portal/payments': typeof PortalPaymentsRoute
   '/portal/profile': typeof PortalProfileRoute
   '/app': typeof AppIndexRoute
   '/platform': typeof PlatformIndexRoute
@@ -587,6 +616,7 @@ export interface FileRoutesByTo {
   '/app/dispatches/board': typeof AppDispatchesBoardRoute
   '/app/dispatches/calendar': typeof AppDispatchesCalendarRoute
   '/app/dispatches/create': typeof AppDispatchesCreateRoute
+  '/app/driver/$dispatchId': typeof AppDriverDispatchIdRoute
   '/app/drivers/$driverId': typeof AppDriversDriverIdRoute
   '/app/drivers/create': typeof AppDriversCreateRoute
   '/app/fleet-tracking/debug': typeof AppFleetTrackingDebugRoute
@@ -607,6 +637,7 @@ export interface FileRoutesByTo {
   '/app/customers': typeof AppCustomersIndexRoute
   '/app/devices': typeof AppDevicesIndexRoute
   '/app/dispatches': typeof AppDispatchesIndexRoute
+  '/app/driver': typeof AppDriverIndexRoute
   '/app/drivers': typeof AppDriversIndexRoute
   '/app/geofences': typeof AppGeofencesIndexRoute
   '/app/import': typeof AppImportIndexRoute
@@ -635,6 +666,7 @@ export interface FileRoutesById {
   '/app/ai-assistant': typeof AppAiAssistantRoute
   '/app/billing': typeof AppBillingRoute
   '/app/developer': typeof AppDeveloperRoute
+  '/app/driver': typeof AppDriverRouteWithChildren
   '/app/finance': typeof AppFinanceRoute
   '/app/fleet-tracking': typeof AppFleetTrackingRoute
   '/app/integrations': typeof AppIntegrationsRoute
@@ -654,6 +686,7 @@ export interface FileRoutesById {
   '/portal/login': typeof PortalLoginRoute
   '/portal/notifications': typeof PortalNotificationsRoute
   '/portal/orders': typeof PortalOrdersRouteWithChildren
+  '/portal/payments': typeof PortalPaymentsRoute
   '/portal/profile': typeof PortalProfileRoute
   '/app/': typeof AppIndexRoute
   '/platform/': typeof PlatformIndexRoute
@@ -666,6 +699,7 @@ export interface FileRoutesById {
   '/app/dispatches/board': typeof AppDispatchesBoardRoute
   '/app/dispatches/calendar': typeof AppDispatchesCalendarRoute
   '/app/dispatches/create': typeof AppDispatchesCreateRoute
+  '/app/driver/$dispatchId': typeof AppDriverDispatchIdRoute
   '/app/drivers/$driverId': typeof AppDriversDriverIdRoute
   '/app/drivers/create': typeof AppDriversCreateRoute
   '/app/fleet-tracking_/debug': typeof AppFleetTrackingDebugRoute
@@ -686,6 +720,7 @@ export interface FileRoutesById {
   '/app/customers/': typeof AppCustomersIndexRoute
   '/app/devices/': typeof AppDevicesIndexRoute
   '/app/dispatches/': typeof AppDispatchesIndexRoute
+  '/app/driver/': typeof AppDriverIndexRoute
   '/app/drivers/': typeof AppDriversIndexRoute
   '/app/geofences/': typeof AppGeofencesIndexRoute
   '/app/import/': typeof AppImportIndexRoute
@@ -715,6 +750,7 @@ export interface FileRouteTypes {
     | '/app/ai-assistant'
     | '/app/billing'
     | '/app/developer'
+    | '/app/driver'
     | '/app/finance'
     | '/app/fleet-tracking'
     | '/app/integrations'
@@ -734,6 +770,7 @@ export interface FileRouteTypes {
     | '/portal/login'
     | '/portal/notifications'
     | '/portal/orders'
+    | '/portal/payments'
     | '/portal/profile'
     | '/app/'
     | '/platform/'
@@ -746,6 +783,7 @@ export interface FileRouteTypes {
     | '/app/dispatches/board'
     | '/app/dispatches/calendar'
     | '/app/dispatches/create'
+    | '/app/driver/$dispatchId'
     | '/app/drivers/$driverId'
     | '/app/drivers/create'
     | '/app/fleet-tracking/debug'
@@ -766,6 +804,7 @@ export interface FileRouteTypes {
     | '/app/customers/'
     | '/app/devices/'
     | '/app/dispatches/'
+    | '/app/driver/'
     | '/app/drivers/'
     | '/app/geofences/'
     | '/app/import/'
@@ -809,6 +848,7 @@ export interface FileRouteTypes {
     | '/portal/login'
     | '/portal/notifications'
     | '/portal/orders'
+    | '/portal/payments'
     | '/portal/profile'
     | '/app'
     | '/platform'
@@ -821,6 +861,7 @@ export interface FileRouteTypes {
     | '/app/dispatches/board'
     | '/app/dispatches/calendar'
     | '/app/dispatches/create'
+    | '/app/driver/$dispatchId'
     | '/app/drivers/$driverId'
     | '/app/drivers/create'
     | '/app/fleet-tracking/debug'
@@ -841,6 +882,7 @@ export interface FileRouteTypes {
     | '/app/customers'
     | '/app/devices'
     | '/app/dispatches'
+    | '/app/driver'
     | '/app/drivers'
     | '/app/geofences'
     | '/app/import'
@@ -868,6 +910,7 @@ export interface FileRouteTypes {
     | '/app/ai-assistant'
     | '/app/billing'
     | '/app/developer'
+    | '/app/driver'
     | '/app/finance'
     | '/app/fleet-tracking'
     | '/app/integrations'
@@ -887,6 +930,7 @@ export interface FileRouteTypes {
     | '/portal/login'
     | '/portal/notifications'
     | '/portal/orders'
+    | '/portal/payments'
     | '/portal/profile'
     | '/app/'
     | '/platform/'
@@ -899,6 +943,7 @@ export interface FileRouteTypes {
     | '/app/dispatches/board'
     | '/app/dispatches/calendar'
     | '/app/dispatches/create'
+    | '/app/driver/$dispatchId'
     | '/app/drivers/$driverId'
     | '/app/drivers/create'
     | '/app/fleet-tracking_/debug'
@@ -919,6 +964,7 @@ export interface FileRouteTypes {
     | '/app/customers/'
     | '/app/devices/'
     | '/app/dispatches/'
+    | '/app/driver/'
     | '/app/drivers/'
     | '/app/geofences/'
     | '/app/import/'
@@ -1022,6 +1068,13 @@ declare module '@tanstack/react-router' {
       path: '/profile'
       fullPath: '/portal/profile'
       preLoaderRoute: typeof PortalProfileRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/portal/payments': {
+      id: '/portal/payments'
+      path: '/payments'
+      fullPath: '/portal/payments'
+      preLoaderRoute: typeof PortalPaymentsRouteImport
       parentRoute: typeof PortalRoute
     }
     '/portal/orders': {
@@ -1157,6 +1210,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppFinanceRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/driver': {
+      id: '/app/driver'
+      path: '/driver'
+      fullPath: '/app/driver'
+      preLoaderRoute: typeof AppDriverRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/developer': {
       id: '/app/developer'
       path: '/developer'
@@ -1282,6 +1342,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/app/drivers/'
       preLoaderRoute: typeof AppDriversIndexRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/app/driver/': {
+      id: '/app/driver/'
+      path: '/'
+      fullPath: '/app/driver/'
+      preLoaderRoute: typeof AppDriverIndexRouteImport
+      parentRoute: typeof AppDriverRoute
     }
     '/app/dispatches/': {
       id: '/app/dispatches/'
@@ -1423,6 +1490,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDriversDriverIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/driver/$dispatchId': {
+      id: '/app/driver/$dispatchId'
+      path: '/$dispatchId'
+      fullPath: '/app/driver/$dispatchId'
+      preLoaderRoute: typeof AppDriverDispatchIdRouteImport
+      parentRoute: typeof AppDriverRoute
+    }
     '/app/dispatches/create': {
       id: '/app/dispatches/create'
       path: '/dispatches/create'
@@ -1489,6 +1563,20 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AppDriverRouteChildren {
+  AppDriverDispatchIdRoute: typeof AppDriverDispatchIdRoute
+  AppDriverIndexRoute: typeof AppDriverIndexRoute
+}
+
+const AppDriverRouteChildren: AppDriverRouteChildren = {
+  AppDriverDispatchIdRoute: AppDriverDispatchIdRoute,
+  AppDriverIndexRoute: AppDriverIndexRoute,
+}
+
+const AppDriverRouteWithChildren = AppDriverRoute._addFileChildren(
+  AppDriverRouteChildren,
+)
+
 interface AppWorkflowsRouteChildren {
   AppWorkflowsWorkflowIdRoute: typeof AppWorkflowsWorkflowIdRoute
 }
@@ -1505,6 +1593,7 @@ interface AppRouteChildren {
   AppAiAssistantRoute: typeof AppAiAssistantRoute
   AppBillingRoute: typeof AppBillingRoute
   AppDeveloperRoute: typeof AppDeveloperRoute
+  AppDriverRoute: typeof AppDriverRouteWithChildren
   AppFinanceRoute: typeof AppFinanceRoute
   AppFleetTrackingRoute: typeof AppFleetTrackingRoute
   AppIntegrationsRoute: typeof AppIntegrationsRoute
@@ -1550,6 +1639,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAiAssistantRoute: AppAiAssistantRoute,
   AppBillingRoute: AppBillingRoute,
   AppDeveloperRoute: AppDeveloperRoute,
+  AppDriverRoute: AppDriverRouteWithChildren,
   AppFinanceRoute: AppFinanceRoute,
   AppFleetTrackingRoute: AppFleetTrackingRoute,
   AppIntegrationsRoute: AppIntegrationsRoute,
@@ -1656,6 +1746,7 @@ interface PortalRouteChildren {
   PortalLoginRoute: typeof PortalLoginRoute
   PortalNotificationsRoute: typeof PortalNotificationsRoute
   PortalOrdersRoute: typeof PortalOrdersRouteWithChildren
+  PortalPaymentsRoute: typeof PortalPaymentsRoute
   PortalProfileRoute: typeof PortalProfileRoute
   PortalIndexRoute: typeof PortalIndexRoute
 }
@@ -1667,6 +1758,7 @@ const PortalRouteChildren: PortalRouteChildren = {
   PortalLoginRoute: PortalLoginRoute,
   PortalNotificationsRoute: PortalNotificationsRoute,
   PortalOrdersRoute: PortalOrdersRouteWithChildren,
+  PortalPaymentsRoute: PortalPaymentsRoute,
   PortalProfileRoute: PortalProfileRoute,
   PortalIndexRoute: PortalIndexRoute,
 }
