@@ -2,6 +2,7 @@ import { Body, Controller, Get, HttpCode, Post, Req, UseGuards } from "@nestjs/c
 import { Throttle } from "@nestjs/throttler";
 import type { Request } from "express";
 import { AuthService } from "./auth.service";
+import { AUTH_THROTTLE, resolveAuthThrottle } from "./auth-throttle";
 import { ChangePasswordDto } from "./dto/change-password.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RefreshDto } from "./dto/refresh.dto";
@@ -10,7 +11,13 @@ import { CurrentUser } from "./decorators/current-user.decorator";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import type { CurrentUserPayload } from "./interfaces/current-user.interface";
 
-const AUTH_THROTTLE = { default: { limit: 5, ttl: 60_000 } };
+const AUTH_REFRESH_THROTTLE = resolveAuthThrottle({
+  ...process.env,
+  // Refresh is slightly looser than login in every environment (historical: 10/min prod).
+  AUTH_THROTTLE_LIMIT:
+    process.env.AUTH_REFRESH_THROTTLE_LIMIT ??
+    (process.env.NODE_ENV === "production" ? "10" : process.env.AUTH_THROTTLE_LIMIT ?? "400"),
+});
 
 @Controller("auth")
 export class AuthController {
@@ -30,7 +37,7 @@ export class AuthController {
   }
 
   @Post("refresh")
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Throttle(AUTH_REFRESH_THROTTLE)
   @HttpCode(200)
   refresh(@Body() dto: RefreshDto, @Req() req: Request) {
     return this.authService.refresh(dto, { ip: req.ip });

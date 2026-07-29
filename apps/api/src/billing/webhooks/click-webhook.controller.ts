@@ -1,5 +1,5 @@
 import { Controller, Post, Body, Logger } from "@nestjs/common";
-import { createHmac } from "crypto";
+import { createHmac, timingSafeEqual } from "crypto";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../../audit/audit.service";
@@ -189,7 +189,13 @@ export class ClickWebhookController {
 
     const expectedSign = createHmac("md5", secret).update(signString).digest("hex");
 
-    return dto.sign_string === expectedSign;
+    // Constant-time compare — dto.sign_string is attacker-controlled input,
+    // and plain string equality short-circuits on the first mismatched
+    // character, leaking a timing signal about how much of the signature
+    // an attacker has guessed correctly.
+    const provided = Buffer.from(dto.sign_string ?? "", "hex");
+    const expected = Buffer.from(expectedSign, "hex");
+    return provided.length === expected.length && timingSafeEqual(provided, expected);
   }
 
   private extractOrganizationId(merchantTransId: string): string | null {

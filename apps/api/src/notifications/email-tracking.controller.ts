@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, Res, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Param, Res, HttpStatus } from '@nestjs/common';
 import { Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -40,12 +40,15 @@ export class EmailTrackingController {
     res.end(pixel);
   }
 
+  /// The redirect target used to come from a client-supplied `url` query
+  /// param, checked only for an http(s) scheme — an open redirect (unauth'd,
+  /// any trackingId or none at all) since it was never checked against
+  /// anything stored on the tracking record. No code path was found that
+  /// actually embeds this link in outgoing email, so there is no legitimate
+  /// destination to preserve; always redirecting home closes the redirect
+  /// while keeping the click-count instrumentation this endpoint exists for.
   @Get('click/:trackingId')
-  async trackClick(
-    @Param('trackingId') trackingId: string,
-    @Query('url') url: string,
-    @Res() res: Response,
-  ) {
+  async trackClick(@Param('trackingId') trackingId: string, @Res() res: Response) {
     try {
       const tracking = await this.prisma.emailTracking.findUnique({
         where: { id: trackingId },
@@ -65,19 +68,6 @@ export class EmailTrackingController {
       // Silent failure
     }
 
-    if (url && this.isValidUrl(url)) {
-      return res.redirect(url);
-    }
-
     return res.redirect('/');
-  }
-
-  private isValidUrl(url: string): boolean {
-    try {
-      const parsed = new URL(url);
-      return ['http:', 'https:'].includes(parsed.protocol);
-    } catch {
-      return false;
-    }
   }
 }

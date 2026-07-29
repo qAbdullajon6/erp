@@ -31,7 +31,7 @@ export class CustomerBillingController {
 
   @Get("invoices")
   async getInvoices(@CurrentCustomer() customer: CurrentCustomerPayload) {
-    return this.billingService.getInvoiceHistory(customer.organizationId);
+    return this.billingService.getInvoiceHistory(customer.organizationId, customer.customerId);
   }
 
   @Get("payments")

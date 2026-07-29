@@ -185,7 +185,7 @@ describe("CustomerPortalAuthService", () => {
       expect(result.accessToken).toBe("access-token");
       expect(result.customer.email).toBe("customer@test.com");
       expect(result.customer.id).toBe("cust-1");
-      expect(jwtService.sign).toHaveBeenCalledWith({ sub: "acc-1", cid: "cust-1" });
+      expect(jwtService.sign).toHaveBeenCalledWith({ sub: "acc-1", cid: "cust-1", typ: "customer" });
       expect(prisma.customerRefreshToken.create).toHaveBeenCalled();
       expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: "CUSTOMER_PORTAL_LOGIN" }));
     });

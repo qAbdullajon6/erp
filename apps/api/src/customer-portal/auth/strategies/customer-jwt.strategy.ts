@@ -35,6 +35,9 @@ export class CustomerJwtStrategy extends PassportStrategy(Strategy, "customer-jw
   }
 
   async validate(payload: CustomerJwtPayload): Promise<CurrentCustomerPayload> {
+    if (payload.typ !== "customer") {
+      throw new UnauthorizedException("Customer session is no longer valid");
+    }
     const account = await this.prisma.customerPortalAccount.findUnique({
       where: { id: payload.sub },
       include: { customer: true, organization: true },

@@ -15,7 +15,11 @@ export class CustomerProfileService {
   async getProfile(payload: CurrentCustomerPayload) {
     const [customer, account] = await Promise.all([
       this.prisma.customer.findUnique({
-        where: { id: payload.customerId },
+        // organizationId is redundant given payload.customerId is always
+        // DB-verified server-side (never client-supplied), but every
+        // sibling service in this module scopes by both — matching that
+        // convention here for defense-in-depth.
+        where: { id: payload.customerId, organizationId: payload.organizationId },
       }),
       this.prisma.customerPortalAccount.findUnique({
         where: { id: payload.accountId },
@@ -57,7 +61,7 @@ export class CustomerProfileService {
 
   async updateProfile(payload: CurrentCustomerPayload, dto: UpdateCustomerProfileDto) {
     const customer = await this.prisma.customer.update({
-      where: { id: payload.customerId },
+      where: { id: payload.customerId, organizationId: payload.organizationId },
       data: {
         ...(dto.contactName !== undefined ? { contactName: dto.contactName } : {}),
         ...(dto.phone !== undefined ? { phone: dto.phone } : {}),

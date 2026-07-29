@@ -96,7 +96,7 @@ describe("CustomerProfileService", () => {
       await svc.updateProfile(payload, { contactName: "New Name", phone: "+998900000000" });
 
       expect(prisma.customer.update).toHaveBeenCalledWith({
-        where: { id: "cust-1" },
+        where: { id: "cust-1", organizationId: "org-1" },
         data: { contactName: "New Name", phone: "+998900000000" },
       });
       expect(audit.log).toHaveBeenCalledWith(

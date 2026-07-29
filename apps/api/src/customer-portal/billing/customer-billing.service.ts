@@ -108,18 +108,13 @@ export class CustomerBillingService {
     };
   }
 
-  /// Get invoice history for customer's organization
-  async getInvoiceHistory(organizationId: string) {
+  /// Freight invoice history for this portal customer only (never org-wide).
+  async getInvoiceHistory(organizationId: string, customerId: string) {
     const invoices = await this.prisma.invoice.findMany({
       where: {
-        customerId: {
-          in: await this.prisma.customer
-            .findMany({
-              where: { organizationId },
-              select: { id: true },
-            })
-            .then((customers) => customers.map((c) => c.id)),
-        },
+        organizationId,
+        customerId,
+        status: { in: ["SENT", "PARTIALLY_PAID", "PAID", "OVERDUE"] },
       },
       orderBy: { createdAt: "desc" },
       take: 50,

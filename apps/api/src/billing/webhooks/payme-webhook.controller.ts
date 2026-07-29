@@ -1,4 +1,5 @@
 import { Controller, Post, Body, Headers, Logger, UnauthorizedException } from "@nestjs/common";
+import { timingSafeEqual } from "crypto";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../../audit/audit.service";
@@ -79,7 +80,13 @@ export class PaymeWebhookController {
     }
 
     const expectedAuth = `Basic ${Buffer.from(`${merchantId}:${secretKey}`).toString("base64")}`;
-    return authHeader === expectedAuth;
+
+    // Constant-time compare — authHeader is attacker-controlled, and plain
+    // string equality leaks a timing signal proportional to how much of
+    // the expected credential an attacker has guessed correctly.
+    const provided = Buffer.from(authHeader);
+    const expected = Buffer.from(expectedAuth);
+    return provided.length === expected.length && timingSafeEqual(provided, expected);
   }
 
   private async processMethod(request: PaymeRpcRequest): Promise<PaymeWebhookResult> {

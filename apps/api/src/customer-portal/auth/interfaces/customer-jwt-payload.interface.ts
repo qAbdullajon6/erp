@@ -6,4 +6,6 @@
 export interface CustomerJwtPayload {
   sub: string;
   cid: string;
+  /// Separates portal tokens from staff JWTs that share the same signing secret.
+  typ: "customer";
 }

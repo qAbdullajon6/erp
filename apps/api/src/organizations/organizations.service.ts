@@ -49,8 +49,15 @@ export class OrganizationsService {
   }
 
   async listMembers(organizationId: string) {
+    // Platform-support "enter org" (platform-organizations.service.ts)
+    // creates a real ADMIN membership for the operator so they can act as
+    // staff while assisting a tenant, and that membership outlives the
+    // support session. It must never surface in the tenant's own member
+    // list as if it were one of their own admins — platform's own org
+    // listings already exclude these via the same `isPlatformAdmin: false`
+    // filter.
     const memberships = await this.prisma.membership.findMany({
-      where: { organizationId },
+      where: { organizationId, user: { isPlatformAdmin: false } },
       include: { user: true },
       orderBy: { createdAt: "asc" },
     });
@@ -166,8 +173,12 @@ export class OrganizationsService {
       (becomingStatus ?? resolvedMembership.status) === "ACTIVE";
 
     if (isCurrentlyActiveAdmin && !willStayActiveAdmin) {
+      // Exclude platform-support memberships (see listMembers) from the
+      // count — otherwise a lingering support-session membership makes the
+      // system think a real admin can safely be demoted/removed, leaving
+      // the tenant with zero staff-visible admins.
       const activeAdminCount = await this.prisma.membership.count({
-        where: { organizationId, role: "ADMIN", status: "ACTIVE" },
+        where: { organizationId, role: "ADMIN", status: "ACTIVE", user: { isPlatformAdmin: false } },
       });
       if (activeAdminCount <= 1) {
         throw new ConflictException(

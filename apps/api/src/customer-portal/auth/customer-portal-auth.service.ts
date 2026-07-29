@@ -72,6 +72,7 @@ export class CustomerPortalAuthService {
     const accessToken = this.jwtService.sign({
       sub: account.id,
       cid: account.customerId,
+      typ: "customer",
     });
     const refreshToken = generateCustomerRefreshToken();
     const tokenHash = hashCustomerRefreshToken(refreshToken);
@@ -130,6 +131,7 @@ export class CustomerPortalAuthService {
     const accessToken = this.jwtService.sign({
       sub: record.account.id,
       cid: record.account.customerId,
+      typ: "customer",
     });
     const newRefresh = generateCustomerRefreshToken();
     const newHash = hashCustomerRefreshToken(newRefresh);
