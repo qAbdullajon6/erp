@@ -39,6 +39,7 @@ export interface SupportSession {
   organizationId: string;
   organizationName: string;
   organizationSlug: string;
+  organizationStatus?: 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
   startedAt: string;
 }
 
@@ -57,6 +58,7 @@ export interface CurrentUser {
     id: string;
     name: string;
     slug: string;
+    status?: 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
   };
   membership: {
     id: string;

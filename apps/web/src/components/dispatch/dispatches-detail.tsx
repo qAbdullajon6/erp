@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -14,18 +14,21 @@ import { DispatchNotesSheet } from '@/components/dispatch/dispatch-notes-sheet';
 import { DispatchReassignSheet } from '@/components/dispatch/dispatch-reassign-sheet';
 import { useDispatchDetail, useCancelDispatch } from '@/lib/hooks/use-dispatches';
 import { useOrder } from '@/lib/api/orders';
-import { useDriver } from '@/lib/api/drivers';
-import { useVehicle } from '@/lib/api/vehicles';
+import { useDriver, useDriversList } from '@/lib/api/drivers';
+import { useVehicle, useVehiclesList } from '@/lib/api/vehicles';
 import { useCustomerDetail } from '@/lib/api/customers';
 import { useInvoicesQuery, useCreateInvoiceFromOrderMutation } from '@/lib/api/invoices';
+import { InvoiceDetailSheet } from '@/components/finance/invoice-detail-sheet';
 import { useExpensesQuery } from '@/lib/api/expenses';
 import { useLiveFleetQuery } from '@/lib/api/telematics';
 import { useCurrentUser } from '@/lib/api/auth';
+import { DispatchOperationalTimeline } from '@/components/dispatch/dispatch-operational-timeline';
 import {
   DISPATCH_WRITE_ROLES,
   FLEET_ROLES,
   INVOICE_READ_ROLES,
   EXPENSE_READ_ROLES,
+  AUDIT_ROLES,
 } from '@/lib/role-access';
 import type { MembershipRole } from '@/lib/api/organizations';
 import type { DispatchStatus } from '@/lib/api/dispatches';
@@ -74,7 +77,6 @@ const NEXT_ACTION_LABEL: Partial<Record<DispatchStatus, string>> = {
   DELIVERED: 'Mark delivered',
 };
 
-type ActivityKind = 'status' | 'note' | 'assignment';
 type SheetMode = 'status' | 'notes' | 'reassign' | null;
 
 export function DispatchesDetail({ dispatchId }: DispatchesDetailProps) {
@@ -85,11 +87,20 @@ export function DispatchesDetail({ dispatchId }: DispatchesDetailProps) {
   const canViewFleet = Boolean(role && FLEET_ROLES.includes(role));
   const canViewInvoices = Boolean(role && INVOICE_READ_ROLES.includes(role));
   const canViewExpenses = Boolean(role && EXPENSE_READ_ROLES.includes(role));
+  const canViewAudit = Boolean(role && AUDIT_ROLES.includes(role));
 
   const { data: dispatch, loading, error, refetch } = useDispatchDetail(dispatchId);
   const { data: order, loading: orderLoading } = useOrder(dispatch?.orderId ?? '');
   const { data: driver } = useDriver(dispatch?.driverId ?? '');
   const { data: vehicle } = useVehicle(dispatch?.vehicleId ?? '');
+  const { items: driversList } = useDriversList(
+    { limit: 100, includeArchived: true },
+    { enabled: Boolean(canViewFleet && canViewAudit && dispatch) },
+  );
+  const { items: vehiclesList } = useVehiclesList(
+    { limit: 100, includeArchived: true },
+    { enabled: Boolean(canViewFleet && canViewAudit && dispatch) },
+  );
   const { data: customer } = useCustomerDetail(order?.customerId ?? '');
 
   const {
@@ -125,6 +136,7 @@ export function DispatchesDetail({ dispatchId }: DispatchesDetailProps) {
   const [sheet, setSheet] = useState<SheetMode>(null);
   const [statusPreset, setStatusPreset] = useState<DispatchStatus | null>(null);
   const [showCancel, setShowCancel] = useState(false);
+  const [invoiceSheetId, setInvoiceSheetId] = useState<string | null>(null);
 
   const overdue = dispatch ? isDispatchOverdue(dispatch) : false;
 
@@ -140,51 +152,57 @@ export function DispatchesDetail({ dispatchId }: DispatchesDetailProps) {
   const margin =
     order && expenseTotal != null ? Number(order.price) - expenseTotal : null;
 
+  const driverNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const d of driversList) {
+      map.set(d.id, `${d.firstName} ${d.lastName}`.trim());
+    }
+    if (dispatch?.driver) {
+      map.set(
+        dispatch.driver.id,
+        `${dispatch.driver.firstName} ${dispatch.driver.lastName}`.trim(),
+      );
+    }
+    if (driver) {
+      map.set(driver.id, `${driver.firstName} ${driver.lastName}`.trim());
+    }
+    return map;
+  }, [driversList, dispatch?.driver, driver]);
+
+  const vehiclePlateById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const v of vehiclesList) {
+      map.set(v.id, v.plateNumber);
+    }
+    if (dispatch?.vehicle) {
+      map.set(dispatch.vehicle.id, dispatch.vehicle.plateNumber);
+    }
+    if (vehicle) {
+      map.set(vehicle.id, vehicle.plateNumber);
+    }
+    return map;
+  }, [vehiclesList, dispatch?.vehicle, vehicle]);
+
+  const resolveDriverName = useCallback(
+    (id: string | null | undefined) => {
+      if (!id) return '—';
+      return driverNameById.get(id) ?? 'Unknown driver';
+    },
+    [driverNameById],
+  );
+
+  const resolveVehiclePlate = useCallback(
+    (id: string | null | undefined) => {
+      if (!id) return '—';
+      return vehiclePlateById.get(id) ?? 'Unknown vehicle';
+    },
+    [vehiclePlateById],
+  );
+
   const outstanding = invoice
     ? Number(invoice.totalAmount) - Number(invoice.paidAmount ?? 0)
     : null;
   const collected = invoice ? Number(invoice.paidAmount ?? 0) : null;
-
-  const activity = useMemo(() => {
-    if (!dispatch) return [];
-    const items: {
-      id: string;
-      at: string;
-      title: string;
-      detail?: string | null;
-      kind: ActivityKind;
-      status?: string;
-    }[] = [];
-    for (const entry of dispatch.statusHistory ?? []) {
-      items.push({
-        id: entry.id,
-        at: entry.createdAt,
-        title: statusLabel(entry.status),
-        detail: entry.note,
-        kind: 'status',
-        status: entry.status,
-      });
-    }
-    if (dispatch.notes) {
-      items.push({
-        id: `note-${dispatch.id}`,
-        at: dispatch.updatedAt,
-        title: 'Notes on file',
-        detail: dispatch.notes,
-        kind: 'note',
-      });
-    }
-    if (dispatch.driver) {
-      items.push({
-        id: `assign-${dispatch.id}`,
-        at: dispatch.createdAt,
-        title: 'Assigned',
-        detail: `${dispatch.driver.firstName} ${dispatch.driver.lastName} · ${dispatch.vehicle?.plateNumber ?? '—'}`,
-        kind: 'assignment',
-      });
-    }
-    return items.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
-  }, [dispatch]);
 
   if (loading) return <LoadingState label="Loading dispatch..." />;
   if (error || !dispatch) {
@@ -650,6 +668,11 @@ export function DispatchesDetail({ dispatchId }: DispatchesDetailProps) {
                     canViewInvoices ? (
                       <Link
                         to="/app/finance"
+                        search={
+                          invoice
+                            ? { tab: 'invoices' as const, invoiceId: invoice.id }
+                            : { tab: 'invoices' as const }
+                        }
                         className="text-[11px] font-medium text-brand hover:underline"
                       >
                         Finance
@@ -764,50 +787,21 @@ export function DispatchesDetail({ dispatchId }: DispatchesDetailProps) {
               </div>
             </section>
 
-            {/* Activity */}
-            <section className="p-5" id="activity">
-              <SectionHeader icon={Clock} title="Activity" />
+            {/* Operational timeline */}
+            <section className="p-5" id="timeline">
+              <SectionHeader icon={Clock} title="Timeline" />
               <div className="mt-3">
-                {activity.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No activity recorded yet.</p>
+                {canViewAudit ? (
+                  <DispatchOperationalTimeline
+                    dispatch={dispatch}
+                    invoice={canViewInvoices ? invoice : null}
+                    resolveDriverName={resolveDriverName}
+                    resolveVehiclePlate={resolveVehiclePlate}
+                  />
                 ) : (
-                  <ul className="space-y-3.5">
-                    {activity.map((item) => {
-                      const Icon =
-                        item.kind === 'status'
-                          ? item.status === 'CANCELLED'
-                            ? XCircle
-                            : item.status === 'DELIVERED'
-                              ? CheckCircle2
-                              : Clock
-                          : item.kind === 'note'
-                            ? StickyNote
-                            : User;
-                      return (
-                        <li key={item.id} className="flex gap-3">
-                          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted/80 text-muted-foreground">
-                            <Icon className="h-3.5 w-3.5" />
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-baseline justify-between gap-2">
-                              <p className="text-sm font-medium text-foreground">{item.title}</p>
-                              <span
-                                className="text-[11px] text-muted-foreground"
-                                title={formatDateTime(item.at)}
-                              >
-                                {formatRelativeTime(item.at)}
-                              </span>
-                            </div>
-                            {item.detail && (
-                              <p className="mt-0.5 whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
-                                {item.detail}
-                              </p>
-                            )}
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
+                  <p className="text-sm text-muted-foreground">
+                    Timeline requires audit access.
+                  </p>
                 )}
               </div>
             </section>
@@ -878,11 +872,14 @@ export function DispatchesDetail({ dispatchId }: DispatchesDetailProps) {
                     </Link>
                   </Button>
                   {canViewInvoices && invoice && (
-                    <Button asChild size="sm" variant="outline" className="h-9 justify-start">
-                      <Link to="/app/finance">
-                        <Receipt className="mr-2 h-3.5 w-3.5" />
-                        Invoice
-                      </Link>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-9 justify-start"
+                      onClick={() => setInvoiceSheetId(invoice.id)}
+                    >
+                      <Receipt className="mr-2 h-3.5 w-3.5" />
+                      Invoice
                     </Button>
                   )}
                   <Button
@@ -995,6 +992,14 @@ export function DispatchesDetail({ dispatchId }: DispatchesDetailProps) {
             dispatch={dispatch}
           />
         </>
+      )}
+      {canViewInvoices && (
+        <InvoiceDetailSheet
+          invoiceId={invoiceSheetId}
+          onOpenChange={(open) => {
+            if (!open) setInvoiceSheetId(null);
+          }}
+        />
       )}
     </div>
   );

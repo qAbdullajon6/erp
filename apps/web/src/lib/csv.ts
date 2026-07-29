@@ -14,7 +14,8 @@ export function toCsv<T extends Record<string, unknown>>(rows: T[], columns: { k
 }
 
 export function downloadCsv(filename: string, content: string): void {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+  // UTF-8 BOM so Windows Excel detects encoding (Cyrillic/Uzbek/emoji intact).
+  const blob = new Blob(["\uFEFF" + content], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

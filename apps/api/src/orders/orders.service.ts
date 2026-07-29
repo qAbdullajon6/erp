@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { Order, OrderStatus, Prisma } from "@prisma/client";
+import { Order, OrderStatus, Prisma, DispatchStatus } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { isValidEntityCode } from "../common/sequential-code.util";
@@ -15,12 +15,48 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { WorkflowEventService } from "../workflows/triggers/workflow-event.service";
 import { AssignOrderDto } from "./dto/assign-order.dto";
+import { CheckDuplicateOrderDto } from "./dto/check-duplicate-order.dto";
 import { CancelOrderDto } from "./dto/cancel-order.dto";
 import { CreateOrderDto } from "./dto/create-order.dto";
 import { ListOrdersQueryDto } from "./dto/list-orders-query.dto";
 import { UpdateOrderDto } from "./dto/update-order.dto";
 import { UpdateOrderStatusDto } from "./dto/update-order-status.dto";
 import { generateUniqueOrderNumber } from "./order-number.util";
+
+/// Each whitespace-separated token must match at least one searchable field.
+function orderSearchTokenClause(term: string): Prisma.OrderWhereInput {
+  return {
+    OR: [
+      { orderNumber: { contains: term, mode: "insensitive" } },
+      { pickupCity: { contains: term, mode: "insensitive" } },
+      { deliveryCity: { contains: term, mode: "insensitive" } },
+      { cargoDescription: { contains: term, mode: "insensitive" } },
+      { customer: { companyName: { contains: term, mode: "insensitive" } } },
+      { customer: { phone: { contains: term, mode: "insensitive" } } },
+      { driver: { firstName: { contains: term, mode: "insensitive" } } },
+      { driver: { lastName: { contains: term, mode: "insensitive" } } },
+      { vehicle: { plateNumber: { contains: term, mode: "insensitive" } } },
+      {
+        dispatches: {
+          some: {
+            OR: [
+              { driver: { firstName: { contains: term, mode: "insensitive" } } },
+              { driver: { lastName: { contains: term, mode: "insensitive" } } },
+              { vehicle: { plateNumber: { contains: term, mode: "insensitive" } } },
+            ],
+          },
+        },
+      },
+    ],
+  };
+}
+
+function orderSearchWhere(search: string): Prisma.OrderWhereInput {
+  const terms = search.split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return {};
+  if (terms.length === 1) return orderSearchTokenClause(terms[0]);
+  return { AND: terms.map((term) => orderSearchTokenClause(term)) };
+}
 
 @Injectable()
 export class OrdersService {
@@ -37,31 +73,131 @@ export class OrdersService {
   ) {}
 
   async list(organizationId: string, query: ListOrdersQueryDto) {
+    const search = query.search?.trim();
     const where: Prisma.OrderWhereInput = {
       organizationId,
+      ...(query.archivedOnly
+        ? { archivedAt: { not: null } }
+        : query.includeArchived
+          ? {}
+          : { archivedAt: null }),
       ...(query.statuses?.length
         ? { status: { in: query.statuses } }
         : query.status
           ? { status: query.status }
           : {}),
       ...(query.customerId ? { customerId: query.customerId } : {}),
-      ...(query.driverId ? { driverId: query.driverId } : {}),
-      ...(query.vehicleId ? { vehicleId: query.vehicleId } : {}),
-      ...(query.search
+      ...(query.driverId
         ? {
             OR: [
-              { orderNumber: { contains: query.search, mode: "insensitive" } },
-              { pickupCity: { contains: query.search, mode: "insensitive" } },
-              { deliveryCity: { contains: query.search, mode: "insensitive" } },
-              { cargoDescription: { contains: query.search, mode: "insensitive" } },
+              { driverId: query.driverId },
+              {
+                dispatches: {
+                  some: {
+                    driverId: query.driverId,
+                    status: { notIn: ["CANCELLED", "DELIVERED"] },
+                  },
+                },
+              },
             ],
           }
         : {}),
+      ...(query.vehicleId
+        ? {
+            OR: [
+              { vehicleId: query.vehicleId },
+              {
+                dispatches: {
+                  some: {
+                    vehicleId: query.vehicleId,
+                    status: { notIn: ["CANCELLED", "DELIVERED"] },
+                  },
+                },
+              },
+            ],
+          }
+        : {}),
+      ...(query.dispatcherId
+        ? {
+            dispatches: {
+              some: {
+                createdByUserId: query.dispatcherId,
+                status: { notIn: ["CANCELLED", "DELIVERED"] },
+              },
+            },
+          }
+        : {}),
+      ...(query.pickupDateFrom || query.pickupDateTo
+        ? {
+            pickupDate: {
+              ...(query.pickupDateFrom ? { gte: new Date(query.pickupDateFrom) } : {}),
+              ...(query.pickupDateTo ? { lte: new Date(query.pickupDateTo) } : {}),
+            },
+          }
+        : {}),
+      ...(query.deliveryDateFrom || query.deliveryDateTo
+        ? {
+            deliveryDate: {
+              ...(query.deliveryDateFrom ? { gte: new Date(query.deliveryDateFrom) } : {}),
+              ...(query.deliveryDateTo ? { lte: new Date(query.deliveryDateTo) } : {}),
+            },
+          }
+        : {}),
+      ...(query.createdFrom || query.createdTo
+        ? {
+            createdAt: {
+              ...(query.createdFrom ? { gte: new Date(query.createdFrom) } : {}),
+              ...(query.createdTo ? { lte: new Date(query.createdTo) } : {}),
+            },
+          }
+        : {}),
+      ...(query.priceMin !== undefined || query.priceMax !== undefined
+        ? {
+            price: {
+              ...(query.priceMin !== undefined ? { gte: new Prisma.Decimal(query.priceMin) } : {}),
+              ...(query.priceMax !== undefined ? { lte: new Prisma.Decimal(query.priceMax) } : {}),
+            },
+          }
+        : {}),
+      ...(query.paymentStatus === "NO_INVOICE"
+        ? { invoices: { none: {} } }
+        : query.paymentStatus === "PAID"
+          ? { invoices: { some: { balanceDue: { lte: 0 } } } }
+          : query.paymentStatus === "PARTIAL"
+            ? {
+                invoices: {
+                  some: { paidAmount: { gt: 0 }, balanceDue: { gt: 0 } },
+                },
+              }
+            : query.paymentStatus === "UNPAID"
+              ? {
+                  invoices: {
+                    some: { paidAmount: { lte: 0 }, balanceDue: { gt: 0 } },
+                  },
+                }
+              : {}),
+      ...(search ? orderSearchWhere(search) : {}),
+    };
+
+    const include = {
+      customer: { select: { id: true, companyName: true, phone: true } },
+      driver: { select: { id: true, firstName: true, lastName: true, employeeCode: true } },
+      vehicle: { select: { id: true, plateNumber: true, vehicleCode: true } },
+      dispatches: {
+        where: { status: { notIn: ["CANCELLED", "DELIVERED"] as DispatchStatus[] } },
+        orderBy: { createdAt: "desc" as const },
+        take: 1,
+        include: {
+          driver: { select: { id: true, firstName: true, lastName: true, employeeCode: true } },
+          vehicle: { select: { id: true, plateNumber: true, vehicleCode: true } },
+        },
+      },
     };
 
     const [rows, total] = await Promise.all([
       this.prisma.order.findMany({
         where,
+        include,
         orderBy: { [query.sortBy]: query.sortOrder },
         skip: (query.page - 1) * query.limit,
         take: query.limit,
@@ -70,7 +206,7 @@ export class OrdersService {
     ]);
 
     return {
-      items: rows.map((row) => this.toResponse(row)),
+      items: rows.map((row) => this.toListResponse(row)),
       meta: {
         page: query.page,
         limit: query.limit,
@@ -78,6 +214,83 @@ export class OrdersService {
         totalPages: Math.max(1, Math.ceil(total / query.limit)),
       },
     };
+  }
+
+  async checkDuplicate(organizationId: string, dto: CheckDuplicateOrderDto) {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const pickupDate = new Date(dto.pickupDate);
+    const matches = await this.prisma.order.findMany({
+      where: {
+        organizationId,
+        archivedAt: null,
+        customerId: dto.customerId,
+        pickupCity: { equals: dto.pickupCity.trim(), mode: "insensitive" },
+        deliveryCity: { equals: dto.deliveryCity.trim(), mode: "insensitive" },
+        cargoDescription: { equals: dto.cargoDescription.trim(), mode: "insensitive" },
+        pickupDate: {
+          gte: new Date(pickupDate.getTime() - 24 * 60 * 60 * 1000),
+          lte: new Date(pickupDate.getTime() + 24 * 60 * 60 * 1000),
+        },
+        createdAt: { gte: since },
+        ...(dto.excludeOrderId ? { id: { not: dto.excludeOrderId } } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    });
+
+    return {
+      possibleDuplicate: matches.length > 0,
+      matches: matches.map((row) => this.toResponse(row)),
+    };
+  }
+
+  async archive(organizationId: string, id: string, actor: CurrentUserPayload) {
+    const order = await this.findOrThrow(organizationId, id);
+    if (order.archivedAt) {
+      throw new ConflictException("Order is already archived");
+    }
+    if (order.status !== "DELIVERED" && order.status !== "CANCELLED") {
+      throw new ConflictException("Only delivered or cancelled orders can be archived");
+    }
+
+    const updated = await this.prisma.order.update({
+      where: { id },
+      data: { archivedAt: new Date() },
+    });
+
+    await this.auditService.log({
+      organizationId,
+      actorUserId: actor.userId,
+      action: "order.archive",
+      entityType: "Order",
+      entityId: id,
+      metadata: { orderNumber: order.orderNumber },
+    });
+
+    return this.toResponse(updated);
+  }
+
+  async restore(organizationId: string, id: string, actor: CurrentUserPayload) {
+    const order = await this.findOrThrow(organizationId, id);
+    if (!order.archivedAt) {
+      throw new ConflictException("Order is not archived");
+    }
+
+    const updated = await this.prisma.order.update({
+      where: { id },
+      data: { archivedAt: null },
+    });
+
+    await this.auditService.log({
+      organizationId,
+      actorUserId: actor.userId,
+      action: "order.restore",
+      entityType: "Order",
+      entityId: id,
+      metadata: { orderNumber: order.orderNumber },
+    });
+
+    return this.toResponse(updated);
   }
 
   async getById(organizationId: string, id: string) {
@@ -131,10 +344,13 @@ export class OrdersService {
     await this.auditService.log({
       organizationId,
       actorUserId: actor.userId,
-      action: "order.create",
+      action: dto.acknowledgeDuplicate ? "order.create.duplicate_override" : "order.create",
       entityType: "Order",
       entityId: order.id,
-      metadata: { orderNumber: order.orderNumber },
+      metadata: {
+        orderNumber: order.orderNumber,
+        ...(dto.acknowledgeDuplicate ? { duplicateOverride: true } : {}),
+      },
     });
 
     this.workflowEvents.emit(organizationId, "order.created", { id: order.id, orderNumber: order.orderNumber, customerId: order.customerId, status: order.status });
@@ -147,6 +363,9 @@ export class OrdersService {
 
     if (existing.status === "DELIVERED" || existing.status === "CANCELLED") {
       throw new ConflictException(`Cannot edit an order with status ${existing.status}`);
+    }
+    if (existing.archivedAt) {
+      throw new ConflictException("Archived orders cannot be edited — restore first");
     }
 
     if (dto.orderNumber && dto.orderNumber !== existing.orderNumber) {
@@ -544,6 +763,7 @@ export class OrdersService {
       updatedAt: order.updatedAt,
       cancelledAt: order.cancelledAt,
       deliveredAt: order.deliveredAt,
+      archivedAt: order.archivedAt,
       ...(order.statusHistory
         ? {
             statusHistory: order.statusHistory.map((h) => ({
@@ -555,6 +775,41 @@ export class OrdersService {
             })),
           }
         : {}),
+    };
+  }
+
+  private toListResponse(
+    order: Order & {
+      customer?: { id: string; companyName: string; phone: string | null };
+      driver?: { id: string; firstName: string; lastName: string; employeeCode: string } | null;
+      vehicle?: { id: string; plateNumber: string; vehicleCode: string } | null;
+      dispatches?: Array<{
+        id: string;
+        status: string;
+        driverId: string;
+        vehicleId: string;
+        driver: { id: string; firstName: string; lastName: string; employeeCode: string };
+        vehicle: { id: string; plateNumber: string; vehicleCode: string };
+      }>;
+    },
+  ) {
+    const base = this.toResponse(order);
+    const liveDispatch = order.dispatches?.[0];
+    const plannedDriver = base.driverId ? order.driver : liveDispatch?.driver ?? null;
+    const plannedVehicle = base.vehicleId ? order.vehicle : liveDispatch?.vehicle ?? null;
+    return {
+      ...base,
+      customer: order.customer,
+      plannedDriver,
+      plannedVehicle,
+      activeDispatch: liveDispatch
+        ? {
+            id: liveDispatch.id,
+            status: liveDispatch.status,
+            driverId: liveDispatch.driverId,
+            vehicleId: liveDispatch.vehicleId,
+          }
+        : null,
     };
   }
 

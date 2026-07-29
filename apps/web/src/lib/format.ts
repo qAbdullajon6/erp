@@ -1,12 +1,17 @@
 export function formatMoney(amount: string | number, currency = 'USD'): string {
   const value = typeof amount === 'string' ? Number(amount) : amount;
   if (!Number.isFinite(value)) return '—';
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-    maximumFractionDigits: value >= 1000 ? 0 : 2,
-    notation: value >= 100000 ? 'compact' : 'standard',
-  }).format(value);
+  const code = currency && /^[A-Za-z]{3}$/.test(currency) ? currency.toUpperCase() : 'USD';
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: code,
+      maximumFractionDigits: value >= 1000 ? 0 : 2,
+      notation: value >= 100000 ? 'compact' : 'standard',
+    }).format(value);
+  } catch {
+    return `${value} ${code}`;
+  }
 }
 
 /// Every money aggregate from Finance/Reports is now keyed by currency

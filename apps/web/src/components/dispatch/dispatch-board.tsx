@@ -14,8 +14,6 @@ import {
 } from '@dnd-kit/core';
 import { useNavigate } from '@tanstack/react-router';
 import {
-  List,
-  LayoutGrid,
   Loader2,
   Plus,
   RefreshCw,
@@ -39,6 +37,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState, ErrorState } from '@/components/shared/list-states';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { DispatchesCreateSheet } from '@/components/dispatch/dispatches-create-sheet';
+import { DispatchViewToggle } from '@/components/dispatch/dispatch-view-toggle';
 import { BOARD_COLUMNS, canDropInto, groupByStatus, isCancelDrop } from './board-columns';
 import { DispatchCard } from './dispatch-card';
 import { DispatchReassignDialog } from './dispatch-reassign-dialog';
@@ -281,13 +280,37 @@ export function DispatchBoard() {
     try {
       if (isCancelDrop(target)) {
         await dispatchesAPI.cancel(dispatch.id);
+        await invalidate();
+        const label = target.replace(/_/g, ' ').toLowerCase();
+        toast.success(`${dispatch.dispatchNumber} moved to ${label}`);
+        setAnnouncement(`${dispatch.dispatchNumber} moved to ${label}`);
       } else {
+        const previousStatus = dispatch.status;
         await dispatchesAPI.updateStatus(dispatch.id, { status: target });
+        await invalidate();
+        const label = target.replace(/_/g, ' ').toLowerCase();
+        toast.success(`${dispatch.dispatchNumber} moved to ${label}`, {
+          duration: 8000,
+          action: {
+            label: 'Undo',
+            onClick: () => {
+              void (async () => {
+                try {
+                  await dispatchesAPI.undoStatus(dispatch.id);
+                  await invalidate();
+                  const back = previousStatus.replace(/_/g, ' ').toLowerCase();
+                  toast.success(`${dispatch.dispatchNumber} restored to ${back}`);
+                  setAnnouncement(`${dispatch.dispatchNumber} restored to ${back}`);
+                  markResolving(dispatch.id);
+                } catch (undoErr) {
+                  toast.error(describeError(undoErr, 'Undo failed'));
+                }
+              })();
+            },
+          },
+        });
+        setAnnouncement(`${dispatch.dispatchNumber} moved to ${label}`);
       }
-      await invalidate();
-      const label = target.replace(/_/g, ' ').toLowerCase();
-      toast.success(`${dispatch.dispatchNumber} moved to ${label}`);
-      setAnnouncement(`${dispatch.dispatchNumber} moved to ${label}`);
       markResolving(dispatch.id);
     } catch (err) {
       const message = describeError(err, 'Move rejected');
@@ -535,30 +558,7 @@ export function DispatchBoard() {
               <RefreshCw className={cn('h-3.5 w-3.5', isRefreshing && 'animate-spin')} />
             </Button>
 
-            <div
-              className="inline-flex rounded-md border border-border p-0.5"
-              role="group"
-              aria-label="Dispatch view"
-            >
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 gap-1 px-2 text-xs text-muted-foreground"
-                onClick={() => void navigate({ to: '/app/dispatches' })}
-              >
-                <List className="h-3.5 w-3.5" />
-                List
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="h-7 gap-1 px-2 text-xs"
-                aria-current="page"
-              >
-                <LayoutGrid className="h-3.5 w-3.5" />
-                Board
-              </Button>
-            </div>
+            <DispatchViewToggle current="board" />
 
             {canWrite && (
               <Button

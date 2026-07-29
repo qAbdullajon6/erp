@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import type { MembershipRole, MembershipStatus } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { BillingSeatsService } from "../billing/billing-seats.service";
@@ -64,7 +64,16 @@ export class OrganizationsService {
     dto: UpdateMemberDto,
     actor: CurrentUserPayload,
   ) {
-    await this.assertChangeDoesNotRemoveLastAdmin(organizationId, membershipId, dto.role, dto.status);
+    const existing = await this.prisma.membership.findFirst({
+      where: { id: membershipId, organizationId },
+      include: { user: true },
+    });
+    if (!existing) {
+      throw new NotFoundException("Member not found in this organization");
+    }
+
+    this.assertActiveMemberRoleEditable(existing.status, dto);
+    await this.assertChangeDoesNotRemoveLastAdmin(organizationId, membershipId, dto.role, dto.status, existing);
     await this.billingSeatsService.assertCanActivateMembership(organizationId, membershipId, dto.status);
 
     const membership = await this.prisma.membership.update({
@@ -74,16 +83,39 @@ export class OrganizationsService {
     });
     await this.billingSeatsService.syncSeatsUsed(organizationId);
 
+    const reactivated = existing.status !== "ACTIVE" && dto.status === "ACTIVE";
     await this.auditService.log({
       organizationId,
       actorUserId: actor.userId,
-      action: "organization.member.update",
+      action: reactivated ? "organization.member.reactivate" : "organization.member.update",
       entityType: "Membership",
       entityId: membershipId,
-      metadata: { changes: dto },
+      metadata: reactivated ? { previousStatus: existing.status } : { changes: dto },
     });
 
     return this.toMemberResponse(membership);
+  }
+
+  /// Role changes apply only to ACTIVE memberships. Removed or invited
+  /// members may be reactivated (status -> ACTIVE) but their role cannot be
+  /// edited until they are active again.
+  private assertActiveMemberRoleEditable(
+    currentStatus: MembershipStatus,
+    dto: UpdateMemberDto,
+  ): void {
+    if (currentStatus === "ACTIVE") {
+      return;
+    }
+    if (dto.role !== undefined) {
+      throw new BadRequestException(
+        "Cannot change role for inactive members. Reactivate the member first.",
+      );
+    }
+    if (dto.status !== undefined && dto.status !== "ACTIVE") {
+      throw new BadRequestException(
+        "Inactive members can only be reactivated to ACTIVE status.",
+      );
+    }
   }
 
   async removeMember(organizationId: string, membershipId: string, actor: CurrentUserPayload) {
@@ -115,18 +147,23 @@ export class OrganizationsService {
     membershipId: string,
     becomingRole: MembershipRole | undefined,
     becomingStatus: MembershipStatus | undefined,
+    membership?: { role: MembershipRole; status: MembershipStatus } | null,
   ) {
-    const membership = await this.prisma.membership.findFirst({
-      where: { id: membershipId, organizationId },
-    });
-    if (!membership) {
+    const resolvedMembership =
+      membership ??
+      (await this.prisma.membership.findFirst({
+        where: { id: membershipId, organizationId },
+      }));
+
+    if (!resolvedMembership) {
       throw new NotFoundException("Member not found in this organization");
     }
 
-    const isCurrentlyActiveAdmin = membership.role === "ADMIN" && membership.status === "ACTIVE";
+    const isCurrentlyActiveAdmin =
+      resolvedMembership.role === "ADMIN" && resolvedMembership.status === "ACTIVE";
     const willStayActiveAdmin =
-      (becomingRole ?? membership.role) === "ADMIN" &&
-      (becomingStatus ?? membership.status) === "ACTIVE";
+      (becomingRole ?? resolvedMembership.role) === "ADMIN" &&
+      (becomingStatus ?? resolvedMembership.status) === "ACTIVE";
 
     if (isCurrentlyActiveAdmin && !willStayActiveAdmin) {
       const activeAdminCount = await this.prisma.membership.count({
@@ -139,7 +176,7 @@ export class OrganizationsService {
       }
     }
 
-    return membership;
+    return resolvedMembership;
   }
 
   private toOrganizationResponse(organization: {

@@ -1,12 +1,16 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { AiOpsSuggestions } from "@/components/dashboard/ai-ops-suggestions";
+import { AttentionCenter } from "@/components/dashboard/attention-center";
 import { ExceptionHero, SecondaryPulse } from "@/components/dashboard/exception-hero";
 import { FinancialWarnings } from "@/components/dashboard/financial-warnings";
 import { FleetReady } from "@/components/dashboard/fleet-ready";
 import { DelayedDeliveries } from "@/components/dashboard/delayed-deliveries";
+import { DashboardCharts } from "@/components/dashboard/dashboard-charts";
 import { DriverDashboardSummary } from "@/components/dashboard/driver-dashboard-summary";
+import { KpiCards } from "@/components/dashboard/kpi-cards";
 import { LiveDispatch } from "@/components/dashboard/live-dispatch";
+import { RecentActivity } from "@/components/dashboard/recent-activity";
 import { UnassignedQueue } from "@/components/dashboard/unassigned-queue";
 import { useCurrentUser } from "@/lib/api/auth";
 import { useDashboardSummary } from "@/lib/api/dashboard";
@@ -212,8 +216,8 @@ function OperationsCommandCenter({
   const loading = summary.loading || (includeFleet && board.loading && !board.data);
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/60 pb-3">
+    <div className="space-y-8">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/60 pb-4">
         <OpsClock />
         <div className="flex flex-wrap items-center gap-1.5">
           <FreshnessControl updatedAt={updatedAt} isFetching={isRefreshing} onRefresh={retryAll} />
@@ -255,32 +259,40 @@ function OperationsCommandCenter({
         </div>
       )}
 
-      <ExceptionHero
-        delayed={totals?.delayedOrders ?? 0}
-        worstDelayDays={worstDelayDays}
-        unassigned={unassigned}
-        oldestUnassignedWait={oldestUnassignedWait}
-        readyDrivers={boardData ? boardData.drivers.available.length : null}
-        readyVehicles={boardData ? boardData.vehicles.available.length : null}
-        includeFleet={includeFleet}
-        loading={loading}
-      />
+      <KpiCards data={summary.data} loading={summary.loading} />
+      <DashboardCharts data={summary.data} loading={summary.loading} />
 
-      {!loading && today && (
-        <SecondaryPulse
-          dueToday={today.dueToday}
-          deliveredToday={today.deliveredToday}
-          pickups={today.pickupsDueToday}
-          freeDrivers={boardData ? boardData.drivers.available.length : null}
-          freeVehicles={boardData ? boardData.vehicles.available.length : null}
+      <AttentionCenter attention={summary.data?.attention} loading={summary.loading} />
+      <RecentActivity items={summary.data?.recentActivity} loading={summary.loading} />
+
+      <div className="space-y-4">
+        <ExceptionHero
+          delayed={totals?.delayedOrders ?? 0}
+          worstDelayDays={worstDelayDays}
+          unassigned={unassigned}
+          oldestUnassignedWait={oldestUnassignedWait}
+          readyDrivers={boardData ? boardData.drivers.available.length : null}
+          readyVehicles={boardData ? boardData.vehicles.available.length : null}
           includeFleet={includeFleet}
+          loading={loading}
         />
-      )}
+
+        {!loading && today && (
+          <SecondaryPulse
+            dueToday={today.dueToday}
+            deliveredToday={today.deliveredToday}
+            pickups={today.pickupsDueToday}
+            freeDrivers={boardData ? boardData.drivers.available.length : null}
+            freeVehicles={boardData ? boardData.vehicles.available.length : null}
+            includeFleet={includeFleet}
+          />
+        )}
+      </div>
 
       {includeFleet ? (
-        <section className="grid grid-cols-1 gap-3 min-[960px]:grid-cols-12 min-[960px]:items-start">
+        <section className="grid grid-cols-1 gap-4 min-[960px]:grid-cols-12 min-[960px]:items-start">
           {/* Dominant ops column — Needs Dispatch / Ready / Delayed */}
-          <div className="flex flex-col gap-3 min-[960px]:col-span-7">
+          <div className="flex flex-col gap-4 min-[960px]:col-span-7">
             <UnassignedQueue
               orders={boardData?.unassignedOrders ?? []}
               loading={board.loading}
@@ -297,7 +309,7 @@ function OperationsCommandCenter({
           </div>
 
           {/* Secondary monitoring — AI / On Road / Money */}
-          <div className="flex flex-col gap-3 min-[960px]:col-span-5">
+          <div className="flex flex-col gap-4 min-[960px]:col-span-5">
             <AiOpsSuggestions board={boardData ?? null} canDispatch={canCreateDispatch} />
             <LiveDispatch
               board={boardData}
@@ -308,7 +320,7 @@ function OperationsCommandCenter({
           </div>
         </section>
       ) : (
-        <section className="grid grid-cols-1 gap-3 min-[960px]:grid-cols-12 min-[960px]:items-start">
+        <section className="grid grid-cols-1 gap-4 min-[960px]:grid-cols-12 min-[960px]:items-start">
           <div className="min-[960px]:col-span-7">
             <DelayedDeliveries
               orders={summary.data?.delayedOrders.items ?? []}

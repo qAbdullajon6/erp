@@ -34,7 +34,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
-import { useCreateOrder, type CreateOrderInput, type Order } from '@/lib/api/orders';
+import { useCreateOrder, useCheckDuplicateOrder, type CreateOrderInput, type Order } from '@/lib/api/orders';
 import { useCustomersList } from '@/lib/api/customers';
 import { useCurrentUser } from '@/lib/api/auth';
 import { CUSTOMER_WRITE_ROLES } from '@/lib/role-access';
@@ -42,6 +42,7 @@ import type { MembershipRole } from '@/lib/api/organizations';
 import { formatMoney } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import {
+  AlertTriangle,
   ArrowRight,
   Building2,
   CalendarIcon,
@@ -292,6 +293,7 @@ interface OrdersCreateSheetProps {
 
 export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreateSheetProps) {
   const { create, loading } = useCreateOrder();
+  const { check, loading: checkingDuplicate } = useCheckDuplicateOrder();
   const { data: currentUser } = useCurrentUser();
   const canCreateCustomer = Boolean(
     currentUser && CUSTOMER_WRITE_ROLES.includes(currentUser.membership.role as MembershipRole),
@@ -307,6 +309,9 @@ export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreat
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [customerOpen, setCustomerOpen] = useState(false);
   const [pastPickupConfirm, setPastPickupConfirm] = useState(false);
+  const [duplicateConfirm, setDuplicateConfirm] = useState(false);
+  const [duplicateMatches, setDuplicateMatches] = useState<Order[]>([]);
+  const acknowledgeDuplicateRef = useRef(false);
   const bodyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -314,6 +319,7 @@ export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreat
       setFormData(EMPTY_FORM);
       setErrors({});
       setTouched(new Set());
+      acknowledgeDuplicateRef.current = false;
     }
   }, [open]);
 
@@ -353,15 +359,29 @@ export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreat
   const noCustomers = !customersLoading && customers.length === 0;
   const hasRoute = formData.pickupCity && formData.deliveryCity;
 
-  const submitOrder = async () => {
+  const submitOrder = async (acknowledgeDuplicate = false) => {
     try {
-      const result = await create(formData);
+      const payload: CreateOrderInput = acknowledgeDuplicate
+        ? { ...formData, acknowledgeDuplicate: true }
+        : formData;
+      const result = await create(payload);
       toast.success(`Order ${result.orderNumber} created`);
       onOpenChange(false);
       onCreated?.(result);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create order');
     }
+  };
+
+  const proceedAfterDuplicateCheck = async () => {
+    const pickup = new Date(`${formData.pickupDate}T00:00:00`);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (pickup < today) {
+      setPastPickupConfirm(true);
+      return;
+    }
+    await submitOrder(true);
   };
 
   const handleSubmit = async () => {
@@ -380,6 +400,17 @@ export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreat
         (el?.querySelector('input,textarea,button') as HTMLElement | null)?.focus?.();
       });
       return;
+    }
+
+    try {
+      const dup = await check(formData);
+      if (dup.possibleDuplicate && dup.matches.length > 0) {
+        setDuplicateMatches(dup.matches);
+        setDuplicateConfirm(true);
+        return;
+      }
+    } catch {
+      // Non-blocking — proceed if duplicate check fails
     }
 
     const pickup = new Date(`${formData.pickupDate}T00:00:00`);
@@ -775,11 +806,11 @@ export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreat
               <Button
                 type="button"
                 onClick={handleSubmit}
-                disabled={loading || noCustomers}
+                disabled={loading || checkingDuplicate || noCustomers}
                 className="bg-gradient-brand text-brand-foreground hover:opacity-90"
                 data-testid="orders-submit-button"
               >
-                {loading ? 'Creating…' : 'Create Order'}
+                {loading || checkingDuplicate ? 'Creating…' : 'Create Order'}
               </Button>
             </div>
           </div>
@@ -793,9 +824,31 @@ export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreat
           confirmLabel="Create anyway"
           onConfirm={() => {
             setPastPickupConfirm(false);
-            void submitOrder();
+            void submitOrder(acknowledgeDuplicateRef.current);
           }}
         />
+
+        <ConfirmDialog
+          open={duplicateConfirm}
+          onOpenChange={setDuplicateConfirm}
+          title="Possible duplicate order detected"
+          description={
+            duplicateMatches.length > 0
+              ? `Similar order${duplicateMatches.length === 1 ? '' : 's'} created recently: ${duplicateMatches.map((m) => m.orderNumber).join(', ')}. You can still proceed.`
+              : 'A similar order was created in the last 24 hours. You can still proceed.'
+          }
+          confirmLabel="Create anyway"
+          onConfirm={() => {
+            setDuplicateConfirm(false);
+            acknowledgeDuplicateRef.current = true;
+            void proceedAfterDuplicateCheck();
+          }}
+        >
+          <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>Possible duplicate order detected — review the matches above before continuing.</span>
+          </div>
+        </ConfirmDialog>
       </SheetContent>
     </Sheet>
   );

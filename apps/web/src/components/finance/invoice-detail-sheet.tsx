@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
+import { Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,7 @@ import { ErrorState } from '@/components/shared/list-states';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { RecordPaymentDialog } from './record-payment-dialog';
+import { printInvoiceDocument } from './invoice-print';
 
 interface InvoiceDetailSheetProps {
   invoiceId: string | null;
@@ -123,8 +125,8 @@ export function InvoiceDetailSheet({ invoiceId, onOpenChange }: InvoiceDetailShe
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-brand/10">
-                  {invoice.lineItems?.map((li) => (
-                    <tr key={li.id}>
+                  {invoice.lineItems?.map((li, idx) => (
+                    <tr key={li.id || `line-${idx}`}>
                       <td className="px-3 py-2">{li.description}</td>
                       <td className="px-3 py-2 text-right">{li.quantity}</td>
                       <td className="px-3 py-2 text-right">{formatMoney(li.unitPrice, invoice.currency)}</td>
@@ -191,6 +193,24 @@ export function InvoiceDetailSheet({ invoiceId, onOpenChange }: InvoiceDetailShe
             </div>
 
             <div className="flex flex-wrap gap-2 border-t border-brand/10 pt-4">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  printInvoiceDocument({
+                    invoice,
+                    organizationName: currentUser?.organization.name,
+                    customerName: customer?.companyName,
+                    customerAddress: customer?.address,
+                    customerCity: customer?.city,
+                    customerCountry: customer?.country,
+                    orderNumber: order?.orderNumber,
+                  })
+                }
+              >
+                <Printer className="mr-1.5 h-3.5 w-3.5" />
+                Print / Save PDF
+              </Button>
               {canFinalize && invoice.status === 'DRAFT' && (
                 <Button size="sm" onClick={handleSend} disabled={sending}>
                   {sending ? 'Updating...' : 'Mark as sent'}

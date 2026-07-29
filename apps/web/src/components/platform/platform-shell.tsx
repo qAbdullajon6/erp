@@ -18,8 +18,8 @@ export function PlatformShell({
       <PlatformSidebar />
       <SidebarInset id="main-content">
         <PlatformTopbar currentUser={currentUser} onSignOut={onSignOut} />
-        <div className="px-4 py-6 sm:px-8 sm:py-8">
-          <div className="mx-auto w-full max-w-[1920px]">{children}</div>
+        <div className="px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8 overflow-x-hidden">
+          <div className="mx-auto w-full max-w-[1920px] min-w-0">{children}</div>
         </div>
       </SidebarInset>
     </SidebarProvider>

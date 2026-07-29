@@ -67,7 +67,7 @@ export function AppSidebar({ nav, navReady }: { nav: NavItem[]; navReady: boolea
                 {items.map((item) => {
                   const active = isNavPathActive(location.pathname, item.path);
                   return (
-                    <SidebarMenuItem key={item.path}>
+                    <SidebarMenuItem key={`${item.path}:${item.label}`}>
                       <SidebarMenuButton
                         isActive={active}
                         tooltip={item.label}

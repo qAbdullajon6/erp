@@ -14,7 +14,7 @@ import {
 } from '@/lib/api/organizations';
 import { InviteMemberDialog } from './invite-member-dialog';
 import { PendingInvitations } from './pending-invitations';
-import { UserMinus } from 'lucide-react';
+import { UserMinus, UserPlus } from 'lucide-react';
 
 const ROLES: MembershipRole[] = [
   'ADMIN',
@@ -36,6 +36,15 @@ export function MembersTab() {
       toast.success('Role updated');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update role');
+    }
+  };
+
+  const handleReactivate = async (membershipId: string) => {
+    try {
+      await updateMember({ membershipId, input: { status: 'ACTIVE' } });
+      toast.success('Member reactivated');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to reactivate member');
     }
   };
 
@@ -88,7 +97,7 @@ export function MembersTab() {
                   const fullName = `${member.user.firstName} ${member.user.lastName}`;
                   const initials =
                     `${member.user.firstName[0] ?? ''}${member.user.lastName[0] ?? ''}`.toUpperCase();
-                  const isRemoved = member.status === 'REMOVED';
+                  const isActive = member.status === 'ACTIVE';
 
                   return (
                     <TableRow key={member.id}>
@@ -107,7 +116,7 @@ export function MembersTab() {
                         <select
                           value={member.role}
                           onChange={(e) => handleRoleChange(member.id, e.target.value as MembershipRole)}
-                          disabled={updating || isRemoved}
+                          disabled={updating || !isActive}
                           aria-label={`Role for ${fullName}`}
                           className="h-9 rounded-md border border-input bg-background px-2 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
                         >
@@ -122,7 +131,7 @@ export function MembersTab() {
                         <StatusBadge status={member.status} />
                       </TableCell>
                       <TableCell className="text-right">
-                        {!isRemoved && (
+                        {isActive ? (
                           /* Removing a teammate revokes their access immediately
                              and used to fire on a single unguarded click. */
                           <ConfirmDialog
@@ -138,11 +147,22 @@ export function MembersTab() {
                               </Button>
                             }
                             title={`Remove ${fullName}?`}
-                            description="They lose access to this organization immediately. You can invite them again later."
+                            description="They lose access to this organization immediately. You can reactivate them later."
                             confirmLabel="Remove member"
                             onConfirm={() => handleRemove(member.id)}
                             destructive
                           />
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-2"
+                            disabled={updating}
+                            onClick={() => handleReactivate(member.id)}
+                          >
+                            <UserPlus className="h-4 w-4" />
+                            Reactivate
+                          </Button>
                         )}
                       </TableCell>
                     </TableRow>

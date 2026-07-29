@@ -35,7 +35,6 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronRight,
-  LayoutGrid,
   MoreHorizontal,
   Phone,
   Route as RouteIcon,
@@ -44,6 +43,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { DispatchViewToggle } from '@/components/dispatch/dispatch-view-toggle';
 
 type WorkflowTab = 'action' | 'active' | 'in_transit' | 'delivered' | 'cancelled' | 'all';
 
@@ -429,15 +429,7 @@ export function DispatchesList() {
               data-testid="dispatches-search-input"
             />
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate({ to: '/app/dispatches/board' })}
-            data-testid="dispatch-board-button"
-          >
-            <LayoutGrid className="mr-1.5 h-3.5 w-3.5" />
-            Board
-          </Button>
+          <DispatchViewToggle current="list" />
           <Button variant="outline" size="sm" onClick={handleExport}>
             <Download className="mr-1.5 h-3.5 w-3.5" />
             Export page

@@ -3,6 +3,8 @@ import { AuditModule } from "../audit/audit.module";
 import { DispatchModule } from "../dispatch/dispatch.module";
 import { OrderStateModule } from "../order-state/order-state.module";
 import { WorkflowsModule } from "../workflows/workflows.module";
+import { OrderDocumentsService } from "./order-documents.service";
+import { OrderNotesService } from "./order-notes.service";
 import { OrdersController } from "./orders.controller";
 import { OrdersService } from "./orders.service";
 
@@ -11,7 +13,7 @@ import { OrdersService } from "./orders.service";
 @Module({
   imports: [AuditModule, DispatchModule, OrderStateModule, WorkflowsModule],
   controllers: [OrdersController],
-  providers: [OrdersService],
+  providers: [OrdersService, OrderDocumentsService, OrderNotesService],
   exports: [OrdersService],
 })
 export class OrdersModule {}

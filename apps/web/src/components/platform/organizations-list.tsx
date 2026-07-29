@@ -12,7 +12,7 @@ import {
   usePlatformOrganizationsQuery,
   type OrganizationStatus,
 } from '@/lib/api/platform';
-import { formatDate, formatMoney } from '@/lib/format';
+import { formatDate, formatMoney, formatRelativeTime } from '@/lib/format';
 
 const STATUSES: OrganizationStatus[] = ['ACTIVE', 'SUSPENDED', 'ARCHIVED'];
 
@@ -32,7 +32,7 @@ export function OrganizationsList() {
   const meta = data?.meta;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <PageHeader
         title="Organizations"
         subtitle={
@@ -81,16 +81,19 @@ export function OrganizationsList() {
         )}
         {!isLoading && !isError && items.length > 0 && (
           <div className="overflow-x-auto">
-            <Table>
+            <Table className="w-full">
               <TableHeader>
                 <TableRow className="bg-surface/50 hover:bg-surface/50">
                   <TableHead>Organization</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Plan</TableHead>
-                  <TableHead>MRR</TableHead>
-                  <TableHead>Members</TableHead>
-                  <TableHead>Fleet</TableHead>
-                  <TableHead>Created</TableHead>
+                  <TableHead className="hidden lg:table-cell">Plan</TableHead>
+                  <TableHead className="hidden xl:table-cell">MRR</TableHead>
+                  <TableHead className="text-right">Members</TableHead>
+                  <TableHead className="hidden md:table-cell text-right">Drivers</TableHead>
+                  <TableHead className="hidden md:table-cell text-right">Vehicles</TableHead>
+                  <TableHead className="hidden lg:table-cell text-right">Orders</TableHead>
+                  <TableHead className="hidden xl:table-cell">Last Activity</TableHead>
+                  <TableHead className="hidden sm:table-cell">Created</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -109,18 +112,29 @@ export function OrganizationsList() {
                     <TableCell>
                       <StatusBadge status={org.status} />
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell className="hidden text-muted-foreground lg:table-cell">
                       {org.plan?.name ?? '—'}
                       {org.subscriptionStatus ? (
                         <span className="ml-1 text-xs">({org.subscriptionStatus})</span>
                       ) : null}
                     </TableCell>
-                    <TableCell className="tabular-nums">{formatMoney(org.mrrCents / 100)}</TableCell>
-                    <TableCell className="tabular-nums">{org.memberCount}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {org.driverCount}d / {org.vehicleCount}v
+                    <TableCell className="hidden tabular-nums xl:table-cell">
+                      {formatMoney(org.mrrCents / 100)}
                     </TableCell>
-                    <TableCell className="whitespace-nowrap text-muted-foreground">
+                    <TableCell className="text-right tabular-nums">{org.memberCount}</TableCell>
+                    <TableCell className="hidden text-right tabular-nums md:table-cell">
+                      {org.driverCount}
+                    </TableCell>
+                    <TableCell className="hidden text-right tabular-nums md:table-cell">
+                      {org.vehicleCount}
+                    </TableCell>
+                    <TableCell className="hidden text-right tabular-nums lg:table-cell">
+                      {org.orderCount}
+                    </TableCell>
+                    <TableCell className="hidden whitespace-nowrap text-muted-foreground xl:table-cell">
+                      {org.lastActivityAt ? formatRelativeTime(org.lastActivityAt) : '—'}
+                    </TableCell>
+                    <TableCell className="hidden whitespace-nowrap text-muted-foreground sm:table-cell">
                       {formatDate(org.createdAt)}
                     </TableCell>
                   </TableRow>

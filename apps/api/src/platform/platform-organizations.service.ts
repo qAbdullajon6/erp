@@ -41,10 +41,53 @@ export class PlatformOrganizationsService {
         take: limit,
         include: {
           subscription: { include: { plan: true } },
-          _count: { select: { memberships: true, drivers: true, vehicles: true, orders: true } },
+          _count: {
+            select: {
+              memberships: { where: { status: "ACTIVE", user: { isPlatformAdmin: false } } },
+              drivers: true,
+              vehicles: true,
+              orders: true,
+            },
+          },
         },
       }),
     ]);
+
+    const orgIds = items.map((o) => o.id);
+    const [lastAudit, lastOrders, lastSessions] = orgIds.length
+      ? await Promise.all([
+          this.prisma.auditLog.groupBy({
+            by: ["organizationId"],
+            where: { organizationId: { in: orgIds } },
+            _max: { createdAt: true },
+          }),
+          this.prisma.order.groupBy({
+            by: ["organizationId"],
+            where: { organizationId: { in: orgIds } },
+            _max: { updatedAt: true },
+          }),
+          this.prisma.refreshToken.groupBy({
+            by: ["organizationId"],
+            where: { organizationId: { in: orgIds } },
+            _max: { createdAt: true },
+          }),
+        ])
+      : [[], [], []];
+
+    const lastActivityByOrg = new Map<string, Date>();
+    for (const row of [...lastAudit, ...lastSessions]) {
+      const id = row.organizationId;
+      if (!id || !row._max.createdAt) continue;
+      const prev = lastActivityByOrg.get(id);
+      if (!prev || row._max.createdAt > prev) lastActivityByOrg.set(id, row._max.createdAt);
+    }
+    for (const row of lastOrders) {
+      if (!row._max.updatedAt) continue;
+      const prev = lastActivityByOrg.get(row.organizationId);
+      if (!prev || row._max.updatedAt > prev) {
+        lastActivityByOrg.set(row.organizationId, row._max.updatedAt);
+      }
+    }
 
     return {
       items: items.map((org) => ({
@@ -57,6 +100,7 @@ export class PlatformOrganizationsService {
         driverCount: org._count.drivers,
         vehicleCount: org._count.vehicles,
         orderCount: org._count.orders,
+        lastActivityAt: lastActivityByOrg.get(org.id)?.toISOString() ?? null,
         plan: org.subscription?.plan
           ? { id: org.subscription.plan.id, name: org.subscription.plan.name, slug: org.subscription.plan.slug }
           : null,
@@ -73,7 +117,9 @@ export class PlatformOrganizationsService {
       include: {
         subscription: { include: { plan: true } },
         memberships: {
-          where: { status: "ACTIVE" },
+          // Platform staff get temporary ADMIN memberships for Open ERP —
+          // they must never appear as customer employees in Members.
+          where: { status: "ACTIVE", user: { isPlatformAdmin: false } },
           take: 20,
           orderBy: { createdAt: "asc" },
           include: {
@@ -81,7 +127,13 @@ export class PlatformOrganizationsService {
           },
         },
         _count: {
-          select: { memberships: true, drivers: true, vehicles: true, orders: true, customers: true },
+          select: {
+            memberships: { where: { status: "ACTIVE", user: { isPlatformAdmin: false } } },
+            drivers: true,
+            vehicles: true,
+            orders: true,
+            customers: true,
+          },
         },
       },
     });
@@ -93,6 +145,57 @@ export class PlatformOrganizationsService {
       take: 10,
     });
 
+    const monthStart = new Date();
+    monthStart.setUTCDate(1);
+    monthStart.setUTCHours(0, 0, 0, 0);
+
+    const [ordersThisMonth, invoicesThisMonth, lastSession, storageAgg, activeSupport] =
+      await Promise.all([
+      this.prisma.order.count({
+        where: { organizationId: id, createdAt: { gte: monthStart } },
+      }),
+      this.prisma.invoice.count({
+        where: { organizationId: id, createdAt: { gte: monthStart } },
+      }),
+      this.prisma.refreshToken.findFirst({
+        where: {
+          organizationId: id,
+          user: { isPlatformAdmin: false },
+        },
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true },
+      }),
+      this.prisma.usageRecord.aggregate({
+        where: { organizationId: id, metricType: "STORAGE_GB" },
+        _sum: { value: true },
+      }),
+      this.prisma.platformSupportSession.findFirst({
+        where: { targetOrganizationId: id, endedAt: null },
+        orderBy: { startedAt: "desc" },
+        include: {
+          user: {
+            select: { id: true, email: true, firstName: true, lastName: true, isPlatformAdmin: true },
+          },
+        },
+      }),
+    ]);
+
+    const planFeatures = (org.subscription?.plan?.features ?? {}) as Record<string, unknown>;
+    const seatLimit =
+      org.subscription?.seats ??
+      (typeof planFeatures.maxUsers === "number"
+        ? planFeatures.maxUsers
+        : typeof planFeatures.users === "number"
+          ? planFeatures.users
+          : null);
+    const storageLimitGb =
+      typeof planFeatures.maxStorageGB === "number"
+        ? planFeatures.maxStorageGB
+        : typeof planFeatures.storage_gb === "number"
+          ? planFeatures.storage_gb
+          : null;
+    const storageUsedGb = storageAgg._sum.value ? Number(storageAgg._sum.value) : 0;
+
     return {
       id: org.id,
       name: org.name,
@@ -103,18 +206,54 @@ export class PlatformOrganizationsService {
       createdAt: org.createdAt,
       updatedAt: org.updatedAt,
       counts: org._count,
+      seatUsage: {
+        used: org._count.memberships,
+        limit: seatLimit,
+      },
+      lastLoginAt: lastSession?.createdAt ?? null,
+      storage: {
+        usedGb: storageUsedGb,
+        limitGb: storageLimitGb,
+      },
+      monthlyUsage: {
+        orders: ordersThisMonth,
+        drivers: org._count.drivers,
+        invoices: invoicesThisMonth,
+      },
+      activeSupportSession: activeSupport
+        ? {
+            id: activeSupport.id,
+            startedAt: activeSupport.startedAt,
+            status: "ACTIVE" as const,
+            operator: {
+              id: activeSupport.user.id,
+              email: activeSupport.user.email,
+              firstName: activeSupport.user.firstName,
+              lastName: activeSupport.user.lastName,
+              isPlatformAdmin: activeSupport.user.isPlatformAdmin,
+            },
+          }
+        : null,
       subscription: org.subscription
         ? {
             id: org.subscription.id,
             status: org.subscription.status,
             currentPeriodEnd: org.subscription.currentPeriodEnd,
+            trialEndsAt: org.subscription.trialEndsAt,
+            seats: org.subscription.seats,
             plan: org.subscription.plan,
           }
         : null,
       members: org.memberships.map((m) => ({
         id: m.id,
         role: m.role,
-        user: m.user,
+        user: {
+          id: m.user.id,
+          email: m.user.email,
+          firstName: m.user.firstName,
+          lastName: m.user.lastName,
+          isPlatformAdmin: m.user.isPlatformAdmin,
+        },
       })),
       recentAudit,
     };
@@ -158,7 +297,13 @@ export class PlatformOrganizationsService {
     });
     if (!org) throw new NotFoundException("Organization not found");
 
-    const homeMembershipId = actor.membershipId;
+    // If already supporting org A and opening B, keep the original home
+    // membership (Platform Console home) — never re-home onto A.
+    const previous = await this.prisma.platformSupportSession.findFirst({
+      where: { userId: actor.userId, endedAt: null },
+      orderBy: { startedAt: "desc" },
+    });
+    const homeMembershipId = previous?.homeMembershipId ?? actor.membershipId;
 
     let membership = await this.prisma.membership.findUnique({
       where: { organizationId_userId: { organizationId, userId: actor.userId } },
@@ -183,10 +328,29 @@ export class PlatformOrganizationsService {
       });
     }
 
-    await this.prisma.platformSupportSession.updateMany({
-      where: { userId: actor.userId, endedAt: null },
-      data: { endedAt: new Date() },
-    });
+    if (previous) {
+      await this.prisma.platformSupportSession.update({
+        where: { id: previous.id },
+        data: { endedAt: new Date() },
+      });
+      await this.audit.log({
+        organizationId: previous.targetOrganizationId,
+        actorUserId: actor.userId,
+        action: "platform.support.exit",
+        entityType: "Organization",
+        entityId: previous.targetOrganizationId,
+        metadata: {
+          supportSessionId: previous.id,
+          reason: "switched",
+          nextOrganizationId: organizationId,
+        },
+      });
+    } else {
+      await this.prisma.platformSupportSession.updateMany({
+        where: { userId: actor.userId, endedAt: null },
+        data: { endedAt: new Date() },
+      });
+    }
 
     const session = await this.prisma.platformSupportSession.create({
       data: {
@@ -203,7 +367,13 @@ export class PlatformOrganizationsService {
       action: "platform.support.enter",
       entityType: "Organization",
       entityId: organizationId,
-      metadata: { supportSessionId: session.id, homeMembershipId },
+      metadata: {
+        supportSessionId: session.id,
+        homeMembershipId,
+        ...(previous
+          ? { previousOrganizationId: previous.targetOrganizationId, switched: true }
+          : {}),
+      },
     });
 
     const auth = await this.auth.issueSessionForMembership(actor.userId, membership.id);
@@ -214,6 +384,7 @@ export class PlatformOrganizationsService {
         organizationId: org.id,
         organizationName: org.name,
         organizationSlug: org.slug,
+        organizationStatus: org.status,
         startedAt: session.startedAt,
       },
     };

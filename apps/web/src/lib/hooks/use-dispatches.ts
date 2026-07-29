@@ -29,6 +29,11 @@ export function useDispatches(
     orderId?: string;
     driverId?: string;
     vehicleId?: string;
+    customerId?: string;
+    fromDate?: string;
+    toDate?: string;
+    sortBy?: 'createdAt' | 'pickupDateScheduled' | 'deliveryDateScheduled' | 'status';
+    sortOrder?: 'asc' | 'desc';
   },
   options: { enabled?: boolean; refetchInterval?: number } = {},
 ) {

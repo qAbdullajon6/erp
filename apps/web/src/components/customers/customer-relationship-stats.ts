@@ -41,7 +41,7 @@ function invoiceOutstanding(inv: Invoice): number {
 }
 
 /// Aggregates real Orders + Invoices into per-customer stats for CRM list/detail.
-/// Caps at API max (200) — honest about incomplete totals when orgs exceed that.
+/// Caps at the orders/invoices API max (100) — totals are incomplete above that.
 export function useCustomerRelationshipIndex(options: {
   enabled?: boolean;
   canViewInvoices?: boolean;
@@ -50,10 +50,10 @@ export function useCustomerRelationshipIndex(options: {
   const canViewInvoices = options.canViewInvoices ?? false;
 
   const ordersQuery = useOrdersList(
-    { limit: 200, statuses: OPEN_ORDER_STATUSES },
+    { limit: 100, statuses: OPEN_ORDER_STATUSES },
     { enabled },
   );
-  const invoicesQuery = useInvoicesQuery({ limit: 200 }, enabled && canViewInvoices);
+  const invoicesQuery = useInvoicesQuery({ limit: 100 }, enabled && canViewInvoices);
 
   const byCustomer = useMemo(() => {
     const map = new Map<string, CustomerRelationshipStats>();

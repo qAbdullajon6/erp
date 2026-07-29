@@ -41,6 +41,7 @@ export type NavItem = {
 
 export const DRIVER_NAV: NavItem[] = [
   { icon: LayoutDashboard, label: "Overview", path: "/app", group: "Overview" },
+  { icon: Package, label: "Orders", path: "/app/orders", group: "Operations" },
   { icon: PackageCheck, label: "My Deliveries", path: "/app/my-deliveries", group: "Overview" },
   { icon: Settings, label: "Settings", path: "/app/settings", group: "Workspace" },
 ];

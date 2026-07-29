@@ -51,6 +51,7 @@ export interface PlatformAuthTokens {
     organizationId: string;
     organizationName: string;
     organizationSlug: string;
+    organizationStatus?: OrganizationStatus;
     startedAt: string;
   };
 }
@@ -81,6 +82,7 @@ export interface PlatformOrganizationListItem {
   driverCount: number;
   vehicleCount: number;
   orderCount: number;
+  lastActivityAt?: string | null;
   plan: { id: string; name: string; slug: string } | null;
   subscriptionStatus: SubscriptionStatus | null;
   mrrCents: number;
@@ -114,10 +116,26 @@ export interface PlatformOrganizationDetail {
     orders: number;
     customers: number;
   };
+  seatUsage?: {
+    used: number;
+    limit: number | null;
+  };
+  lastLoginAt?: string | null;
+  storage?: {
+    usedGb: number;
+    limitGb: number | null;
+  };
+  monthlyUsage?: {
+    orders: number;
+    drivers: number;
+    invoices: number;
+  };
   subscription: {
     id: string;
     status: SubscriptionStatus;
     currentPeriodEnd: string | null;
+    trialEndsAt?: string | null;
+    seats?: number | null;
     plan: {
       id: string;
       name: string;
@@ -145,6 +163,18 @@ export interface PlatformOrganizationDetail {
     entityId: string | null;
     createdAt: string;
   }>;
+  activeSupportSession?: {
+    id: string;
+    startedAt: string;
+    status: 'ACTIVE';
+    operator: {
+      id: string;
+      email: string;
+      firstName: string;
+      lastName: string;
+      isPlatformAdmin: boolean;
+    };
+  } | null;
 }
 
 // ── Search ─────────────────────────────────────────────────────────
@@ -172,6 +202,15 @@ export interface PlatformSearchResult {
     email: string;
     company: string;
     status: string;
+    convertedOrganizationId?: string | null;
+  }>;
+  users: Array<{
+    id: string;
+    email: string;
+    name: string;
+    isPlatformAdmin: boolean;
+    role: string | null;
+    organization: { id: string; name: string; status: OrganizationStatus } | null;
   }>;
 }
 
@@ -424,10 +463,46 @@ export interface PlatformStaffUser {
 
 // ── Leads convert ──────────────────────────────────────────────────
 
+export type ConvertPlanChoice = 'trial' | 'starter' | 'professional' | 'enterprise';
+
+export interface ConvertLeadInput {
+  organizationName: string;
+  slug: string;
+  timezone: string;
+  currency: string;
+  plan: ConvertPlanChoice;
+  trialDays?: number;
+  adminFirstName: string;
+  adminLastName: string;
+  adminEmail: string;
+}
+
 export interface ConvertLeadResult {
-  organization: { id: string; name: string; slug: string };
-  adminUser: { id: string; email: string; firstName: string; lastName: string };
-  provisionalPassword: string;
+  organization: {
+    id: string;
+    name: string;
+    slug: string;
+    timezone: string;
+    defaultCurrency: string;
+  };
+  subscription: {
+    id: string;
+    status: string;
+    trialEndsAt: string | null;
+    currentPeriodEnd: string;
+    seats: number | null;
+    plan: { id: string; name: string; slug: string };
+  };
+  invitation: {
+    id: string;
+    email: string;
+    expiresAt: string;
+    emailSent: boolean;
+    acceptUrl: string | null;
+  };
+  admin: { firstName: string; lastName: string; email: string };
+  planChoice: ConvertPlanChoice;
+  trialDays: number | null;
 }
 
 // ── API class ──────────────────────────────────────────────────────
@@ -601,9 +676,25 @@ class PlatformAPI {
     return unwrap(res, 'Failed to update platform admin');
   }
 
-  async convertLead(id: string): Promise<ConvertLeadResult> {
-    const res = await apiFetch(`${BASE}/leads/${id}/convert`, { method: 'POST' });
+  async convertLead(id: string, body: ConvertLeadInput): Promise<ConvertLeadResult> {
+    const res = await apiFetch(`${BASE}/leads/${id}/convert`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
     return unwrap(res, 'Failed to convert lead');
+  }
+
+  async resendLeadInvitation(id: string): Promise<{
+    invitation: {
+      id: string;
+      email: string;
+      expiresAt: string;
+      emailSent: boolean;
+      acceptUrl: string | null;
+    };
+  }> {
+    const res = await apiFetch(`${BASE}/leads/${id}/resend-invitation`, { method: 'POST' });
+    return unwrap(res, 'Failed to resend invitation');
   }
 }
 
@@ -765,6 +856,8 @@ export function useEnterOrganizationMutation() {
     mutationFn: (id: string) => platformAPI.enterOrganization(id),
     onSuccess: async (tokens) => {
       applyAuthTokens(tokens);
+      // Drop every cached tenant query so org A data cannot flash inside org B.
+      queryClient.clear();
       await queryClient.invalidateQueries({ queryKey: currentUserQueryKey });
     },
   });
@@ -776,7 +869,9 @@ export function useExitSupportMutation() {
     mutationFn: () => platformAPI.exitSupport(),
     onSuccess: async (tokens) => {
       applyAuthTokens(tokens);
+      queryClient.clear();
       await queryClient.invalidateQueries({ queryKey: currentUserQueryKey });
+      await queryClient.invalidateQueries({ queryKey: platformKeys.all });
     },
   });
 }
@@ -867,10 +962,21 @@ export function useSetPlatformAdminMutation() {
 export function useConvertLeadMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => platformAPI.convertLead(id),
+    mutationFn: ({ id, body }: { id: string; body: ConvertLeadInput }) =>
+      platformAPI.convertLead(id, body),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: leadKeys.all });
       void queryClient.invalidateQueries({ queryKey: platformKeys.all });
+    },
+  });
+}
+
+export function useResendLeadInvitationMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => platformAPI.resendLeadInvitation(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: leadKeys.all });
     },
   });
 }

@@ -16,6 +16,33 @@ import { renderCustomerPortalInvitationEmail } from "../templates/customer-porta
 import { renderLeadNotificationEmail } from "../templates/lead-notification-email.template";
 import { renderDemoConfirmationEmail } from "../templates/demo-confirmation-email.template";
 
+/// Builds nodemailer options from SMTP_URL. When SMTP_CONNECT_HOST is set
+/// (e.g. a resolved IP while local DNS is flaky), connect there but keep TLS
+/// servername = URL hostname so the certificate still verifies.
+function buildSmtpTransportOptions(smtpUrl: string): SMTPTransport.Options | string {
+  const connectHost = process.env.SMTP_CONNECT_HOST?.trim();
+  if (!connectHost) {
+    return smtpUrl;
+  }
+
+  const parsed = new URL(smtpUrl);
+  const port = parsed.port ? Number(parsed.port) : 587;
+  const secure = port === 465;
+
+  return {
+    host: connectHost,
+    port,
+    secure,
+    auth: {
+      user: decodeURIComponent(parsed.username),
+      pass: decodeURIComponent(parsed.password),
+    },
+    tls: {
+      servername: parsed.hostname,
+    },
+  };
+}
+
 /// Real SMTP delivery, selected whenever SMTP_URL is configured. Built on
 /// nodemailer, the only mail dependency added for this module.
 export class SmtpMailService extends MailService {
@@ -32,7 +59,11 @@ export class SmtpMailService extends MailService {
     // createTransport parses the URL but does NOT open a connection here — the
     // socket is opened lazily on the first sendMail. So merely selecting this
     // provider (e.g. at module load) sends nothing and touches no network.
-    this.transporter = createTransport(smtpUrl);
+    //
+    // Optional SMTP_CONNECT_HOST: connect by IP (or alternate host) while
+    // keeping TLS SNI / cert verification against the URL hostname. Useful
+    // when local DNS is broken but the SMTP host is still reachable by IP.
+    this.transporter = createTransport(buildSmtpTransportOptions(smtpUrl));
     this.branding = {
       marketingUrl,
       // The marketing site serves apps/web/public verbatim at its root (see
@@ -68,11 +99,17 @@ export class SmtpMailService extends MailService {
         html,
       });
       this.logDelivered("Invitation email", info);
-    } catch {
+    } catch (error) {
       // Deliberately generic: the underlying error can carry the SMTP host and
       // connection detail, so neither it nor the accept URL/recipient address
       // is included. Only a redacted recipient is logged.
-      this.logger.error(`Failed to deliver invitation email to ${redactEmail(message.to)}`);
+      const code =
+        error && typeof error === "object" && "code" in error
+          ? String((error as { code?: unknown }).code)
+          : undefined;
+      this.logger.error(
+        `Failed to deliver invitation email to ${redactEmail(message.to)}${code ? ` (${code})` : ""}`,
+      );
       throw new Error("Failed to deliver invitation email");
     }
   }
@@ -89,9 +126,13 @@ export class SmtpMailService extends MailService {
         html,
       });
       this.logDelivered("Customer portal invitation email", info);
-    } catch {
+    } catch (error) {
+      const code =
+        error && typeof error === "object" && "code" in error
+          ? String((error as { code?: unknown }).code)
+          : undefined;
       this.logger.error(
-        `Failed to deliver customer portal invitation email to ${redactEmail(message.to)}`,
+        `Failed to deliver customer portal invitation email to ${redactEmail(message.to)}${code ? ` (${code})` : ""}`,
       );
       throw new Error("Failed to deliver customer portal invitation email");
     }
@@ -107,8 +148,14 @@ export class SmtpMailService extends MailService {
         html: message.htmlBody,
       });
       this.logDelivered("Email", info);
-    } catch {
-      this.logger.error(`Failed to deliver email to ${redactEmail(message.to)}`);
+    } catch (error) {
+      const code =
+        error && typeof error === "object" && "code" in error
+          ? String((error as { code?: unknown }).code)
+          : undefined;
+      this.logger.error(
+        `Failed to deliver email to ${redactEmail(message.to)}${code ? ` (${code})` : ""}`,
+      );
       throw new Error("Failed to deliver email");
     }
   }
@@ -125,8 +172,14 @@ export class SmtpMailService extends MailService {
         html,
       });
       this.logDelivered("Lead notification email", info);
-    } catch {
-      this.logger.error(`Failed to deliver lead notification email to ${redactEmail(message.to)}`);
+    } catch (error) {
+      const code =
+        error && typeof error === "object" && "code" in error
+          ? String((error as { code?: unknown }).code)
+          : undefined;
+      this.logger.error(
+        `Failed to deliver lead notification email to ${redactEmail(message.to)}${code ? ` (${code})` : ""}`,
+      );
       throw new Error("Failed to deliver lead notification email");
     }
   }
@@ -143,8 +196,14 @@ export class SmtpMailService extends MailService {
         html,
       });
       this.logDelivered("Demo confirmation email", info);
-    } catch {
-      this.logger.error(`Failed to deliver demo confirmation email to ${redactEmail(message.to)}`);
+    } catch (error) {
+      const code =
+        error && typeof error === "object" && "code" in error
+          ? String((error as { code?: unknown }).code)
+          : undefined;
+      this.logger.error(
+        `Failed to deliver demo confirmation email to ${redactEmail(message.to)}${code ? ` (${code})` : ""}`,
+      );
       throw new Error("Failed to deliver demo confirmation email");
     }
   }

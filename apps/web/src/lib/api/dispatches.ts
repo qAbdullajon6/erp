@@ -117,6 +117,11 @@ class DispatchesAPI {
       orderId?: string;
       driverId?: string;
       vehicleId?: string;
+      customerId?: string;
+      fromDate?: string;
+      toDate?: string;
+      sortBy?: 'createdAt' | 'pickupDateScheduled' | 'deliveryDateScheduled' | 'status';
+      sortOrder?: 'asc' | 'desc';
     },
   ): Promise<ListDispatchesResponse> {
     const query = new URLSearchParams();
@@ -128,6 +133,11 @@ class DispatchesAPI {
     if (params?.orderId) query.append('orderId', params.orderId);
     if (params?.driverId) query.append('driverId', params.driverId);
     if (params?.vehicleId) query.append('vehicleId', params.vehicleId);
+    if (params?.customerId) query.append('customerId', params.customerId);
+    if (params?.fromDate) query.append('fromDate', params.fromDate);
+    if (params?.toDate) query.append('toDate', params.toDate);
+    if (params?.sortBy) query.append('sortBy', params.sortBy);
+    if (params?.sortOrder) query.append('sortOrder', params.sortOrder);
 
     const response = await apiFetch(
       `/api/dispatches${query.size > 0 ? `?${query.toString()}` : ''}`,
@@ -166,6 +176,29 @@ class DispatchesAPI {
       body: JSON.stringify(data),
     });
     return unwrapResponse(response, 'Failed to update dispatch status');
+  }
+
+  /// Calendar drag / resize — moves scheduled pickup (+ delivery window).
+  async reschedule(
+    id: string,
+    data: { pickupDateScheduled: string; deliveryDateScheduled?: string },
+  ): Promise<ApiDispatch> {
+    const response = await apiFetch(`/api/dispatches/${id}/reschedule`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return unwrapResponse(response, 'Failed to reschedule dispatch');
+  }
+
+  /// Board toast Undo — reverts the latest status history step (server window ~2 min).
+  async undoStatus(id: string): Promise<ApiDispatch> {
+    const response = await apiFetch(`/api/dispatches/${id}/undo-status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    return unwrapResponse(response, 'Failed to undo dispatch status');
   }
 
   async cancel(id: string): Promise<ApiDispatch> {

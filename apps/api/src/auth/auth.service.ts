@@ -112,6 +112,15 @@ export class AuthService {
       throw new UnauthorizedException("This account is not active");
     }
 
+    // Fresh login always starts outside Open ERP — close any orphaned
+    // support sessions so a home JWT cannot conflict with a stale row.
+    if (user.isPlatformAdmin) {
+      await this.prisma.platformSupportSession.updateMany({
+        where: { userId: user.id, endedAt: null },
+        data: { endedAt: new Date() },
+      });
+    }
+
     const membership = await this.resolveMembershipForLogin(user.id, dto.organizationSlug);
     if (!membership) {
       throw new UnauthorizedException("No active organization membership found for this account");
@@ -153,20 +162,10 @@ export class AuthService {
       throw new UnauthorizedException("Session is no longer valid");
     }
 
-    // Platform support sessions may target a SUSPENDED org so staff can still
-    // investigate — normal tenant logins stay restricted to ACTIVE orgs.
-    const inSupportSession =
-      existing.user.isPlatformAdmin &&
-      (await this.prisma.platformSupportSession.findFirst({
-        where: {
-          userId: existing.userId,
-          targetOrganizationId: membership.organizationId,
-          endedAt: null,
-        },
-        select: { id: true },
-      }));
-
-    if (membership.organization.status !== "ACTIVE" && !inSupportSession) {
+    // Platform admins may refresh even when their home org is SUSPENDED —
+    // otherwise suspending the seed/staff org locks them out of the console.
+    // Tenant users still require an ACTIVE organization.
+    if (membership.organization.status !== "ACTIVE" && !existing.user.isPlatformAdmin) {
       throw new UnauthorizedException("Session is no longer valid");
     }
 
@@ -243,7 +242,11 @@ export class AuthService {
     const supportSession = membership.user.isPlatformAdmin
       ? await this.prisma.platformSupportSession.findFirst({
           where: { userId: membership.user.id, endedAt: null },
-          include: { targetOrganization: { select: { id: true, name: true, slug: true } } },
+          include: {
+            targetOrganization: {
+              select: { id: true, name: true, slug: true, status: true },
+            },
+          },
           orderBy: { startedAt: "desc" },
         })
       : null;
@@ -265,6 +268,7 @@ export class AuthService {
         slug: membership.organization.slug,
         defaultCurrency: membership.organization.defaultCurrency,
         timezone: membership.organization.timezone,
+        status: membership.organization.status,
       },
       membership: {
         id: membership.id,
@@ -276,6 +280,7 @@ export class AuthService {
             organizationId: supportSession.targetOrganization.id,
             organizationName: supportSession.targetOrganization.name,
             organizationSlug: supportSession.targetOrganization.slug,
+            organizationStatus: supportSession.targetOrganization.status,
             startedAt: supportSession.startedAt,
           }
         : null,
@@ -336,19 +341,45 @@ export class AuthService {
     userId: string,
     organizationSlug?: string,
   ): Promise<MembershipWithOrganization | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { isPlatformAdmin: true },
+    });
+    /// Platform staff must be able to sign in even if their home org was
+    /// suspended (they need the console to restore it). Prefer ACTIVE orgs
+    /// when any exist; otherwise allow SUSPENDED for platform admins only.
+    const orgStatusFilter = user?.isPlatformAdmin
+      ? { status: { in: ["ACTIVE" as const, "SUSPENDED" as const] }, deletedAt: null }
+      : { status: "ACTIVE" as const };
+
     if (organizationSlug) {
       return this.prisma.membership.findFirst({
         where: {
           userId,
           status: "ACTIVE",
-          organization: { slug: organizationSlug, status: "ACTIVE" },
+          organization: { slug: organizationSlug, ...orgStatusFilter },
         },
         include: { organization: true },
+        orderBy: { organization: { status: "asc" } }, // ACTIVE before SUSPENDED
       });
     }
 
+    // Prefer an ACTIVE org membership when available.
+    const active = await this.prisma.membership.findFirst({
+      where: { userId, status: "ACTIVE", organization: { status: "ACTIVE", deletedAt: null } },
+      orderBy: { createdAt: "asc" },
+      include: { organization: true },
+    });
+    if (active) return active;
+
+    if (!user?.isPlatformAdmin) return null;
+
     return this.prisma.membership.findFirst({
-      where: { userId, status: "ACTIVE", organization: { status: "ACTIVE" } },
+      where: {
+        userId,
+        status: "ACTIVE",
+        organization: { status: "SUSPENDED", deletedAt: null },
+      },
       orderBy: { createdAt: "asc" },
       include: { organization: true },
     });

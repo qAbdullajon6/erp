@@ -42,6 +42,7 @@ export class ListCustomersQueryDto {
   search?: string;
 
   @IsOptional()
+  @Transform(({ value }) => (value === "" || value == null ? undefined : value))
   @IsEnum(CustomerStatus)
   status?: CustomerStatus;
 
@@ -51,10 +52,12 @@ export class ListCustomersQueryDto {
   includeArchived: boolean = false;
 
   @IsOptional()
+  @Transform(({ value }) => (value === "" || value == null ? undefined : value))
   @IsIn(CUSTOMER_SORT_FIELDS)
   sortBy: CustomerSortField = "createdAt";
 
   @IsOptional()
+  @Transform(({ value }) => (value === "" || value == null ? undefined : value))
   @IsIn(["asc", "desc"])
   sortOrder: "asc" | "desc" = "desc";
 }

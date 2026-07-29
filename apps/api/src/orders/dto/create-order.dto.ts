@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsDateString,
   IsNumber,
   IsOptional,
@@ -9,6 +10,7 @@ import {
   Min,
   MinLength,
 } from "class-validator";
+import { Transform } from "class-transformer";
 
 export class CreateOrderDto {
   /// Omit to auto-generate the next sequential ORD-<year>-0001-style number
@@ -84,4 +86,10 @@ export class CreateOrderDto {
   @IsString()
   @MaxLength(2000)
   deliveryNotes?: string;
+
+  /// Set when the client proceeded despite a duplicate warning.
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === "true")
+  @IsBoolean()
+  acknowledgeDuplicate?: boolean;
 }

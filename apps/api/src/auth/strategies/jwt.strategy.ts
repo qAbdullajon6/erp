@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { ForbiddenException, Injectable, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { PassportStrategy } from "@nestjs/passport";
 import { ExtractJwt, Strategy } from "passport-jwt";
@@ -40,20 +40,36 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException("User account is not active");
     }
     if (membership.organization.status !== "ACTIVE") {
-      // Platform staff in an active Open ERP support session may stay inside
-      // a SUSPENDED org to investigate — everyone else is locked out.
-      const inSupportSession =
-        membership.user.isPlatformAdmin &&
-        (await this.prisma.platformSupportSession.findFirst({
-          where: {
-            userId: membership.userId,
-            targetOrganizationId: membership.organizationId,
-            endedAt: null,
-          },
-          select: { id: true },
-        }));
-      if (!inSupportSession) {
+      // Platform staff keep a JWT tied to a "home" membership for Platform
+      // Console work. Suspending that org must NOT lock them out of restoring
+      // it — only non-staff tenants are blocked when their org is inactive.
+      // Open ERP into a suspended customer org is also allowed (support mode).
+      if (!membership.user.isPlatformAdmin) {
         throw new UnauthorizedException("Organization is not active");
+      }
+    }
+
+    // Support-session ownership: while Open ERP is active, the JWT membership
+    // MUST be the support target. A stale token for the home org or another
+    // customer org must not silently read/write the wrong tenant — and must
+    // not auto-close the live support session either.
+    if (membership.user.isPlatformAdmin) {
+      const support = await this.prisma.platformSupportSession.findFirst({
+        where: { userId: membership.userId, endedAt: null },
+        orderBy: { startedAt: "desc" },
+        select: {
+          targetMembershipId: true,
+          targetOrganizationId: true,
+        },
+      });
+      if (
+        support &&
+        (membership.id !== support.targetMembershipId ||
+          membership.organizationId !== support.targetOrganizationId)
+      ) {
+        throw new ForbiddenException(
+          "Support session does not match this organization. Exit support or re-enter the correct organization.",
+        );
       }
     }
 

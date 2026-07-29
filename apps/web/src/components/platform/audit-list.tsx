@@ -54,14 +54,14 @@ export function AuditList() {
         )}
         {!isLoading && !isError && items.length > 0 && (
           <div className="overflow-x-auto">
-            <Table>
+            <Table className="w-full">
               <TableHeader>
                 <TableRow className="bg-surface/50 hover:bg-surface/50">
                   <TableHead>When</TableHead>
                   <TableHead>Action</TableHead>
-                  <TableHead>Actor</TableHead>
-                  <TableHead>Organization</TableHead>
-                  <TableHead>Entity</TableHead>
+                  <TableHead className="hidden sm:table-cell">Actor</TableHead>
+                  <TableHead className="hidden md:table-cell">Organization</TableHead>
+                  <TableHead className="hidden lg:table-cell">Entity</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -71,7 +71,7 @@ export function AuditList() {
                       {formatDate(log.createdAt)}
                     </TableCell>
                     <TableCell className="font-mono text-xs">{log.action}</TableCell>
-                    <TableCell className="text-sm">
+                    <TableCell className="hidden text-sm sm:table-cell">
                       {log.actor
                         ? `${log.actor.firstName} ${log.actor.lastName}`
                         : '—'}
@@ -79,7 +79,7 @@ export function AuditList() {
                         <p className="text-xs text-muted-foreground">{log.actor.email}</p>
                       ) : null}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="hidden md:table-cell">
                       {log.organization ? (
                         <Link
                           to="/platform/organizations/$orgId"
@@ -92,7 +92,7 @@ export function AuditList() {
                         '—'
                       )}
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
+                    <TableCell className="hidden text-sm text-muted-foreground lg:table-cell">
                       {log.entityType}
                       {log.entityId ? (
                         <span className="block font-mono text-xs">{log.entityId}</span>

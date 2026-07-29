@@ -31,6 +31,7 @@ export function ConfirmDialog({
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
   onConfirm,
+  onCancel,
   destructive = false,
 }: {
   trigger?: ReactNode;
@@ -44,21 +45,50 @@ export function ConfirmDialog({
   confirmLabel?: string;
   cancelLabel?: string;
   onConfirm: () => void;
+  /// Explicit Stay/Cancel handler (controlled dialogs only; not fired on Confirm).
+  onCancel?: () => void;
   destructive?: boolean;
 }) {
+  const controlled = typeof open === 'boolean';
+
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       {trigger ? <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger> : null}
-      <AlertDialogContent>
+      <AlertDialogContent
+        onCloseAutoFocus={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => {
+          if (controlled) e.stopPropagation();
+        }}
+      >
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         {children}
         <AlertDialogFooter>
-          <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
+          <AlertDialogCancel
+            onClick={(e) => {
+              if (!controlled) {
+                onCancel?.();
+                return;
+              }
+              // Controlled + nested Sheet: prevent Radix from dismissing the parent.
+              e.preventDefault();
+              e.stopPropagation();
+              onCancel?.();
+              onOpenChange?.(false);
+            }}
+          >
+            {cancelLabel}
+          </AlertDialogCancel>
           <AlertDialogAction
-            onClick={onConfirm}
+            onClick={(e) => {
+              if (controlled) {
+                e.preventDefault();
+                e.stopPropagation();
+              }
+              onConfirm();
+            }}
             className={destructive ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : undefined}
           >
             {confirmLabel}

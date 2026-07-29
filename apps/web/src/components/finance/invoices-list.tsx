@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { useCurrentUser } from '@/lib/api/auth';
@@ -15,15 +15,23 @@ import { InvoiceDetailSheet } from './invoice-detail-sheet';
 
 const STATUS_OPTIONS: InvoiceStatus[] = ['DRAFT', 'SENT', 'PARTIALLY_PAID', 'PAID', 'OVERDUE', 'CANCELLED'];
 
-export function InvoicesList() {
+interface InvoicesListProps {
+  initialInvoiceId?: string;
+}
+
+export function InvoicesList({ initialInvoiceId }: InvoicesListProps) {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<InvoiceStatus | ''>('');
-  const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(initialInvoiceId ?? null);
   const { data: currentUser } = useCurrentUser();
   const canWrite = Boolean(
     currentUser && INVOICE_WRITE_ROLES.includes(currentUser.membership.role as MembershipRole),
   );
+
+  useEffect(() => {
+    if (initialInvoiceId) setSelectedInvoiceId(initialInvoiceId);
+  }, [initialInvoiceId]);
 
   const { data, isLoading, isError, error, refetch } = useInvoicesQuery({
     page,

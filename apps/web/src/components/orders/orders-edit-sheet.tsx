@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
+import { useBlocker } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -24,6 +25,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import {
   useUpdateOrder,
   type Order,
@@ -227,15 +229,67 @@ export function OrdersEditSheet({ open, onOpenChange, order }: OrdersEditSheetPr
   const [formData, setFormData] = useState<UpdateOrderInput>(() => orderToForm(order));
   const [errors, setErrors] = useState<Errors>({});
   const [touched, setTouched] = useState<Set<string>>(new Set());
+  const [discardOpen, setDiscardOpen] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const baselineRef = useRef(JSON.stringify(orderToForm(order)));
+  const leaveConfirmedRef = useRef(false);
 
   useEffect(() => {
     if (open) {
-      setFormData(orderToForm(order));
+      const next = orderToForm(order);
+      setFormData(next);
+      baselineRef.current = JSON.stringify(next);
       setErrors({});
       setTouched(new Set());
+      setDiscardOpen(false);
+      leaveConfirmedRef.current = false;
     }
   }, [open, order]);
+
+  const isDirty = open && JSON.stringify(formData) !== baselineRef.current;
+
+  const blocker = useBlocker({
+    shouldBlockFn: () => isDirty && !leaveConfirmedRef.current,
+    withResolver: true,
+    enableBeforeUnload: isDirty,
+    disabled: !isDirty,
+  });
+
+  useEffect(() => {
+    if (blocker.status === 'blocked') {
+      setDiscardOpen(true);
+    }
+  }, [blocker.status]);
+
+  const stayEditing = () => {
+    // Leave already confirmed — ignore the dialog's follow-up onOpenChange(false).
+    if (leaveConfirmedRef.current) {
+      setDiscardOpen(false);
+      return;
+    }
+    setDiscardOpen(false);
+    if (blocker.status === 'blocked') {
+      blocker.reset?.();
+    }
+  };
+
+  const discardAndLeave = () => {
+    leaveConfirmedRef.current = true;
+    setDiscardOpen(false);
+    onOpenChange(false);
+    if (blocker.status === 'blocked') {
+      blocker.proceed?.();
+    }
+  };
+
+  const requestClose = () => {
+    if (loading) return;
+    if (isDirty) {
+      setDiscardOpen(true);
+      return;
+    }
+    onOpenChange(false);
+  };
 
   const setField = (field: keyof UpdateOrderInput, value: string | number | undefined) => {
     const next = { ...formData, [field]: value };
@@ -288,6 +342,7 @@ export function OrdersEditSheet({ open, onOpenChange, order }: OrdersEditSheetPr
 
     try {
       await update(order.id, formData);
+      baselineRef.current = JSON.stringify(formData);
       toast.success('Order updated');
       onOpenChange(false);
     } catch (err) {
@@ -295,13 +350,61 @@ export function OrdersEditSheet({ open, onOpenChange, order }: OrdersEditSheetPr
     }
   };
 
+  const handleSaveRef = useRef(handleSave);
+  handleSaveRef.current = handleSave;
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        if (!loading) void handleSaveRef.current();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [open, loading]);
+
   return (
-    <Sheet open={open} onOpenChange={(next) => !loading && onOpenChange(next)}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-[780px]">
+    <>
+    <Sheet
+      open={open}
+      onOpenChange={(next) => {
+        if (next) {
+          onOpenChange(true);
+          return;
+        }
+        // Keep the sheet mounted while dirty — only requestClose may close it.
+        requestClose();
+      }}
+    >
+      <SheetContent
+        side="right"
+        className="flex w-full flex-col gap-0 p-0 sm:max-w-[780px]"
+        onInteractOutside={(e) => {
+          if (isDirty || discardOpen) {
+            e.preventDefault();
+            if (isDirty) setDiscardOpen(true);
+          }
+        }}
+        onEscapeKeyDown={(e) => {
+          if (isDirty || discardOpen) {
+            e.preventDefault();
+            if (isDirty && !discardOpen) setDiscardOpen(true);
+          }
+        }}
+        onPointerDownOutside={(e) => {
+          if (isDirty || discardOpen) {
+            e.preventDefault();
+            if (isDirty) setDiscardOpen(true);
+          }
+        }}
+      >
         <SheetHeader className="shrink-0 border-b border-border px-6 py-4">
           <SheetTitle className="text-base">Edit {order.orderNumber}</SheetTitle>
           <SheetDescription className="text-xs">
             Status, driver and vehicle are managed by dispatch — not here.
+            {isDirty ? ' · Unsaved changes' : ''}
           </SheetDescription>
         </SheetHeader>
 
@@ -506,7 +609,7 @@ export function OrdersEditSheet({ open, onOpenChange, order }: OrdersEditSheetPr
 
         <div className="shrink-0 border-t border-border bg-surface/95 px-6 py-3 backdrop-blur">
           <div className="flex items-center justify-between gap-3">
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={loading}>
+            <Button type="button" variant="ghost" onClick={requestClose} disabled={loading}>
               Cancel
             </Button>
             <Button type="button" onClick={handleSave} disabled={loading}>
@@ -516,5 +619,24 @@ export function OrdersEditSheet({ open, onOpenChange, order }: OrdersEditSheetPr
         </div>
       </SheetContent>
     </Sheet>
+    <ConfirmDialog
+      open={discardOpen}
+      onOpenChange={(next) => {
+        if (next) {
+          setDiscardOpen(true);
+          return;
+        }
+        // Escape / overlay dismiss on the dialog = Stay
+        stayEditing();
+      }}
+      title="You have unsaved changes"
+      description="Leave anyway? Your edits to this order will be lost."
+      confirmLabel="Leave"
+      cancelLabel="Stay"
+      destructive
+      onCancel={stayEditing}
+      onConfirm={discardAndLeave}
+    />
+    </>
   );
 }

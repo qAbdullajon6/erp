@@ -83,8 +83,11 @@ function buildInternals(
     syncSeatsUsed: jest.fn().mockResolvedValue(undefined),
   } as unknown as BillingSeatsService;
   const audit = { log: jest.fn().mockResolvedValue(undefined) } as unknown as import("../audit/audit.service").AuditService;
+  const timeline = {
+    recordInvitationAccepted: jest.fn().mockResolvedValue(undefined),
+  } as unknown as import("../leads/lead-timeline.service").LeadTimelineService;
 
-  const service = new InvitationService(prisma, mail, config, password, billingSeats, audit);
+  const service = new InvitationService(prisma, mail, config, password, billingSeats, audit, timeline);
   return service as unknown as InvitationServiceInternals;
 }
 
@@ -254,6 +257,9 @@ function buildService(configOverrides: Partial<typeof INVITATION_CONFIG> = {}) {
     syncSeatsUsed: jest.fn().mockResolvedValue(undefined),
   };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
+  const timeline = {
+    recordInvitationAccepted: jest.fn().mockResolvedValue(undefined),
+  };
 
   const service = new InvitationService(
     prisma as unknown as PrismaService,
@@ -262,6 +268,7 @@ function buildService(configOverrides: Partial<typeof INVITATION_CONFIG> = {}) {
     password,
     billingSeats as unknown as BillingSeatsService,
     audit as unknown as import("../audit/audit.service").AuditService,
+    timeline as unknown as import("../leads/lead-timeline.service").LeadTimelineService,
   );
   return { service, tx, prisma, mail, password, billingSeats, audit };
 }
@@ -313,7 +320,7 @@ describe("InvitationService.createInvitation", () => {
   });
 
   it("sends the email only after the transaction commits", async () => {
-    const { service, tx, mail } = buildService();
+    const { service, tx, mail, audit } = buildService();
     const order: string[] = [];
     tx.invitation.findFirst.mockResolvedValue(null);
     tx.invitation.create.mockImplementation(() => {
@@ -328,6 +335,18 @@ describe("InvitationService.createInvitation", () => {
     await service.createInvitation(CREATE_INPUT);
 
     expect(order).toEqual(["create", "mail"]);
+    expect(audit.log).toHaveBeenCalledWith({
+      organizationId: CREATE_INPUT.organizationId,
+      actorUserId: CREATE_INPUT.invitedByUserId,
+      action: "organization.member.invite",
+      entityType: "Invitation",
+      entityId: "inv-1",
+      metadata: {
+        email: "member@example.com",
+        role: CREATE_INPUT.role,
+        organizationName: CREATE_INPUT.organizationName,
+      },
+    });
   });
 
   it("throws InvitationAlreadyExistsError and sends no email when an open invite exists", async () => {

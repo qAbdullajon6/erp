@@ -89,7 +89,7 @@ export function CommandPalette({
         <CommandSeparator />
         <CommandGroup heading="Go to">
           {nav.map((item) => (
-            <CommandItem key={item.path} onSelect={() => go(item.path)}>
+            <CommandItem key={`${item.path}:${item.label}`} onSelect={() => go(item.path)}>
               <item.icon />
               <span>{item.label}</span>
             </CommandItem>

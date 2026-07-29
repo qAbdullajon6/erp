@@ -1,6 +1,9 @@
 import { Module } from "@nestjs/common";
 import { AuthModule } from "../auth/auth.module";
 import { AuditModule } from "../audit/audit.module";
+import { BillingModule } from "../billing/billing.module";
+import { InvitationModule } from "../invitations/invitation.module";
+import { LeadTimelineModule } from "../leads/lead-timeline.module";
 import { PlatformOrganizationsController } from "./platform-organizations.controller";
 import { PlatformOrganizationsService } from "./platform-organizations.service";
 import { PlatformSearchController } from "./platform-search.controller";
@@ -25,7 +28,7 @@ import { PlatformLeadsController } from "./platform-leads.controller";
 import { PlatformLeadsService } from "./platform-leads.service";
 
 @Module({
-  imports: [AuthModule, AuditModule],
+  imports: [AuthModule, AuditModule, BillingModule, InvitationModule, LeadTimelineModule],
   controllers: [
     PlatformDashboardController,
     PlatformOrganizationsController,

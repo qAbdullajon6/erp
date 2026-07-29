@@ -5,6 +5,7 @@ import { MailModule } from "../mail/mail.module";
 import { AuthModule } from "../auth/auth.module";
 import { BillingModule } from "../billing/billing.module";
 import { AuditModule } from "../audit/audit.module";
+import { LeadTimelineModule } from "../leads/lead-timeline.module";
 import { InvitationController } from "./invitation.controller";
 import { PublicInvitationController } from "./public-invitation.controller";
 import { InvitationService } from "./invitation.service";
@@ -18,7 +19,15 @@ import { InvitationService } from "./invitation.service";
 /// OrganizationsService.addMember's concern, removed in favor of invitations).
 /// AuditModule records automatic Driver.userId links on DRIVER invite accept.
 @Module({
-  imports: [PrismaModule, MailModule, ConfigModule, AuthModule, BillingModule, AuditModule],
+  imports: [
+    PrismaModule,
+    MailModule,
+    ConfigModule,
+    AuthModule,
+    BillingModule,
+    AuditModule,
+    LeadTimelineModule,
+  ],
   controllers: [InvitationController, PublicInvitationController],
   providers: [InvitationService],
   exports: [InvitationService],

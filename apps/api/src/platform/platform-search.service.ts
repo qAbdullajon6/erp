@@ -8,12 +8,12 @@ export class PlatformSearchService {
   async search(q: string) {
     const query = q.trim();
     if (query.length < 2) {
-      return { organizations: [], drivers: [], vehicles: [], leads: [] };
+      return { organizations: [], drivers: [], vehicles: [], leads: [], users: [] };
     }
 
     const plateNormalized = query.replace(/\s+/g, "").toLowerCase();
 
-    const [organizations, drivers, vehicles, leads] = await Promise.all([
+    const [organizations, drivers, vehicles, leads, users] = await Promise.all([
       this.prisma.organization.findMany({
         where: {
           deletedAt: null,
@@ -64,6 +64,41 @@ export class PlatformSearchService {
         },
         take: 8,
         orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          company: true,
+          status: true,
+          convertedOrganizationId: true,
+        },
+      }),
+      this.prisma.user.findMany({
+        where: {
+          OR: [
+            { email: { contains: query, mode: "insensitive" } },
+            { firstName: { contains: query, mode: "insensitive" } },
+            { lastName: { contains: query, mode: "insensitive" } },
+          ],
+        },
+        take: 8,
+        orderBy: { email: "asc" },
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          isPlatformAdmin: true,
+          memberships: {
+            where: { status: "ACTIVE" },
+            take: 1,
+            orderBy: { createdAt: "asc" },
+            select: {
+              role: true,
+              organization: { select: { id: true, name: true, status: true } },
+            },
+          },
+        },
       }),
     ]);
 
@@ -108,7 +143,19 @@ export class PlatformSearchService {
         email: l.email,
         company: l.company,
         status: l.status,
+        convertedOrganizationId: l.convertedOrganizationId,
       })),
+      users: users.map((u) => {
+        const membership = u.memberships[0] ?? null;
+        return {
+          id: u.id,
+          email: u.email,
+          name: `${u.firstName} ${u.lastName}`.trim(),
+          isPlatformAdmin: u.isPlatformAdmin,
+          role: membership?.role ?? null,
+          organization: membership?.organization ?? null,
+        };
+      }),
     };
   }
 }

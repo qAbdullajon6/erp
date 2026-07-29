@@ -16,6 +16,7 @@ import { CreateDispatchDto } from "./dto/create-dispatch.dto";
 import { ListDispatchesQueryDto } from "./dto/list-dispatches-query.dto";
 import { UpdateDispatchDto } from "./dto/update-dispatch.dto";
 import { UpdateDispatchStatusDto } from "./dto/update-dispatch-status.dto";
+import { RescheduleDispatchDto } from "./dto/reschedule-dispatch.dto";
 
 /// The relations every dispatch response carries. Defined once so the write
 /// paths cannot drift from the read paths (the detail endpoint additionally
@@ -55,6 +56,7 @@ export class DispatchesService {
       ...(query.orderId ? { orderId: query.orderId } : {}),
       ...(query.driverId ? { driverId: query.driverId } : {}),
       ...(query.vehicleId ? { vehicleId: query.vehicleId } : {}),
+      ...(query.customerId ? { order: { customerId: query.customerId } } : {}),
       ...(query.search
         ? {
             OR: [
@@ -249,6 +251,218 @@ export class DispatchesService {
     if (dto.status === "DELIVERED" || dto.status === "CANCELLED") {
       await this.tracking.endSessionsForDispatch(organizationId, id).catch(() => undefined);
     }
+
+    return this.toResponse(updated);
+  }
+
+  /// Calendar drag / resize — moves the scheduled pickup (and delivery) window.
+  ///
+  /// Terminal trips are frozen. Overlap is re-checked through AssignmentPolicy
+  /// (and the GiST exclusion constraints) so a drag onto a busy driver/vehicle
+  /// surfaces the same 409 the reassign path already uses.
+  async reschedule(
+    organizationId: string,
+    id: string,
+    dto: RescheduleDispatchDto,
+    actor: CurrentUserPayload,
+  ) {
+    const dispatch = await this.findOrThrow(organizationId, id);
+
+    if (dispatch.status === "DELIVERED" || dispatch.status === "CANCELLED") {
+      throw new ConflictException(
+        `Cannot reschedule a dispatch with status ${dispatch.status}`,
+      );
+    }
+
+    const nextPickup = new Date(dto.pickupDateScheduled);
+    if (Number.isNaN(nextPickup.getTime())) {
+      throw new BadRequestException("Invalid pickupDateScheduled");
+    }
+
+    const previousDurationMs = Math.max(
+      30 * 60 * 1000,
+      dispatch.deliveryDateScheduled.getTime() - dispatch.pickupDateScheduled.getTime(),
+    );
+
+    let nextDelivery: Date;
+    if (dto.deliveryDateScheduled) {
+      nextDelivery = new Date(dto.deliveryDateScheduled);
+      if (Number.isNaN(nextDelivery.getTime())) {
+        throw new BadRequestException("Invalid deliveryDateScheduled");
+      }
+    } else {
+      nextDelivery = new Date(nextPickup.getTime() + previousDurationMs);
+    }
+
+    if (nextDelivery.getTime() <= nextPickup.getTime()) {
+      throw new BadRequestException("Delivery must be after pickup");
+    }
+
+    const from = {
+      pickupDateScheduled: dispatch.pickupDateScheduled.toISOString(),
+      deliveryDateScheduled: dispatch.deliveryDateScheduled.toISOString(),
+    };
+    const to = {
+      pickupDateScheduled: nextPickup.toISOString(),
+      deliveryDateScheduled: nextDelivery.toISOString(),
+    };
+
+    if (
+      from.pickupDateScheduled === to.pickupDateScheduled &&
+      from.deliveryDateScheduled === to.deliveryDateScheduled
+    ) {
+      return this.toResponse(
+        await this.prisma.dispatch.findUniqueOrThrow({
+          where: { id },
+          include: DISPATCH_INCLUDE,
+        }),
+      );
+    }
+
+    const order = await this.prisma.order.findFirstOrThrow({
+      where: { id: dispatch.orderId, organizationId },
+    });
+
+    await this.assignmentPolicy.assertAssignable({
+      organizationId,
+      driverId: dispatch.driverId,
+      vehicleId: dispatch.vehicleId,
+      window: { pickupDate: nextPickup, deliveryDate: nextDelivery },
+      cargoWeightKg: order.cargoWeightKg,
+      cargoVolumeM3: order.cargoVolumeM3,
+      exclude: { orderId: dispatch.orderId, dispatchId: dispatch.id },
+    });
+
+    const updated = await this.runInTransaction(async (tx) => {
+      const result = await tx.dispatch.updateMany({
+        where: {
+          id,
+          organizationId,
+          status: { notIn: ["DELIVERED", "CANCELLED"] },
+          pickupDateScheduled: dispatch.pickupDateScheduled,
+          deliveryDateScheduled: dispatch.deliveryDateScheduled,
+        },
+        data: {
+          pickupDateScheduled: nextPickup,
+          deliveryDateScheduled: nextDelivery,
+        },
+      });
+      if (result.count !== 1) {
+        throw new ConflictException("Dispatch schedule changed again — refresh and retry");
+      }
+
+      // Keep the order's commercial dates in lockstep with the ops window so
+      // list/detail screens do not show a stale plan after a calendar drag.
+      await tx.order.update({
+        where: { id: dispatch.orderId },
+        data: {
+          pickupDate: nextPickup,
+          deliveryDate: nextDelivery,
+        },
+      });
+
+      return this.loadForResponse(tx, id);
+    });
+
+    await this.auditService.log({
+      organizationId,
+      actorUserId: actor.userId,
+      action: "dispatch.schedule_changed",
+      entityType: "Dispatch",
+      entityId: id,
+      metadata: { from, to },
+    });
+
+    return this.toResponse(updated);
+  }
+
+  /// Reverts the most recent status history step (board Undo toast).
+  ///
+  /// R13 is forward-only, so this is a dedicated door — not a status target.
+  /// Cancelled trips are not undone here: closing the assignment ledger is not
+  /// symmetric with a one-click toast, and reopening it needs an explicit reassign.
+  async undoStatus(organizationId: string, id: string, actor: CurrentUserPayload) {
+    const dispatch = await this.findOrThrow(organizationId, id);
+
+    if (dispatch.status === "CANCELLED") {
+      throw new ConflictException("Cancelled dispatches cannot be undone from the board — reassign or recreate instead");
+    }
+
+    const history = await this.prisma.dispatchStatusHistory.findMany({
+      where: { organizationId, dispatchId: id },
+      orderBy: { createdAt: "desc" },
+      take: 2,
+    });
+
+    if (history.length < 2) {
+      throw new ConflictException("Nothing to undo — no prior status on this dispatch");
+    }
+
+    const [latest, prior] = history;
+    if (latest.status !== dispatch.status) {
+      throw new ConflictException("Dispatch status changed again — refresh and retry");
+    }
+    // One board Undo per forward step — do not chain Undo of Undo into a redo.
+    if (latest.note?.startsWith("Undo:")) {
+      throw new ConflictException("Nothing to undo — last change was already an undo");
+    }
+
+    const ageMs = Date.now() - latest.createdAt.getTime();
+    /// Client toast is ~8s; server allows a short grace so a slow click still works.
+    if (ageMs > 120_000) {
+      throw new ConflictException("Undo window expired");
+    }
+
+    const from = dispatch.status;
+    const to = prior.status;
+
+    const updated = await this.runInTransaction(async (tx) => {
+      const data: Prisma.DispatchUpdateManyMutationInput = { status: to };
+      // Actual timestamps were stamped on forward entry — clear them when stepping back.
+      if (from === "IN_TRANSIT" || from === "DELIVERED") {
+        if (to !== "IN_TRANSIT" && to !== "DELIVERED") {
+          data.pickupDateActual = null;
+        }
+      }
+      if (from === "DELIVERED") {
+        data.deliveryDateActual = null;
+      }
+
+      const result = await tx.dispatch.updateMany({
+        where: { id, organizationId, status: from },
+        data,
+      });
+      if (result.count !== 1) {
+        throw new ConflictException("Dispatch status changed again — refresh and retry");
+      }
+
+      await this.recordStatusChange(
+        tx,
+        organizationId,
+        id,
+        to,
+        actor,
+        `Undo: reverted from ${from} to ${to}`,
+      );
+      await this.orderWriter.project(tx, organizationId, dispatch.orderId, actor, `Undo status to ${to}`);
+      return this.loadForResponse(tx, id);
+    });
+
+    await this.auditService.log({
+      organizationId,
+      actorUserId: actor.userId,
+      action: "dispatch.status_undo",
+      entityType: "Dispatch",
+      entityId: id,
+      metadata: { from, to },
+    });
+
+    this.workflowEvents.emit(organizationId, "dispatch.status_changed", {
+      id,
+      dispatchNumber: dispatch.dispatchNumber,
+      from,
+      to,
+    });
 
     return this.toResponse(updated);
   }

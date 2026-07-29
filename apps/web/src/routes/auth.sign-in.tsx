@@ -65,6 +65,7 @@ function SignInPage() {
           id="email"
           label="Work Email"
           type="email"
+          name="email"
           required
           autoComplete="email"
           autoFocus
@@ -78,6 +79,7 @@ function SignInPage() {
         <PasswordField
           id="password"
           label="Password"
+          name="password"
           required
           autoComplete="current-password"
           placeholder="••••••••"

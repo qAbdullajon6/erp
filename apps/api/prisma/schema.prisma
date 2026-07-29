@@ -205,6 +205,8 @@ model Organization {
   drivers                   Driver[]
   vehicles                  Vehicle[]
   orders                    Order[]
+  orderNotes                OrderNote[]
+  orderDocuments            OrderDocument[]
   orderStatusHistories      OrderStatusHistory[]
   invoices                  Invoice[]
   payments                  Payment[]
@@ -255,6 +257,9 @@ model Organization {
   supportTickets            SupportTicket[]
   featureFlagOverrides      FeatureFlagOverride[]
   platformSupportSessions   PlatformSupportSession[]
+  /// Reverse of Lead.convertedOrganizationId — at most one lead converts into
+  /// a given organization.
+  convertedFromLead         Lead?
 
   @@map("organizations")
 }
@@ -320,6 +325,8 @@ model User {
   supportTicketsCreated         SupportTicket[]            @relation("SupportTicketCreatedBy")
   platformSupportSessions       PlatformSupportSession[]   @relation("PlatformSupportSessionUser")
   featureFlagsUpdated           FeatureFlag[]              @relation("FeatureFlagUpdatedBy")
+  orderNotesAuthored            OrderNote[]                @relation("OrderNoteAuthor")
+  orderDocumentsUploaded        OrderDocument[]            @relation("OrderDocumentUploader")
 
   @@map("users")
 }
@@ -711,6 +718,7 @@ model Order {
   updatedAt        DateTime    @updatedAt
   cancelledAt      DateTime?
   deliveredAt      DateTime?
+  archivedAt       DateTime?
 
   organization  Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   customer      Customer             @relation(fields: [customerId], references: [id], onDelete: Restrict)
@@ -721,10 +729,13 @@ model Order {
   invoices      Invoice[]
   expenses      Expense[]
   trips         Trip[]
+  internalNotes OrderNote[]
+  documents     OrderDocument[]
 
   @@unique([organizationId, orderNumber])
   @@index([organizationId])
   @@index([organizationId, status])
+  @@index([organizationId, archivedAt])
   /// Every report/dashboard query date-filters on deliveryDate within an
   /// organization (see report-filters.util.ts buildOrderWhere) — without
   /// this, that scan falls back to the plain organizationId index and
@@ -734,6 +745,51 @@ model Order {
   @@index([vehicleId])
   @@index([customerId])
   @@map("orders")
+}
+
+enum OrderDocumentKind {
+  POD
+  ATTACHMENT
+  OTHER
+}
+
+/// Internal operator notes on an order — not visible to customers.
+model OrderNote {
+  id             String   @id @default(uuid())
+  organizationId String
+  orderId        String
+  body           String
+  authorUserId   String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order        Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  author       User         @relation("OrderNoteAuthor", fields: [authorUserId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, orderId])
+  @@map("order_notes")
+}
+
+/// POD and file attachments linked to an order.
+model OrderDocument {
+  id               String            @id @default(uuid())
+  organizationId   String
+  orderId          String
+  kind             OrderDocumentKind @default(ATTACHMENT)
+  fileName         String
+  mimeType         String
+  fileSizeBytes    Int?
+  storagePath      String
+  uploadedByUserId String?
+  createdAt        DateTime          @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order        Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  uploadedBy   User?        @relation("OrderDocumentUploader", fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, orderId])
+  @@map("order_documents")
 }
 
 /// Append-only per-order status trail, written alongside every status
@@ -1121,12 +1177,40 @@ model Lead {
   referrer    String?
   landingPath String?
   status    LeadStatus @default(NEW)
+  /// Set once when Convert Wizard finishes — prevents duplicate orgs from the
+  /// same lead and powers "Already Converted → Organization" navigation.
+  convertedOrganizationId String? @unique
+  convertedOrganization   Organization? @relation(fields: [convertedOrganizationId], references: [id], onDelete: SetNull)
+  /// Pending admin invitation created at convert time (for resend / copy link).
+  convertedInvitationId String?
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
+  timelineEvents LeadTimelineEvent[]
 
   @@index([status])
   @@index([createdAt])
   @@map("leads")
+}
+
+/// Chronological sales/ops trail for a marketing lead — demo → contact →
+/// qualify → convert → invite → accept → activate. Platform staff read this
+/// to answer "where is this customer?" without digging through audit logs.
+model LeadTimelineEvent {
+  id          String   @id @default(uuid())
+  leadId      String
+  /// Stable machine key: DEMO_REQUESTED | SALES_CONTACTED | QUALIFIED |
+  /// CONVERTED | INVITATION_SENT | INVITATION_ACCEPTED | ORGANIZATION_ACTIVATED
+  type        String
+  title       String
+  body        String?
+  metadata    Json?
+  actorUserId String?
+  createdAt   DateTime @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, createdAt])
+  @@map("lead_timeline_events")
 }
 
 enum LeadStatus {

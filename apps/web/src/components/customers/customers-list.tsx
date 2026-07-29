@@ -103,8 +103,21 @@ export function CustomersList() {
   const search = searchState.search || '';
   const createOpen = Boolean(searchState.create);
   const tabQuery = tabToQuery(tab);
-  const sortBy = (searchState.sortBy as CustomerSortField | undefined) || tabQuery.sortBy || 'updatedAt';
-  const sortOrder = searchState.sortOrder || tabQuery.sortOrder || 'desc';
+  const allowedSort: CustomerSortField[] = [
+    'customerCode',
+    'companyName',
+    'createdAt',
+    'updatedAt',
+    'creditLimit',
+    'status',
+  ];
+  const sortBy = allowedSort.includes(searchState.sortBy as CustomerSortField)
+    ? (searchState.sortBy as CustomerSortField)
+    : tabQuery.sortBy || 'updatedAt';
+  const sortOrder =
+    searchState.sortOrder === 'asc' || searchState.sortOrder === 'desc'
+      ? searchState.sortOrder
+      : tabQuery.sortOrder || 'desc';
 
   const listEnabled = tab !== 'outstanding';
   const { data, meta, loading, error, refetch } = useCustomersList(

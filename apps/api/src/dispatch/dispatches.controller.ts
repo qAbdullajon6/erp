@@ -10,6 +10,7 @@ import { CreateDispatchDto } from "./dto/create-dispatch.dto";
 import { ListDispatchesQueryDto } from "./dto/list-dispatches-query.dto";
 import { UpdateDispatchDto } from "./dto/update-dispatch.dto";
 import { UpdateDispatchStatusDto } from "./dto/update-dispatch-status.dto";
+import { RescheduleDispatchDto } from "./dto/reschedule-dispatch.dto";
 
 /// "ACCOUNTANT: read-only orders and dispatch" per the phase spec;
 /// DISPATCHER gets full create/manage access.
@@ -61,6 +62,16 @@ export class DispatchesController {
   }
 
   @Roles(...ROLES_WRITE)
+  @Post(":id/reschedule")
+  reschedule(
+    @Param("id") id: string,
+    @Body() dto: RescheduleDispatchDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.dispatchesService.reschedule(user.organizationId, id, dto, user);
+  }
+
+  @Roles(...ROLES_WRITE)
   @Post(":id/status")
   updateStatus(
     @Param("id") id: string,
@@ -68,6 +79,17 @@ export class DispatchesController {
     @CurrentUser() user: CurrentUserPayload,
   ) {
     return this.dispatchesService.updateStatus(user.organizationId, id, dto, user);
+  }
+
+  /// Board / accidental status-move recovery. Reverts the latest history step
+  /// (forward-only R13 cannot express "go back" via POST /status).
+  @Roles(...ROLES_WRITE)
+  @Post(":id/undo-status")
+  undoStatus(
+    @Param("id") id: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.dispatchesService.undoStatus(user.organizationId, id, user);
   }
 
   @Roles(...ROLES_WRITE)

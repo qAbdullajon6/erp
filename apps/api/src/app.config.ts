@@ -21,8 +21,13 @@ export function configureApp(app: INestApplication): void {
 
   app.useGlobalPipes(
     new ValidationPipe({
+      // Strip unknown fields on DTOs. Do NOT forbidNonWhitelisted for query
+      // strings — UI route search params (e.g. ?tab=action on /app/orders)
+      // occasionally leak into API calls and previously caused hard 400s on
+      // otherwise valid list requests. Bodies are still validated by DTO
+      // decorators; extras are dropped rather than rejected.
       whitelist: true,
-      forbidNonWhitelisted: true,
+      forbidNonWhitelisted: false,
       transform: true,
     }),
   );
