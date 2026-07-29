@@ -11,16 +11,13 @@ import { DispatchController } from "./dispatch.controller";
 import { DispatchService } from "./dispatch.service";
 import { DispatchesController } from "./dispatches.controller";
 import { DispatchesService } from "./dispatches.service";
+import { DriverActionEventsService } from "./driver/driver-action-events.service";
 import { DriverDispatchController } from "./driver/driver-dispatch.controller";
 import { DriverDispatchService } from "./driver/driver-dispatch.service";
+import { DriverWorkspaceService } from "./driver/driver-workspace.service";
 
 @Module({
   imports: [AuditModule, OrderStateModule, WorkflowsModule, TelematicsModule],
-  // DriverDispatchController MUST come before DispatchesController: they share the
-  // `dispatches` prefix, and DispatchesController has a `@Get(":id")` that would
-  // otherwise swallow `/dispatches/my` as a dispatch whose id is "my". Nest matches
-  // in registration order. See driver-dispatch.controller.ts, and the test that
-  // pins this.
   controllers: [
     DriverDispatchController,
     DispatchConflictsController,
@@ -31,10 +28,19 @@ import { DriverDispatchService } from "./driver/driver-dispatch.service";
     DispatchService,
     DispatchesService,
     DriverDispatchService,
+    DriverWorkspaceService,
+    DriverActionEventsService,
     DispatchConflictsService,
     AssignmentPolicy,
     AssignmentQueries,
   ],
-  exports: [AssignmentPolicy, AssignmentQueries, DispatchesService, DispatchConflictsService],
+  exports: [
+    AssignmentPolicy,
+    AssignmentQueries,
+    DispatchesService,
+    DispatchConflictsService,
+    DriverWorkspaceService,
+    DriverActionEventsService,
+  ],
 })
 export class DispatchModule {}

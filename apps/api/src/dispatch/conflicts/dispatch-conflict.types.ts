@@ -126,6 +126,6 @@ export function highestConflictSeverity(
   return conflicts.reduce(
     (best, conflict) =>
       SEVERITY_RANK[conflict.severity] > SEVERITY_RANK[best] ? conflict.severity : best,
-    conflicts[0]!.severity,
+    conflicts[0].severity,
   );
 }

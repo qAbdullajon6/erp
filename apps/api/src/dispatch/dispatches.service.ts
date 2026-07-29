@@ -12,6 +12,7 @@ import { ACTIVE_DISPATCH_STATUSES } from "./assignment/assignment.queries";
 import { translateDispatchWriteError } from "./dispatch-constraints";
 import { ALLOWED_TRANSITIONS, allowedDispatchTransitions } from "./dispatch-transitions";
 import { generateUniqueDispatchNumber } from "./dispatch-number.util";
+import { notifyDriverOfAssignment } from "./driver/driver-assignment-notify";
 import { CreateDispatchDto } from "./dto/create-dispatch.dto";
 import { ListDispatchesQueryDto } from "./dto/list-dispatches-query.dto";
 import { UpdateDispatchDto } from "./dto/update-dispatch.dto";
@@ -27,6 +28,16 @@ const DISPATCH_INCLUDE = {
   vehicle: true,
   createdByUser: true,
 } satisfies Prisma.DispatchInclude;
+
+const DISPATCH_DETAIL_INCLUDE = {
+  ...DISPATCH_INCLUDE,
+  statusHistory: { orderBy: { createdAt: "asc" as const } },
+} satisfies Prisma.DispatchInclude;
+
+type DispatchDetail = Prisma.DispatchGetPayload<{ include: typeof DISPATCH_DETAIL_INCLUDE }>;
+type DispatchWithRelations = Prisma.DispatchGetPayload<{ include: typeof DISPATCH_INCLUDE }> & {
+  statusHistory?: DispatchDetail["statusHistory"];
+};
 
 @Injectable()
 export class DispatchesService {
@@ -81,7 +92,7 @@ export class DispatchesService {
         : {}),
     };
 
-    const orderByMap: Record<string, any> = {
+    const orderByMap: Record<string, Prisma.DispatchOrderByWithRelationInput> = {
       createdAt: { createdAt: sortOrder },
       pickupDateScheduled: { pickupDateScheduled: sortOrder },
       deliveryDateScheduled: { deliveryDateScheduled: sortOrder },
@@ -111,10 +122,10 @@ export class DispatchesService {
   }
 
   async getById(organizationId: string, id: string) {
-    const dispatch = await this.findOrThrow(organizationId, id);
+    await this.findOrThrow(organizationId, id);
     const fullDispatch = await this.prisma.dispatch.findUnique({
       where: { id },
-      include: { ...DISPATCH_INCLUDE, statusHistory: { orderBy: { createdAt: "asc" } } },
+      include: DISPATCH_DETAIL_INCLUDE,
     });
     return this.toResponse(fullDispatch!);
   }
@@ -150,7 +161,7 @@ export class DispatchesService {
       },
     });
 
-    this.workflowEvents.emit(organizationId, "dispatch.created", { id: dispatch.id, dispatchNumber: dispatch.dispatchNumber, orderId: dto.orderId, driverId: dto.driverId, vehicleId: dto.vehicleId });
+    void this.workflowEvents.emit(organizationId, "dispatch.created", { id: dispatch.id, dispatchNumber: dispatch.dispatchNumber, orderId: dto.orderId, driverId: dto.driverId, vehicleId: dto.vehicleId });
 
     return this.toResponse(dispatch);
   }
@@ -200,6 +211,16 @@ export class DispatchesService {
         .catch(() => undefined);
     }
 
+    if (reassigned && previousDriverId !== reassigned.driverId) {
+      await notifyDriverOfAssignment(this.prisma, {
+        organizationId,
+        driverId: reassigned.driverId,
+        dispatchId: reassigned.id,
+        dispatchNumber: reassigned.dispatchNumber,
+        reason: "reassigned",
+      }).catch(() => undefined);
+    }
+
     await this.auditService.log({
       organizationId,
       actorUserId: actor.userId,
@@ -244,9 +265,19 @@ export class DispatchesService {
       metadata: { from: dispatch.status, to: dto.status, note: dto.note },
     });
 
-    this.workflowEvents.emit(organizationId, "dispatch.status_changed", { id, dispatchNumber: dispatch.dispatchNumber, from: dispatch.status, to: dto.status });
+    if (dto.status === "ASSIGNED" && dispatch.status === "DRAFT") {
+      await notifyDriverOfAssignment(this.prisma, {
+        organizationId,
+        driverId: updated.driverId,
+        dispatchId: id,
+        dispatchNumber: updated.dispatchNumber,
+        reason: "assigned",
+      }).catch(() => undefined);
+    }
+
+    void this.workflowEvents.emit(organizationId, "dispatch.status_changed", { id, dispatchNumber: dispatch.dispatchNumber, from: dispatch.status, to: dto.status });
     if (dto.status === "DELIVERED") {
-      this.workflowEvents.emit(organizationId, "dispatch.completed", { id, dispatchNumber: dispatch.dispatchNumber });
+      void this.workflowEvents.emit(organizationId, "dispatch.completed", { id, dispatchNumber: dispatch.dispatchNumber });
     }
     if (dto.status === "DELIVERED" || dto.status === "CANCELLED") {
       await this.tracking.endSessionsForDispatch(organizationId, id).catch(() => undefined);
@@ -457,7 +488,7 @@ export class DispatchesService {
       metadata: { from, to },
     });
 
-    this.workflowEvents.emit(organizationId, "dispatch.status_changed", {
+    void this.workflowEvents.emit(organizationId, "dispatch.status_changed", {
       id,
       dispatchNumber: dispatch.dispatchNumber,
       from,
@@ -638,7 +669,18 @@ export class DispatchesService {
       exclude: { orderId: dispatch.orderId, dispatchId: dispatch.id },
     });
 
-    await tx.dispatch.update({ where: { id: dispatch.id }, data: { driverId, vehicleId } });
+    await tx.dispatch.update({
+      where: { id: dispatch.id },
+      data: {
+        driverId,
+        vehicleId,
+        driverAcceptanceStatus: "PENDING",
+        driverAcceptedAt: null,
+        driverRejectedAt: null,
+        driverRejectReason: null,
+        driverRejectNote: null,
+      },
+    });
 
     await this.closeOpenAssignment(tx, dispatch.id, actor, reason);
     await this.openAssignment(tx, organizationId, dispatch.id, driverId, vehicleId, actor, reason);
@@ -887,7 +929,7 @@ export class DispatchesService {
     });
   }
 
-  private toResponse(dispatch: any) {
+  private toResponse(dispatch: DispatchWithRelations) {
     return {
       id: dispatch.id,
       organizationId: dispatch.organizationId,
@@ -954,7 +996,7 @@ export class DispatchesService {
       /// CANCELLED appears here for every non-terminal dispatch. The client may
       /// reach it through either POST /:id/status or POST /:id/cancel; both end in
       /// the same transition.
-      allowedTransitions: allowedDispatchTransitions(dispatch.status as DispatchStatus),
+      allowedTransitions: allowedDispatchTransitions(dispatch.status),
       pickupDateScheduled: dispatch.pickupDateScheduled,
       pickupDateActual: dispatch.pickupDateActual,
       deliveryDateScheduled: dispatch.deliveryDateScheduled,

@@ -22,6 +22,17 @@ export interface ConflictDetectionInput {
   customerBalanceDue?: Prisma.Decimal;
 }
 
+function formatConflictDate(value: Date): string {
+  /// Date-only fields (license/inspection) are stored as UTC midnight; format
+  /// in UTC so "2004-05-26T00:00:00.000Z" always reads as May 26, 2004.
+  return value.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 function stableId(parts: string[]): string {
   return createHash("sha256").update(parts.join("|")).digest("hex").slice(0, 24);
 }
@@ -211,7 +222,7 @@ export function detectDispatchConflicts(input: ConflictDetectionInput): Dispatch
         "driver.license_expired",
         "high",
         "Driver license expired",
-        `License for ${driver.firstName} ${driver.lastName} expired ${driver.licenseExpiry.toISOString()}.`,
+        `License for ${driver.firstName} ${driver.lastName} expired ${formatConflictDate(driver.licenseExpiry)}.`,
         "Swap driver or renew license before departure.",
         [{ action: "swap_driver", label: "Swap driver" }],
         { driverId: driver.id, licenseExpiry: driver.licenseExpiry.toISOString() },
@@ -299,7 +310,7 @@ export function detectDispatchConflicts(input: ConflictDetectionInput): Dispatch
         "vehicle.inspection_expired",
         "critical",
         "Inspection expired",
-        `${vehicle.plateNumber} inspection expired ${vehicle.inspectionExpiry.toISOString()}.`,
+        `${vehicle.plateNumber} inspection expired ${formatConflictDate(vehicle.inspectionExpiry)}.`,
         "Swap vehicle or renew inspection.",
         [{ action: "swap_vehicle", label: "Swap vehicle" }],
         { vehicleId: vehicle.id, inspectionExpiry: vehicle.inspectionExpiry.toISOString() },
@@ -314,7 +325,7 @@ export function detectDispatchConflicts(input: ConflictDetectionInput): Dispatch
         "vehicle.insurance_expired",
         "high",
         "Insurance expired",
-        `${vehicle.plateNumber} insurance expired ${vehicle.insuranceExpiry.toISOString()}.`,
+        `${vehicle.plateNumber} insurance expired ${formatConflictDate(vehicle.insuranceExpiry)}.`,
         "Swap vehicle or renew insurance.",
         [{ action: "swap_vehicle", label: "Swap vehicle" }],
         { vehicleId: vehicle.id, insuranceExpiry: vehicle.insuranceExpiry.toISOString() },
@@ -395,7 +406,7 @@ export function detectDispatchConflicts(input: ConflictDetectionInput): Dispatch
         "schedule.late_pickup",
         "high",
         "Late pickup",
-        `Scheduled pickup was ${pickup.toISOString()} — dispatch is still ${dispatch.status}.`,
+        `Scheduled pickup was ${formatConflictDate(pickup)} — dispatch is still ${dispatch.status}.`,
         "Update status or reschedule pickup window.",
         [
           { action: "reschedule", label: "Reschedule +30 min", payload: { shiftMinutes: 30 } },
@@ -414,7 +425,7 @@ export function detectDispatchConflicts(input: ConflictDetectionInput): Dispatch
         "schedule.late_delivery",
         "high",
         "Late delivery",
-        `Scheduled delivery was ${delivery.toISOString()} — shipment is not delivered.`,
+        `Scheduled delivery was ${formatConflictDate(delivery)} — shipment is not delivered.`,
         "Reschedule delivery or escalate to customer.",
         [
           { action: "reschedule", label: "Reschedule +30 min", payload: { shiftMinutes: 30 } },

@@ -18,6 +18,13 @@ function baseDispatch(overrides: Partial<DispatchConflictContext> = {}): Dispatc
     deliveryDateScheduled: new Date("2026-07-29T18:00:00.000Z"),
     deliveryDateActual: null,
     notes: null,
+    driverAcceptanceStatus: "PENDING",
+    driverAcceptedAt: null,
+    driverRejectedAt: null,
+    driverRejectReason: null,
+    driverRejectNote: null,
+    arrivalLat: null,
+    arrivalLng: null,
     createdAt: now,
     updatedAt: now,
     driver: {
@@ -29,6 +36,7 @@ function baseDispatch(overrides: Partial<DispatchConflictContext> = {}): Dispatc
       phone: "+1",
       email: null,
       status: "ACTIVE",
+      operationalStatus: "AVAILABLE",
       licenseNumber: null,
       licenseExpiry: null,
       createdAt: now,
@@ -182,5 +190,22 @@ describe("detectDispatchConflicts", () => {
       now: new Date("2026-07-29T12:00:00.000Z"),
     });
     expect(conflicts.some((c) => c.type === "schedule.late_pickup")).toBe(true);
+  });
+
+  it("formats license expiry as a human-readable date in the description", () => {
+    const dispatch = baseDispatch({
+      driver: {
+        ...baseDispatch().driver,
+        licenseExpiry: new Date("2004-05-26T00:00:00.000Z"),
+      },
+    });
+    const conflicts = detectDispatchConflicts({
+      dispatch,
+      reservations: [],
+      now: new Date("2026-07-29T12:00:00.000Z"),
+    });
+    const license = conflicts.find((c) => c.type === "driver.license_expired");
+    expect(license?.description).toContain("May 26, 2004");
+    expect(license?.description).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
   });
 });

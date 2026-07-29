@@ -1,4 +1,9 @@
-import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../../audit/audit.service";
 import type { CurrentUserPayload } from "../../auth/interfaces/current-user.interface";
@@ -8,33 +13,11 @@ import { TrackingService } from "../../telematics/tracking/tracking.service";
 import { DispatchesService } from "../dispatches.service";
 import { allowedDispatchTransitions, DRIVER_DISPATCH_STATUSES } from "../dispatch-transitions";
 import { UpdateDispatchStatusDto } from "../dto/update-dispatch-status.dto";
+import { DriverActionEventsService } from "./driver-action-events.service";
+import { DriverWorkspaceService } from "./driver-workspace.service";
+import type { RejectDispatchDto } from "./dto/reject-dispatch.dto";
+import type { ArrivalLocationDto } from "./dto/driver-workspace.dto";
 
-/// The driver's view of the work (Task 8.12).
-///
-/// A driver EXECUTES a dispatch. That is the whole of what this service is: it finds
-/// the dispatches assigned to the caller, and it lets them move one forward.
-///
-/// ## Why this is a separate service, and why it reads Dispatch
-///
-/// Until Task 8.12 the driver app talked to /orders/my/*, and that list was found by
-/// `Order.driverId`. But since Task 8.6, Order.driverId is a PROJECTION — a copy of
-/// what the dispatch says, kept only for legacy reads. The driver was therefore
-/// looking at their own work through a photocopy. This reads the original.
-///
-/// It also means the driver can now record EN_ROUTE_TO_PICKUP. Before, they could
-/// only say PICKED_UP, and the order path silently walked the dispatch through
-/// EN_ROUTE_TO_PICKUP on their behalf — stamping a state they were in an hour ago
-/// with the timestamp of the moment they arrived. Every stage is now recorded when
-/// it actually happens.
-///
-/// ## What it does NOT do
-///
-/// It contains no business rule. Transition legality is R13's table, the write is
-/// DispatchesService's transactional primitive, and the Order is re-derived by
-/// ProjectionPolicy through OrderWriter — exactly as it is for a dispatcher. The
-/// only thing this service adds is WHO is allowed to ask, and WHICH transitions a
-/// driver may use (DRIVER_DISPATCH_STATUSES). Both are enforced here, server-side;
-/// the phone is never trusted to restrict itself.
 @Injectable()
 export class DriverDispatchService {
   constructor(
@@ -43,26 +26,23 @@ export class DriverDispatchService {
     private readonly orderWriter: OrderWriter,
     private readonly auditService: AuditService,
     private readonly tracking: TrackingService,
+    private readonly events: DriverActionEventsService,
+    private readonly workspace: DriverWorkspaceService,
   ) {}
 
-  /// Everything currently on this driver's plate.
-  ///
-  /// Terminal dispatches are excluded by default: a driver's list is a to-do list,
-  /// not an archive. Pass `includeFinished` to see the lot.
   async listMine(organizationId: string, userId: string, includeFinished = false) {
     const driverId = await this.resolveOwnDriverId(organizationId, userId);
 
     const dispatches = await this.prisma.dispatch.findMany({
       where: {
         organizationId,
-        // THE scoping. Not Order.driverId — the dispatch is the operational record
-        // (ADR-001), and this is the thing that actually says who is driving.
         driverId,
-        // A DRAFT is a dispatcher's sketch. It commits nobody (R1) and the driver
-        // must not see it as work.
         status: includeFinished
           ? { not: "DRAFT" }
           : { in: ["ASSIGNED", "EN_ROUTE_TO_PICKUP", "AT_PICKUP", "IN_TRANSIT"] },
+        // Rejected assignments stay on the row until dispatcher reassigns, but
+        // they must not clutter the driver's active to-do list.
+        ...(includeFinished ? {} : { driverAcceptanceStatus: { not: "REJECTED" } }),
       },
       include: DRIVER_INCLUDE,
       orderBy: { pickupDateScheduled: "asc" },
@@ -76,16 +56,124 @@ export class DriverDispatchService {
     return this.toDriverResponse(dispatch);
   }
 
-  /// The driver moves the dispatch one step; the order follows (R3).
+  async accept(organizationId: string, userId: string, id: string, actor: CurrentUserPayload) {
+    const driverId = await this.resolveOwnDriverId(organizationId, userId);
+    const dispatch = await this.findOwnOrThrow(organizationId, userId, id, false);
+
+    if (dispatch.status !== "ASSIGNED") {
+      throw new BadRequestException("Only ASSIGNED dispatches can be accepted");
+    }
+    if (dispatch.driverAcceptanceStatus === "ACCEPTED") {
+      return this.toDriverResponse(dispatch);
+    }
+    if (dispatch.driverAcceptanceStatus === "REJECTED") {
+      throw new ConflictRejected("This assignment was already rejected");
+    }
+
+    const updated = await this.prisma.dispatch.update({
+      where: { id },
+      data: {
+        driverAcceptanceStatus: "ACCEPTED",
+        driverAcceptedAt: new Date(),
+        driverRejectedAt: null,
+        driverRejectReason: null,
+        driverRejectNote: null,
+      },
+      include: DRIVER_INCLUDE,
+    });
+
+    await this.events.record(organizationId, driverId, "DRIVER_ACCEPTED", { dispatchId: id });
+    await this.auditService.log({
+      organizationId,
+      actorUserId: actor.userId,
+      action: "dispatch.driver_accepted",
+      entityType: "Dispatch",
+      entityId: id,
+      metadata: { dispatchNumber: dispatch.dispatchNumber },
+    });
+    await this.notifyDispatchers(organizationId, {
+      type: "DRIVER_ASSIGNMENT_ACCEPTED",
+      title: "Driver accepted assignment",
+      message: `${dispatch.dispatchNumber} was accepted by the driver`,
+      entityId: id,
+    });
+
+    await this.prisma.driver.update({
+      where: { id: driverId },
+      data: { operationalStatus: "BUSY" },
+    });
+
+    return this.toDriverResponse(updated);
+  }
+
+  async reject(
+    organizationId: string,
+    userId: string,
+    id: string,
+    dto: RejectDispatchDto,
+    actor: CurrentUserPayload,
+  ) {
+    const driverId = await this.resolveOwnDriverId(organizationId, userId);
+    const dispatch = await this.findOwnOrThrow(organizationId, userId, id, false);
+
+    if (dispatch.status !== "ASSIGNED") {
+      throw new BadRequestException("Only ASSIGNED dispatches can be rejected");
+    }
+    if (dispatch.driverAcceptanceStatus === "ACCEPTED") {
+      throw new BadRequestException("Cannot reject an already accepted assignment");
+    }
+    if (dto.reason === "OTHER" && !dto.note?.trim()) {
+      throw new BadRequestException("A note is required when reason is OTHER");
+    }
+
+    const note = dto.note?.trim() || null;
+
+    const updated = await this.prisma.dispatch.update({
+      where: { id },
+      data: {
+        driverAcceptanceStatus: "REJECTED",
+        driverRejectedAt: new Date(),
+        driverRejectReason: dto.reason,
+        driverRejectNote: note,
+      },
+      include: DRIVER_INCLUDE,
+    });
+
+    await this.events.record(organizationId, driverId, "DRIVER_REJECTED", {
+      dispatchId: id,
+      payload: { reason: dto.reason, note },
+    });
+    await this.auditService.log({
+      organizationId,
+      actorUserId: actor.userId,
+      action: "dispatch.driver_rejected",
+      entityType: "Dispatch",
+      entityId: id,
+      metadata: { reason: dto.reason, note, dispatchNumber: dispatch.dispatchNumber },
+    });
+    await this.notifyDispatchers(organizationId, {
+      type: "DRIVER_ASSIGNMENT_REJECTED",
+      title: "Driver rejected assignment",
+      message: `${dispatch.dispatchNumber} rejected (${dto.reason.replace(/_/g, " ").toLowerCase()}). Reassign required.`,
+      entityId: id,
+    });
+
+    await this.prisma.driver.update({
+      where: { id: driverId },
+      data: { operationalStatus: "AVAILABLE" },
+    });
+
+    return this.toDriverResponse(updated);
+  }
+
   async updateStatus(
     organizationId: string,
     userId: string,
     id: string,
     dto: UpdateDispatchStatusDto,
     actor: CurrentUserPayload,
+    arrival?: ArrivalLocationDto,
   ) {
-    // Checked before anything is loaded, so a driver probing for a cancel button
-    // gets a flat refusal rather than a hint about what exists.
     if (!DRIVER_DISPATCH_STATUSES.includes(dto.status)) {
       throw new ForbiddenException(
         `Drivers can only move a dispatch to ${DRIVER_DISPATCH_STATUSES.join(", ")}`,
@@ -93,11 +181,17 @@ export class DriverDispatchService {
     }
 
     const dispatch = await this.findOwnOrThrow(organizationId, userId, id, false);
+    const driverId = dispatch.driverId;
+
+    if (dto.status === "EN_ROUTE_TO_PICKUP" && dispatch.driverAcceptanceStatus !== "ACCEPTED") {
+      throw new ForbiddenException("Accept the assignment before starting the trip");
+    }
+
+    if (dto.status === "DELIVERED") {
+      await this.workspace.assertDeliveredChecklist(organizationId, id);
+    }
 
     const updated = await this.dispatches.inTransaction(async (tx) => {
-      // The same primitive a dispatcher's status change uses. R13 is enforced inside
-      // it, with the compare-and-set from Task 8.3 — there is no second code path
-      // for drivers, and therefore no second set of rules to drift (AR1).
       await this.dispatches.transitionInTx(
         tx,
         organizationId,
@@ -106,10 +200,29 @@ export class DriverDispatchService {
         actor,
         dto.note,
       );
-      // R3 — the order is a projection of the dispatch, and the two commit together
-      // (AR2). Nothing here writes Order state directly; OrderWriter is still the
-      // only thing that may (AR5).
       await this.orderWriter.project(tx, organizationId, dispatch.orderId, actor, dto.note);
+
+      if (dto.status === "AT_PICKUP" && arrival?.lat != null && arrival?.lng != null) {
+        await tx.dispatch.update({
+          where: { id },
+          data: {
+            arrivalLat: new Prisma.Decimal(arrival.lat),
+            arrivalLng: new Prisma.Decimal(arrival.lng),
+          },
+        });
+      }
+
+      const ops =
+        dto.status === "EN_ROUTE_TO_PICKUP" || dto.status === "IN_TRANSIT"
+          ? "DRIVING"
+          : dto.status === "AT_PICKUP"
+            ? "LOADING"
+            : dto.status === "DELIVERED"
+              ? "AVAILABLE"
+              : undefined;
+      if (ops) {
+        await tx.driver.update({ where: { id: driverId }, data: { operationalStatus: ops } });
+      }
 
       return tx.dispatch.findUniqueOrThrow({ where: { id }, include: DRIVER_INCLUDE });
     });
@@ -123,6 +236,25 @@ export class DriverDispatchService {
       metadata: { from: dispatch.status, to: dto.status, note: dto.note },
     });
 
+    const eventType =
+      dto.status === "EN_ROUTE_TO_PICKUP"
+        ? "TRIP_STARTED"
+        : dto.status === "AT_PICKUP"
+          ? "ARRIVED_PICKUP"
+          : dto.status === "IN_TRANSIT"
+            ? "IN_TRANSIT"
+            : dto.status === "DELIVERED"
+              ? "DELIVERED"
+              : "STATUS_CHANGED";
+    await this.events.record(organizationId, driverId, eventType, {
+      dispatchId: id,
+      payload: {
+        from: dispatch.status,
+        to: dto.status,
+        arrival: arrival?.lat != null && arrival?.lng != null ? { lat: arrival.lat, lng: arrival.lng } : null,
+      },
+    });
+
     if (dto.status === "DELIVERED" || dto.status === "CANCELLED") {
       await this.tracking.endSessionsForDispatch(organizationId, id).catch(() => undefined);
     }
@@ -130,10 +262,24 @@ export class DriverDispatchService {
     return this.toDriverResponse(updated);
   }
 
-  /// A dispatch belonging to somebody else is NOT FOUND, not forbidden. A 403 would
-  /// confirm that the id exists, which is a small leak a driver has no business
-  /// receiving (R14, and the same rule every tenant-scoped lookup in this codebase
-  /// follows).
+  private async notifyDispatchers(
+    organizationId: string,
+    input: { type: string; title: string; message: string; entityId: string },
+  ) {
+    await this.prisma.notification.create({
+      data: {
+        organizationId,
+        type: input.type,
+        category: "OPERATIONS",
+        severity: "HIGH",
+        title: input.title,
+        message: input.message,
+        entityType: "Dispatch",
+        entityId: input.entityId,
+      },
+    });
+  }
+
   private async findOwnOrThrow(
     organizationId: string,
     userId: string,
@@ -154,12 +300,7 @@ export class DriverDispatchService {
     return dispatch;
   }
 
-  /// The caller's own Driver row, resolved from their user id — never accepted from
-  /// the client. A driver cannot ask for somebody else's work by changing a
-  /// parameter, because there is no parameter to change.
   private async resolveOwnDriverId(organizationId: string, userId: string): Promise<string> {
-    /// Archived drivers must not keep running the driver app — matches
-    /// DriversService.getMe and telematics ingest.
     const driver = await this.prisma.driver.findFirst({
       where: { organizationId, userId, archivedAt: null },
     });
@@ -169,24 +310,31 @@ export class DriverDispatchService {
     return driver.id;
   }
 
-  /// The dispatch, as a driver needs to see it: the job, where it goes, who it is
-  /// for, and what they may do next.
   private toDriverResponse(dispatch: DriverDispatch) {
+    const canStart =
+      dispatch.status === "ASSIGNED" && dispatch.driverAcceptanceStatus === "ACCEPTED";
+    let allowed = allowedDispatchTransitions(dispatch.status, DRIVER_DISPATCH_STATUSES);
+    if (dispatch.status === "ASSIGNED" && !canStart) {
+      allowed = [];
+    }
+
     return {
       id: dispatch.id,
       dispatchNumber: dispatch.dispatchNumber,
       status: dispatch.status,
-      /// Already narrowed to what a DRIVER may do from here — computed from the one
-      /// R13 table (TD-006). The phone does not intersect two rule sets; it reads
-      /// this and renders a button per entry.
-      allowedTransitions: allowedDispatchTransitions(dispatch.status, DRIVER_DISPATCH_STATUSES),
+      driverAcceptanceStatus: dispatch.driverAcceptanceStatus,
+      driverAcceptedAt: dispatch.driverAcceptedAt?.toISOString() ?? null,
+      driverRejectedAt: dispatch.driverRejectedAt?.toISOString() ?? null,
+      driverRejectReason: dispatch.driverRejectReason,
+      driverRejectNote: dispatch.driverRejectNote,
+      allowedTransitions: allowed,
       pickupDateScheduled: dispatch.pickupDateScheduled,
       pickupDateActual: dispatch.pickupDateActual,
       deliveryDateScheduled: dispatch.deliveryDateScheduled,
       deliveryDateActual: dispatch.deliveryDateActual,
       notes: dispatch.notes,
-      /// The commercial job the dispatch executes — nested, because for a driver it
-      /// is context, not the thing they are working on.
+      arrivalLat: dispatch.arrivalLat?.toString() ?? null,
+      arrivalLng: dispatch.arrivalLng?.toString() ?? null,
       order: {
         id: dispatch.order.id,
         orderNumber: dispatch.order.orderNumber,
@@ -216,6 +364,12 @@ export class DriverDispatchService {
       createdAt: dispatch.createdAt,
       updatedAt: dispatch.updatedAt,
     };
+  }
+}
+
+class ConflictRejected extends BadRequestException {
+  constructor(message: string) {
+    super(message);
   }
 }
 

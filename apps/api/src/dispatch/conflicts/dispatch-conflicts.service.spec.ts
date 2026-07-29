@@ -65,8 +65,8 @@ function buildService(options?: {
       resolvedBy: null,
     })),
   );
-  const upsert = jest.fn<any>().mockImplementation(async ({ create }: { create: Record<string, unknown> }) => ({
-    id: `state-${create.conflictKey}`,
+  const upsert = jest.fn<any>().mockImplementation(({ create }: { create: Record<string, unknown> }) => ({
+    id: `state-${String(create.conflictKey)}`,
     organizationId: ORG_ID,
     dispatchId: DISPATCH_ID,
     conflictKey: create.conflictKey,
