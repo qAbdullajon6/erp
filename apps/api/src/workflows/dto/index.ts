@@ -311,7 +311,7 @@ export class DuplicateWorkflowDto {
 // ---------------------------------------------------------------------------
 
 export interface WorkflowTriggerDefinition {
-  type: WorkflowTriggerType | string;
+  type: string;
   displayName: string;
   description: string;
   eventSchema?: Record<string, unknown>;
@@ -319,7 +319,7 @@ export interface WorkflowTriggerDefinition {
 }
 
 export interface WorkflowActionDefinition {
-  type: WorkflowActionType | string;
+  type: string;
   displayName: string;
   description: string;
   configSchema?: Record<string, unknown>;

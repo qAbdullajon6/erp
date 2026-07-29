@@ -230,7 +230,7 @@ export class WorkflowEngineService {
               i += skipCount;
               await this.prisma.workflowExecutionStep.update({
                 where: { id: step.id },
-                data: { status: 'COMPLETED', completedAt: new Date(), output: { skipped: true, skipCount } as Prisma.InputJsonValue },
+                data: { status: 'COMPLETED', completedAt: new Date(), output: { skipped: true, skipCount } },
               });
               await this.writeLog(executionId, 'INFO', `step_${i - skipCount}`, `Condition not met, skipping ${skipCount} step(s)`);
               continue;
@@ -242,7 +242,7 @@ export class WorkflowEngineService {
             await new Promise((resolve) => setTimeout(resolve, delayMs));
             await this.prisma.workflowExecutionStep.update({
               where: { id: step.id },
-              data: { status: 'COMPLETED', completedAt: new Date(), output: { delayed: delayMs } as Prisma.InputJsonValue },
+              data: { status: 'COMPLETED', completedAt: new Date(), output: { delayed: delayMs } },
             });
             await this.writeLog(executionId, 'INFO', `step_${i}`, `Delayed ${delayMs}ms`);
             continue;

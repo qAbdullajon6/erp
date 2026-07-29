@@ -1,6 +1,14 @@
 import { HttpException, Injectable, Logger } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import type { MembershipRole } from '@prisma/client';
+import type {
+  CustomerStatus,
+  DispatchStatus,
+  MembershipRole,
+  NotificationCategory,
+  NotificationSeverity,
+  OrderStatus,
+} from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import type { CurrentUserPayload } from '../../auth/interfaces/current-user.interface';
 // Type-only: importing these as VALUES here creates an ES-module cycle
 // (orders.service -> workflow-event.service -> ... ) that leaves OrdersService's
@@ -25,6 +33,16 @@ const ALLOWED_UPDATE_FIELDS: Record<string, string[]> = {
   customer: ['notes', 'contactName', 'contactEmail', 'contactPhone'],
   dispatch: ['notes'],
 };
+
+function configString(value: unknown, fallback = ''): string {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'bigint' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (value instanceof Date) return value.toISOString();
+  return fallback;
+}
 
 @Injectable()
 export class ActionExecutor {
@@ -93,14 +111,17 @@ export class ActionExecutor {
   private rethrowDomain(error: unknown): never {
     if (error instanceof HttpException) {
       const body = error.getResponse();
-      const message =
-        typeof body === 'string'
-          ? body
-          : typeof body === 'object' && body && 'message' in body
-            ? Array.isArray((body as { message: unknown }).message)
-              ? (body as { message: string[] }).message.join(', ')
-              : String((body as { message: unknown }).message)
-            : error.message;
+      let message: string;
+      if (typeof body === 'string') {
+        message = body;
+      } else if (typeof body === 'object' && body !== null && 'message' in body) {
+        const msg = (body as Record<string, unknown>).message;
+        message = Array.isArray(msg)
+          ? msg.map((item) => configString(item)).join(', ')
+          : configString(msg, error.message);
+      } else {
+        message = error.message;
+      }
       throw new Error(message);
     }
     throw error;
@@ -169,9 +190,9 @@ export class ActionExecutor {
     config: Record<string, unknown>,
     context: ExecutionContext,
   ): Promise<Record<string, unknown>> {
-    const to = this.interpolate(String(config.to ?? ''), context);
-    const subject = this.interpolate(String(config.subject ?? ''), context);
-    const body = this.interpolate(String(config.body ?? config.message ?? ''), context);
+    const to = this.interpolate(configString(config.to), context);
+    const subject = this.interpolate(configString(config.subject), context);
+    const body = this.interpolate(configString(config.body ?? config.message), context);
 
     if (!to) throw new Error('Email recipient (to) is required');
 
@@ -184,17 +205,17 @@ export class ActionExecutor {
     config: Record<string, unknown>,
     context: ExecutionContext,
   ): Promise<Record<string, unknown>> {
-    const title = this.interpolate(String(config.title ?? 'Workflow Notification'), context);
-    const message = this.interpolate(String(config.message ?? ''), context);
-    const category = String(config.category ?? 'OPERATIONS');
-    const severity = String(config.severity ?? 'MEDIUM');
+    const title = this.interpolate(configString(config.title, 'Workflow Notification'), context);
+    const message = this.interpolate(configString(config.message), context);
+    const category = configString(config.category, 'OPERATIONS') as NotificationCategory;
+    const severity = configString(config.severity, 'MEDIUM') as NotificationSeverity;
 
     const notification = await this.prisma.notification.create({
       data: {
         organizationId: context.organizationId,
         type: 'workflow',
-        category: category as any,
-        severity: severity as any,
+        category,
+        severity,
         title,
         message,
         metadata: {
@@ -211,19 +232,19 @@ export class ActionExecutor {
     config: Record<string, unknown>,
     context: ExecutionContext,
   ): Promise<Record<string, unknown>> {
-    const title = this.interpolate(String(config.title ?? 'Workflow Notification'), context);
-    const message = this.interpolate(String(config.message ?? ''), context);
-    const category = String(config.category ?? 'OPERATIONS');
-    const severity = String(config.severity ?? 'MEDIUM');
-    const entityType = config.entityType ? String(config.entityType) : undefined;
-    const entityId = config.entityId ? this.interpolate(String(config.entityId), context) : undefined;
+    const title = this.interpolate(configString(config.title, 'Workflow Notification'), context);
+    const message = this.interpolate(configString(config.message), context);
+    const category = configString(config.category, 'OPERATIONS') as NotificationCategory;
+    const severity = configString(config.severity, 'MEDIUM') as NotificationSeverity;
+    const entityType = config.entityType ? configString(config.entityType) : undefined;
+    const entityId = config.entityId ? this.interpolate(configString(config.entityId), context) : undefined;
 
     const notification = await this.prisma.notification.create({
       data: {
         organizationId: context.organizationId,
         type: 'workflow',
-        category: category as any,
-        severity: severity as any,
+        category,
+        severity,
         title,
         message,
         entityType,
@@ -239,7 +260,7 @@ export class ActionExecutor {
       organizationId: context.organizationId,
       notificationId: notification.id,
       type: 'workflow',
-      category: category as any,
+      category,
       title,
       message,
       entityType,
@@ -257,11 +278,11 @@ export class ActionExecutor {
     config: Record<string, unknown>,
     context: ExecutionContext,
   ): Promise<Record<string, unknown>> {
-    const url = this.interpolate(String(config.url ?? ''), context);
+    const url = this.interpolate(configString(config.url), context);
     if (!url) throw new Error('Webhook URL is required');
     this.validateWebhookUrl(url);
 
-    const method = String(config.method ?? 'POST').toUpperCase();
+    const method = configString(config.method, 'POST').toUpperCase();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'User-Agent': 'FlowERP-Workflow/1.0',
@@ -284,10 +305,7 @@ export class ActionExecutor {
       });
 
       const status = response.status;
-      let responseBody: unknown = null;
-      try {
-        responseBody = await response.text();
-      } catch {}
+      await response.text().catch(() => undefined);
 
       if (status >= 400) {
         throw new Error(`Webhook returned HTTP ${status}`);
@@ -303,12 +321,12 @@ export class ActionExecutor {
     config: Record<string, unknown>,
     context: ExecutionContext,
   ): Promise<Record<string, unknown>> {
-    const entityType = String(config.entityType ?? '').toLowerCase();
-    const entityId = this.interpolate(String(config.entityId ?? ''), context) ||
+    const entityType = configString(config.entityType).toLowerCase();
+    const entityId = this.interpolate(configString(config.entityId), context) ||
       (context.eventPayload.id as string);
-    const newStatus = String(config.status ?? config.newStatus ?? '');
+    const newStatus = configString(config.status ?? config.newStatus);
     const note = config.note
-      ? this.interpolate(String(config.note), context)
+      ? this.interpolate(configString(config.note), context)
       : `Workflow ${context.workflowId}`;
 
     if (!entityId) throw new Error('Entity ID is required for change_status');
@@ -329,7 +347,7 @@ export class ActionExecutor {
             await orders.updateStatus(
               context.organizationId,
               entityId,
-              { status: newStatus as any, note },
+              { status: newStatus as OrderStatus, note },
               actor,
             );
           }
@@ -343,7 +361,7 @@ export class ActionExecutor {
             await dispatches.updateStatus(
               context.organizationId,
               entityId,
-              { status: newStatus as any, note },
+              { status: newStatus as DispatchStatus, note },
               actor,
             );
           }
@@ -368,7 +386,7 @@ export class ActionExecutor {
         case 'customer': {
           const result = await this.prisma.customer.updateMany({
             where: { id: entityId, organizationId: context.organizationId },
-            data: { status: newStatus as any },
+            data: { status: newStatus as CustomerStatus },
           });
           if (result.count === 0) throw new Error(`Customer ${entityId} not found in this organization`);
           break;
@@ -387,12 +405,12 @@ export class ActionExecutor {
     config: Record<string, unknown>,
     context: ExecutionContext,
   ): Promise<Record<string, unknown>> {
-    const driverId = this.interpolate(String(config.driverId ?? ''), context);
-    const vehicleId = this.interpolate(String(config.vehicleId ?? ''), context);
-    const dispatchId = this.interpolate(String(config.dispatchId ?? ''), context) ||
+    const driverId = this.interpolate(configString(config.driverId), context);
+    const vehicleId = this.interpolate(configString(config.vehicleId), context);
+    const dispatchId = this.interpolate(configString(config.dispatchId), context) ||
       (context.eventPayload.id as string) ||
       (context.eventPayload.dispatchId as string);
-    const orderId = this.interpolate(String(config.orderId ?? ''), context) ||
+    const orderId = this.interpolate(configString(config.orderId), context) ||
       (context.eventPayload.orderId as string);
 
     if (!driverId) {
@@ -440,7 +458,7 @@ export class ActionExecutor {
     config: Record<string, unknown>,
     context: ExecutionContext,
   ): Promise<Record<string, unknown>> {
-    const orderId = this.interpolate(String(config.orderId ?? ''), context) ||
+    const orderId = this.interpolate(configString(config.orderId), context) ||
       (context.eventPayload.orderId as string) ||
       (context.eventPayload.id as string);
 
@@ -465,8 +483,8 @@ export class ActionExecutor {
     config: Record<string, unknown>,
     context: ExecutionContext,
   ): Promise<Record<string, unknown>> {
-    const entityType = String(config.entityType ?? '').toLowerCase();
-    const entityId = this.interpolate(String(config.entityId ?? ''), context) ||
+    const entityType = configString(config.entityType).toLowerCase();
+    const entityId = this.interpolate(configString(config.entityId), context) ||
       (context.eventPayload.id as string);
     const rawFields = (config.fields ?? config.data ?? {}) as Record<string, unknown>;
 
@@ -490,7 +508,7 @@ export class ActionExecutor {
       case 'order': {
         const result = await this.prisma.order.updateMany({
           where: { id: entityId, organizationId: context.organizationId },
-          data: fields as any,
+          data: fields,
         });
         if (result.count === 0) throw new Error(`Order ${entityId} not found in this organization`);
         break;
@@ -498,7 +516,7 @@ export class ActionExecutor {
       case 'customer': {
         const result = await this.prisma.customer.updateMany({
           where: { id: entityId, organizationId: context.organizationId },
-          data: fields as any,
+          data: fields,
         });
         if (result.count === 0) throw new Error(`Customer ${entityId} not found in this organization`);
         break;
@@ -506,7 +524,7 @@ export class ActionExecutor {
       case 'dispatch': {
         const result = await this.prisma.dispatch.updateMany({
           where: { id: entityId, organizationId: context.organizationId },
-          data: fields as any,
+          data: fields,
         });
         if (result.count === 0) throw new Error(`Dispatch ${entityId} not found in this organization`);
         break;
@@ -522,7 +540,7 @@ export class ActionExecutor {
     config: Record<string, unknown>,
     context: ExecutionContext,
   ): Promise<Record<string, unknown>> {
-    const entityType = String(config.entityType ?? '').toLowerCase();
+    const entityType = configString(config.entityType).toLowerCase();
     const fields = (config.fields ?? config.data ?? {}) as Record<string, unknown>;
 
     if (!entityType) throw new Error('Entity type is required');
@@ -532,12 +550,14 @@ export class ActionExecutor {
         const n = await this.prisma.notification.create({
           data: {
             organizationId: context.organizationId,
-            type: String(fields.type ?? 'workflow'),
+            type: configString(fields.type, 'workflow'),
             category: 'OPERATIONS',
             severity: 'MEDIUM',
-            title: String(fields.title ?? 'Workflow Created'),
-            message: String(fields.message ?? ''),
-            metadata: fields.metadata as any ?? undefined,
+            title: configString(fields.title, 'Workflow Created'),
+            message: configString(fields.message),
+            metadata: fields.metadata === undefined
+              ? undefined
+              : (fields.metadata as Prisma.InputJsonValue),
           },
         });
         return { entityType, entityId: n.id };
@@ -551,7 +571,7 @@ export class ActionExecutor {
     config: Record<string, unknown>,
     context: ExecutionContext,
   ): Promise<Record<string, unknown>> {
-    const reason = this.interpolate(String(config.reason ?? 'Flagged by workflow'), context);
+    const reason = this.interpolate(configString(config.reason, 'Flagged by workflow'), context);
     const entityId = (context.eventPayload.id as string) ?? 'unknown';
 
     await this.prisma.notification.create({
@@ -578,7 +598,7 @@ export class ActionExecutor {
     config: Record<string, unknown>,
     context: ExecutionContext,
   ): Record<string, unknown> {
-    const name = String(config.name ?? '');
+    const name = configString(config.name);
     const value = config.value;
     if (name) {
       context.variables[name] = value;
@@ -590,52 +610,52 @@ export class ActionExecutor {
     config: Record<string, unknown>,
     context: ExecutionContext,
   ): Record<string, unknown> {
-    const message = this.interpolate(String(config.message ?? ''), context);
+    const message = this.interpolate(configString(config.message), context);
     this.logger.log(`[Workflow ${context.workflowId}] ${message}`);
     return { logged: true, message };
   }
 
-  private async executeGenerateReport(
+  private executeGenerateReport(
     config: Record<string, unknown>,
     context: ExecutionContext,
   ): Promise<Record<string, unknown>> {
-    const reportType = String(config.reportType ?? 'summary');
+    const reportType = configString(config.reportType, 'summary');
     this.logger.warn(
       `[Workflow ${context.workflowId}] generate_report is a placeholder (type=${reportType})`,
     );
-    return {
+    return Promise.resolve({
       reportType,
       generated: false,
       note: 'Report generation via workflow is not implemented; action recorded but no report was produced',
-    };
+    });
   }
 
-  private async executeSendSms(
+  private executeSendSms(
     config: Record<string, unknown>,
     context: ExecutionContext,
   ): Promise<Record<string, unknown>> {
-    const to = this.interpolate(String(config.to ?? ''), context);
-    const message = this.interpolate(String(config.message ?? ''), context);
+    const to = this.interpolate(configString(config.to), context);
+    const message = this.interpolate(configString(config.message), context);
     if (!to) throw new Error('SMS recipient (to) is required');
     // Honest stub: no SMS provider is wired. Claiming `sent: true` made
     // failed customer notifications look successful in execution history.
     this.logger.warn(
       `[Workflow ${context.workflowId}] SMS not delivered — no provider configured (to=${to})`,
     );
-    return {
+    return Promise.resolve({
       sent: false,
       to,
       message,
       note: 'SMS delivery is not configured; action recorded but message was not sent',
-    };
+    });
   }
 
   private async executeDeleteEntity(
     config: Record<string, unknown>,
     context: ExecutionContext,
   ): Promise<Record<string, unknown>> {
-    const entityType = String(config.entityType ?? '').toLowerCase();
-    const entityId = this.interpolate(String(config.entityId ?? ''), context) ||
+    const entityType = configString(config.entityType).toLowerCase();
+    const entityId = this.interpolate(configString(config.entityId), context) ||
       (context.eventPayload.id as string);
 
     if (!entityId || !entityType) throw new Error('Entity type and ID required');
@@ -659,7 +679,7 @@ export class ActionExecutor {
     return template.replace(/\{\{([^}]+)\}\}/g, (_, path: string) => {
       const trimmed = path.trim();
       const value = this.resolve(trimmed, context);
-      return value !== undefined ? String(value) : '';
+      return value !== undefined ? configString(value) : '';
     });
   }
 

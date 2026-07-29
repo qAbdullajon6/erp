@@ -1,4 +1,5 @@
 import { Controller, Post, Param, Body, Headers, UnauthorizedException, NotFoundException, HttpCode } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { WorkflowEngineService } from './engine/workflow-engine.service';
 import { createHash, timingSafeEqual } from 'crypto';
@@ -42,7 +43,7 @@ export class WorkflowsWebhookController {
         workflowId: webhook.workflowId,
         organizationId: webhook.organizationId,
         trigger: 'webhook',
-        eventPayload: body as any,
+        eventPayload: body as Prisma.InputJsonValue,
         status: 'PENDING',
       },
     });

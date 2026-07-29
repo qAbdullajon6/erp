@@ -11,6 +11,16 @@ interface ConditionGroup {
   conditions: (Condition | ConditionGroup)[];
 }
 
+function compareString(value: unknown, fallback = ''): string {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'bigint' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (value instanceof Date) return value.toISOString();
+  return fallback;
+}
+
 @Injectable()
 export class ConditionEvaluator {
   evaluate(conditions: unknown, payload: Record<string, unknown>): boolean {
@@ -42,37 +52,37 @@ export class ConditionEvaluator {
 
     switch (condition.operator) {
       case 'equals':
-        return String(fieldValue) === String(compareValue);
+        return compareString(fieldValue) === compareString(compareValue);
       case 'not_equals':
-        return String(fieldValue) !== String(compareValue);
+        return compareString(fieldValue) !== compareString(compareValue);
       case 'contains':
-        return String(fieldValue ?? '').toLowerCase().includes(String(compareValue ?? '').toLowerCase());
+        return compareString(fieldValue).toLowerCase().includes(compareString(compareValue).toLowerCase());
       case 'greater_than':
         return Number(fieldValue) > Number(compareValue);
       case 'less_than':
         return Number(fieldValue) < Number(compareValue);
       case 'in': {
-        const list = String(compareValue).split(',').map((s) => s.trim());
-        return list.includes(String(fieldValue));
+        const list = compareString(compareValue).split(',').map((s) => s.trim());
+        return list.includes(compareString(fieldValue));
       }
       case 'not_in': {
-        const list = String(compareValue).split(',').map((s) => s.trim());
-        return !list.includes(String(fieldValue));
+        const list = compareString(compareValue).split(',').map((s) => s.trim());
+        return !list.includes(compareString(fieldValue));
       }
       case 'is_empty':
         return fieldValue === null || fieldValue === undefined || fieldValue === '';
       case 'is_not_empty':
         return fieldValue !== null && fieldValue !== undefined && fieldValue !== '';
       case 'starts_with':
-        return String(fieldValue ?? '').startsWith(String(compareValue ?? ''));
+        return compareString(fieldValue).startsWith(compareString(compareValue));
       case 'ends_with':
-        return String(fieldValue ?? '').endsWith(String(compareValue ?? ''));
+        return compareString(fieldValue).endsWith(compareString(compareValue));
       case 'regex': {
         try {
-          const pattern = String(compareValue);
+          const pattern = compareString(compareValue);
           if (pattern.length > 200) return false;
           const re = new RegExp(pattern, 'i');
-          const input = String(fieldValue ?? '').slice(0, 10_000);
+          const input = compareString(fieldValue).slice(0, 10_000);
           return re.test(input);
         } catch {
           return false;
