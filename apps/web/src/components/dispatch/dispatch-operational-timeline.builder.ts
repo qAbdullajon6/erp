@@ -273,7 +273,11 @@ function auditDispatchEntry(
           kind: 'create',
           categories: categoriesForKind('create'),
           sequence: STATUS_SEQUENCE.DRAFT,
-          searchText: buildSearchText(['dispatch created', meta.dispatchNumber, actor]),
+          searchText: buildSearchText([
+            'dispatch created',
+            typeof meta.dispatchNumber === 'string' ? meta.dispatchNumber : null,
+            actor,
+          ]),
         },
       ];
 

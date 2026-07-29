@@ -75,9 +75,9 @@ export function applyKpiFocus(
   events: CalendarEvent[],
   focus?: CalendarKpiFocus,
   conflictsByDispatchId?: Record<string, DispatchConflictsResponse>,
+  now: Date = new Date(),
 ): CalendarEvent[] {
   if (!focus) return events;
-  const now = new Date();
   const conflictIds =
     focus === 'conflicts' ? engineConflictEventIds(events, conflictsByDispatchId) : null;
 

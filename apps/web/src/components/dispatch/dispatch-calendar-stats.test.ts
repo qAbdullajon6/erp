@@ -54,7 +54,9 @@ describe('dispatch-calendar-stats', () => {
       new Date('2026-07-29T19:00:00'),
     );
     expect(isEventDelayed(past, new Date('2026-07-29T12:00:00'))).toBe(true);
-    expect(applyKpiFocus([past, future], 'delayed')).toEqual([past]);
+    expect(applyKpiFocus([past, future], 'delayed', undefined, new Date('2026-07-29T12:00:00'))).toEqual([
+      past,
+    ]);
   });
 
   it('marks overlapping driver assignments as schedule conflicts', () => {

@@ -168,7 +168,7 @@ function KpiCard({
       <SurfaceCard className="flex h-full flex-1 flex-col border-0 bg-transparent p-4 shadow-none sm:p-5">
         <div className="flex flex-1 items-start justify-between gap-3">
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            <p className="line-clamp-2 min-h-[2.5rem] text-xs font-medium text-muted-foreground sm:text-sm">
+            <p className="min-h-[2.75rem] text-xs font-medium leading-snug text-muted-foreground sm:text-sm">
               {def.label}
             </p>
             <p className="mt-2 text-2xl font-semibold leading-none text-foreground sm:text-3xl">

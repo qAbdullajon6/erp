@@ -4,6 +4,7 @@ import { Phone, User, Truck, Package, AlertTriangle } from 'lucide-react';
 import type { ApiDispatch } from '@/lib/api/dispatches';
 import type { DispatchBoardSummary } from '@/lib/api/dashboard';
 import { StatusBadge } from '@/components/shared/status-badge';
+import { DriverOperationalStatusBadge } from '@/components/shared/driver-operational-status-badge';
 import { cn } from '@/lib/utils';
 import type { BoardOpsCounts } from './dispatch-ops';
 import { isDispatchOverdue } from './dispatch-ops';
@@ -28,6 +29,15 @@ export function OperationsRail({ selectedDispatch, board, counts, onCallDriver }
       ? board.drivers.busy.filter((b) => b.driver.id === driver.id).length
       : 0;
 
+  const boardDriver =
+    board && driver
+      ? board.drivers.available.find((d) => d.id === driver.id) ??
+        board.drivers.busy.find((b) => b.driver.id === driver.id)?.driver ??
+        board.drivers.onBreak?.find((d) => d.id === driver.id) ??
+        board.drivers.onLeave.find((d) => d.id === driver.id) ??
+        null
+      : null;
+
   return (
     <aside className="flex h-full min-h-0 flex-col bg-muted/15">
       <div className="shrink-0 border-b border-border/60 px-3.5 py-2.5">
@@ -48,8 +58,16 @@ export function OperationsRail({ selectedDispatch, board, counts, onCallDriver }
                 {driver.firstName} {driver.lastName}
               </p>
               <p className="font-mono text-[11px] text-muted-foreground">{driver.employeeCode}</p>
-              <div className="mt-1.5 flex items-center justify-between gap-2">
-                <StatusBadge status={driver.status} />
+              <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <StatusBadge status={driver.status} />
+                  {boardDriver?.operationalStatus ? (
+                    <DriverOperationalStatusBadge
+                      status={boardDriver.operationalStatus}
+                      onBreak={boardDriver.onBreak}
+                    />
+                  ) : null}
+                </div>
                 {driver.phone && (
                   <button
                     type="button"

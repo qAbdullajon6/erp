@@ -91,7 +91,7 @@ export function DispatchCalendarKpis({ kpis, activeFocus, onKpiClick }: Dispatch
     { key: 'vehicles', label: 'Vehicles', value: kpis.vehicles, icon: Truck, tone: 'muted' },
     {
       key: 'conflicts',
-      label: 'Conflicts',
+      label: 'Visible Conflicts',
       value: kpis.conflicts,
       icon: AlertTriangle,
       tone: kpis.conflicts > 0 ? 'destructive' : 'muted',

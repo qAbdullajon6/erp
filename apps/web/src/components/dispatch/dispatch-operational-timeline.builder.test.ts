@@ -41,7 +41,7 @@ const baseDispatch: ApiDispatch = {
   deliveryDateScheduled: '2026-07-29T18:00:00.000Z',
   pickupDateActual: null,
   deliveryDateActual: null,
-  notes: null,
+  notes: undefined,
   allowedTransitions: [],
   statusHistory: [],
   createdAt: '2026-07-29T09:00:00.000Z',

@@ -32,7 +32,7 @@ import { dispatchesAPI } from '@/lib/api/dispatches';
 import { useInvalidateOperationalState } from '@/lib/api/invalidate';
 import { DISPATCH_WRITE_ROLES } from '@/lib/role-access';
 import { useDispatches, useDispatchBoardSummary } from '@/lib/hooks/use-dispatches';
-import { useDispatchConflictsBatch } from '@/lib/api/dispatch-conflicts';
+import { useDispatchConflictsBatch, type DispatchConflictSummary } from '@/lib/api/dispatch-conflicts';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState, ErrorState } from '@/components/shared/list-states';
@@ -838,7 +838,7 @@ interface BoardColumnProps {
   onCancel: (dispatch: ApiDispatch) => void;
   onViewOrder: (orderId: string) => void;
   onCall: (dispatch: ApiDispatch) => void;
-  conflictsByDispatchId?: Record<string, { summary: { unresolved: number; critical: number } }>;
+  conflictsByDispatchId?: Record<string, { summary: DispatchConflictSummary }>;
 }
 
 function BoardColumn({
