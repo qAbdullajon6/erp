@@ -5,7 +5,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import type { WebhookConfig } from "../../config/configuration";
 import { signWebhookPayload } from "./webhook-signature.util";
 import { assertSafeWebhookUrl, WebhookUrlError } from "./webhook-url.util";
-import { WebhookCircuitBreaker, CircuitState } from "./webhook-circuit-breaker";
+import { WebhookCircuitBreaker } from "./webhook-circuit-breaker";
 
 /// How often the drain loop looks for due work.
 const POLL_INTERVAL_MS = 5_000;

@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { NotificationDispatcherService } from "../../notifications/dispatcher/notification-dispatcher.service";
 import type { CurrentUserPayload } from "../../auth/interfaces/current-user.interface";
@@ -53,17 +54,17 @@ export class NotificationAiTools {
         },
         handler: async (params: Record<string, unknown>, actor: CurrentUserPayload) => {
           const limit = (params.limit as number) || 20;
-          const where: any = {
+          const where: Prisma.NotificationWhereInput = {
             organizationId: actor.organizationId,
             isArchived: false,
           };
 
-          if (params.category) {
-            where.category = params.category as string;
+          if (typeof params.category === "string") {
+            where.category = params.category as NotificationCategory;
           }
 
-          if (params.isRead !== undefined) {
-            where.isRead = params.isRead as boolean;
+          if (typeof params.isRead === "boolean") {
+            where.isRead = params.isRead;
           }
 
           const notifications = await this.prisma.notification.findMany({

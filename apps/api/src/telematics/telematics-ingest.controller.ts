@@ -48,8 +48,9 @@ export class TelematicsIngestController {
     // Traccar Client sends fields as query params; merge them under the body so
     // one code path handles both transports. `secret` is stripped so it never
     // reaches the normalizer as if it were a data field.
-    const { secret: _omit, ...queryData } = query;
-    const bodyHasData = body != null && typeof body === "object" && Object.keys(body as object).length > 0;
+    const queryData = { ...query };
+    delete queryData.secret;
+    const bodyHasData = body != null && typeof body === "object" && Object.keys(body).length > 0;
     const payload = bodyHasData ? body : Object.keys(queryData).length > 0 ? queryData : body;
 
     let positions;

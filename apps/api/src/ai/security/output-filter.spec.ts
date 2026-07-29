@@ -1,4 +1,4 @@
-import { OutputFilter, StreamOutputFilter } from "./output-filter";
+import { OutputFilter } from "./output-filter";
 
 describe("OutputFilter", () => {
   let filter: OutputFilter;

@@ -4,6 +4,8 @@ import type { ReadTools } from "./read.tools";
 import type { WriteTools } from "./write.tools";
 import type { AnalyticsTools } from "./analytics.tools";
 import type { TelematicsAiTools } from "./telematics.tools";
+import type { BillingTools } from "./billing.tools";
+import type { NotificationAiTools } from "./notification.tools";
 import type { CurrentUserPayload } from "../../auth/interfaces/current-user.interface";
 
 function makeTool(overrides: Partial<AiTool> = {}): AiTool {
@@ -13,7 +15,7 @@ function makeTool(overrides: Partial<AiTool> = {}): AiTool {
     parameters: { type: "object", properties: {} },
     allowedRoles: ["ADMIN", "OPERATIONS_MANAGER"],
     mutating: false,
-    handler: async () => ({ ok: true }),
+    handler: () => Promise.resolve({ ok: true }),
     ...overrides,
   };
 }
@@ -23,8 +25,8 @@ function makeRegistry(tools: AiTool[]): ToolRegistry {
   const writeTools = { all: () => [] } as unknown as WriteTools;
   const analyticsTools = { all: () => [] } as unknown as AnalyticsTools;
   const telematicsTools = { all: () => [] } as unknown as TelematicsAiTools;
-  const billingTools = { getTools: () => [] } as unknown as any;
-  const notificationTools = { all: () => [] } as unknown as any;
+  const notificationTools = { all: () => [] } as unknown as NotificationAiTools;
+  const billingTools = { getTools: () => [] } as unknown as BillingTools;
   return new ToolRegistry(readTools, writeTools, analyticsTools, telematicsTools, notificationTools, billingTools);
 }
 

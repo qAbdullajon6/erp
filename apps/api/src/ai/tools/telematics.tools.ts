@@ -136,7 +136,7 @@ export class TelematicsAiTools {
         const result = await this.analytics.driverBehavior(actor.organizationId, {
           from: str(args.from),
           to: str(args.to),
-        } as never);
+        });
         return {
           drivers: result.drivers.slice(0, 10).map((d) => ({
             name: d.name,

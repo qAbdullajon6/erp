@@ -223,7 +223,7 @@ export class AiController {
   /// The user sends { confirmed: true } to proceed, or { confirmed: false } to cancel.
   @Post("conversations/:id/confirm")
   @HttpCode(200)
-  async confirm(
+  confirm(
     @CurrentUser() user: CurrentUserPayload,
     @Param("id", ParseUUIDPipe) id: string,
     @Body() body: { confirmed: boolean },

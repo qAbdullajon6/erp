@@ -2,6 +2,20 @@ import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { FeatureGateService } from "../../billing/feature-gate.service";
 
+function asFeatureRecord(features: unknown): Record<string, unknown> {
+  return typeof features === "object" && features !== null ? (features as Record<string, unknown>) : {};
+}
+
+function featureBool(features: Record<string, unknown>, key: string): boolean {
+  return features[key] === true;
+}
+
+function featureLimit(features: Record<string, unknown>, key: string): number | null | undefined {
+  const value = features[key];
+  if (value === null) return null;
+  return typeof value === "number" ? value : undefined;
+}
+
 /// Developer Portal subscription service - read-only subscription and quota info.
 ///
 /// Provides API endpoints for:
@@ -35,7 +49,7 @@ export class SubscriptionService {
       };
     }
 
-    const features = subscription.plan.features as any;
+    const features = asFeatureRecord(subscription.plan.features);
 
     return {
       plan: {
@@ -44,22 +58,22 @@ export class SubscriptionService {
       },
       status: subscription.status,
       features: {
-        analyticsEnabled: features.analyticsEnabled ?? false,
-        apiAccessEnabled: features.apiAccessEnabled ?? false,
-        customBrandingEnabled: features.customBrandingEnabled ?? false,
-        prioritySupportEnabled: features.prioritySupportEnabled ?? false,
-        advancedReportingEnabled: features.advancedReportingEnabled ?? false,
+        analyticsEnabled: featureBool(features, "analyticsEnabled"),
+        apiAccessEnabled: featureBool(features, "apiAccessEnabled"),
+        customBrandingEnabled: featureBool(features, "customBrandingEnabled"),
+        prioritySupportEnabled: featureBool(features, "prioritySupportEnabled"),
+        advancedReportingEnabled: featureBool(features, "advancedReportingEnabled"),
       },
       limits: {
-        maxUsers: features.maxUsers,
-        maxVehicles: features.maxVehicles,
-        maxDrivers: features.maxDrivers,
-        maxCustomers: features.maxCustomers,
-        maxOrders: features.maxOrders,
-        maxStorageGB: features.maxStorageGB,
-        maxApiRequests: features.maxApiRequests,
-        maxAiCredits: features.maxAiCredits,
-        maxWebhooks: features.maxWebhooks,
+        maxUsers: featureLimit(features, "maxUsers"),
+        maxVehicles: featureLimit(features, "maxVehicles"),
+        maxDrivers: featureLimit(features, "maxDrivers"),
+        maxCustomers: featureLimit(features, "maxCustomers"),
+        maxOrders: featureLimit(features, "maxOrders"),
+        maxStorageGB: featureLimit(features, "maxStorageGB"),
+        maxApiRequests: featureLimit(features, "maxApiRequests"),
+        maxAiCredits: featureLimit(features, "maxAiCredits"),
+        maxWebhooks: featureLimit(features, "maxWebhooks"),
       },
     };
   }
@@ -80,7 +94,7 @@ export class SubscriptionService {
       return { quotas: [] };
     }
 
-    const features = subscription.plan.features as any;
+    const features = asFeatureRecord(subscription.plan.features);
     const periodStart = subscription.currentPeriodStart;
     const periodEnd = subscription.currentPeriodEnd;
 
@@ -114,7 +128,7 @@ export class SubscriptionService {
 
     const quotas = Object.entries(metricLimits).map(([metricType, limitKey]) => {
       const used = usageByMetric.get(metricType) || 0;
-      const limit = features[limitKey] ?? null; // null = unlimited
+      const limit = featureLimit(features, limitKey) ?? null; // null = unlimited
       const remaining = limit !== null ? Math.max(0, limit - used) : null;
 
       return {
@@ -144,8 +158,8 @@ export class SubscriptionService {
       };
     }
 
-    const features = subscription.plan.features as any;
-    const maxApiRequests = features.maxApiRequests ?? 10000;
+    const features = asFeatureRecord(subscription.plan.features);
+    const maxApiRequests = featureLimit(features, "maxApiRequests") ?? 10000;
 
     // Rate limits scale with plan
     // Free: 10/min, Starter: 60/min, Professional: 300/min, Enterprise: unlimited

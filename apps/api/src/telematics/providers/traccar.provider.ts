@@ -41,7 +41,11 @@ export class TraccarProvider implements TelematicsProvider {
     const battery = num(p.batt ?? p.battery);
 
     return {
-      externalDeviceId: typeof p.id === "string" ? p.id : p.id != null ? String(p.id) : null,
+      externalDeviceId: typeof p.id === "string"
+        ? p.id
+        : typeof p.id === "number" || typeof p.id === "boolean"
+          ? String(p.id)
+          : null,
       recordedAt: parseTimestamp(p.timestamp ?? p.time ?? p.fixTime) ?? new Date(),
       latitude,
       longitude,

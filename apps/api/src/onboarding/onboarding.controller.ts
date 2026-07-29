@@ -4,13 +4,14 @@ import {
   Post,
   Body,
   UseGuards,
-  Req,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { CurrentUserPayload } from '../auth/interfaces/current-user.interface';
 import { OnboardingService } from './onboarding.service';
-import { OnboardingProgressDto, CompleteStepDto, SkipOnboardingDto } from './dto/onboarding.dto';
+import { OnboardingProgressDto, CompleteStepDto } from './dto/onboarding.dto';
 
 @Controller('onboarding')
 @UseGuards(JwtAuthGuard)
@@ -18,21 +19,19 @@ export class OnboardingController {
   constructor(private onboardingService: OnboardingService) {}
 
   @Get('progress')
-  async getProgress(@Req() req: any): Promise<{ data: OnboardingProgressDto }> {
-    const organizationId = req.user.organizationId;
-    const progress = await this.onboardingService.getProgress(organizationId);
+  async getProgress(@CurrentUser() user: CurrentUserPayload): Promise<{ data: OnboardingProgressDto }> {
+    const progress = await this.onboardingService.getProgress(user.organizationId);
     return { data: progress };
   }
 
   @Post('steps/:step/complete')
   @HttpCode(HttpStatus.OK)
   async completeStep(
-    @Req() req: any,
+    @CurrentUser() user: CurrentUserPayload,
     @Body() dto: CompleteStepDto,
   ): Promise<{ data: OnboardingProgressDto }> {
-    const organizationId = req.user.organizationId;
     const progress = await this.onboardingService.completeStep(
-      organizationId,
+      user.organizationId,
       dto,
     );
     return { data: progress };
@@ -41,11 +40,9 @@ export class OnboardingController {
   @Post('skip')
   @HttpCode(HttpStatus.OK)
   async skip(
-    @Req() req: any,
-    @Body() dto?: SkipOnboardingDto,
+    @CurrentUser() user: CurrentUserPayload,
   ): Promise<{ data: OnboardingProgressDto }> {
-    const organizationId = req.user.organizationId;
-    const progress = await this.onboardingService.skip(organizationId);
+    const progress = await this.onboardingService.skip(user.organizationId);
     return { data: progress };
   }
 }

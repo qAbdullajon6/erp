@@ -5,7 +5,7 @@ describe("AiService", () => {
     let service: AiService;
 
     beforeEach(() => {
-      service = Object.create(AiService.prototype);
+      service = Object.create(AiService.prototype) as AiService;
     });
 
     const isRetryable = (error?: string) =>

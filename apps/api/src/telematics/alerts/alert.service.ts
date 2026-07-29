@@ -106,7 +106,7 @@ export class AlertService {
         type: "alert",
         vehicleId: alert.vehicleId,
         at: alert.occurredAt.toISOString(),
-        payload: this.toResponse(alert) as unknown as Record<string, unknown>,
+        payload: this.toResponse(alert),
       });
       void this.workflowEvents.emit(input.organizationId, "telematics.alert.raised", {
         alertId: alert.id,

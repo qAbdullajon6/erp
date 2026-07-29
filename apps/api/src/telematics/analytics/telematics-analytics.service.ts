@@ -59,7 +59,7 @@ export class TelematicsAnalyticsService {
 
     const movingSec = tripAgg._sum.movingSec ?? 0;
     const idleSec = tripAgg._sum.idleSec ?? 0;
-    const byState = Object.fromEntries(states.map((s) => [s.movementState, s._count as number]));
+    const byState = Object.fromEntries(states.map((s) => [s.movementState, s._count]));
 
     return {
       range: { from, to },

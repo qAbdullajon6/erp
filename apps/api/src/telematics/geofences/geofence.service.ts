@@ -92,7 +92,7 @@ export class GeofenceService {
       centerLng: dto.centerLng ?? existing.centerLng ?? undefined,
       radiusM: dto.radiusM ?? existing.radiusM ?? undefined,
       polygon: dto.polygon ?? (existing.polygon as unknown as CreateGeofenceDto["polygon"]) ?? undefined,
-    } as CreateGeofenceDto);
+    });
 
     const geofence = await this.prisma.geofence.update({
       where: { id },

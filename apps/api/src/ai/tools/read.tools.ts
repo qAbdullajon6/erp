@@ -9,7 +9,6 @@ import { InvoicesService } from "../../invoices/invoices.service";
 import { DispatchesService } from "../../dispatch/dispatches.service";
 import { NotificationsService } from "../../notifications/notifications.service";
 import { ImportService } from "../../import/import.service";
-import type { CurrentUserPayload } from "../../auth/interfaces/current-user.interface";
 import type { AiTool } from "./tool.interface";
 
 /// Role sets, mirroring the equivalent HTTP controllers. The Copilot must not
@@ -286,7 +285,7 @@ export class ReadTools {
           driverId: str(args.driverId),
           page: 1,
           limit: limitOf(args),
-        } as never);
+        });
         return {
           total: result.meta.total,
           items: result.items.map((d) => ({

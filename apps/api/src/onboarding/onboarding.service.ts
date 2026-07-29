@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { OnboardingProgress } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { OnboardingProgressDto, CompleteStepDto } from './dto/onboarding.dto';
 
@@ -88,15 +89,15 @@ export class OnboardingService {
     });
   }
 
-  private mapToDto(progress: any): OnboardingProgressDto {
+  private mapToDto(progress: OnboardingProgress): OnboardingProgressDto {
     return {
       id: progress.id,
       organizationId: progress.organizationId,
       completed: progress.completed,
       skipped: progress.skipped,
-      steps: progress.steps,
-      skippedAt: progress.skippedAt,
-      completedAt: progress.completedAt,
+      steps: progress.steps as OnboardingProgressDto['steps'],
+      skippedAt: progress.skippedAt ?? undefined,
+      completedAt: progress.completedAt ?? undefined,
       createdAt: progress.createdAt,
       updatedAt: progress.updatedAt,
     };
