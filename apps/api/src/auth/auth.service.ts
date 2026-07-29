@@ -19,6 +19,14 @@ import { generateRefreshToken, hashRefreshToken } from "./token.util";
 
 type MembershipWithOrganization = Membership & { organization: Organization };
 
+/// Not a real credential — a fixed argon2id hash verified against on
+/// login when the email doesn't resolve to a user, so the "no such user"
+/// path costs the same CPU time as a real wrong-password attempt. Pins the
+/// login timing-safety fix to one place rather than recomputing a hash
+/// inline.
+const DUMMY_PASSWORD_HASH =
+  "$argon2id$v=19$m=65536,t=3,p=4$+GJNCAmn3nE5tlkWjZ6tqQ$ktwl4Qpd4YFzcL1U/VfHqEmR7cV4DNQ+VAC3iB/fa5s";
+
 @Injectable()
 export class AuthService {
   private readonly authConfig: AuthConfig;
@@ -93,9 +101,15 @@ export class AuthService {
   async login(dto: LoginDto, context: RequestContext): Promise<AuthResult> {
     const email = dto.email.toLowerCase();
     const user = await this.prisma.user.findUnique({ where: { email } });
-    const passwordValid = user?.passwordHash
-      ? await this.passwordService.verify(dto.password, user.passwordHash)
-      : false;
+    // Always pay the argon2 verify cost, even for an unknown email or a
+    // user with no password set — otherwise the fast-reject path is
+    // measurably faster than a real wrong-password attempt, turning login
+    // latency into an email-enumeration oracle despite the identical error
+    // message below.
+    const passwordValid = await this.passwordService.verify(
+      dto.password,
+      user?.passwordHash ?? DUMMY_PASSWORD_HASH,
+    );
 
     if (!user || !passwordValid) {
       await this.auditService.log({
@@ -112,13 +126,12 @@ export class AuthService {
       throw new UnauthorizedException("This account is not active");
     }
 
-    // Fresh login always starts outside Open ERP — close any orphaned
-    // support sessions so a home JWT cannot conflict with a stale row.
+    // Fresh login always starts outside Open ERP — close orphaned support
+    // sessions and deactivate temporary tenant ADMIN memberships so a
+    // platform operator cannot silently re-enter a previously supported
+    // org via organizationSlug without a new platform.support.enter.
     if (user.isPlatformAdmin) {
-      await this.prisma.platformSupportSession.updateMany({
-        where: { userId: user.id, endedAt: null },
-        data: { endedAt: new Date() },
-      });
+      await this.endOrphanedPlatformSupport(user.id);
     }
 
     const membership = await this.resolveMembershipForLogin(user.id, dto.organizationSlug);
@@ -167,6 +180,30 @@ export class AuthService {
     // Tenant users still require an ACTIVE organization.
     if (membership.organization.status !== "ACTIVE" && !existing.user.isPlatformAdmin) {
       throw new UnauthorizedException("Session is no longer valid");
+    }
+
+    // Outside an active Open ERP session, refuse to refresh into anything
+    // other than the Platform Console home membership (QA-C-02).
+    if (existing.user.isPlatformAdmin) {
+      const liveSupport = await this.prisma.platformSupportSession.findFirst({
+        where: {
+          userId: existing.userId,
+          endedAt: null,
+          targetMembershipId: membership.id,
+          targetOrganizationId: membership.organizationId,
+        },
+        select: { id: true },
+      });
+      if (!liveSupport) {
+        const latest = await this.prisma.platformSupportSession.findFirst({
+          where: { userId: existing.userId },
+          orderBy: { startedAt: "desc" },
+          select: { homeMembershipId: true },
+        });
+        if (latest && membership.id !== latest.homeMembershipId) {
+          throw new UnauthorizedException("Session is no longer valid");
+        }
+      }
     }
 
     // Rotate: the presented token is single-use.
@@ -332,6 +369,77 @@ export class AuthService {
     });
   }
 
+  /// Closes any live Open ERP rows for a platform operator and leaves only
+  /// the Platform Console home membership ACTIVE. Temporary tenant ADMIN
+  /// memberships from prior support sessions are REMOVED so organizationSlug
+  /// login cannot silently re-enter a tenant without a new enter audit.
+  private async endOrphanedPlatformSupport(userId: string): Promise<void> {
+    const activeSessions = await this.prisma.platformSupportSession.findMany({
+      where: { userId, endedAt: null },
+      select: {
+        targetOrganizationId: true,
+        targetMembershipId: true,
+        homeMembershipId: true,
+      },
+    });
+
+    if (activeSessions.length > 0) {
+      await this.prisma.platformSupportSession.updateMany({
+        where: { userId, endedAt: null },
+        data: { endedAt: new Date() },
+      });
+    }
+
+    for (const session of activeSessions) {
+      await this.prisma.refreshToken.updateMany({
+        where: {
+          userId,
+          organizationId: session.targetOrganizationId,
+          revokedAt: null,
+        },
+        data: { revokedAt: new Date() },
+      });
+      if (session.targetMembershipId !== session.homeMembershipId) {
+        await this.prisma.membership.updateMany({
+          where: { id: session.targetMembershipId, status: "ACTIVE" },
+          data: { status: "REMOVED" },
+        });
+      }
+    }
+
+    // Home = most recent support session's homeMembershipId (even if ended),
+    // else the operator's oldest membership. Never deactivate that row —
+    // historical sessions may have targeted it while a different org was
+    // briefly recorded as home.
+    const latestSession = await this.prisma.platformSupportSession.findFirst({
+      where: { userId },
+      orderBy: { startedAt: "desc" },
+      select: { homeMembershipId: true },
+    });
+    const homeMembershipId =
+      latestSession?.homeMembershipId ??
+      (
+        await this.prisma.membership.findFirst({
+          where: { userId },
+          orderBy: { createdAt: "asc" },
+          select: { id: true },
+        })
+      )?.id;
+
+    if (!homeMembershipId) return;
+
+    await this.prisma.membership.updateMany({
+      where: { userId, status: "ACTIVE", NOT: { id: homeMembershipId } },
+      data: { status: "REMOVED" },
+    });
+
+    // Ensure the home seat itself is ACTIVE (recovers from a prior buggy sweep).
+    await this.prisma.membership.updateMany({
+      where: { id: homeMembershipId, status: { not: "ACTIVE" } },
+      data: { status: "ACTIVE" },
+    });
+  }
+
   /// Decides which of the user's Memberships becomes "current" for this
   /// login. If `organizationSlug` is given, it's validated against the
   /// user's real active Memberships — never trusted blindly. Otherwise
@@ -389,7 +497,7 @@ export class AuthService {
     user: User,
     membership: MembershipWithOrganization,
   ): Promise<AuthResult> {
-    const payload: JwtPayload = { sub: user.id, mid: membership.id };
+    const payload: JwtPayload = { sub: user.id, mid: membership.id, typ: "staff" };
     const accessToken = await this.jwtService.signAsync(payload, {
       secret: this.authConfig.jwtAccessSecret,
       expiresIn: this.authConfig.jwtAccessExpiresInSeconds,

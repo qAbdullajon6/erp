@@ -10,7 +10,8 @@ import { FeatureGateService } from "./feature-gate.service";
 /// real subscription seat limits instead of no-op stubs.
 ///
 /// Seat counting:
-/// - "Seats used" = count of ACTIVE memberships
+/// - "Seats used" = count of ACTIVE memberships whose user is NOT a platform
+///   admin (Open ERP support memberships must not consume tenant seats)
 /// - "Seats available" = subscription.seats (purchased seat count)
 /// - Null seats = unlimited (enterprise/custom plans)
 ///
@@ -101,13 +102,15 @@ export class BillingSeatsService {
     return Promise.resolve();
   }
 
-  /// Count currently active seats (ACTIVE memberships).
-  /// Used by enforcement logic and can be exposed for UI display.
+  /// Count currently active seats (ACTIVE memberships of real tenant users).
+  /// Platform-support ADMIN memberships are excluded — they are not billable
+  /// seats and must not block tenant invites (QA-C-03).
   async countActiveSeats(organizationId: string): Promise<number> {
     return this.prisma.membership.count({
       where: {
         organizationId,
         status: "ACTIVE",
+        user: { isPlatformAdmin: false },
       },
     });
   }

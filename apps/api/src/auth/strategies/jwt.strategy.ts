@@ -25,6 +25,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   /// every single request — a revoked membership or disabled user is
   /// rejected immediately, without waiting for the access token to expire.
   async validate(payload: JwtPayload): Promise<CurrentUserPayload> {
+    // Shared signing secret with customer-portal tokens — reject portal tokens here.
+    if ((payload as { typ?: string }).typ === "customer") {
+      throw new UnauthorizedException("Invalid session");
+    }
+
     const membership = await this.prisma.membership.findUnique({
       where: { id: payload.mid },
       include: { user: true, organization: true },
@@ -53,6 +58,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // MUST be the support target. A stale token for the home org or another
     // customer org must not silently read/write the wrong tenant — and must
     // not auto-close the live support session either.
+    //
+    // Outside Open ERP, platform operators may only use their Platform Console
+    // home membership — never a temporary tenant ADMIN membership left ACTIVE
+    // after exit (QA-C-01/02).
     if (membership.user.isPlatformAdmin) {
       const support = await this.prisma.platformSupportSession.findFirst({
         where: { userId: membership.userId, endedAt: null },
@@ -62,14 +71,24 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           targetOrganizationId: true,
         },
       });
-      if (
-        support &&
-        (membership.id !== support.targetMembershipId ||
-          membership.organizationId !== support.targetOrganizationId)
-      ) {
-        throw new ForbiddenException(
-          "Support session does not match this organization. Exit support or re-enter the correct organization.",
-        );
+      if (support) {
+        if (
+          membership.id !== support.targetMembershipId ||
+          membership.organizationId !== support.targetOrganizationId
+        ) {
+          throw new ForbiddenException(
+            "Support session does not match this organization. Exit support or re-enter the correct organization.",
+          );
+        }
+      } else {
+        const latest = await this.prisma.platformSupportSession.findFirst({
+          where: { userId: membership.userId },
+          orderBy: { startedAt: "desc" },
+          select: { homeMembershipId: true },
+        });
+        if (latest && membership.id !== latest.homeMembershipId) {
+          throw new UnauthorizedException("Invalid session");
+        }
       }
     }
 

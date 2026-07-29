@@ -333,6 +333,16 @@ export class PlatformOrganizationsService {
         where: { id: previous.id },
         data: { endedAt: new Date() },
       });
+      // Leaving org A (exit or switch-to-B) must revoke refresh tokens and
+      // deactivate the temporary support ADMIN membership so the prior
+      // access JWT dies immediately (membership status is re-checked on
+      // every request) and slug-login cannot silently re-enter org A.
+      await this.revokeSupportTenantAccess({
+        userId: actor.userId,
+        targetOrganizationId: previous.targetOrganizationId,
+        targetMembershipId: previous.targetMembershipId,
+        homeMembershipId: previous.homeMembershipId,
+      });
       await this.audit.log({
         organizationId: previous.targetOrganizationId,
         actorUserId: actor.userId,
@@ -346,10 +356,26 @@ export class PlatformOrganizationsService {
         },
       });
     } else {
+      const orphaned = await this.prisma.platformSupportSession.findMany({
+        where: { userId: actor.userId, endedAt: null },
+        select: {
+          targetOrganizationId: true,
+          targetMembershipId: true,
+          homeMembershipId: true,
+        },
+      });
       await this.prisma.platformSupportSession.updateMany({
         where: { userId: actor.userId, endedAt: null },
         data: { endedAt: new Date() },
       });
+      for (const session of orphaned) {
+        await this.revokeSupportTenantAccess({
+          userId: actor.userId,
+          targetOrganizationId: session.targetOrganizationId,
+          targetMembershipId: session.targetMembershipId,
+          homeMembershipId: session.homeMembershipId,
+        });
+      }
     }
 
     const session = await this.prisma.platformSupportSession.create({
@@ -405,6 +431,13 @@ export class PlatformOrganizationsService {
       data: { endedAt: new Date() },
     });
 
+    await this.revokeSupportTenantAccess({
+      userId: actor.userId,
+      targetOrganizationId: active.targetOrganizationId,
+      targetMembershipId: active.targetMembershipId,
+      homeMembershipId: active.homeMembershipId,
+    });
+
     const home = await this.prisma.membership.findUnique({
       where: { id: active.homeMembershipId },
     });
@@ -421,5 +454,34 @@ export class PlatformOrganizationsService {
     });
 
     return this.auth.issueSessionForMembership(actor.userId, membershipId);
+  }
+
+  /// Ends the tenant-side credentials minted for an Open ERP session:
+  /// refresh tokens for the target org, and (when the target membership is
+  /// not the operator's Platform Console home) the temporary ADMIN
+  /// membership itself. Access JWTs are stateless, but JwtStrategy
+  /// re-checks membership.status on every request — REMOVED makes the old
+  /// bearer unusable immediately without a denylist.
+  private async revokeSupportTenantAccess(args: {
+    userId: string;
+    targetOrganizationId: string;
+    targetMembershipId: string;
+    homeMembershipId: string;
+  }): Promise<void> {
+    await this.prisma.refreshToken.updateMany({
+      where: {
+        userId: args.userId,
+        organizationId: args.targetOrganizationId,
+        revokedAt: null,
+      },
+      data: { revokedAt: new Date() },
+    });
+
+    if (args.targetMembershipId !== args.homeMembershipId) {
+      await this.prisma.membership.updateMany({
+        where: { id: args.targetMembershipId, status: "ACTIVE" },
+        data: { status: "REMOVED" },
+      });
+    }
   }
 }

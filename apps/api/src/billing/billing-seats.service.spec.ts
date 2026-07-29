@@ -128,12 +128,20 @@ describe("BillingSeatsService", () => {
   });
 
   describe("countActiveSeats()", () => {
-    it("returns count of ACTIVE memberships", async () => {
+    it("counts ACTIVE memberships excluding platform-support accounts", async () => {
+      const prisma = makePrisma(7);
       const service = new BillingSeatsService(
-        asDependency<PrismaService>(makePrisma(7)),
+        asDependency<PrismaService>(prisma),
         asDependency<FeatureGateService>(makeFeatureGate({ seats: 10 })),
       );
       expect(await service.countActiveSeats("org-1")).toBe(7);
+      expect(prisma.membership.count).toHaveBeenCalledWith({
+        where: {
+          organizationId: "org-1",
+          status: "ACTIVE",
+          user: { isPlatformAdmin: false },
+        },
+      });
     });
   });
 
