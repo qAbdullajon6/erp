@@ -1,7 +1,8 @@
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import type { Prisma } from "@prisma/client";
-import * as request from "supertest";
+import type { IncomingMessage } from "node:http";
+import request from "supertest";
 import { AppModule } from "../src/app.module";
 import { PrismaService } from "../src/prisma/prisma.service";
 
@@ -686,7 +687,7 @@ describe("Fleet Telematics E2E", () => {
       const accountantUser = await prisma.user.create({
         data: {
           email: "accountant-gps@test.com",
-          hashedPassword: "hashed",
+          passwordHash: "hashed",
           firstName: "Test",
           lastName: "Accountant",
           status: "ACTIVE",
@@ -728,10 +729,10 @@ describe("Fleet Telematics E2E", () => {
 
       let receivedEvent = false;
 
-      req.on("response", (res) => {
+      req.on("response", (res: IncomingMessage) => {
         expect(res.headers["content-type"]).toContain("text/event-stream");
 
-        res.on("data", (chunk) => {
+        res.on("data", (chunk: Buffer) => {
           const data = chunk.toString();
           if (data.startsWith("data:") && !receivedEvent) {
             receivedEvent = true;
@@ -771,8 +772,8 @@ describe("Fleet Telematics E2E", () => {
 
       let receivedEvent = false;
 
-      req.on("response", (res) => {
-        res.on("data", (chunk) => {
+      req.on("response", (res: IncomingMessage) => {
+        res.on("data", (chunk: Buffer) => {
           const data = chunk.toString();
           if (data.startsWith("data:") && !receivedEvent) {
             receivedEvent = true;
