@@ -180,6 +180,17 @@ test('RC5: driver moves their own delivery ASSIGNED -> DELIVERED', async ({ requ
   // A copy of R13 in this file would be a fourth one, and it would rot silently the
   // day the transition table changes. Driving allowedTransitions means this test
   // follows the rule instead of restating it.
+  //
+  // P3.3.4A: Start Trip is gated on accept — accept first when still PENDING.
+  const acceptRes = await request.post(`${API}/dispatches/my/${dispatch.id}/accept`, {
+    headers: driver,
+  });
+  console.log(`[RC5] driver accept: ${acceptRes.status()}`);
+  if (acceptRes.status() >= 400) {
+    fail('P0', `driver accept returned ${acceptRes.status()} ${await acceptRes.text()}`);
+    return;
+  }
+
   let current = (await (await request.get(`${API}/dispatches/my/${dispatch.id}`, { headers: driver })).json()).data as {
     status: string;
     allowedTransitions: string[];
@@ -188,6 +199,38 @@ test('RC5: driver moves their own delivery ASSIGNED -> DELIVERED', async ({ requ
 
   for (let guard = 0; guard < 10 && current.allowedTransitions.length > 0; guard += 1) {
     const next = current.allowedTransitions[0];
+    if (next === 'DELIVERED') {
+      // Org POD checklist defaults require photo + signature + receiver name.
+      const photo = await request.post(`${API}/dispatches/my/${dispatch.id}/proofs/photo`, {
+        headers: driver,
+        multipart: {
+          file: {
+            name: 'pod.jpg',
+            mimeType: 'image/jpeg',
+            buffer: Buffer.from('rc5-pod-photo'),
+          },
+        },
+      });
+      const sig = await request.post(`${API}/dispatches/my/${dispatch.id}/proofs/signature`, {
+        headers: driver,
+        multipart: {
+          file: {
+            name: 'sig.png',
+            mimeType: 'image/png',
+            buffer: Buffer.from('rc5-pod-sig'),
+          },
+        },
+      });
+      const meta = await request.post(`${API}/dispatches/my/${dispatch.id}/proofs/meta`, {
+        headers: driver,
+        data: { receiverName: 'RC Receiver' },
+      });
+      console.log(`[RC5] POD photo/sig/meta: ${photo.status()}/${sig.status()}/${meta.status()}`);
+      if (photo.status() >= 400 || sig.status() >= 400 || meta.status() >= 400) {
+        fail('P0', 'driver POD upload failed before DELIVERED');
+        return;
+      }
+    }
     const step = await request.post(`${API}/dispatches/my/${dispatch.id}/status`, {
       headers: driver,
       data: { status: next },

@@ -12,6 +12,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "test:e2e": "playwright test",
+    "test:e2e:regression": "SKIP_GLOBAL_SETUP=1 playwright test --project=regression",
     "test:e2e:ui": "playwright test --ui",
     "test": "vitest run",
     "test:watch": "vitest",

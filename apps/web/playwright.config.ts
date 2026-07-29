@@ -33,7 +33,16 @@ export default defineConfig({
 
   projects: [
     {
+      /// Enterprise regression suite — injects auth via fixtures (no storageState).
+      name: 'regression',
+      testMatch: '**/regression/**/*.spec.ts',
+      use: {
+        ...devices['Desktop Chrome'],
+      },
+    },
+    {
       name: 'authenticated',
+      testIgnore: '**/regression/**',
       use: {
         ...devices['Desktop Chrome'],
         storageState: path.join(__dirname, 'e2e/auth-state.json'),
@@ -41,6 +50,7 @@ export default defineConfig({
     },
     {
       name: 'unauthenticated',
+      testIgnore: '**/regression/**',
       use: {
         ...devices['Desktop Chrome'],
       },
