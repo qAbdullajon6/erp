@@ -41,6 +41,40 @@ export interface PortalOrderStatusHistoryEntry {
   createdAt: string;
 }
 
+export interface PortalTimelineEvent {
+  id: string;
+  kind: 'ORDER' | 'DISPATCH';
+  status: string;
+  label: string;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface PortalShipmentSummary {
+  dispatchNumber: string;
+  status: string;
+  driverName: string;
+  vehiclePlate: string | null;
+  vehicleCode: string | null;
+}
+
+export interface PortalDeliveryProof {
+  id: string;
+  type: 'PHOTO' | 'SIGNATURE' | string;
+  fileName: string;
+  mimeType: string;
+  receiverName: string | null;
+  receiverPhone: string | null;
+  notes: string | null;
+  odometerKm: string | null;
+  createdAt: string;
+  downloadUrl: string;
+}
+
+export interface PortalOrderDetail extends PortalOrderItem {
+  shipment?: PortalShipmentSummary | null;
+}
+
 export interface PortalOrderTracking {
   orderId: string;
   status: PortalOrderStatus;
@@ -91,12 +125,12 @@ class PortalOrdersAPI {
     return unwrap(response, 'Failed to fetch orders');
   }
 
-  async getById(id: string): Promise<PortalOrderItem> {
+  async getById(id: string): Promise<PortalOrderDetail> {
     const response = await portalFetch(`${this.baseUrl}/${id}`, { method: 'GET' });
     return unwrap(response, 'Failed to fetch order');
   }
 
-  async getTimeline(id: string): Promise<PortalOrderStatusHistoryEntry[]> {
+  async getTimeline(id: string): Promise<PortalTimelineEvent[]> {
     const response = await portalFetch(`${this.baseUrl}/${id}/timeline`, { method: 'GET' });
     return unwrap(response, 'Failed to fetch order timeline');
   }
@@ -104,6 +138,11 @@ class PortalOrdersAPI {
   async getTracking(id: string): Promise<PortalOrderTracking> {
     const response = await portalFetch(`${this.baseUrl}/${id}/tracking`, { method: 'GET' });
     return unwrap(response, 'Failed to fetch shipment tracking');
+  }
+
+  async getDeliveryProofs(id: string): Promise<{ items: PortalDeliveryProof[] }> {
+    const response = await portalFetch(`${this.baseUrl}/${id}/delivery-proof`, { method: 'GET' });
+    return unwrap(response, 'Failed to fetch delivery proofs');
   }
 }
 
@@ -158,5 +197,13 @@ export function usePortalOrderTracking(id: string, enabled = true) {
       const live = data.status === 'ASSIGNED' || data.status === 'PICKED_UP' || data.status === 'IN_TRANSIT';
       return live ? 30_000 : false;
     },
+  });
+}
+
+export function usePortalOrderDeliveryProofs(id: string) {
+  return useQuery({
+    queryKey: [...portalOrderKeys.detail(id), 'delivery-proof'],
+    queryFn: () => portalOrdersAPI.getDeliveryProofs(id),
+    enabled: Boolean(id),
   });
 }

@@ -16,6 +16,7 @@ import {
   Menu,
   LogOut,
   Truck,
+  CreditCard,
 } from "lucide-react";
 
 export const Route = createFileRoute("/portal")({
@@ -34,6 +35,7 @@ const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/portal" },
   { icon: Package, label: "Orders", path: "/portal/orders" },
   { icon: Wallet, label: "Invoices", path: "/portal/invoices" },
+  { icon: CreditCard, label: "Payments", path: "/portal/payments" },
   { icon: Bell, label: "Notifications", path: "/portal/notifications" },
   { icon: FileText, label: "Documents", path: "/portal/documents" },
   { icon: User, label: "Profile", path: "/portal/profile" },

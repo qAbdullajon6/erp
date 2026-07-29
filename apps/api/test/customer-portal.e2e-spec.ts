@@ -94,7 +94,13 @@ describe("Customer Portal (e2e)", () => {
         price: 500,
       })
       .expect(201);
-    return (res.body as { data: { id: string } }).data;
+    const order = (res.body as { data: { id: string } }).data;
+    await request(app.getHttpServer())
+      .post(`/orders/${order.id}/status`)
+      .set("Authorization", `Bearer ${admin.accessToken}`)
+      .send({ status: "PENDING" })
+      .expect(200);
+    return order;
   }
 
   async function createInvoice(admin: Awaited<ReturnType<typeof registerAdmin>>, customerId: string) {
@@ -106,7 +112,12 @@ describe("Customer Portal (e2e)", () => {
         lineItems: [{ description: "Freight service", quantity: 1, unitPrice: 500 }],
       })
       .expect(201);
-    return (res.body as { data: { id: string } }).data;
+    const invoice = (res.body as { data: { id: string } }).data;
+    await request(app.getHttpServer())
+      .post(`/invoices/${invoice.id}/send`)
+      .set("Authorization", `Bearer ${admin.accessToken}`)
+      .expect(200);
+    return invoice;
   }
 
   async function inviteAndActivate(
@@ -534,9 +545,74 @@ describe("Customer Portal (e2e)", () => {
       await request(app.getHttpServer()).get("/customer-portal/dashboard").expect(401);
       await request(app.getHttpServer()).get("/customer-portal/orders").expect(401);
       await request(app.getHttpServer()).get("/customer-portal/invoices").expect(401);
+      await request(app.getHttpServer()).get("/customer-portal/payments").expect(401);
       await request(app.getHttpServer()).get("/customer-portal/documents").expect(401);
       await request(app.getHttpServer()).get("/customer-portal/notifications").expect(401);
       await request(app.getHttpServer()).get("/customer-portal/profile").expect(401);
+    });
+
+    it("GET /customer-portal/payments and /summary are scoped to this customer", async () => {
+      const { session } = await setUpActiveCustomer();
+
+      const listRes = await request(app.getHttpServer())
+        .get("/customer-portal/payments")
+        .set("Authorization", `Bearer ${session.accessToken}`)
+        .expect(200);
+      expect(Array.isArray((listRes.body as { data: { items: unknown[] } }).data.items)).toBe(true);
+
+      const summaryRes = await request(app.getHttpServer())
+        .get("/customer-portal/payments/summary")
+        .set("Authorization", `Bearer ${session.accessToken}`)
+        .expect(200);
+      const summary = (summaryRes.body as {
+        data: { outstandingBalance: string; paidThisMonth: string; overdueCount: number };
+      }).data;
+      expect(typeof summary.outstandingBalance).toBe("string");
+      expect(typeof summary.paidThisMonth).toBe("string");
+      expect(typeof summary.overdueCount).toBe("number");
+    });
+
+    it("delivery-proof endpoints 404 for another customer's order", async () => {
+      const admin = await registerAdmin(`Portal Proof Org ${randomUUID()}`);
+      const customerA = await createCustomer(admin);
+      const customerB = await createCustomer(admin);
+      const orderB = await createOrder(admin, customerB.id);
+      await inviteAndActivate(admin, customerA.id, "proof-pass-A");
+      const sessionA = await loginCustomer(customerA.email, "proof-pass-A");
+
+      await request(app.getHttpServer())
+        .get(`/customer-portal/orders/${orderB.id}/delivery-proof`)
+        .set("Authorization", `Bearer ${sessionA.accessToken}`)
+        .expect(404);
+    });
+
+    it("notification preferences GET/PATCH round-trip", async () => {
+      const { session } = await setUpActiveCustomer();
+
+      const getRes = await request(app.getHttpServer())
+        .get("/customer-portal/notifications/preferences")
+        .set("Authorization", `Bearer ${session.accessToken}`)
+        .expect(200);
+      expect(
+        (getRes.body as { data: { preferences: { shipmentDelivered: boolean } } }).data.preferences
+          .shipmentDelivered,
+      ).toBe(true);
+
+      const patchRes = await request(app.getHttpServer())
+        .patch("/customer-portal/notifications/preferences")
+        .set("Authorization", `Bearer ${session.accessToken}`)
+        .send({
+          preferences: { shipmentDelivered: false },
+          language: "uz",
+          timezone: "Asia/Tashkent",
+        })
+        .expect(200);
+      const patched = (patchRes.body as {
+        data: { preferences: { shipmentDelivered: boolean }; language: string; timezone: string };
+      }).data;
+      expect(patched.preferences.shipmentDelivered).toBe(false);
+      expect(patched.language).toBe("uz");
+      expect(patched.timezone).toBe("Asia/Tashkent");
     });
   });
 

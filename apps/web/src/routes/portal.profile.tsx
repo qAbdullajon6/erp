@@ -1,6 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { usePortalProfile, usePortalProfileUpdate } from "@/lib/api/portal-profile";
+import {
+  usePortalProfile,
+  usePortalProfileUpdate,
+  type PortalNotificationPreferences,
+} from "@/lib/api/portal-profile";
 import { usePortalChangePassword } from "@/lib/api/portal-auth";
 import { formatMoney } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -8,8 +12,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { Save, Lock } from "lucide-react";
+import { Save, Lock, Bell } from "lucide-react";
 
 export const Route = createFileRoute("/portal/profile")({
   head: () => ({
@@ -17,6 +22,16 @@ export const Route = createFileRoute("/portal/profile")({
   }),
   component: PortalProfilePage,
 });
+
+const PREF_LABELS: { key: keyof PortalNotificationPreferences; label: string }[] = [
+  { key: "shipmentAssigned", label: "Shipment assigned" },
+  { key: "shipmentDelayed", label: "Shipment delayed" },
+  { key: "shipmentDelivered", label: "Shipment delivered" },
+  { key: "invoiceCreated", label: "Invoice created" },
+  { key: "invoiceOverdue", label: "Invoice overdue" },
+  { key: "paymentReceived", label: "Payment received" },
+  { key: "documentsAvailable", label: "Documents available" },
+];
 
 function PortalProfilePage() {
   const { data: profile, loading, error, refetch } = usePortalProfile();
@@ -28,6 +43,9 @@ function PortalProfilePage() {
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
   const [country, setCountry] = useState("");
+  const [language, setLanguage] = useState("en");
+  const [timezone, setTimezone] = useState("UTC");
+  const [prefs, setPrefs] = useState<PortalNotificationPreferences | null>(null);
   const [initialized, setInitialized] = useState(false);
 
   const [currentPassword, setCurrentPassword] = useState("");
@@ -40,13 +58,25 @@ function PortalProfilePage() {
     setAddress(profile.address ?? "");
     setCity(profile.city ?? "");
     setCountry(profile.country ?? "");
+    setLanguage(profile.language ?? "en");
+    setTimezone(profile.timezone ?? "UTC");
+    setPrefs(profile.notificationPreferences);
     setInitialized(true);
   }, [profile, initialized]);
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await profileUpdate.mutateAsync({ contactName, phone, address, city, country });
+      await profileUpdate.mutateAsync({
+        contactName,
+        phone,
+        address,
+        city,
+        country,
+        language,
+        timezone,
+        notificationPreferences: prefs ?? undefined,
+      });
       toast.success("Profile updated successfully");
       refetch();
     } catch (err) {
@@ -182,6 +212,26 @@ function PortalProfilePage() {
                     onChange={(e) => setCountry(e.target.value)}
                   />
                 </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-2">
+                    <Label htmlFor="language">Language</Label>
+                    <Input
+                      id="language"
+                      value={language}
+                      onChange={(e) => setLanguage(e.target.value)}
+                      placeholder="en"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="timezone">Timezone</Label>
+                    <Input
+                      id="timezone"
+                      value={timezone}
+                      onChange={(e) => setTimezone(e.target.value)}
+                      placeholder="UTC"
+                    />
+                  </div>
+                </div>
                 <Button
                   type="submit"
                   className="w-full gap-2"
@@ -191,6 +241,57 @@ function PortalProfilePage() {
                   {profileUpdate.isPending ? "Saving…" : "Save Changes"}
                 </Button>
               </form>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Bell className="h-5 w-5" />
+                Notification preferences
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {prefs
+                ? PREF_LABELS.map(({ key, label }) => (
+                    <div key={key} className="flex items-center justify-between gap-3">
+                      <Label htmlFor={`pref-${key}`} className="text-sm font-normal">
+                        {label}
+                      </Label>
+                      <Switch
+                        id={`pref-${key}`}
+                        checked={prefs[key]}
+                        onCheckedChange={(checked) =>
+                          setPrefs((prev) => (prev ? { ...prev, [key]: checked } : prev))
+                        }
+                      />
+                    </div>
+                  ))
+                : null}
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full gap-2"
+                disabled={profileUpdate.isPending || !prefs}
+                onClick={() =>
+                  void profileUpdate
+                    .mutateAsync({
+                      language,
+                      timezone,
+                      notificationPreferences: prefs ?? undefined,
+                    })
+                    .then(() => {
+                      toast.success("Preferences saved");
+                      refetch();
+                    })
+                    .catch((err) =>
+                      toast.error(err instanceof Error ? err.message : "Failed to save preferences"),
+                    )
+                }
+              >
+                <Save className="h-4 w-4" />
+                Save preferences
+              </Button>
             </CardContent>
           </Card>
 

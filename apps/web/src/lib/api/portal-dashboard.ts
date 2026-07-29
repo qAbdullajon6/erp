@@ -13,6 +13,7 @@ export interface PortalDashboardData {
   /// change; this only fixes the type to match what the API actually returns.
   outstandingBalance: string;
   outstandingInvoiceCount: number;
+  paymentsThisMonth: string;
   recentOrders: PortalOrderItem[];
   upcomingDeliveries: Array<{
     id: string;

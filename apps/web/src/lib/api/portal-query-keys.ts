@@ -35,6 +35,16 @@ export const portalProfileKeys = {
   data: () => [...portalProfileKeys.all, 'data'] as const,
 };
 
+export const portalPaymentKeys = {
+  all: ['portal', 'payments'] as const,
+  list: () => [...portalPaymentKeys.all, 'list'] as const,
+  summary: () => [...portalPaymentKeys.all, 'summary'] as const,
+};
+
+export const portalNotificationPreferenceKeys = {
+  data: () => ['portal', 'notifications', 'preferences'] as const,
+};
+
 export const portalAuthKeys = {
   currentCustomer: () => ['portal', 'auth', 'me'] as const,
 };

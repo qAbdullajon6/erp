@@ -5,7 +5,7 @@ import { portalNotificationKeys } from './portal-query-keys';
 
 export interface PortalNotification {
   key: string;
-  type: 'ORDER' | 'INVOICE';
+  type: 'ORDER' | 'INVOICE' | 'PAYMENT' | 'DOCUMENT';
   title: string;
   message: string;
   entityType: string;
