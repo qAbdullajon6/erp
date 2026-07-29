@@ -18,6 +18,7 @@ import {
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { FormField } from '@/components/shared/form-field';
 import { FormAlert } from '@/components/shared/form-alert';
+import { useLiveDispatchConflictCheck } from '@/components/dispatch/use-live-dispatch-conflict-check';
 
 function formatWindow(dispatch: ApiDispatch | null): string {
   if (!dispatch) return 'these dates';
@@ -67,6 +68,14 @@ export function DispatchReassignDialog({ dispatch, onClose, onSuccess }: Props) 
   );
 
   const { update, loading: saving } = useUpdateDispatch(dispatch?.id ?? '');
+  const { check: liveCheck } = useLiveDispatchConflictCheck(dispatch?.id ?? '', Boolean(dispatch));
+
+  const runLiveCheck = (nextDriver: string, nextVehicle: string) => {
+    const input: { driverId?: string; vehicleId?: string } = {};
+    if (nextDriver) input.driverId = nextDriver;
+    if (nextVehicle) input.vehicleId = nextVehicle;
+    liveCheck(input);
+  };
 
   const close = () => {
     setDriverId('');
@@ -145,7 +154,11 @@ export function DispatchReassignDialog({ dispatch, onClose, onSuccess }: Props) 
               id="reassign-driver"
               className={SELECT_CLASS}
               value={driverId}
-              onChange={(e) => setDriverId(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value;
+                setDriverId(next);
+                runLiveCheck(next, vehicleId);
+              }}
               disabled={availabilityLoading || Boolean(availabilityError)}
             >
               <option value="">
@@ -170,7 +183,11 @@ export function DispatchReassignDialog({ dispatch, onClose, onSuccess }: Props) 
               id="reassign-vehicle"
               className={SELECT_CLASS}
               value={vehicleId}
-              onChange={(e) => setVehicleId(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value;
+                setVehicleId(next);
+                runLiveCheck(driverId, next);
+              }}
               disabled={availabilityLoading || Boolean(availabilityError)}
             >
               <option value="">

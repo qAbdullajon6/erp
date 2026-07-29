@@ -214,6 +214,7 @@ model Organization {
   dispatches                Dispatch[]
   dispatchStatusHistories   DispatchStatusHistory[]
   dispatchAssignments       DispatchAssignment[]
+  dispatchConflictStates    DispatchConflictState[]
   notifications             Notification[]
   notificationSettings      NotificationSettings?
   onboardingProgress        OnboardingProgress?
@@ -297,6 +298,8 @@ model User {
   approvedExpenses              Expense[]                  @relation("ExpenseApprovedBy")
   createdDispatches             Dispatch[]                 @relation("CreatedDispatches")
   dispatchAssignmentChanges     DispatchAssignment[]       @relation("DispatchAssignmentChangedBy")
+  dispatchConflictsIgnored      DispatchConflictState[]    @relation("DispatchConflictIgnoredBy")
+  dispatchConflictsResolved     DispatchConflictState[]    @relation("DispatchConflictResolvedBy")
   /// Set when this login account belongs to a fleet driver, letting a
   /// DRIVER-role membership resolve "my deliveries" without ever accepting
   /// a client-supplied driverId. Most Users have no linked Driver at all
@@ -849,6 +852,7 @@ model Dispatch {
   assignments   DispatchAssignment[]
   trips         Trip[]
   trackingSessions TrackingSession[]
+  conflictStates DispatchConflictState[]
 
   @@unique([organizationId, dispatchNumber])
   @@index([organizationId])
@@ -931,6 +935,35 @@ model DispatchStatusHistory {
   @@index([organizationId])
   @@index([dispatchId])
   @@map("dispatch_status_histories")
+}
+
+/// Persisted ignore/resolve state for dispatch conflict engine (P3.3.2E).
+/// Detection is computed on read; this table only stores dispatcher decisions.
+model DispatchConflictState {
+  id               String    @id @default(uuid())
+  organizationId   String
+  dispatchId       String
+  /// Stable key from the conflict engine — matches DispatchConflict.id in API.
+  conflictKey      String
+  type             String
+  severity         String
+  ignoredAt        DateTime?
+  ignoredByUserId  String?
+  resolvedAt       DateTime?
+  resolvedByUserId String?
+  firstDetectedAt  DateTime  @default(now())
+  lastDetectedAt   DateTime  @default(now())
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  dispatch     Dispatch     @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+  ignoredBy    User?        @relation("DispatchConflictIgnoredBy", fields: [ignoredByUserId], references: [id], onDelete: SetNull)
+  resolvedBy   User?        @relation("DispatchConflictResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([dispatchId, conflictKey])
+  @@index([organizationId, dispatchId])
+  @@map("dispatch_conflict_states")
 }
 
 /// The Finance foundation phase. `invoiceNumber` is unique per organization

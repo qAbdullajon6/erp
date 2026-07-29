@@ -27,6 +27,7 @@ import { statusLabel } from '@/components/shared/status-badge';
 import { useDispatchDetail, useUpdateDispatchStatus } from '@/lib/hooks/use-dispatches';
 import { cn } from '@/lib/utils';
 import { DispatchReassignDialog } from '@/components/dispatch/dispatch-reassign-dialog';
+import { DispatchConflictPanel } from '@/components/dispatch/dispatch-conflict-panel';
 import {
   CALENDAR_STATUS_DOT,
   driverShortName,
@@ -216,6 +217,15 @@ export function DispatchCalendarContextPanel({
                 <ScheduleRow label="Pickup" value={format(event.start, 'EEE, MMM d · HH:mm')} />
                 <ScheduleRow label="ETA" value={format(event.end, 'EEE, MMM d · HH:mm')} />
               </dl>
+            </div>
+
+            <div className="border-b border-white/[0.08] px-3 py-3">
+              <DispatchConflictPanel
+                dispatchId={live.id}
+                compact
+                onSwapDriver={() => setReassignOpen(true)}
+                onSwapVehicle={() => setReassignOpen(true)}
+              />
             </div>
 
             {live.statusHistory && live.statusHistory.length > 0 && (

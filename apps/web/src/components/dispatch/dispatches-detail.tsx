@@ -23,6 +23,7 @@ import { useExpensesQuery } from '@/lib/api/expenses';
 import { useLiveFleetQuery } from '@/lib/api/telematics';
 import { useCurrentUser } from '@/lib/api/auth';
 import { DispatchOperationalTimeline } from '@/components/dispatch/dispatch-operational-timeline';
+import { DispatchConflictPanel } from '@/components/dispatch/dispatch-conflict-panel';
 import {
   DISPATCH_WRITE_ROLES,
   FLEET_ROLES,
@@ -810,6 +811,15 @@ export function DispatchesDetail({ dispatchId }: DispatchesDetailProps) {
           {/* Sticky ops rail */}
           <aside className="bg-muted/10 lg:sticky lg:top-4 lg:self-start">
             <div className="divide-y divide-border/50 p-4 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
+              <div className="pb-4">
+                <DispatchConflictPanel
+                  dispatchId={dispatch.id}
+                  role={role}
+                  onSwapDriver={() => setSheet('reassign')}
+                  onSwapVehicle={() => setSheet('reassign')}
+                  onReschedule={() => openStatus(null)}
+                />
+              </div>
               <div className="space-y-2 pb-4">
                 <h3 className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Operations

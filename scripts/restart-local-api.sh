@@ -24,6 +24,8 @@ fi
 
 echo "==> Building API..."
 cd "$ROOT/apps/api"
+npx prisma generate
+npx prisma migrate deploy
 npx nest build
 
 echo "==> Starting API on :4000..."

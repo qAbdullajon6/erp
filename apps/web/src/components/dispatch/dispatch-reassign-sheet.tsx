@@ -18,6 +18,7 @@ import {
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { FormAlert } from '@/components/shared/form-alert';
 import { Truck, User } from 'lucide-react';
+import { useLiveDispatchConflictCheck } from '@/components/dispatch/use-live-dispatch-conflict-check';
 
 function formatWindow(dispatch: ApiDispatch): string {
   const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
@@ -53,6 +54,7 @@ export function DispatchReassignSheet({ open, onOpenChange, dispatch, onSuccess 
     );
 
   const { update, loading: saving } = useUpdateDispatch(dispatch.id);
+  const { check: liveCheck } = useLiveDispatchConflictCheck(dispatch.id, open);
 
   useEffect(() => {
     if (!open) return;
@@ -60,6 +62,13 @@ export function DispatchReassignSheet({ open, onOpenChange, dispatch, onSuccess 
     setVehicleId('');
     setError('');
   }, [open, dispatch.id]);
+
+  const runLiveCheck = (nextDriver: string, nextVehicle: string) => {
+    const input: { driverId?: string; vehicleId?: string } = {};
+    if (nextDriver) input.driverId = nextDriver;
+    if (nextVehicle) input.vehicleId = nextVehicle;
+    liveCheck(input);
+  };
 
   const hasChoice = Boolean(driverId || vehicleId);
   const noneFree =
@@ -166,7 +175,11 @@ export function DispatchReassignSheet({ open, onOpenChange, dispatch, onSuccess 
                   id="reassign-sheet-driver"
                   className={SELECT_CLASS}
                   value={driverId}
-                  onChange={(e) => setDriverId(e.target.value)}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setDriverId(next);
+                    runLiveCheck(next, vehicleId);
+                  }}
                   disabled={availabilityLoading || Boolean(availabilityError)}
                 >
                   <option value="">
@@ -202,7 +215,11 @@ export function DispatchReassignSheet({ open, onOpenChange, dispatch, onSuccess 
                   id="reassign-sheet-vehicle"
                   className={SELECT_CLASS}
                   value={vehicleId}
-                  onChange={(e) => setVehicleId(e.target.value)}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setVehicleId(next);
+                    runLiveCheck(driverId, next);
+                  }}
                   disabled={availabilityLoading || Boolean(availabilityError)}
                 >
                   <option value="">

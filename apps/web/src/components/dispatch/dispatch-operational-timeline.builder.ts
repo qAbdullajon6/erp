@@ -506,6 +506,57 @@ function auditDispatchEntry(
         },
       ];
 
+    case 'dispatch.conflict_detected':
+    case 'dispatch.conflict_ignored':
+    case 'dispatch.conflict_resolved':
+    case 'dispatch.conflict_rechecked': {
+      const conflictTitles: Record<string, string> = {
+        'dispatch.conflict_detected': 'Conflict detected',
+        'dispatch.conflict_ignored': 'Conflict ignored',
+        'dispatch.conflict_resolved': 'Conflict resolved',
+        'dispatch.conflict_rechecked': 'Conflicts rechecked',
+      };
+      const conflictType = typeof meta.type === 'string' ? meta.type : null;
+      const count = typeof meta.count === 'number' ? meta.count : null;
+      const unresolved = typeof meta.unresolved === 'number' ? meta.unresolved : null;
+      const highestSeverity =
+        typeof meta.highestSeverity === 'string' ? meta.highestSeverity : null;
+      const types = Array.isArray(meta.types)
+        ? meta.types.filter((value): value is string => typeof value === 'string')
+        : [];
+      const detectedDetail =
+        entry.action === 'dispatch.conflict_detected' && count != null
+          ? `${count} new conflict${count === 1 ? '' : 's'}${highestSeverity ? ` · ${highestSeverity}` : ''}`
+          : null;
+      return [
+        {
+          id: entry.id,
+          at: entry.createdAt,
+          title: conflictTitles[entry.action] ?? 'Conflict update',
+          subtitle:
+            entry.action === 'dispatch.conflict_detected' && types.length > 0
+              ? types.join(', ')
+              : conflictType,
+          actor,
+          kind: 'conflict',
+          categories: categoriesForKind('conflict'),
+          detail:
+            detectedDetail ??
+            (count != null && unresolved != null
+              ? `${unresolved} unresolved of ${count}`
+              : conflictType),
+          searchText: buildSearchText([
+            'conflict',
+            entry.action,
+            conflictType,
+            ...types,
+            highestSeverity,
+            actor,
+          ]),
+        },
+      ];
+    }
+
     default:
       return [];
   }

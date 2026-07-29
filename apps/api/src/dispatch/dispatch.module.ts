@@ -5,6 +5,8 @@ import { TelematicsModule } from "../telematics/telematics.module";
 import { WorkflowsModule } from "../workflows/workflows.module";
 import { AssignmentPolicy } from "./assignment/assignment.policy";
 import { AssignmentQueries } from "./assignment/assignment.queries";
+import { DispatchConflictsController } from "./conflicts/dispatch-conflicts.controller";
+import { DispatchConflictsService } from "./conflicts/dispatch-conflicts.service";
 import { DispatchController } from "./dispatch.controller";
 import { DispatchService } from "./dispatch.service";
 import { DispatchesController } from "./dispatches.controller";
@@ -19,16 +21,20 @@ import { DriverDispatchService } from "./driver/driver-dispatch.service";
   // otherwise swallow `/dispatches/my` as a dispatch whose id is "my". Nest matches
   // in registration order. See driver-dispatch.controller.ts, and the test that
   // pins this.
-  controllers: [DriverDispatchController, DispatchController, DispatchesController],
+  controllers: [
+    DriverDispatchController,
+    DispatchConflictsController,
+    DispatchController,
+    DispatchesController,
+  ],
   providers: [
     DispatchService,
     DispatchesService,
     DriverDispatchService,
+    DispatchConflictsService,
     AssignmentPolicy,
     AssignmentQueries,
   ],
-  // Exported so Task 8.7 can make the Orders endpoints wrappers that call the
-  // policy instead of carrying their own copy of these rules.
-  exports: [AssignmentPolicy, AssignmentQueries, DispatchesService],
+  exports: [AssignmentPolicy, AssignmentQueries, DispatchesService, DispatchConflictsService],
 })
 export class DispatchModule {}

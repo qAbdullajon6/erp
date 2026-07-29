@@ -381,4 +381,26 @@ describe('filterTimelineEvents', () => {
     const filtered = filterTimelineEvents(events, 'all', 'invoice');
     expect(filtered.some((e) => e.title.toLowerCase().includes('invoice'))).toBe(true);
   });
+
+  it('maps dispatch.conflict_detected audit metadata to timeline events', () => {
+    const events = buildDispatchOperationalTimeline({
+      dispatch: baseDispatch,
+      dispatchAuditLogs: [
+        audit({
+          action: 'dispatch.conflict_detected',
+          metadata: {
+            dispatchId: 'dispatch-1',
+            count: 2,
+            highestSeverity: 'critical',
+            types: ['schedule.late_pickup', 'vehicle.inspection_expired'],
+          },
+        }),
+      ],
+    });
+
+    expect(events[0].title).toBe('Conflict detected');
+    expect(events[0].kind).toBe('conflict');
+    expect(events[0].subtitle).toBe('schedule.late_pickup, vehicle.inspection_expired');
+    expect(events[0].detail).toBe('2 new conflicts · critical');
+  });
 });

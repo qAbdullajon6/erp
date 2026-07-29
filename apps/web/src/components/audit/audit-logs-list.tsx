@@ -175,6 +175,10 @@ export function AuditLogsList() {
           <option value="dispatch.status_change">Dispatch Status Change</option>
           <option value="dispatch.reassign">Dispatch Reassign</option>
           <option value="dispatch.cancel">Dispatch Cancel</option>
+          <option value="dispatch.conflict_detected">Dispatch Conflict Detected</option>
+          <option value="dispatch.conflict_ignored">Dispatch Conflict Ignored</option>
+          <option value="dispatch.conflict_resolved">Dispatch Conflict Resolved</option>
+          <option value="dispatch.conflict_rechecked">Dispatch Conflict Rechecked</option>
           <option value="driver.create">Driver Create</option>
           <option value="invoice.create">Invoice Create</option>
           <option value="invoice.send">Invoice Send</option>

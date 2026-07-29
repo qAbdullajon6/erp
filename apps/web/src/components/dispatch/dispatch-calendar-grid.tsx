@@ -28,6 +28,8 @@ import { EmptyState } from '@/components/shared/list-states';
 import { statusLabel } from '@/components/shared/status-badge';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { DispatchCalendarEventPreview } from '@/components/dispatch/dispatch-calendar-event-preview';
+import { DispatchConflictBadge } from '@/components/dispatch/dispatch-conflict-badge';
+import type { DispatchConflictsResponse } from '@/lib/api/dispatch-conflicts';
 import { cn } from '@/lib/utils';
 import {
   CALENDAR_STATUS_ACCENT_TEXT,
@@ -84,6 +86,7 @@ interface DispatchCalendarGridProps {
   onDayClick: (day: Date) => void;
   onRescheduled: () => Promise<void>;
   onQuickOpen?: (id: string) => void;
+  conflictsByDispatchId?: Record<string, DispatchConflictsResponse>;
 }
 
 export function DispatchCalendarGrid({
@@ -96,6 +99,7 @@ export function DispatchCalendarGrid({
   onDayClick,
   onRescheduled,
   onQuickOpen,
+  conflictsByDispatchId,
 }: DispatchCalendarGridProps) {
   const [dragging, setDragging] = useState<CalendarEvent | null>(null);
   const sensors = useSensors(
@@ -179,6 +183,7 @@ export function DispatchCalendarGrid({
           onDayClick={onDayClick}
           onRescheduled={onRescheduled}
           onQuickOpen={onQuickOpen}
+          conflictsByDispatchId={conflictsByDispatchId}
         />
       )}
       {view === 'week' && (
@@ -190,6 +195,7 @@ export function DispatchCalendarGrid({
           onSelect={onSelect}
           onRescheduled={onRescheduled}
           onQuickOpen={onQuickOpen}
+          conflictsByDispatchId={conflictsByDispatchId}
         />
       )}
       {view === 'day' && (
@@ -201,6 +207,7 @@ export function DispatchCalendarGrid({
           onSelect={onSelect}
           onRescheduled={onRescheduled}
           onQuickOpen={onQuickOpen}
+          conflictsByDispatchId={conflictsByDispatchId}
         />
       )}
       <DragOverlay dropAnimation={null}>
@@ -234,6 +241,7 @@ function MonthGrid({
   onDayClick,
   onRescheduled,
   onQuickOpen,
+  conflictsByDispatchId,
 }: {
   anchor: Date;
   byDay: Map<string, CalendarEvent[]>;
@@ -243,6 +251,7 @@ function MonthGrid({
   onDayClick: (day: Date) => void;
   onRescheduled: () => Promise<void>;
   onQuickOpen?: (id: string) => void;
+  conflictsByDispatchId?: Record<string, DispatchConflictsResponse>;
 }) {
   const days = monthGridDays(anchor);
 
@@ -300,6 +309,7 @@ function MonthGrid({
                     onSelect={onSelect}
                     onRescheduled={onRescheduled}
                     onQuickOpen={onQuickOpen}
+                    conflictData={conflictsByDispatchId?.[event.dispatch.id]}
                   />
                 ))}
                 {overflow > 0 && (
@@ -328,6 +338,7 @@ function TimedWeekGrid({
   onSelect,
   onRescheduled,
   onQuickOpen,
+  conflictsByDispatchId,
 }: {
   anchor: Date;
   byDay: Map<string, CalendarEvent[]>;
@@ -336,6 +347,7 @@ function TimedWeekGrid({
   onSelect: (event: CalendarEvent) => void;
   onRescheduled: () => Promise<void>;
   onQuickOpen?: (id: string) => void;
+  conflictsByDispatchId?: Record<string, DispatchConflictsResponse>;
 }) {
   const days = weekDays(anchor);
   const hours = timedHourLabels();
@@ -427,6 +439,7 @@ function TimedWeekGrid({
                     onSelect={onSelect}
                     onRescheduled={onRescheduled}
                     onQuickOpen={onQuickOpen}
+                    conflictData={conflictsByDispatchId?.[event.dispatch.id]}
                   />
                 ))}
               </DayDroppable>
@@ -446,6 +459,7 @@ function TimedDayGrid({
   onSelect,
   onRescheduled,
   onQuickOpen,
+  conflictsByDispatchId,
 }: {
   anchor: Date;
   byDay: Map<string, CalendarEvent[]>;
@@ -454,6 +468,7 @@ function TimedDayGrid({
   onSelect: (event: CalendarEvent) => void;
   onRescheduled: () => Promise<void>;
   onQuickOpen?: (id: string) => void;
+  conflictsByDispatchId?: Record<string, DispatchConflictsResponse>;
 }) {
   const dayEvents = eventsForDay(byDay, anchor);
   const hours = timedHourLabels();
@@ -527,6 +542,8 @@ function TimedDayGrid({
               selected={selectedId === event.id}
               onSelect={onSelect}
               onRescheduled={onRescheduled}
+              onQuickOpen={onQuickOpen}
+              conflictData={conflictsByDispatchId?.[event.dispatch.id]}
             />
           ))}
         </DayDroppable>
@@ -641,6 +658,7 @@ function ScheduleEventChip({
   onSelect,
   onRescheduled,
   onQuickOpen,
+  conflictData,
 }: {
   event: CalendarEvent;
   dense?: boolean;
@@ -650,6 +668,7 @@ function ScheduleEventChip({
   onSelect: (event: CalendarEvent) => void;
   onRescheduled: () => Promise<void>;
   onQuickOpen?: (id: string) => void;
+  conflictData?: DispatchConflictsResponse;
 }) {
   const { dispatch } = event;
   const draggable = canDragSchedule(dispatch, canWrite);
@@ -702,7 +721,12 @@ function ScheduleEventChip({
             <span className="truncate text-[10px] font-bold tracking-tight">
               {dispatch.dispatchNumber}
             </span>
-            <span className="ml-auto shrink-0 text-[9px] tabular-nums text-muted-foreground">
+            <DispatchConflictBadge
+              summary={conflictData?.summary}
+              conflicts={conflictData?.items}
+              className="ml-auto"
+            />
+            <span className="shrink-0 text-[9px] tabular-nums text-muted-foreground">
               {format(event.start, 'HH:mm')}
             </span>
           </div>
@@ -718,9 +742,15 @@ function ScheduleEventChip({
           >
             {statusLabel(dispatch.status)}
           </p>
-          <p className="truncate text-xs font-bold leading-tight tracking-tight text-foreground">
-            {dispatch.dispatchNumber}
-          </p>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate text-xs font-bold leading-tight tracking-tight text-foreground">
+              {dispatch.dispatchNumber}
+            </span>
+            <DispatchConflictBadge
+              summary={conflictData?.summary}
+              conflicts={conflictData?.items}
+            />
+          </div>
           {customer && layout.height >= 56 && (
             <p className="truncate text-[11px] leading-snug text-foreground/85">{customer}</p>
           )}

@@ -32,6 +32,7 @@ import { dispatchesAPI } from '@/lib/api/dispatches';
 import { useInvalidateOperationalState } from '@/lib/api/invalidate';
 import { DISPATCH_WRITE_ROLES } from '@/lib/role-access';
 import { useDispatches, useDispatchBoardSummary } from '@/lib/hooks/use-dispatches';
+import { useDispatchConflictsBatch } from '@/lib/api/dispatch-conflicts';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState, ErrorState } from '@/components/shared/list-states';
@@ -118,6 +119,10 @@ export function DispatchBoard() {
   );
 
   const allDispatches = data ?? [];
+  const conflictBatch = useDispatchConflictsBatch(
+    allDispatches.map((d) => d.id),
+    allDispatches.length > 0,
+  );
   const counts = useMemo(
     () => computeBoardOpsCounts(allDispatches, boardSummary),
     [allDispatches, boardSummary],
@@ -762,6 +767,7 @@ export function DispatchBoard() {
               onCancel={setCancelling}
               onViewOrder={handleViewOrder}
               onCall={callDriver}
+              conflictsByDispatchId={conflictBatch.data}
             />
           ))}
         </div>
@@ -832,6 +838,7 @@ interface BoardColumnProps {
   onCancel: (dispatch: ApiDispatch) => void;
   onViewOrder: (orderId: string) => void;
   onCall: (dispatch: ApiDispatch) => void;
+  conflictsByDispatchId?: Record<string, { summary: { unresolved: number; critical: number } }>;
 }
 
 function BoardColumn({
@@ -849,6 +856,7 @@ function BoardColumn({
   onCancel,
   onViewOrder,
   onCall,
+  conflictsByDispatchId,
 }: BoardColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: status, disabled: !canWrite });
   const isLegalTarget = canWrite && draggingDispatch ? canDropInto(draggingDispatch, status) : true;
@@ -915,6 +923,7 @@ function BoardColumn({
                 onCancel={onCancel}
                 onViewOrder={onViewOrder}
                 onCall={onCall}
+                conflictSummary={conflictsByDispatchId?.[dispatch.id]?.summary}
               />
             ))}
           </>

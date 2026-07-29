@@ -1,3 +1,4 @@
+import type { DispatchConflictsResponse } from '@/lib/api/dispatch-conflicts';
 import type { CalendarEvent } from './dispatch-calendar-utils';
 import type { CalendarKpiFocus } from './dispatch-calendar-filters';
 
@@ -28,6 +29,7 @@ export function isEventCompleted(event: CalendarEvent): boolean {
   return event.dispatch.status === 'DELIVERED';
 }
 
+/** @deprecated Schedule-only overlap IDs — prefer engineConflictEventIds for KPI/focus. */
 export function getConflictingEventIds(events: CalendarEvent[]): Set<string> {
   const live = events.filter(isEventActive);
   const conflictIds = new Set<string>();
@@ -53,45 +55,31 @@ export function getConflictingEventIds(events: CalendarEvent[]): Set<string> {
   return conflictIds;
 }
 
-function countScheduleConflicts(events: CalendarEvent[]): number {
-  const conflictIds = getConflictingEventIds(events);
-  const pairs = new Set<string>();
-  let conflicts = 0;
-  const live = events.filter((e) => conflictIds.has(e.id));
+export function engineConflictEventIds(
+  events: CalendarEvent[],
+  conflictsByDispatchId?: Record<string, DispatchConflictsResponse>,
+): Set<string> {
+  const ids = new Set<string>();
+  if (!conflictsByDispatchId) return ids;
 
-  for (let i = 0; i < live.length; i++) {
-    for (let j = i + 1; j < live.length; j++) {
-      const a = live[i];
-      const b = live[j];
-      if (!intervalsOverlap(a.start, a.end, b.start, b.end)) continue;
-
-      if (a.dispatch.driverId && a.dispatch.driverId === b.dispatch.driverId) {
-        const key = `d:${[a.id, b.id].sort().join(':')}`;
-        if (!pairs.has(key)) {
-          pairs.add(key);
-          conflicts++;
-        }
-      }
-      if (a.dispatch.vehicleId && a.dispatch.vehicleId === b.dispatch.vehicleId) {
-        const key = `v:${[a.id, b.id].sort().join(':')}`;
-        if (!pairs.has(key)) {
-          pairs.add(key);
-          conflicts++;
-        }
-      }
+  for (const event of events) {
+    const summary = conflictsByDispatchId[event.dispatch.id]?.summary;
+    if (summary && summary.unresolved > 0) {
+      ids.add(event.id);
     }
   }
-
-  return conflicts;
+  return ids;
 }
 
 export function applyKpiFocus(
   events: CalendarEvent[],
   focus?: CalendarKpiFocus,
+  conflictsByDispatchId?: Record<string, DispatchConflictsResponse>,
 ): CalendarEvent[] {
   if (!focus) return events;
   const now = new Date();
-  const conflictIds = focus === 'conflicts' ? getConflictingEventIds(events) : null;
+  const conflictIds =
+    focus === 'conflicts' ? engineConflictEventIds(events, conflictsByDispatchId) : null;
 
   return events.filter((event) => {
     switch (focus) {
@@ -109,7 +97,10 @@ export function applyKpiFocus(
   });
 }
 
-export function computeCalendarKpis(events: CalendarEvent[]): CalendarKpis {
+export function computeCalendarKpis(
+  events: CalendarEvent[],
+  conflictsByDispatchId?: Record<string, DispatchConflictsResponse>,
+): CalendarKpis {
   const now = new Date();
   const driverIds = new Set<string>();
   const vehicleIds = new Set<string>();
@@ -132,6 +123,8 @@ export function computeCalendarKpis(events: CalendarEvent[]): CalendarKpis {
     if (event.end < now) delayed++;
   }
 
+  const engineConflicts = engineConflictEventIds(events, conflictsByDispatchId);
+
   return {
     total: events.length,
     active,
@@ -139,6 +132,6 @@ export function computeCalendarKpis(events: CalendarEvent[]): CalendarKpis {
     delayed,
     drivers: driverIds.size,
     vehicles: vehicleIds.size,
-    conflicts: countScheduleConflicts(events),
+    conflicts: engineConflicts.size,
   };
 }

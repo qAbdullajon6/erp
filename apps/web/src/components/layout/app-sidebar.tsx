@@ -61,11 +61,13 @@ export function AppSidebar({ nav, navReady }: { nav: NavItem[]; navReady: boolea
             // user collapsed it earlier — landing on a page and not seeing
             // its own nav item highlighted anywhere would be more confusing
             // than the group re-expanding under you.
-            const containsActive = items.some((item) => isNavPathActive(location.pathname, item.path));
+            const containsActive = items.some((item) =>
+              isNavPathActive(location.pathname, item.path, item.activeExcludePrefixes),
+            );
             return (
               <NavGroup key={group} label={group} containsActive={containsActive}>
                 {items.map((item) => {
-                  const active = isNavPathActive(location.pathname, item.path);
+                  const active = isNavPathActive(location.pathname, item.path, item.activeExcludePrefixes);
                   return (
                     <SidebarMenuItem key={`${item.path}:${item.label}`}>
                       <SidebarMenuButton

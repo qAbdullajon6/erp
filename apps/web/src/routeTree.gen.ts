@@ -79,6 +79,7 @@ import { Route as AppDriversDriverIdRouteImport } from './routes/app.drivers.$dr
 import { Route as AppDispatchesCreateRouteImport } from './routes/app.dispatches.create'
 import { Route as AppDispatchesCalendarRouteImport } from './routes/app.dispatches.calendar'
 import { Route as AppDispatchesBoardRouteImport } from './routes/app.dispatches.board'
+import { Route as AppDispatchesAnalyticsRouteImport } from './routes/app.dispatches.analytics'
 import { Route as AppDispatchesDispatchIdRouteImport } from './routes/app.dispatches.$dispatchId'
 import { Route as AppDevicesDeviceIdRouteImport } from './routes/app.devices.$deviceId'
 import { Route as AppCustomersCreateRouteImport } from './routes/app.customers.create'
@@ -438,6 +439,11 @@ const AppDispatchesBoardRoute = AppDispatchesBoardRouteImport.update({
   path: '/dispatches/board',
   getParentRoute: () => AppRoute,
 } as any)
+const AppDispatchesAnalyticsRoute = AppDispatchesAnalyticsRouteImport.update({
+  id: '/dispatches/analytics',
+  path: '/dispatches/analytics',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppDispatchesDispatchIdRoute = AppDispatchesDispatchIdRouteImport.update({
   id: '/dispatches/$dispatchId',
   path: '/dispatches/$dispatchId',
@@ -502,6 +508,7 @@ export interface FileRoutesByFullPath {
   '/app/customers/create': typeof AppCustomersCreateRoute
   '/app/devices/$deviceId': typeof AppDevicesDeviceIdRoute
   '/app/dispatches/$dispatchId': typeof AppDispatchesDispatchIdRoute
+  '/app/dispatches/analytics': typeof AppDispatchesAnalyticsRoute
   '/app/dispatches/board': typeof AppDispatchesBoardRoute
   '/app/dispatches/calendar': typeof AppDispatchesCalendarRoute
   '/app/dispatches/create': typeof AppDispatchesCreateRoute
@@ -576,6 +583,7 @@ export interface FileRoutesByTo {
   '/app/customers/create': typeof AppCustomersCreateRoute
   '/app/devices/$deviceId': typeof AppDevicesDeviceIdRoute
   '/app/dispatches/$dispatchId': typeof AppDispatchesDispatchIdRoute
+  '/app/dispatches/analytics': typeof AppDispatchesAnalyticsRoute
   '/app/dispatches/board': typeof AppDispatchesBoardRoute
   '/app/dispatches/calendar': typeof AppDispatchesCalendarRoute
   '/app/dispatches/create': typeof AppDispatchesCreateRoute
@@ -654,6 +662,7 @@ export interface FileRoutesById {
   '/app/customers/create': typeof AppCustomersCreateRoute
   '/app/devices/$deviceId': typeof AppDevicesDeviceIdRoute
   '/app/dispatches/$dispatchId': typeof AppDispatchesDispatchIdRoute
+  '/app/dispatches/analytics': typeof AppDispatchesAnalyticsRoute
   '/app/dispatches/board': typeof AppDispatchesBoardRoute
   '/app/dispatches/calendar': typeof AppDispatchesCalendarRoute
   '/app/dispatches/create': typeof AppDispatchesCreateRoute
@@ -733,6 +742,7 @@ export interface FileRouteTypes {
     | '/app/customers/create'
     | '/app/devices/$deviceId'
     | '/app/dispatches/$dispatchId'
+    | '/app/dispatches/analytics'
     | '/app/dispatches/board'
     | '/app/dispatches/calendar'
     | '/app/dispatches/create'
@@ -807,6 +817,7 @@ export interface FileRouteTypes {
     | '/app/customers/create'
     | '/app/devices/$deviceId'
     | '/app/dispatches/$dispatchId'
+    | '/app/dispatches/analytics'
     | '/app/dispatches/board'
     | '/app/dispatches/calendar'
     | '/app/dispatches/create'
@@ -884,6 +895,7 @@ export interface FileRouteTypes {
     | '/app/customers/create'
     | '/app/devices/$deviceId'
     | '/app/dispatches/$dispatchId'
+    | '/app/dispatches/analytics'
     | '/app/dispatches/board'
     | '/app/dispatches/calendar'
     | '/app/dispatches/create'
@@ -1432,6 +1444,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDispatchesBoardRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/dispatches/analytics': {
+      id: '/app/dispatches/analytics'
+      path: '/dispatches/analytics'
+      fullPath: '/app/dispatches/analytics'
+      preLoaderRoute: typeof AppDispatchesAnalyticsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/dispatches/$dispatchId': {
       id: '/app/dispatches/$dispatchId'
       path: '/dispatches/$dispatchId'
@@ -1499,6 +1518,7 @@ interface AppRouteChildren {
   AppCustomersCreateRoute: typeof AppCustomersCreateRoute
   AppDevicesDeviceIdRoute: typeof AppDevicesDeviceIdRoute
   AppDispatchesDispatchIdRoute: typeof AppDispatchesDispatchIdRoute
+  AppDispatchesAnalyticsRoute: typeof AppDispatchesAnalyticsRoute
   AppDispatchesBoardRoute: typeof AppDispatchesBoardRoute
   AppDispatchesCalendarRoute: typeof AppDispatchesCalendarRoute
   AppDispatchesCreateRoute: typeof AppDispatchesCreateRoute
@@ -1543,6 +1563,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppCustomersCreateRoute: AppCustomersCreateRoute,
   AppDevicesDeviceIdRoute: AppDevicesDeviceIdRoute,
   AppDispatchesDispatchIdRoute: AppDispatchesDispatchIdRoute,
+  AppDispatchesAnalyticsRoute: AppDispatchesAnalyticsRoute,
   AppDispatchesBoardRoute: AppDispatchesBoardRoute,
   AppDispatchesCalendarRoute: AppDispatchesCalendarRoute,
   AppDispatchesCreateRoute: AppDispatchesCreateRoute,

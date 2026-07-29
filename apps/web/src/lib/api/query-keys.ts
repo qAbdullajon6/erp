@@ -100,6 +100,11 @@ export const dispatchBoardKeys = {
   all: ['dispatch-board'] as const,
 };
 
+export const dispatchAnalyticsKeys = {
+  all: ['dispatch-analytics'] as const,
+  snapshot: (params: unknown = {}) => [...dispatchAnalyticsKeys.all, 'snapshot', params] as const,
+};
+
 /// The Operations Command Center's own summary — totals, revenue time
 /// series, orders-by-status, and the capped delayed-orders list from
 /// GET /reports/dashboard-summary (Task: Dashboard vertical audit). No

@@ -20,6 +20,7 @@ import {
   Cpu,
   Hexagon,
   Plug,
+  Activity,
 } from "lucide-react";
 import type { MembershipRole } from "@/lib/api/organizations";
 
@@ -37,6 +38,8 @@ export type NavItem = {
   /// Visual grouping in the sidebar only — purely presentational, has no
   /// bearing on which role can reach the route.
   group: "Overview" | "Operations" | "Finance" | "Workspace";
+  /// Child routes with their own sidebar entry — parent must not stay active.
+  activeExcludePrefixes?: string[];
 };
 
 export const DRIVER_NAV: NavItem[] = [
@@ -65,6 +68,14 @@ export const DEFAULT_NAV: NavItem[] = [
     icon: RouteIcon,
     label: "Dispatches",
     path: "/app/dispatches",
+    roles: ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER", "ACCOUNTANT"],
+    group: "Operations",
+    activeExcludePrefixes: ["/app/dispatches/analytics"],
+  },
+  {
+    icon: Activity,
+    label: "Dispatch Analytics",
+    path: "/app/dispatches/analytics",
     roles: ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER", "ACCOUNTANT"],
     group: "Operations",
   },
@@ -161,11 +172,13 @@ export function getNavForRole(role: MembershipRole, isPlatformAdmin: boolean): N
   );
 }
 
-export function isNavPathActive(pathname: string, path: string): boolean {
+export function isNavPathActive(pathname: string, path: string, excludePrefixes: string[] = []): boolean {
   if (path === "/app") {
     return pathname === "/app" || pathname === "/app/";
   }
-  return pathname.startsWith(path);
+  if (!pathname.startsWith(path)) return false;
+  if (excludePrefixes.some((prefix) => pathname.startsWith(prefix))) return false;
+  return true;
 }
 
 /// Longest match wins, so /app/orders/create resolves to "Orders" rather than

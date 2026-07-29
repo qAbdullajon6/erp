@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight, Loader2, Plus, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { useDispatches } from '@/lib/hooks/use-dispatches';
@@ -18,7 +19,8 @@ import { DispatchCalendarFiltersBar } from '@/components/dispatch/dispatch-calen
 import { DispatchCalendarGrid } from '@/components/dispatch/dispatch-calendar-grid';
 import { DispatchCalendarKpis } from '@/components/dispatch/dispatch-calendar-kpis';
 import { DispatchCalendarContextPanel } from '@/components/dispatch/dispatch-calendar-context-panel';
-import { computeCalendarKpis, applyKpiFocus } from '@/components/dispatch/dispatch-calendar-stats';
+import { applyKpiFocus, computeCalendarKpis } from '@/components/dispatch/dispatch-calendar-stats';
+import { useDispatchConflictsBatch, dispatchConflictKeys } from '@/lib/api/dispatch-conflicts';
 import type { CalendarKpiKey } from '@/components/dispatch/dispatch-calendar-kpis';
 import { cn } from '@/lib/utils';
 import {
@@ -122,12 +124,19 @@ export function DispatchCalendar() {
   );
 
   const allEvents = useMemo(() => (data ?? []).map(toCalendarEvent), [data]);
+  const conflictBatch = useDispatchConflictsBatch(
+    allEvents.map((e) => e.dispatch.id),
+    allEvents.length > 0,
+  );
   const displayEvents = useMemo(
-    () => applyKpiFocus(allEvents, filters.kpiFocus),
-    [allEvents, filters.kpiFocus],
+    () => applyKpiFocus(allEvents, filters.kpiFocus, conflictBatch.data),
+    [allEvents, filters.kpiFocus, conflictBatch.data],
   );
   const byDay = useMemo(() => groupEventsByDay(displayEvents), [displayEvents]);
-  const kpis = useMemo(() => computeCalendarKpis(allEvents), [allEvents]);
+  const kpis = useMemo(
+    () => computeCalendarKpis(allEvents, conflictBatch.data),
+    [allEvents, conflictBatch.data],
+  );
 
   useEffect(() => {
     if (!selected) return;
@@ -220,9 +229,12 @@ export function DispatchCalendar() {
     void navigate({ to: '/app/customers/$customerId', params: { customerId } });
   };
 
+  const queryClient = useQueryClient();
+
   const handleMutated = useCallback(async () => {
     await refetch();
-  }, [refetch]);
+    await queryClient.invalidateQueries({ queryKey: dispatchConflictKeys.all });
+  }, [queryClient, refetch]);
 
   const handleKpiClick = useCallback(
     (key: CalendarKpiKey) => {
@@ -435,6 +447,7 @@ export function DispatchCalendar() {
               const match = allEvents.find((e) => e.id === id);
               if (match) setSelected(match);
             }}
+            conflictsByDispatchId={conflictBatch.data}
           />
         </div>
 

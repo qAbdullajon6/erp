@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CalendarEvent } from './dispatch-calendar-utils';
 import {
   applyKpiFocus,
+  computeCalendarKpis,
   getConflictingEventIds,
   isEventDelayed,
 } from './dispatch-calendar-stats';
@@ -56,7 +57,7 @@ describe('dispatch-calendar-stats', () => {
     expect(applyKpiFocus([past, future], 'delayed')).toEqual([past]);
   });
 
-  it('marks overlapping driver assignments as conflicts', () => {
+  it('marks overlapping driver assignments as schedule conflicts', () => {
     const a = event(
       'a',
       'ASSIGNED',
@@ -76,6 +77,20 @@ describe('dispatch-calendar-stats', () => {
     const ids = getConflictingEventIds([a, b]);
     expect(ids.has('a')).toBe(true);
     expect(ids.has('b')).toBe(true);
-    expect(applyKpiFocus([a, b], 'conflicts')).toHaveLength(2);
+  });
+
+  it('filters engine conflict dispatches for KPI focus', () => {
+    const a = event('a', 'ASSIGNED', new Date('2026-07-29T10:00:00'), new Date('2026-07-29T11:00:00'));
+    const b = event('b', 'ASSIGNED', new Date('2026-07-29T12:00:00'), new Date('2026-07-29T13:00:00'));
+    const conflicts = {
+      a: {
+        dispatchId: 'a',
+        items: [],
+        summary: { total: 1, critical: 0, high: 1, medium: 0, low: 0, unresolved: 1 },
+        checkedAt: '2026-07-29T10:00:00.000Z',
+      },
+    };
+    expect(applyKpiFocus([a, b], 'conflicts', conflicts)).toEqual([a]);
+    expect(computeCalendarKpis([a, b], conflicts).conflicts).toBe(1);
   });
 });
