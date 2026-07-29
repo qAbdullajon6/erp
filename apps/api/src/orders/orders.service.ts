@@ -4,6 +4,7 @@ import { AuditService } from "../audit/audit.service";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { isValidEntityCode } from "../common/sequential-code.util";
 import { AssignmentPolicy } from "../dispatch/assignment/assignment.policy";
+import { notifyDriverOfAssignment } from "../dispatch/driver/driver-assignment-notify";
 import { DispatchesService } from "../dispatch/dispatches.service";
 import { OrderWriter } from "../order-state/order-writer";
 import { dispatchPath, dispatchStateFor } from "../order-state/projection.policy";
@@ -353,7 +354,7 @@ export class OrdersService {
       },
     });
 
-    this.workflowEvents.emit(organizationId, "order.created", { id: order.id, orderNumber: order.orderNumber, customerId: order.customerId, status: order.status });
+    void this.workflowEvents.emit(organizationId, "order.created", { id: order.id, orderNumber: order.orderNumber, customerId: order.customerId, status: order.status });
 
     return this.toResponse(order);
   }
@@ -458,7 +459,7 @@ export class OrdersService {
       metadata: { changes: dto },
     });
 
-    this.workflowEvents.emit(organizationId, "order.updated", { id, orderNumber: updated.orderNumber, customerId: updated.customerId, status: updated.status, changes: dto });
+    void this.workflowEvents.emit(organizationId, "order.updated", { id, orderNumber: updated.orderNumber, customerId: updated.customerId, status: updated.status, changes: dto });
 
     return this.toResponse(updated);
   }
@@ -545,6 +546,24 @@ export class OrdersService {
       metadata: { driverId: dto.driverId, vehicleId: dto.vehicleId },
     });
 
+    const live = await this.prisma.dispatch.findFirst({
+      where: {
+        organizationId,
+        orderId: id,
+        status: { notIn: ["CANCELLED", "DELIVERED"] },
+      },
+      select: { id: true, dispatchNumber: true, driverId: true, status: true },
+    });
+    if (live?.status === "ASSIGNED") {
+      await notifyDriverOfAssignment(this.prisma, {
+        organizationId,
+        driverId: live.driverId,
+        dispatchId: live.id,
+        dispatchNumber: live.dispatchNumber,
+        reason: wasPending ? "assigned" : "reassigned",
+      }).catch(() => undefined);
+    }
+
     return this.toResponse(updated);
   }
 
@@ -578,7 +597,7 @@ export class OrdersService {
       metadata: { from: order.status, to: dto.status, note: dto.note },
     });
 
-    this.workflowEvents.emit(organizationId, "order.status_changed", { id: order.id, orderNumber: order.orderNumber, from: order.status, to: dto.status });
+    void this.workflowEvents.emit(organizationId, "order.status_changed", { id: order.id, orderNumber: order.orderNumber, from: order.status, to: dto.status });
 
     return this.toResponse(updated);
   }
@@ -664,7 +683,7 @@ export class OrdersService {
       metadata: { note: dto.note },
     });
 
-    this.workflowEvents.emit(organizationId, "order.cancelled", { id, orderNumber: updated.orderNumber, note: dto.note });
+    void this.workflowEvents.emit(organizationId, "order.cancelled", { id, orderNumber: updated.orderNumber, note: dto.note });
 
     return this.toResponse(updated);
   }

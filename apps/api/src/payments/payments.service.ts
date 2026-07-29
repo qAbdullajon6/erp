@@ -151,14 +151,14 @@ export class PaymentsService {
       },
     });
 
-    this.workflowEvents.emit(organizationId, "payment.received", {
+    void this.workflowEvents.emit(organizationId, "payment.received", {
       id: result.payment.id,
       invoiceId,
       amount: result.payment.amount.toString(),
       resultingInvoiceStatus: result.newStatus,
     });
     if (result.newStatus === "PAID") {
-      this.workflowEvents.emit(organizationId, "invoice.paid", {
+      void this.workflowEvents.emit(organizationId, "invoice.paid", {
         id: invoiceId,
         invoiceNumber: result.updatedInvoice.invoiceNumber,
       });

@@ -1,5 +1,6 @@
 import { CustomerStatus } from "@prisma/client";
 import { Transform, Type } from "class-transformer";
+import { emptyToUndefined } from "../../common/query-transform.util";
 import { IsBoolean, IsEnum, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
 
 export const CUSTOMER_SORT_FIELDS = [
@@ -42,7 +43,7 @@ export class ListCustomersQueryDto {
   search?: string;
 
   @IsOptional()
-  @Transform(({ value }) => (value === "" || value == null ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsEnum(CustomerStatus)
   status?: CustomerStatus;
 
@@ -52,12 +53,12 @@ export class ListCustomersQueryDto {
   includeArchived: boolean = false;
 
   @IsOptional()
-  @Transform(({ value }) => (value === "" || value == null ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsIn(CUSTOMER_SORT_FIELDS)
   sortBy: CustomerSortField = "createdAt";
 
   @IsOptional()
-  @Transform(({ value }) => (value === "" || value == null ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsIn(["asc", "desc"])
   sortOrder: "asc" | "desc" = "desc";
 }

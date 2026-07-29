@@ -93,7 +93,7 @@ export class CustomersService {
       metadata: { customerCode: customer.customerCode, companyName: customer.companyName },
     });
 
-    this.workflowEvents.emit(organizationId, "customer.created", { id: customer.id, customerCode: customer.customerCode, companyName: customer.companyName });
+    void this.workflowEvents.emit(organizationId, "customer.created", { id: customer.id, customerCode: customer.customerCode, companyName: customer.companyName });
 
     return this.toResponse(customer);
   }
@@ -138,7 +138,7 @@ export class CustomersService {
       metadata: { changes: dto },
     });
 
-    this.workflowEvents.emit(organizationId, "customer.updated", { id, companyName: updated.companyName, changes: dto });
+    void this.workflowEvents.emit(organizationId, "customer.updated", { id, companyName: updated.companyName, changes: dto });
 
     return this.toResponse(updated);
   }

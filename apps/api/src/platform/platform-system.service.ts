@@ -37,7 +37,7 @@ export class PlatformSystemService {
     };
   }
 
-  async workers() {
+  workers() {
     // No Bull workers yet — surface process-level truth so the console is honest.
     return {
       items: [

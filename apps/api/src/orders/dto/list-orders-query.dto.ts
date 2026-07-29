@@ -1,5 +1,6 @@
 import { OrderStatus } from "@prisma/client";
 import { Transform, Type } from "class-transformer";
+import { emptyToUndefined } from "../../common/query-transform.util";
 import {
   IsBoolean,
   IsEnum,
@@ -72,22 +73,22 @@ export class ListOrdersQueryDto {
   statuses?: OrderStatus[];
 
   @IsOptional()
-  @Transform(({ value }) => (value === "" || value == null ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsUUID()
   customerId?: string;
 
   @IsOptional()
-  @Transform(({ value }) => (value === "" || value == null ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsUUID()
   driverId?: string;
 
   @IsOptional()
-  @Transform(({ value }) => (value === "" || value == null ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsUUID()
   vehicleId?: string;
 
   @IsOptional()
-  @Transform(({ value }) => (value === "" || value == null ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsUUID()
   dispatcherId?: string;
 

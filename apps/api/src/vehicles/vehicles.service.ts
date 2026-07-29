@@ -107,7 +107,7 @@ export class VehiclesService {
       metadata: { vehicleCode: vehicle.vehicleCode, plateNumber: vehicle.plateNumber },
     });
 
-    this.workflowEvents.emit(organizationId, "vehicle.created", {
+    void this.workflowEvents.emit(organizationId, "vehicle.created", {
       id: vehicle.id,
       vehicleCode: vehicle.vehicleCode,
       plateNumber: vehicle.plateNumber,
@@ -268,7 +268,12 @@ export class VehiclesService {
 
   private rethrowUniqueConflict(err: unknown): void {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
-      const target = Array.isArray(err.meta?.target) ? err.meta.target.join(",") : String(err.meta?.target ?? "");
+      const rawTarget = err.meta?.target;
+      const target = Array.isArray(rawTarget)
+        ? rawTarget.join(",")
+        : typeof rawTarget === "string" || typeof rawTarget === "number"
+          ? String(rawTarget)
+          : "";
       if (target.includes("plateNumber")) {
         throw new ConflictException("A vehicle with this plate number already exists in this organization");
       }

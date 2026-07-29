@@ -127,7 +127,7 @@ export class InvoicesService {
       metadata: { invoiceNumber, totalAmount: totalAmount.toString() },
     });
 
-    this.workflowEvents.emit(organizationId, "invoice.created", { id: invoice.id, invoiceNumber, customerId: invoice.customerId, totalAmount: totalAmount.toString() });
+    void this.workflowEvents.emit(organizationId, "invoice.created", { id: invoice.id, invoiceNumber, customerId: invoice.customerId, totalAmount: totalAmount.toString() });
 
     return this.toResponse(invoice);
   }
@@ -169,7 +169,7 @@ export class InvoicesService {
       metadata: { orderId, invoiceNumber },
     });
 
-    this.workflowEvents.emit(organizationId, "invoice.created", { id: invoice.id, invoiceNumber, orderId, customerId: order.customerId, totalAmount: totalAmount.toString() });
+    void this.workflowEvents.emit(organizationId, "invoice.created", { id: invoice.id, invoiceNumber, orderId, customerId: order.customerId, totalAmount: totalAmount.toString() });
 
     return this.toResponse(invoice);
   }

@@ -123,7 +123,7 @@ export class DriversService {
       metadata: { employeeCode: driver.employeeCode },
     });
 
-    this.workflowEvents.emit(organizationId, "driver.created", { id: driver.id, employeeCode: driver.employeeCode, firstName: driver.firstName, lastName: driver.lastName });
+    void this.workflowEvents.emit(organizationId, "driver.created", { id: driver.id, employeeCode: driver.employeeCode, firstName: driver.firstName, lastName: driver.lastName });
 
     return this.toResponse(driver);
   }

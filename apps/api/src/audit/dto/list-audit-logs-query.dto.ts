@@ -1,4 +1,5 @@
 import { Transform, Type } from "class-transformer";
+import { emptyToUndefined } from "../../common/query-transform.util";
 import {
   IsDateString,
   IsIn,
@@ -44,12 +45,12 @@ export class ListAuditLogsQueryDto {
   entityType?: string;
 
   @IsOptional()
-  @Transform(({ value }) => (value === "" || value == null ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsUUID()
   entityId?: string;
 
   @IsOptional()
-  @Transform(({ value }) => (value === "" || value == null ? undefined : value))
+  @Transform(emptyToUndefined)
   @IsUUID()
   actorUserId?: string;
 

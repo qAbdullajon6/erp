@@ -67,7 +67,8 @@ async function bootstrap() {
   const signals: NodeJS.Signals[] = ["SIGTERM", "SIGINT"];
 
   signals.forEach((signal) => {
-    process.on(signal, async () => {
+    process.on(signal, () => {
+      void (async () => {
       logger.log(`${signal} received, starting graceful shutdown (timeout: ${appConfig.shutdownTimeoutMs}ms)`);
 
       shutdownTimer = setTimeout(() => {
@@ -88,6 +89,7 @@ async function bootstrap() {
         logger.error("Error during graceful shutdown", error instanceof Error ? error.stack : error);
         process.exit(1);
       }
+      })();
     });
   });
 
