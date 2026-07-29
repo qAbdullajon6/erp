@@ -56,6 +56,8 @@ export class NotificationCenterController {
     const page = query.page || 1;
     const limit = query.limit || 20;
     const skip = (page - 1) * limit;
+    const sortBy = query.sortBy || 'createdAt';
+    const sortOrder = query.sortOrder || 'desc';
 
     const where: Prisma.NotificationWhereInput = {
       organizationId: user.organizationId,
@@ -86,7 +88,7 @@ export class NotificationCenterController {
     const [notifications, total] = await Promise.all([
       this.prisma.notification.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { [sortBy]: sortOrder },
         skip,
         take: limit,
       }),

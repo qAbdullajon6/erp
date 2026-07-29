@@ -1,4 +1,5 @@
 import * as sgMail from '@sendgrid/mail';
+import { Client } from '@sendgrid/client';
 import {
   EmailProvider,
   EmailProviderConfig,
@@ -44,9 +45,12 @@ export class SendGridEmailProvider extends EmailProvider {
         headers: request.headers,
       });
 
+      const headers = response.headers as Record<string, string | string[] | undefined>;
+      const messageId = headers['x-message-id'];
+
       return {
         success: true,
-        messageId: response.headers['x-message-id'] as string,
+        messageId: typeof messageId === 'string' ? messageId : undefined,
       };
     } catch (error) {
       return {
@@ -59,11 +63,12 @@ export class SendGridEmailProvider extends EmailProvider {
 
   async verifyConnection(): Promise<boolean> {
     try {
-      const request = {
+      const client = new Client();
+      client.setApiKey(this.sendgridConfig.apiKey);
+      await client.request({
         url: '/v3/user/profile',
-        method: 'GET' as const,
-      };
-      await (sgMail as any).request(request);
+        method: 'GET',
+      });
       return true;
     } catch {
       return false;

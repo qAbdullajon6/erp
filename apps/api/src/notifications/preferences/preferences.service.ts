@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { NotificationChannel, NotificationCategory } from '@prisma/client';
+import { NotificationChannel, NotificationCategory, Prisma } from '@prisma/client';
 
 export interface UserNotificationPreferences {
   emailEnabled: boolean;
@@ -12,11 +12,39 @@ export interface UserNotificationPreferences {
   quietHoursStart?: number;
   quietHoursEnd?: number;
   timezone: string;
-  categoryPrefs: Record<string, {
-    emailEnabled?: boolean;
-    smsEnabled?: boolean;
-    pushEnabled?: boolean;
-  }>;
+  categoryPrefs: Record<string, CategoryChannelPreferences>;
+}
+
+interface CategoryChannelPreferences {
+  emailEnabled?: boolean;
+  smsEnabled?: boolean;
+  pushEnabled?: boolean;
+}
+
+function parseCategoryPrefs(raw: unknown): Record<string, CategoryChannelPreferences> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return {};
+  }
+
+  const parsed: Record<string, CategoryChannelPreferences> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      continue;
+    }
+    const pref = value as Record<string, unknown>;
+    parsed[key] = {
+      ...(typeof pref.emailEnabled === 'boolean' && {
+        emailEnabled: pref.emailEnabled,
+      }),
+      ...(typeof pref.smsEnabled === 'boolean' && {
+        smsEnabled: pref.smsEnabled,
+      }),
+      ...(typeof pref.pushEnabled === 'boolean' && {
+        pushEnabled: pref.pushEnabled,
+      }),
+    };
+  }
+  return parsed;
 }
 
 export interface UpdatePreferencesRequest {
@@ -29,11 +57,7 @@ export interface UpdatePreferencesRequest {
   quietHoursStart?: number;
   quietHoursEnd?: number;
   timezone?: string;
-  categoryPrefs?: Record<string, {
-    emailEnabled?: boolean;
-    smsEnabled?: boolean;
-    pushEnabled?: boolean;
-  }>;
+  categoryPrefs?: Record<string, CategoryChannelPreferences>;
 }
 
 @Injectable()
@@ -64,7 +88,7 @@ export class PreferencesService {
       quietHoursStart: prefs.quietHoursStart || undefined,
       quietHoursEnd: prefs.quietHoursEnd || undefined,
       timezone: prefs.timezone,
-      categoryPrefs: (prefs.categoryPrefs as any) || {},
+      categoryPrefs: parseCategoryPrefs(prefs.categoryPrefs),
     };
   }
 
@@ -85,7 +109,7 @@ export class PreferencesService {
       });
     }
 
-    const updated = await this.prisma.notificationPreferences.update({
+    await this.prisma.notificationPreferences.update({
       where: { userId },
       data: {
         ...(updates.emailEnabled !== undefined && {
@@ -114,7 +138,7 @@ export class PreferencesService {
         }),
         ...(updates.timezone !== undefined && { timezone: updates.timezone }),
         ...(updates.categoryPrefs !== undefined && {
-          categoryPrefs: updates.categoryPrefs,
+          categoryPrefs: updates.categoryPrefs as Prisma.InputJsonValue,
         }),
       },
     });

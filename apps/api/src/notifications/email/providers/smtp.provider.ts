@@ -35,7 +35,7 @@ export class SmtpEmailProvider extends EmailProvider {
   async send(request: EmailSendRequest): Promise<EmailSendResponse> {
     try {
       const from = request.from || this.getFromAddress();
-      const info = await this.transporter.sendMail({
+      const info: unknown = await this.transporter.sendMail({
         from: `"${from.name}" <${from.email}>`,
         to: Array.isArray(request.to) ? request.to.join(', ') : request.to,
         subject: request.subject,
@@ -46,9 +46,17 @@ export class SmtpEmailProvider extends EmailProvider {
         headers: request.headers,
       });
 
+      const messageId =
+        typeof info === 'object' &&
+        info !== null &&
+        'messageId' in info &&
+        typeof info.messageId === 'string'
+          ? info.messageId
+          : undefined;
+
       return {
         success: true,
-        messageId: info.messageId,
+        messageId,
       };
     } catch (error) {
       return {

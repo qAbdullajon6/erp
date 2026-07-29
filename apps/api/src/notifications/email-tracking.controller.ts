@@ -23,7 +23,7 @@ export class EmailTrackingController {
           },
         });
       }
-    } catch (error) {
+    } catch {
       // Silent failure - don't expose tracking errors to user
     }
 
@@ -61,7 +61,7 @@ export class EmailTrackingController {
           },
         });
       }
-    } catch (error) {
+    } catch {
       // Silent failure
     }
 
