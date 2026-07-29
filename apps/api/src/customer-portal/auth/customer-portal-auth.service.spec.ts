@@ -5,17 +5,49 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { AuditService } from "../../audit/audit.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { PasswordService } from "../../auth/password.service";
+import { asDependency, firstMockArg } from "../test-support/portal-spec.helpers";
 import { CustomerPortalAuthService } from "./customer-portal-auth.service";
 import { CustomerPortalLoginDto } from "./dto/login.dto";
 import { CustomerPortalRefreshDto } from "./dto/refresh.dto";
 import { CustomerPortalChangePasswordDto } from "./dto/change-password.dto";
 
+function makePrisma() {
+  return {
+    organization: { findFirst: jest.fn() },
+    customerPortalAccount: {
+      findFirst: jest.fn(),
+      findMany: jest.fn(),
+      findUnique: jest.fn(),
+      update: jest.fn(),
+    },
+    customerRefreshToken: {
+      create: jest.fn(),
+      findUnique: jest.fn(),
+      updateMany: jest.fn(),
+      update: jest.fn(),
+    },
+    $transaction: jest.fn((queries: Promise<unknown>[]) => Promise.all(queries)),
+  };
+}
+
+function makePasswordService() {
+  return { verify: jest.fn(), hash: jest.fn() };
+}
+
+function makeJwtService() {
+  return { sign: jest.fn(() => "access-token") };
+}
+
+function makeAuditService() {
+  return { log: jest.fn().mockResolvedValue(undefined) };
+}
+
 describe("CustomerPortalAuthService", () => {
   let svc: CustomerPortalAuthService;
-  let prisma: any;
-  let passwordService: any;
-  let jwtService: any;
-  let audit: any;
+  let prisma: ReturnType<typeof makePrisma>;
+  let passwordService: ReturnType<typeof makePasswordService>;
+  let jwtService: ReturnType<typeof makeJwtService>;
+  let audit: ReturnType<typeof makeAuditService>;
 
   const mockAccount = {
     id: "acc-1",
@@ -34,33 +66,18 @@ describe("CustomerPortalAuthService", () => {
   };
 
   beforeEach(async () => {
-    prisma = {
-      organization: { findFirst: jest.fn() },
-      customerPortalAccount: {
-        findFirst: jest.fn(),
-        findMany: jest.fn(),
-        findUnique: jest.fn(),
-        update: jest.fn(),
-      },
-      customerRefreshToken: {
-        create: jest.fn(),
-        findUnique: jest.fn(),
-        updateMany: jest.fn(),
-        update: jest.fn(),
-      },
-      $transaction: jest.fn((queries) => Promise.all(queries)),
-    };
-    passwordService = { verify: jest.fn(), hash: jest.fn() };
-    jwtService = { sign: jest.fn(() => "access-token") };
-    audit = { log: jest.fn().mockResolvedValue(undefined) };
+    prisma = makePrisma();
+    passwordService = makePasswordService();
+    jwtService = makeJwtService();
+    audit = makeAuditService();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CustomerPortalAuthService,
-        { provide: PrismaService, useValue: prisma },
-        { provide: JwtService, useValue: jwtService },
-        { provide: PasswordService, useValue: passwordService },
-        { provide: AuditService, useValue: audit },
+        { provide: PrismaService, useValue: asDependency<PrismaService>(prisma) },
+        { provide: JwtService, useValue: asDependency<JwtService>(jwtService) },
+        { provide: PasswordService, useValue: asDependency<PasswordService>(passwordService) },
+        { provide: AuditService, useValue: asDependency<AuditService>(audit) },
         {
           provide: ConfigService,
           useValue: {
@@ -86,6 +103,12 @@ describe("CustomerPortalAuthService", () => {
     d.email = "customer@test.com";
     d.password = "correct-password";
     Object.assign(d, overrides);
+    return d;
+  };
+
+  const refreshDto = () => {
+    const d = new CustomerPortalRefreshDto();
+    d.refreshToken = "raw-token";
     return d;
   };
 
@@ -208,7 +231,7 @@ describe("CustomerPortalAuthService", () => {
         account: mockAccount,
       });
 
-      const result = await svc.refresh({ refreshToken: "raw-token" } as CustomerPortalRefreshDto);
+      const result = await svc.refresh(refreshDto());
 
       expect(result.accessToken).toBe("access-token");
       expect(prisma.customerRefreshToken.update).toHaveBeenCalled();
@@ -224,7 +247,7 @@ describe("CustomerPortalAuthService", () => {
         account: mockAccount,
       });
 
-      await expect(svc.refresh({ refreshToken: "raw-token" } as CustomerPortalRefreshDto)).rejects.toThrow(
+      await expect(svc.refresh(refreshDto())).rejects.toThrow(
         UnauthorizedException,
       );
     });
@@ -238,7 +261,7 @@ describe("CustomerPortalAuthService", () => {
         account: { ...mockAccount, status: "SUSPENDED" },
       });
 
-      await expect(svc.refresh({ refreshToken: "raw-token" } as CustomerPortalRefreshDto)).rejects.toThrow(
+      await expect(svc.refresh(refreshDto())).rejects.toThrow(
         UnauthorizedException,
       );
     });
@@ -291,11 +314,13 @@ describe("CustomerPortalAuthService", () => {
 
       await svc.logout("acc-1", "raw-token");
 
-      expect(prisma.customerRefreshToken.updateMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { accountId: "acc-1", tokenHash: expect.any(String), revokedAt: null },
-        }),
-      );
+      expect(prisma.customerRefreshToken.updateMany).toHaveBeenCalled();
+      const updateArgs = firstMockArg<{
+        where: { accountId: string; tokenHash: string; revokedAt: null };
+      }>(prisma.customerRefreshToken.updateMany);
+      expect(updateArgs.where.accountId).toBe("acc-1");
+      expect(typeof updateArgs.where.tokenHash).toBe("string");
+      expect(updateArgs.where.revokedAt).toBeNull();
     });
   });
 });

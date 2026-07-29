@@ -18,46 +18,62 @@ export class CustomerDashboardService {
   async getDashboard(payload: CurrentCustomerPayload) {
     const orgId = payload.organizationId;
     const custId = payload.customerId;
+    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 
-    const [openOrdersCount, deliveredThisMonth, outstanding, recentOrders, upcoming, unread] =
-      await Promise.all([
-        this.prisma.order.count({
-          where: {
-            organizationId: orgId,
-            customerId: custId,
-            status: { in: ["PENDING", "ASSIGNED", "PICKED_UP", "IN_TRANSIT"] },
-          },
-        }),
-        this.prisma.order.count({
-          where: {
-            organizationId: orgId,
-            customerId: custId,
-            status: "DELIVERED",
-            deliveredAt: {
-              gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-            },
-          },
-        }),
-        this.getOutstandingSummary(orgId, custId),
-        this.orders.list(orgId, {
-          page: 1,
-          limit: 5,
-          sortBy: "createdAt",
-          sortOrder: "desc",
+    const [
+      openOrdersCount,
+      deliveredThisMonth,
+      outstanding,
+      recentOrders,
+      upcoming,
+      unread,
+      paymentsThisMonthAgg,
+    ] = await Promise.all([
+      this.prisma.order.count({
+        where: {
+          organizationId: orgId,
           customerId: custId,
-        }),
-        this.prisma.order.findMany({
-          where: {
-            organizationId: orgId,
-            customerId: custId,
-            status: { notIn: ["DELIVERED", "CANCELLED"] },
-            deliveryDate: { gte: new Date() },
+          status: { in: ["PENDING", "ASSIGNED", "PICKED_UP", "IN_TRANSIT"] },
+        },
+      }),
+      this.prisma.order.count({
+        where: {
+          organizationId: orgId,
+          customerId: custId,
+          status: "DELIVERED",
+          deliveredAt: {
+            gte: monthStart,
           },
-          orderBy: { deliveryDate: "asc" },
-          take: 5,
-        }),
-        this.notifications.unreadCount(payload),
-      ]);
+        },
+      }),
+      this.getOutstandingSummary(orgId, custId),
+      this.orders.list(orgId, {
+        page: 1,
+        limit: 5,
+        sortBy: "createdAt",
+        sortOrder: "desc",
+        customerId: custId,
+      }),
+      this.prisma.order.findMany({
+        where: {
+          organizationId: orgId,
+          customerId: custId,
+          status: { notIn: ["DELIVERED", "CANCELLED"] },
+          deliveryDate: { gte: new Date() },
+        },
+        orderBy: { deliveryDate: "asc" },
+        take: 5,
+      }),
+      this.notifications.unreadCount(payload),
+      this.prisma.payment.aggregate({
+        where: {
+          organizationId: orgId,
+          paymentDate: { gte: monthStart },
+          invoice: { customerId: custId },
+        },
+        _sum: { amount: true },
+      }),
+    ]);
 
     return {
       openOrdersCount,
@@ -68,6 +84,7 @@ export class CustomerDashboardService {
       // recovered version accumulated Number(inv.balanceDue) in a loop.
       outstandingBalance: outstanding.balance,
       outstandingInvoiceCount: outstanding.count,
+      paymentsThisMonth: (paymentsThisMonthAgg._sum.amount ?? new Prisma.Decimal(0)).toString(),
       recentOrders: recentOrders.items ?? [],
       upcomingDeliveries: upcoming,
       unreadNotificationCount: unread.unreadCount,

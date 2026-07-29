@@ -1,15 +1,21 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import type { CurrentCustomerPayload } from "../auth/interfaces/current-customer.interface";
+import {
+  type CustomerNotificationPreferences,
+  type NotificationPreferenceKey,
+  resolveNotificationPreferences,
+} from "./notification-preferences";
 
 interface NotificationItem {
   key: string;
-  type: "ORDER" | "INVOICE";
+  type: "ORDER" | "INVOICE" | "PAYMENT" | "DOCUMENT";
   title: string;
   message: string;
   entityType: string;
   entityId: string;
   createdAt: Date;
+  preferenceKey: NotificationPreferenceKey;
 }
 
 @Injectable()
@@ -22,17 +28,19 @@ export class CustomerNotificationsService {
     const readSet = await this.readKeySet(payload.accountId);
 
     return {
-      items: items.map((item) => ({ ...item, isRead: readSet.has(item.key) })),
+      items: items.map(({ key, type, title, message, entityType, entityId, createdAt }) => ({
+        key,
+        type,
+        title,
+        message,
+        entityType,
+        entityId,
+        createdAt,
+        isRead: readSet.has(key),
+      })),
     };
   }
 
-  /// Computes the unread count directly from the two source tables rather
-  /// than delegating to `list()` — the original recovered version called
-  /// `list(payload, { limit: 200 })` here, which builds full title/message
-  /// strings for 200 orders + 200 invoices just to throw all of it away
-  /// except a count. This does the same two scoped queries `list()` needs,
-  /// minus the string formatting, and the read-set lookup is a single
-  /// `count()` rather than materializing every read row.
   async unreadCount(payload: CurrentCustomerPayload) {
     const items = await this.buildFeed(payload, 200);
     if (items.length === 0) {
@@ -54,15 +62,6 @@ export class CustomerNotificationsService {
     });
   }
 
-  /// Marks every currently-visible notification read in one statement.
-  /// Fixed from the originally recovered version, which built raw SQL by
-  /// hand-interpolating values into an `INSERT ... VALUES (...)` string via
-  /// `$executeRawUnsafe` — a non-parameterized query is a SQL-injection-shaped
-  /// pattern regardless of whether today's inputs happen to be safe
-  /// (server-generated UUIDs), and one careless future edit to how `key` is
-  /// built away from that guarantee. `createMany` with `skipDuplicates` is
-  /// Prisma's own parameterized equivalent of the same "insert, ignore
-  /// conflicts" behavior.
   async markAllRead(payload: CurrentCustomerPayload): Promise<void> {
     const items = await this.buildFeed(payload, 200);
     if (items.length === 0) return;
@@ -73,18 +72,77 @@ export class CustomerNotificationsService {
     });
   }
 
-  /// The synthesized feed itself (no read-state), shared by list/unreadCount/
-  /// markAllRead so all three agree on exactly which notifications exist.
-  private async buildFeed(payload: CurrentCustomerPayload, limit: number): Promise<NotificationItem[]> {
+  async getPreferences(payload: CurrentCustomerPayload): Promise<{
+    preferences: CustomerNotificationPreferences;
+    language: string;
+    timezone: string;
+  }> {
+    const account = await this.prisma.customerPortalAccount.findUnique({
+      where: { id: payload.accountId },
+      select: { notificationPreferences: true, language: true, timezone: true },
+    });
+    return {
+      preferences: resolveNotificationPreferences(account?.notificationPreferences),
+      language: account?.language ?? "en",
+      timezone: account?.timezone ?? "UTC",
+    };
+  }
+
+  async updatePreferences(
+    payload: CurrentCustomerPayload,
+    input: {
+      preferences?: Partial<CustomerNotificationPreferences>;
+      language?: string;
+      timezone?: string;
+    },
+  ) {
+    const current = await this.getPreferences(payload);
+    const nextPrefs = {
+      ...current.preferences,
+      ...(input.preferences ?? {}),
+    };
+
+    const updated = await this.prisma.customerPortalAccount.update({
+      where: { id: payload.accountId },
+      data: {
+        notificationPreferences: nextPrefs,
+        ...(input.language !== undefined ? { language: input.language } : {}),
+        ...(input.timezone !== undefined ? { timezone: input.timezone } : {}),
+      },
+      select: { notificationPreferences: true, language: true, timezone: true },
+    });
+
+    return {
+      preferences: resolveNotificationPreferences(updated.notificationPreferences),
+      language: updated.language ?? "en",
+      timezone: updated.timezone ?? "UTC",
+    };
+  }
+
+  private async buildFeed(
+    payload: CurrentCustomerPayload,
+    limit: number,
+  ): Promise<NotificationItem[]> {
     const orgId = payload.organizationId;
     const custId = payload.customerId;
+    const now = new Date();
 
-    const [orders, invoices] = await Promise.all([
+    const [account, orders, invoices, paidInvoices] = await Promise.all([
+      this.prisma.customerPortalAccount.findUnique({
+        where: { id: payload.accountId },
+        select: { notificationPreferences: true },
+      }),
       this.prisma.order.findMany({
         where: { organizationId: orgId, customerId: custId },
         orderBy: { updatedAt: "desc" },
         take: limit,
-        select: { id: true, orderNumber: true, status: true, updatedAt: true },
+        select: {
+          id: true,
+          orderNumber: true,
+          status: true,
+          deliveryDate: true,
+          updatedAt: true,
+        },
       }),
       this.prisma.invoice.findMany({
         where: {
@@ -94,41 +152,140 @@ export class CustomerNotificationsService {
         },
         orderBy: { updatedAt: "desc" },
         take: limit,
-        select: { id: true, invoiceNumber: true, status: true, balanceDue: true, updatedAt: true },
+        select: {
+          id: true,
+          invoiceNumber: true,
+          status: true,
+          balanceDue: true,
+          updatedAt: true,
+          createdAt: true,
+        },
+      }),
+      this.prisma.invoice.findMany({
+        where: {
+          organizationId: orgId,
+          customerId: custId,
+          status: "PAID",
+          payments: { some: {} },
+        },
+        orderBy: { updatedAt: "desc" },
+        take: Math.min(limit, 50),
+        select: {
+          id: true,
+          invoiceNumber: true,
+          updatedAt: true,
+          payments: {
+            orderBy: { paymentDate: "desc" },
+            take: 1,
+            select: { paymentDate: true, amount: true },
+          },
+        },
       }),
     ]);
 
+    const prefs = resolveNotificationPreferences(account?.notificationPreferences);
     const items: NotificationItem[] = [];
+
     for (const o of orders) {
-      items.push({
-        key: `order:${o.id}`,
-        type: "ORDER",
-        title: `Order ${o.orderNumber}`,
-        message: `Status: ${o.status.replace(/_/g, " ")}`,
-        entityType: "order",
-        entityId: o.id,
-        createdAt: o.updatedAt,
-      });
+      const delayed =
+        o.deliveryDate < now && !["DELIVERED", "CANCELLED"].includes(o.status);
+
+      if (delayed) {
+        items.push({
+          key: `order-delayed:${o.id}`,
+          type: "ORDER",
+          title: `Order ${o.orderNumber}`,
+          message: "Delivery is delayed past the scheduled date.",
+          entityType: "order",
+          entityId: o.id,
+          createdAt: o.updatedAt,
+          preferenceKey: "shipmentDelayed",
+        });
+      }
+
+      if (o.status === "DELIVERED") {
+        items.push({
+          key: `order-delivered:${o.id}`,
+          type: "ORDER",
+          title: `Order ${o.orderNumber}`,
+          message: "Your shipment has been delivered.",
+          entityType: "order",
+          entityId: o.id,
+          createdAt: o.updatedAt,
+          preferenceKey: "shipmentDelivered",
+        });
+      } else if (o.status === "ASSIGNED") {
+        items.push({
+          key: `order-assigned:${o.id}`,
+          type: "ORDER",
+          title: `Order ${o.orderNumber}`,
+          message: "A driver has been assigned to your shipment.",
+          entityType: "order",
+          entityId: o.id,
+          createdAt: o.updatedAt,
+          preferenceKey: "shipmentAssigned",
+        });
+      } else if (!delayed && o.status !== "DRAFT") {
+        // Keep a general status pulse for other active statuses when delayed/
+        // delivered/assigned specifics do not already cover the order.
+        items.push({
+          key: `order:${o.id}`,
+          type: "ORDER",
+          title: `Order ${o.orderNumber}`,
+          message: `Status: ${o.status.replace(/_/g, " ")}`,
+          entityType: "order",
+          entityId: o.id,
+          createdAt: o.updatedAt,
+          preferenceKey: "shipmentAssigned",
+        });
+      }
     }
+
     for (const inv of invoices) {
-      const due = inv.status === "OVERDUE" ? " (OVERDUE)" : "";
+      if (inv.status === "OVERDUE") {
+        items.push({
+          key: `invoice-overdue:${inv.id}`,
+          type: "INVOICE",
+          title: `Invoice ${inv.invoiceNumber}`,
+          message: `Overdue balance: ${inv.balanceDue.toString()}`,
+          entityType: "invoice",
+          entityId: inv.id,
+          createdAt: inv.updatedAt,
+          preferenceKey: "invoiceOverdue",
+        });
+      } else {
+        items.push({
+          key: `invoice:${inv.id}`,
+          type: "INVOICE",
+          title: `Invoice ${inv.invoiceNumber}`,
+          message: `Balance: ${inv.balanceDue.toString()}`,
+          entityType: "invoice",
+          entityId: inv.id,
+          createdAt: inv.updatedAt,
+          preferenceKey: "invoiceCreated",
+        });
+      }
+    }
+
+    for (const inv of paidInvoices) {
+      const payment = inv.payments[0];
       items.push({
-        key: `invoice:${inv.id}`,
-        type: "INVOICE",
-        // Balance formatted as a string via toFixed on the Decimal's own
-        // string form — never a JS number — matching the money-serialization
-        // convention this service otherwise didn't have a value to serialize
-        // (this is a display string, not an API field), but stays consistent
-        // with never doing arithmetic on a Decimal via Number().
+        key: `payment:${inv.id}`,
+        type: "PAYMENT",
         title: `Invoice ${inv.invoiceNumber}`,
-        message: `Balance: ${inv.balanceDue.toString()}${due}`,
+        message: payment
+          ? `Payment received: ${payment.amount.toString()}`
+          : "Payment received.",
         entityType: "invoice",
         entityId: inv.id,
-        createdAt: inv.updatedAt,
+        createdAt: payment?.paymentDate ?? inv.updatedAt,
+        preferenceKey: "paymentReceived",
       });
     }
 
-    return items;
+    const filtered = items.filter((item) => prefs[item.preferenceKey]);
+    filtered.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return filtered.slice(0, limit);
   }
 
   private async readKeySet(accountId: string): Promise<Set<string>> {

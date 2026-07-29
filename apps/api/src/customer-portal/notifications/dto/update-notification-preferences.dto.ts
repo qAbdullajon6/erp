@@ -8,7 +8,7 @@ import {
   ValidateNested,
 } from "class-validator";
 
-class ProfileNotificationPreferencesDto {
+class NotificationPreferencesDto {
   @IsOptional()
   @IsBoolean()
   shipmentAssigned?: boolean;
@@ -38,31 +38,12 @@ class ProfileNotificationPreferencesDto {
   documentsAvailable?: boolean;
 }
 
-export class UpdateCustomerProfileDto {
+export class UpdateNotificationPreferencesDto {
   @IsOptional()
-  @IsString()
-  @MaxLength(200)
-  contactName?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(20)
-  phone?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(200)
-  address?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  city?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  country?: string;
+  @IsObject()
+  @ValidateNested()
+  @Type(() => NotificationPreferencesDto)
+  preferences?: NotificationPreferencesDto;
 
   @IsOptional()
   @IsString()
@@ -73,10 +54,4 @@ export class UpdateCustomerProfileDto {
   @IsString()
   @MaxLength(64)
   timezone?: string;
-
-  @IsOptional()
-  @IsObject()
-  @ValidateNested()
-  @Type(() => ProfileNotificationPreferencesDto)
-  notificationPreferences?: ProfileNotificationPreferencesDto;
 }

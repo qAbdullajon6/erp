@@ -86,10 +86,11 @@ export class CustomerBillingService {
     }
 
     // Get limits from plan features
-    const features = subscription.plan.features as any;
+    const features = subscription.plan.features as Record<string, unknown>;
     const usage = Array.from(usageByMetric.entries()).map(([metricType, value]) => {
       const limitKey = this.getLimitKeyForMetric(metricType);
-      const limit = features[limitKey] ?? null; // null = unlimited
+      const rawLimit = features[limitKey];
+      const limit = typeof rawLimit === "number" ? rawLimit : null; // null = unlimited
 
       return {
         metricType,

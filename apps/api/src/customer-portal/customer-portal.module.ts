@@ -30,6 +30,8 @@ import { CustomerPortalProvisioningController } from "./provisioning/customer-po
 import { PublicCustomerPortalInvitationController } from "./provisioning/public-customer-portal-invitation.controller";
 import { CustomerBillingService } from "./billing/customer-billing.service";
 import { CustomerBillingController } from "./billing/customer-billing.controller";
+import { CustomerPaymentsService } from "./payments/customer-payments.service";
+import { CustomerPaymentsController } from "./payments/customer-payments.controller";
 
 @Module({
   imports: [
@@ -63,6 +65,7 @@ import { CustomerBillingController } from "./billing/customer-billing.controller
     CustomerPortalProvisioningController,
     PublicCustomerPortalInvitationController,
     CustomerBillingController,
+    CustomerPaymentsController,
   ],
   providers: [
     CustomerJwtStrategy,
@@ -75,6 +78,7 @@ import { CustomerBillingController } from "./billing/customer-billing.controller
     CustomerProfileService,
     CustomerPortalProvisioningService,
     CustomerBillingService,
+    CustomerPaymentsService,
   ],
 })
 export class CustomerPortalModule {}
