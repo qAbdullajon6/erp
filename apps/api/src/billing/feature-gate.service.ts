@@ -1,6 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import type { UsageMetricType } from "@prisma/client";
 
 /// Central feature gate service for subscription-based access control.
 ///
@@ -167,7 +166,7 @@ export class FeatureGateService {
     if (!limits) return undefined;
 
     const value = limits.features[limitKey];
-    if (value === null || value === undefined) return value as null | undefined;
+    if (value === null || value === undefined) return value;
     if (typeof value === "number") return value;
 
     this.logger.warn(

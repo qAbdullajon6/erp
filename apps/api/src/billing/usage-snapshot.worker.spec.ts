@@ -1,4 +1,8 @@
 import { UsageSnapshotWorker } from "./usage-snapshot.worker";
+import { UsageMeteringService } from "./usage-metering.service";
+import { FeatureGateService } from "./feature-gate.service";
+import { PrismaService } from "../prisma/prisma.service";
+import { asDependency, firstMockArg } from "./test-support/billing-spec.helpers";
 
 const NOW = new Date("2026-07-15T01:00:00Z");
 
@@ -23,27 +27,37 @@ function makePrisma(opts: { orgCount?: number; deleteCount?: number } = {}) {
     organizationSubscription: {
       findUnique: jest.fn().mockResolvedValue({ planId: "plan-1" }),
     },
-  } as any;
+  };
 }
 
 function makeUsageMeteringService() {
-  return {} as any;
+  return {};
 }
 
 function makeFeatureGateService() {
-  return { clearCache: jest.fn() } as any;
+  return { clearCache: jest.fn() };
+}
+
+interface UpsertCallArgs {
+  where?: {
+    organizationId_metricType_period_periodStart?: { period?: string };
+  };
 }
 
 describe("UsageSnapshotWorker", () => {
   let worker: UsageSnapshotWorker;
-  let prisma: any;
-  let featureGate: any;
+  let prisma: ReturnType<typeof makePrisma>;
+  let featureGate: ReturnType<typeof makeFeatureGateService>;
 
   beforeEach(() => {
     jest.useFakeTimers().setSystemTime(NOW);
     prisma = makePrisma();
     featureGate = makeFeatureGateService();
-    worker = new UsageSnapshotWorker(prisma, makeUsageMeteringService(), featureGate);
+    worker = new UsageSnapshotWorker(
+      asDependency<PrismaService>(prisma),
+      asDependency<UsageMeteringService>(makeUsageMeteringService()),
+      asDependency<FeatureGateService>(featureGate),
+    );
   });
 
   afterEach(() => {
@@ -59,23 +73,18 @@ describe("UsageSnapshotWorker", () => {
           where: { subscription: { isNot: null } },
         }),
       );
-      // 2 orgs × 9 metric types = 18 upserts minimum
       expect(prisma.usageSnapshot.upsert).toHaveBeenCalled();
     });
 
     it("aggregates usage records for yesterday", async () => {
       await worker.handleUsageSnapshots();
 
-      expect(prisma.usageRecord.aggregate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            recordedAt: expect.objectContaining({
-              gte: expect.any(Date),
-              lt: expect.any(Date),
-            }),
-          }),
-        }),
+      expect(prisma.usageRecord.aggregate).toHaveBeenCalled();
+      const aggregateArgs = firstMockArg<{ where: { recordedAt: { gte: Date; lt: Date } } }>(
+        prisma.usageRecord.aggregate,
       );
+      expect(aggregateArgs.where.recordedAt.gte).toBeInstanceOf(Date);
+      expect(aggregateArgs.where.recordedAt.lt).toBeInstanceOf(Date);
     });
   });
 
@@ -91,27 +100,34 @@ describe("UsageSnapshotWorker", () => {
   describe("monthly snapshots", () => {
     it("creates monthly snapshots on first day of month", async () => {
       jest.useFakeTimers().setSystemTime(new Date("2026-08-01T01:00:00Z"));
-      worker = new UsageSnapshotWorker(prisma, makeUsageMeteringService(), featureGate);
+      worker = new UsageSnapshotWorker(
+        asDependency<PrismaService>(prisma),
+        asDependency<UsageMeteringService>(makeUsageMeteringService()),
+        asDependency<FeatureGateService>(featureGate),
+      );
 
       await worker.handleUsageSnapshots();
 
-      // Monthly snapshots should also be created
-      const upsertCalls = prisma.usageSnapshot.upsert.mock.calls;
+      const upsertCalls = prisma.usageSnapshot.upsert.mock.calls as Array<[UpsertCallArgs]>;
       const monthlyCall = upsertCalls.find(
-        (call: any) => call[0]?.where?.organizationId_metricType_period_periodStart?.period === "monthly",
+        (call) => call[0]?.where?.organizationId_metricType_period_periodStart?.period === "monthly",
       );
       expect(monthlyCall).toBeDefined();
     });
 
     it("does NOT create monthly snapshots on non-first days", async () => {
       jest.useFakeTimers().setSystemTime(new Date("2026-07-15T01:00:00Z"));
-      worker = new UsageSnapshotWorker(prisma, makeUsageMeteringService(), featureGate);
+      worker = new UsageSnapshotWorker(
+        asDependency<PrismaService>(prisma),
+        asDependency<UsageMeteringService>(makeUsageMeteringService()),
+        asDependency<FeatureGateService>(featureGate),
+      );
 
       await worker.handleUsageSnapshots();
 
-      const upsertCalls = prisma.usageSnapshot.upsert.mock.calls;
+      const upsertCalls = prisma.usageSnapshot.upsert.mock.calls as Array<[UpsertCallArgs]>;
       const monthlyCall = upsertCalls.find(
-        (call: any) => call[0]?.where?.organizationId_metricType_period_periodStart?.period === "monthly",
+        (call) => call[0]?.where?.organizationId_metricType_period_periodStart?.period === "monthly",
       );
       expect(monthlyCall).toBeUndefined();
     });
@@ -121,16 +137,10 @@ describe("UsageSnapshotWorker", () => {
     it("deletes usage records older than 90 days", async () => {
       await worker.handleUsageSnapshots();
 
-      expect(prisma.usageRecord.deleteMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            recordedAt: expect.objectContaining({ lt: expect.any(Date) }),
-          }),
-        }),
-      );
+      expect(prisma.usageRecord.deleteMany).toHaveBeenCalled();
+      const deleteCall = firstMockArg<{ where: { recordedAt: { lt: Date } } }>(prisma.usageRecord.deleteMany);
+      expect(deleteCall.where.recordedAt.lt).toBeInstanceOf(Date);
 
-      // Verify the date is ~90 days ago
-      const deleteCall = prisma.usageRecord.deleteMany.mock.calls[0][0];
       const cutoffDate = deleteCall.where.recordedAt.lt;
       const daysDiff = (NOW.getTime() - cutoffDate.getTime()) / (24 * 60 * 60 * 1000);
       expect(daysDiff).toBeCloseTo(90, 0);
@@ -152,13 +162,11 @@ describe("UsageSnapshotWorker", () => {
     it("uses upsert to handle duplicate snapshot creation", async () => {
       await worker.handleUsageSnapshots();
 
-      expect(prisma.usageSnapshot.upsert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            organizationId_metricType_period_periodStart: expect.any(Object),
-          }),
-        }),
-      );
+      expect(prisma.usageSnapshot.upsert).toHaveBeenCalled();
+      const upsertArgs = firstMockArg<{
+        where: { organizationId_metricType_period_periodStart: Record<string, unknown> };
+      }>(prisma.usageSnapshot.upsert);
+      expect(upsertArgs.where.organizationId_metricType_period_periodStart).toBeDefined();
     });
   });
 });

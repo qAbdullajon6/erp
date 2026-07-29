@@ -94,9 +94,11 @@ export class BillingSeatsService {
   /// Called after membership status changes for audit trail.
   /// Does not enforce limits (enforcement happens before mutation).
   /// Currently a no-op; can be extended for analytics/reporting.
-  async syncSeatsUsed(_organizationId: string): Promise<void> {
+  syncSeatsUsed(organizationId: string): Promise<void> {
+    void organizationId;
     // Future: Could write to a seats_usage_log table for analytics
     // For now, seat count is derived real-time from membership table
+    return Promise.resolve();
   }
 
   /// Count currently active seats (ACTIVE memberships).

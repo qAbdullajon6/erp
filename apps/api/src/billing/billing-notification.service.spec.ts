@@ -1,41 +1,40 @@
 import { BillingNotificationService } from "./billing-notification.service";
+import { PrismaService } from "../prisma/prisma.service";
+import { asDependency, firstMockArg } from "./test-support/billing-spec.helpers";
 
-function makePrisma(opts: { existingNotification?: any } = {}) {
+function makePrisma(opts: { existingNotification?: { id: string } } = {}) {
   return {
     notification: {
       findFirst: jest.fn().mockResolvedValue(opts.existingNotification ?? null),
       create: jest.fn().mockResolvedValue({ id: "notif-1" }),
     },
-  } as any;
+  };
 }
 
 describe("BillingNotificationService", () => {
   let service: BillingNotificationService;
-  let prisma: any;
+  let prisma: ReturnType<typeof makePrisma>;
 
   beforeEach(() => {
     prisma = makePrisma();
-    service = new BillingNotificationService(prisma);
+    service = new BillingNotificationService(asDependency<PrismaService>(prisma));
   });
 
   describe("notifyTrialEnding()", () => {
     it("creates a BILLING notification for trial ending", async () => {
       await service.notifyTrialEnding("org-1", new Date("2026-07-20"));
 
-      expect(prisma.notification.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            organizationId: "org-1",
-            type: "TRIAL_ENDING",
-            category: "BILLING",
-          }),
-        }),
+      const createCall = firstMockArg<{ data: { organizationId: string; type: string; category: string } }>(
+        prisma.notification.create,
       );
+      expect(createCall.data.organizationId).toBe("org-1");
+      expect(createCall.data.type).toBe("TRIAL_ENDING");
+      expect(createCall.data.category).toBe("BILLING");
     });
 
     it("skips duplicate notification (idempotency)", async () => {
       prisma = makePrisma({ existingNotification: { id: "existing-notif" } });
-      service = new BillingNotificationService(prisma);
+      service = new BillingNotificationService(asDependency<PrismaService>(prisma));
 
       await service.notifyTrialEnding("org-1", new Date("2026-07-20"));
       expect(prisma.notification.create).not.toHaveBeenCalled();
@@ -46,16 +45,13 @@ describe("BillingNotificationService", () => {
     it("creates a low-severity payment success notification", async () => {
       await service.notifyPaymentSucceeded("org-1", "sub-1", 14900);
 
-      expect(prisma.notification.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            organizationId: "org-1",
-            type: "PAYMENT_SUCCEEDED",
-            category: "BILLING",
-            severity: "LOW",
-          }),
-        }),
-      );
+      const createCall = firstMockArg<{
+        data: { organizationId: string; type: string; category: string; severity: string };
+      }>(prisma.notification.create);
+      expect(createCall.data.organizationId).toBe("org-1");
+      expect(createCall.data.type).toBe("PAYMENT_SUCCEEDED");
+      expect(createCall.data.category).toBe("BILLING");
+      expect(createCall.data.severity).toBe("LOW");
     });
   });
 
@@ -63,16 +59,13 @@ describe("BillingNotificationService", () => {
     it("creates a critical-severity payment failure notification with reason", async () => {
       await service.notifyPaymentFailed("org-1", "sub-1", "Card declined");
 
-      expect(prisma.notification.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            organizationId: "org-1",
-            type: "PAYMENT_FAILED",
-            category: "BILLING",
-            severity: "CRITICAL",
-          }),
-        }),
-      );
+      const createCall = firstMockArg<{
+        data: { organizationId: string; type: string; category: string; severity: string };
+      }>(prisma.notification.create);
+      expect(createCall.data.organizationId).toBe("org-1");
+      expect(createCall.data.type).toBe("PAYMENT_FAILED");
+      expect(createCall.data.category).toBe("BILLING");
+      expect(createCall.data.severity).toBe("CRITICAL");
     });
   });
 
@@ -80,15 +73,12 @@ describe("BillingNotificationService", () => {
     it("creates a high-severity expiration notification", async () => {
       await service.notifySubscriptionExpired("org-1", "sub-1");
 
-      expect(prisma.notification.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            type: "SUBSCRIPTION_EXPIRED",
-            category: "BILLING",
-            severity: "HIGH",
-          }),
-        }),
+      const createCall = firstMockArg<{ data: { type: string; category: string; severity: string } }>(
+        prisma.notification.create,
       );
+      expect(createCall.data.type).toBe("SUBSCRIPTION_EXPIRED");
+      expect(createCall.data.category).toBe("BILLING");
+      expect(createCall.data.severity).toBe("HIGH");
     });
   });
 
@@ -96,15 +86,12 @@ describe("BillingNotificationService", () => {
     it("creates a critical-severity suspension notification", async () => {
       await service.notifySubscriptionSuspended("org-1", "sub-1", "payment_failed");
 
-      expect(prisma.notification.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            type: "SUBSCRIPTION_SUSPENDED",
-            category: "BILLING",
-            severity: "CRITICAL",
-          }),
-        }),
+      const createCall = firstMockArg<{ data: { type: string; category: string; severity: string } }>(
+        prisma.notification.create,
       );
+      expect(createCall.data.type).toBe("SUBSCRIPTION_SUSPENDED");
+      expect(createCall.data.category).toBe("BILLING");
+      expect(createCall.data.severity).toBe("CRITICAL");
     });
   });
 
@@ -112,14 +99,9 @@ describe("BillingNotificationService", () => {
     it("creates a seat limit notification", async () => {
       await service.notifySeatLimitReached("org-1", 10, 10);
 
-      expect(prisma.notification.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            type: "SEAT_LIMIT_REACHED",
-            category: "BILLING",
-          }),
-        }),
-      );
+      const createCall = firstMockArg<{ data: { type: string; category: string } }>(prisma.notification.create);
+      expect(createCall.data.type).toBe("SEAT_LIMIT_REACHED");
+      expect(createCall.data.category).toBe("BILLING");
     });
   });
 
@@ -127,15 +109,12 @@ describe("BillingNotificationService", () => {
     it("creates a usage exceeded notification with metric metadata", async () => {
       await service.notifyUsageExceeded("org-1", "API_REQUESTS", 10000, 10000);
 
-      expect(prisma.notification.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            type: "USAGE_EXCEEDED",
-            category: "BILLING",
-            severity: "HIGH",
-          }),
-        }),
+      const createCall = firstMockArg<{ data: { type: string; category: string; severity: string } }>(
+        prisma.notification.create,
       );
+      expect(createCall.data.type).toBe("USAGE_EXCEEDED");
+      expect(createCall.data.category).toBe("BILLING");
+      expect(createCall.data.severity).toBe("HIGH");
     });
   });
 
@@ -143,14 +122,9 @@ describe("BillingNotificationService", () => {
     it("creates an AI credits low notification", async () => {
       await service.notifyAiCreditsLow("org-1", 50, 1000);
 
-      expect(prisma.notification.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            type: "AI_CREDITS_LOW",
-            category: "BILLING",
-          }),
-        }),
-      );
+      const createCall = firstMockArg<{ data: { type: string; category: string } }>(prisma.notification.create);
+      expect(createCall.data.type).toBe("AI_CREDITS_LOW");
+      expect(createCall.data.category).toBe("BILLING");
     });
   });
 
@@ -158,7 +132,7 @@ describe("BillingNotificationService", () => {
     it("always scopes the notification to the given organization", async () => {
       await service.notifyTrialEnding("org-scoped-123", new Date("2026-07-20"));
 
-      const createCall = prisma.notification.create.mock.calls[0][0];
+      const createCall = firstMockArg<{ data: { organizationId: string } }>(prisma.notification.create);
       expect(createCall.data.organizationId).toBe("org-scoped-123");
     });
   });

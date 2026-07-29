@@ -1,8 +1,10 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { Cron, CronExpression } from "@nestjs/schedule";
+import { UsageMetricType } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { UsageMeteringService } from "./usage-metering.service";
 import { FeatureGateService } from "./feature-gate.service";
+import { TRACKED_USAGE_METRICS } from "./usage-metric-types";
 
 /// Usage snapshot worker - aggregates raw usage records into daily/monthly snapshots.
 ///
@@ -71,7 +73,7 @@ export class UsageSnapshotWorker {
           // Invalidate cached plan limits for this org
           this.featureGateService.clearCache(org.id);
           cacheInvalidatedCount++;
-        } catch (error: any) {
+        } catch (error: unknown) {
           errorCount++;
           this.logger.error(`Failed to create daily snapshot for org ${org.id}:`, error);
         }
@@ -92,7 +94,7 @@ export class UsageSnapshotWorker {
           try {
             await this.createMonthlySnapshot(org.id, lastMonth, monthEnd);
             monthlySnapshotCount++;
-          } catch (error: any) {
+          } catch (error: unknown) {
             errorCount++;
             this.logger.error(`Failed to create monthly snapshot for org ${org.id}:`, error);
           }
@@ -117,7 +119,7 @@ export class UsageSnapshotWorker {
         `${monthlySnapshotCount} monthly snapshots, ${cacheInvalidatedCount} caches invalidated, ` +
         `${cleanupCount} records cleaned up, ${errorCount} errors`,
       );
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.logger.error("Usage snapshot worker failed:", error);
       throw error;
     }
@@ -128,24 +130,11 @@ export class UsageSnapshotWorker {
     periodStart: Date,
     periodEnd: Date,
   ): Promise<void> {
-    // Aggregate usage records for this org/period across all metric types
-    const metricTypes = [
-      "API_REQUESTS",
-      "AI_CREDITS",
-      "STORAGE_GB",
-      "ORDERS",
-      "WEBHOOKS",
-      "USERS",
-      "VEHICLES",
-      "DRIVERS",
-      "CUSTOMERS",
-    ];
-
-    for (const metricType of metricTypes) {
+    for (const metricType of TRACKED_USAGE_METRICS) {
       const aggregate = await this.prisma.usageRecord.aggregate({
         where: {
           organizationId,
-          metricType: metricType as any,
+          metricType,
           recordedAt: {
             gte: periodStart,
             lt: periodEnd,
@@ -167,7 +156,7 @@ export class UsageSnapshotWorker {
         where: {
           organizationId_metricType_period_periodStart: {
             organizationId,
-            metricType: metricType as any,
+            metricType,
             period: "daily",
             periodStart,
           },
@@ -175,9 +164,9 @@ export class UsageSnapshotWorker {
         create: {
           organizationId,
           planId: subscription?.planId,
-          metricType: metricType as any,
+          metricType,
           value: totalValue,
-          unit: this.getUnitForMetricType(metricType as any),
+          unit: this.getUnitForMetricType(metricType),
           period: "daily",
           periodStart,
           periodEnd,
@@ -195,23 +184,11 @@ export class UsageSnapshotWorker {
     periodStart: Date,
     periodEnd: Date,
   ): Promise<void> {
-    const metricTypes = [
-      "API_REQUESTS",
-      "AI_CREDITS",
-      "STORAGE_GB",
-      "ORDERS",
-      "WEBHOOKS",
-      "USERS",
-      "VEHICLES",
-      "DRIVERS",
-      "CUSTOMERS",
-    ];
-
-    for (const metricType of metricTypes) {
+    for (const metricType of TRACKED_USAGE_METRICS) {
       const aggregate = await this.prisma.usageRecord.aggregate({
         where: {
           organizationId,
-          metricType: metricType as any,
+          metricType,
           recordedAt: {
             gte: periodStart,
             lt: periodEnd,
@@ -231,7 +208,7 @@ export class UsageSnapshotWorker {
         where: {
           organizationId_metricType_period_periodStart: {
             organizationId,
-            metricType: metricType as any,
+            metricType,
             period: "monthly",
             periodStart,
           },
@@ -239,9 +216,9 @@ export class UsageSnapshotWorker {
         create: {
           organizationId,
           planId: subscription?.planId,
-          metricType: metricType as any,
+          metricType,
           value: totalValue,
-          unit: this.getUnitForMetricType(metricType as any),
+          unit: this.getUnitForMetricType(metricType),
           period: "monthly",
           periodStart,
           periodEnd,
@@ -254,8 +231,8 @@ export class UsageSnapshotWorker {
     }
   }
 
-  private getUnitForMetricType(metricType: string): string {
-    const units: Record<string, string> = {
+  private getUnitForMetricType(metricType: UsageMetricType): string {
+    const units: Record<UsageMetricType, string> = {
       API_REQUESTS: "requests",
       AI_CREDITS: "credits",
       STORAGE_GB: "gb",

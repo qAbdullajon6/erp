@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { Prisma, UsageMetricType } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { FeatureGateService } from "./feature-gate.service";
+import { TRACKED_USAGE_METRICS } from "./usage-metric-types";
 
 /// Real-time usage tracking and quota enforcement.
 ///
@@ -169,17 +170,17 @@ export class UsageMeteringService {
     const metrics: MetricUsage[] = [];
 
     // Get usage for all tracked metrics
-    for (const metricType of Object.values(UsageMetricType)) {
-      const currentUsage = await this.getCurrentUsage(organizationId, metricType as UsageMetricType);
-      const limitKey = this.metricToLimitKey(metricType as UsageMetricType);
+    for (const metricType of TRACKED_USAGE_METRICS) {
+      const currentUsage = await this.getCurrentUsage(organizationId, metricType);
+      const limitKey = this.metricToLimitKey(metricType);
       const limit = await this.featureGate.getLimit(organizationId, limitKey);
 
       metrics.push({
-        metricType: metricType as UsageMetricType,
-        label: this.getMetricLabel(metricType as UsageMetricType),
+        metricType,
+        label: this.getMetricLabel(metricType),
         currentUsage,
         limit: limit ?? null,
-        unit: this.getUnit(metricType as UsageMetricType),
+        unit: this.getUnit(metricType),
         percentageUsed: limit ? (currentUsage / limit) * 100 : 0,
         isUnlimited: limit === null,
       });
@@ -200,11 +201,11 @@ export class UsageMeteringService {
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
 
-    for (const metricType of Object.values(UsageMetricType)) {
+    for (const metricType of TRACKED_USAGE_METRICS) {
       const result = await this.prisma.usageRecord.aggregate({
         where: {
           organizationId,
-          metricType: metricType as UsageMetricType,
+          metricType,
           recordedAt: { gte: startOfDay, lte: endOfDay },
         },
         _sum: { value: true },
@@ -216,9 +217,9 @@ export class UsageMeteringService {
       await this.prisma.usageSnapshot.create({
         data: {
           organizationId,
-          metricType: metricType as UsageMetricType,
+          metricType,
           value: new Prisma.Decimal(value),
-          unit: this.getUnit(metricType as UsageMetricType),
+          unit: this.getUnit(metricType),
           period: "daily",
           periodStart: startOfDay,
           periodEnd: endOfDay,
@@ -233,11 +234,11 @@ export class UsageMeteringService {
     const startOfMonth = new Date(year, month - 1, 1);
     const endOfMonth = new Date(year, month, 0, 23, 59, 59, 999);
 
-    for (const metricType of Object.values(UsageMetricType)) {
+    for (const metricType of TRACKED_USAGE_METRICS) {
       const result = await this.prisma.usageRecord.aggregate({
         where: {
           organizationId,
-          metricType: metricType as UsageMetricType,
+          metricType,
           recordedAt: { gte: startOfMonth, lte: endOfMonth },
         },
         _sum: { value: true },
@@ -248,9 +249,9 @@ export class UsageMeteringService {
       await this.prisma.usageSnapshot.create({
         data: {
           organizationId,
-          metricType: metricType as UsageMetricType,
+          metricType,
           value: new Prisma.Decimal(value),
-          unit: this.getUnit(metricType as UsageMetricType),
+          unit: this.getUnit(metricType),
           period: "monthly",
           periodStart: startOfMonth,
           periodEnd: endOfMonth,

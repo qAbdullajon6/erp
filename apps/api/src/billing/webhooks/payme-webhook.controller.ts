@@ -1,7 +1,24 @@
 import { Controller, Post, Body, Headers, Logger, UnauthorizedException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../../audit/audit.service";
 import { SubscriptionLifecycleService } from "../subscription-lifecycle.service";
+import {
+  PaymeRpcError,
+  isPaymeRpcError,
+  parsePaymeStoredPayload,
+  type PaymeCancelTransactionParams,
+  type PaymeCancelTransactionResult,
+  type PaymeCheckPerformParams,
+  type PaymeCheckPerformResult,
+  type PaymeCreateTransactionParams,
+  type PaymeCreateTransactionResult,
+  type PaymePerformTransactionParams,
+  type PaymePerformTransactionResult,
+  type PaymeRpcRequest,
+  type PaymeRpcResponseBody,
+  type PaymeWebhookResult,
+} from "../types/payme-webhook.types";
 
 /// Payme.uz webhook handler (Uzbekistan payment gateway).
 ///
@@ -23,7 +40,7 @@ export class PaymeWebhookController {
   async handleWebhook(
     @Body() rpcRequest: PaymeRpcRequest,
     @Headers("authorization") authHeader: string,
-  ): Promise<PaymeRpcResponse> {
+  ): Promise<PaymeRpcResponseBody> {
     // Verify Basic Auth
     if (!this.verifyAuth(authHeader)) {
       throw new UnauthorizedException("Invalid credentials");
@@ -36,13 +53,13 @@ export class PaymeWebhookController {
         id: rpcRequest.id,
         result,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       return {
         jsonrpc: "2.0",
         id: rpcRequest.id,
         error: {
-          code: error.code ?? -32603,
-          message: error.message ?? "Internal error",
+          code: isPaymeRpcError(error) ? error.code : -32603,
+          message: error instanceof Error ? error.message : "Internal error",
         },
       };
     }
@@ -65,30 +82,30 @@ export class PaymeWebhookController {
     return authHeader === expectedAuth;
   }
 
-  private async processMethod(request: PaymeRpcRequest): Promise<any> {
+  private async processMethod(request: PaymeRpcRequest): Promise<PaymeWebhookResult> {
     switch (request.method) {
       case "CheckPerformTransaction":
-        return this.checkPerformTransaction(request.params);
+        return this.checkPerformTransaction(request.params as PaymeCheckPerformParams);
 
       case "CreateTransaction":
-        return this.createTransaction(request.params);
+        return this.createTransaction(request.params as PaymeCreateTransactionParams);
 
       case "PerformTransaction":
-        return this.performTransaction(request.params);
+        return this.performTransaction(request.params as PaymePerformTransactionParams);
 
       case "CancelTransaction":
-        return this.cancelTransaction(request.params);
+        return this.cancelTransaction(request.params as PaymeCancelTransactionParams);
 
       default:
-        throw { code: -32601, message: "Method not found" };
+        throw new PaymeRpcError(-32601, "Method not found");
     }
   }
 
-  private async checkPerformTransaction(params: any): Promise<any> {
+  private async checkPerformTransaction(params: PaymeCheckPerformParams): Promise<PaymeCheckPerformResult> {
     // Extract organization ID from account.order_id
     const organizationId = params.account?.order_id;
     if (!organizationId) {
-      throw { code: -31050, message: "Invalid account" };
+      throw new PaymeRpcError(-31050, "Invalid account");
     }
 
     // Check subscription exists
@@ -98,19 +115,19 @@ export class PaymeWebhookController {
     });
 
     if (!subscription) {
-      throw { code: -31050, message: "Subscription not found" };
+      throw new PaymeRpcError(-31050, "Subscription not found");
     }
 
     // Check amount matches
     const expectedAmount = (subscription.plan?.price ?? 0) * 100; // Payme uses tiyin (1 UZS = 100 tiyin)
     if (params.amount !== expectedAmount) {
-      throw { code: -31001, message: "Invalid amount" };
+      throw new PaymeRpcError(-31001, "Invalid amount");
     }
 
     return { allow: true };
   }
 
-  private async createTransaction(params: any): Promise<any> {
+  private async createTransaction(params: PaymeCreateTransactionParams): Promise<PaymeCreateTransactionResult> {
     const transactionId = params.id;
 
     // Check idempotency
@@ -136,7 +153,7 @@ export class PaymeWebhookController {
         provider: "payme",
         externalEventId: transactionId,
         eventType: "CreateTransaction",
-        payload: params as any,
+        payload: params as unknown as Prisma.InputJsonValue,
         status: "PENDING",
       },
     });
@@ -148,7 +165,7 @@ export class PaymeWebhookController {
     };
   }
 
-  private async performTransaction(params: any): Promise<any> {
+  private async performTransaction(params: PaymePerformTransactionParams): Promise<PaymePerformTransactionResult> {
     const transactionId = params.id;
 
     // Find transaction
@@ -160,7 +177,7 @@ export class PaymeWebhookController {
     });
 
     if (!delivery) {
-      throw { code: -31003, message: "Transaction not found" };
+      throw new PaymeRpcError(-31003, "Transaction not found");
     }
 
     if (delivery.status === "DELIVERED") {
@@ -173,11 +190,11 @@ export class PaymeWebhookController {
     }
 
     // Extract organization ID
-    const payload = delivery.payload as any;
+    const payload = parsePaymeStoredPayload(delivery.payload);
     const organizationId = payload.account?.order_id;
 
     if (!organizationId) {
-      throw { code: -31050, message: "Invalid account in transaction" };
+      throw new PaymeRpcError(-31050, "Invalid account in transaction");
     }
 
     try {
@@ -214,13 +231,13 @@ export class PaymeWebhookController {
         state: 2, // Performed
         perform_time: Date.now(),
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.logger.error(`Payme payment processing failed:`, error);
-      throw { code: -31008, message: "Unable to perform transaction" };
+      throw new PaymeRpcError(-31008, "Unable to perform transaction");
     }
   }
 
-  private async cancelTransaction(params: any): Promise<any> {
+  private async cancelTransaction(params: PaymeCancelTransactionParams): Promise<PaymeCancelTransactionResult> {
     const transactionId = params.id;
 
     // Find transaction
@@ -232,7 +249,7 @@ export class PaymeWebhookController {
     });
 
     if (!delivery) {
-      throw { code: -31003, message: "Transaction not found" };
+      throw new PaymeRpcError(-31003, "Transaction not found");
     }
 
     // Mark as failed (cancelled by provider)
@@ -241,7 +258,7 @@ export class PaymeWebhookController {
       data: {
         status: "FAILED",
         processedAt: new Date(),
-        errorMessage: `Cancelled by Payme: reason ${params.reason}`,
+        errorMessage: `Cancelled by Payme: reason ${params.reason ?? "unknown"}`,
       },
     });
 
@@ -251,21 +268,4 @@ export class PaymeWebhookController {
       cancel_time: Date.now(),
     };
   }
-}
-
-interface PaymeRpcRequest {
-  jsonrpc: "2.0";
-  id: number;
-  method: string;
-  params: any;
-}
-
-interface PaymeRpcResponse {
-  jsonrpc: "2.0";
-  id: number;
-  result?: any;
-  error?: {
-    code: number;
-    message: string;
-  };
 }
