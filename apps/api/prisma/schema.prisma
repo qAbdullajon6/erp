@@ -90,6 +90,36 @@ enum DriverStatus {
   ON_LEAVE
 }
 
+/// Live shift state — distinct from HR DriverStatus (employment eligibility).
+enum DriverOperationalStatus {
+  AVAILABLE
+  BUSY
+  DRIVING
+  LOADING
+  BREAK
+  OFFLINE
+}
+
+/// Driver response to an ASSIGNED dispatch (side-channel — not a DispatchStatus).
+enum DriverAcceptanceStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum DriverRejectReason {
+  VEHICLE_ISSUE
+  SICK
+  PERSONAL_EMERGENCY
+  ALREADY_BUSY
+  OTHER
+}
+
+enum DeliveryProofType {
+  PHOTO
+  SIGNATURE
+}
+
 enum VehicleStatus {
   AVAILABLE
   IN_USE
@@ -261,6 +291,11 @@ model Organization {
   /// Reverse of Lead.convertedOrganizationId — at most one lead converts into
   /// a given organization.
   convertedFromLead         Lead?
+  driverSettings            OrganizationDriverSettings?
+  driverBreaks              DriverBreak[]
+  driverActionEvents        DriverActionEvent[]
+  vehicleInspections        VehicleInspection[]
+  dispatchDeliveryProofs    DispatchDeliveryProof[]
 
   @@map("organizations")
 }
@@ -467,6 +502,13 @@ model CustomerPortalAccount {
   passwordHash   String
   status         CustomerPortalAccountStatus @default(ACTIVE)
   lastLoginAt    DateTime?
+  /// Which synthesized feed categories the portal contact wants to see.
+  /// Shape: { shipmentAssigned, shipmentDelayed, shipmentDelivered,
+  /// invoiceCreated, invoiceOverdue, paymentReceived, documentsAvailable }
+  /// — all default true when null.
+  notificationPreferences Json?
+  language       String?                     @default("en")
+  timezone       String?                     @default("UTC")
   createdAt      DateTime                    @default(now())
   updatedAt      DateTime                    @updatedAt
 
@@ -611,6 +653,8 @@ model Driver {
   phone          String
   email          String?
   status         DriverStatus @default(ACTIVE)
+  /// Live shift state for Board / driver workspace (P3.3.4A). Separate from HR `status`.
+  operationalStatus DriverOperationalStatus @default(AVAILABLE)
   licenseNumber  String?
   licenseExpiry  DateTime?
   createdAt      DateTime     @default(now())
@@ -635,10 +679,15 @@ model Driver {
   geofenceEvents          GeofenceEvent[]
   telematicsAlerts        TelematicsAlert[]
   trackingSessions        TrackingSession[]
+  breaks                  DriverBreak[]
+  actionEvents            DriverActionEvent[]
+  vehicleInspections      VehicleInspection[]
+  deliveryProofs          DispatchDeliveryProof[]
 
   @@unique([organizationId, employeeCode])
   @@index([organizationId])
   @@index([organizationId, status])
+  @@index([organizationId, operationalStatus])
   /// Default fleet list filters archivedAt IS NULL — this index keeps that
   /// path from scanning every driver row in large orgs.
   @@index([organizationId, archivedAt])
@@ -679,6 +728,7 @@ model Vehicle {
   telematicsAlerts    TelematicsAlert[]
   healthSnapshots     VehicleHealthSnapshot[]
   trackingSessions    TrackingSession[]
+  vehicleInspections  VehicleInspection[]
 
   @@unique([organizationId, vehicleCode])
   @@index([organizationId])
@@ -840,6 +890,15 @@ model Dispatch {
   deliveryDateScheduled DateTime
   deliveryDateActual    DateTime?
   notes                 String?
+  /// Driver accept/reject of assignment (P3.3.4A). Defaults PENDING on assign.
+  driverAcceptanceStatus DriverAcceptanceStatus @default(PENDING)
+  driverAcceptedAt       DateTime?
+  driverRejectedAt       DateTime?
+  driverRejectReason     DriverRejectReason?
+  driverRejectNote       String?
+  /// Soft GPS capture when Arrived Pickup (nullable until GPS provider exists).
+  arrivalLat             Decimal?               @db.Decimal(10, 7)
+  arrivalLng             Decimal?               @db.Decimal(10, 7)
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
 
@@ -853,10 +912,12 @@ model Dispatch {
   trips         Trip[]
   trackingSessions TrackingSession[]
   conflictStates DispatchConflictState[]
+  deliveryProofs DispatchDeliveryProof[]
 
   @@unique([organizationId, dispatchNumber])
   @@index([organizationId])
   @@index([organizationId, status])
+  @@index([organizationId, driverAcceptanceStatus])
   @@index([orderId])
   @@index([driverId])
   @@index([vehicleId])
@@ -1086,6 +1147,10 @@ model Expense {
   approvedAt       DateTime?
   rejectionReason  String?
   notes            String?
+  /// Optional receipt file path under uploads/expenses (DRIVER uploads).
+  receiptPath      String?
+  /// Optional odometer reading at expense time (fuel / maintenance foreshadow).
+  odometerKm       Decimal?        @db.Decimal(12, 1)
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
@@ -3117,3 +3182,112 @@ model PlatformSupportSession {
   @@index([targetOrganizationId])
   @@map("platform_support_sessions")
 }
+
+/// Per-org driver workspace settings (POD checklist gates before DELIVERED).
+model OrganizationDriverSettings {
+  id                    String   @id @default(uuid())
+  organizationId        String   @unique
+  requirePhotos         Boolean  @default(true)
+  requireSignature      Boolean  @default(true)
+  requireReceiverName   Boolean  @default(true)
+  requireReceiverPhone  Boolean  @default(false)
+  requireNotes          Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("organization_driver_settings")
+}
+
+/// Driver break sessions (Start Break / End Break).
+model DriverBreak {
+  id             String    @id @default(uuid())
+  organizationId String
+  driverId       String
+  startedAt      DateTime  @default(now())
+  endedAt        DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  driver       Driver       @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, driverId])
+  @@index([driverId, endedAt])
+  @@map("driver_breaks")
+}
+
+/// Append-only driver action stream for future AI / productivity analytics.
+model DriverActionEvent {
+  id             String   @id @default(uuid())
+  organizationId String
+  driverId       String
+  dispatchId     String?
+  type           String
+  payload        Json?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  driver       Driver       @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, driverId, createdAt])
+  @@index([organizationId, type, createdAt])
+  @@index([dispatchId])
+  @@map("driver_action_events")
+}
+
+/// Pre-departure vehicle inspection checklist.
+model VehicleInspection {
+  id             String   @id @default(uuid())
+  organizationId String
+  driverId       String
+  vehicleId      String
+  dispatchId     String?
+  /// Checklist flags: tyres, lights, brakes, oil, coolant, documents, etc.
+  checklist      Json
+  /// Optional photo storage paths (JSON string array).
+  photos         Json?
+  odometerKm     Decimal? @db.Decimal(12, 1)
+  notes          String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  driver       Driver       @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  vehicle      Vehicle      @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, driverId])
+  @@index([organizationId, vehicleId])
+  @@map("vehicle_inspections")
+}
+
+/// POD files + delivery proof metadata (photos, signature, receiver info).
+model DispatchDeliveryProof {
+  id               String            @id @default(uuid())
+  organizationId   String
+  dispatchId       String
+  orderId          String?
+  uploadedByUserId String
+  driverId         String?
+  type             DeliveryProofType
+  fileName         String
+  mimeType         String
+  fileSizeBytes    Int?
+  storagePath      String
+  receiverName     String?
+  receiverPhone    String?
+  notes            String?
+  odometerKm       Decimal?          @db.Decimal(12, 1)
+  metadata         Json?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  dispatch     Dispatch     @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+  driver       Driver?      @relation(fields: [driverId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, dispatchId])
+  @@index([dispatchId, type])
+  @@map("dispatch_delivery_proofs")
+}
+

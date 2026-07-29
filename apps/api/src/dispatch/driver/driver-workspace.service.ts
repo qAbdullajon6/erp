@@ -207,6 +207,15 @@ export class DriverWorkspaceService {
     actor: CurrentUserPayload,
   ) {
     const driver = await this.resolveDriver(organizationId, userId);
+    if (dto.dispatchId) {
+      await this.assertOwnDispatch(organizationId, userId, dto.dispatchId);
+    }
+    if (dto.orderId) {
+      await this.assertAssignableOrder(organizationId, driver.id, dto.orderId);
+    }
+    if (dto.vehicleId) {
+      await this.assertOrgVehicle(organizationId, dto.vehicleId);
+    }
     const expenseNumber = await generateUniqueExpenseNumber(this.prisma, organizationId);
     const expense = await this.prisma.expense.create({
       data: {
@@ -360,6 +369,9 @@ export class DriverWorkspaceService {
       where: { id: dto.vehicleId, organizationId, archivedAt: null },
     });
     if (!vehicle) throw new NotFoundException("Vehicle not found");
+    if (dto.dispatchId) {
+      await this.assertOwnDispatch(organizationId, userId, dto.dispatchId);
+    }
 
     const row = await this.prisma.vehicleInspection.create({
       data: {
@@ -608,6 +620,28 @@ export class DriverWorkspaceService {
     });
     if (!dispatch) throw new NotFoundException("Dispatch not found");
     return { driver, dispatch };
+  }
+
+  private async assertOrgVehicle(organizationId: string, vehicleId: string) {
+    const vehicle = await this.prisma.vehicle.findFirst({
+      where: { id: vehicleId, organizationId, archivedAt: null },
+    });
+    if (!vehicle) throw new NotFoundException("Vehicle not found");
+    return vehicle;
+  }
+
+  /// Expense may only reference an order the driver is (or was) assigned to deliver.
+  private async assertAssignableOrder(organizationId: string, driverId: string, orderId: string) {
+    const order = await this.prisma.order.findFirst({
+      where: {
+        id: orderId,
+        organizationId,
+        dispatches: { some: { driverId, organizationId } },
+      },
+      select: { id: true },
+    });
+    if (!order) throw new NotFoundException("Order not found");
+    return order;
   }
 
   private async assertOwnExpense(organizationId: string, userId: string, expenseId: string) {

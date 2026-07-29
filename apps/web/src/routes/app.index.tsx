@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { AiOpsSuggestions } from "@/components/dashboard/ai-ops-suggestions";
 import { AttentionCenter } from "@/components/dashboard/attention-center";
@@ -7,7 +7,6 @@ import { FinancialWarnings } from "@/components/dashboard/financial-warnings";
 import { FleetReady } from "@/components/dashboard/fleet-ready";
 import { DelayedDeliveries } from "@/components/dashboard/delayed-deliveries";
 import { DashboardCharts } from "@/components/dashboard/dashboard-charts";
-import { DriverDashboardSummary } from "@/components/dashboard/driver-dashboard-summary";
 import { KpiCards } from "@/components/dashboard/kpi-cards";
 import { LiveDispatch } from "@/components/dashboard/live-dispatch";
 import { RecentActivity } from "@/components/dashboard/recent-activity";
@@ -119,7 +118,9 @@ function DashboardPage() {
   if (userError || !currentUser) {
     return <ErrorState message={userError || "Failed to load account."} onRetry={() => refetchUser()} />;
   }
-  if (role === "DRIVER") return <DriverDashboardSummary firstName={currentUser.user.firstName} />;
+  if (role === "DRIVER") {
+    return <Navigate to="/app/driver" />;
+  }
 
   return (
     <OperationsCommandCenter

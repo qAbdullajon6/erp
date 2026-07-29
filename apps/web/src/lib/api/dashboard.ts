@@ -174,6 +174,9 @@ export interface BoardDriverSummary {
   lastName: string;
   phone: string;
   status: string;
+  /** Additive from P3.3.4 board summary — operational presence. */
+  operationalStatus?: string;
+  onBreak?: boolean;
   licenseExpiry?: string | null;
 }
 
@@ -196,6 +199,7 @@ export interface DispatchBoardSummary {
   drivers: {
     available: BoardDriverSummary[];
     busy: Array<{ driver: BoardDriverSummary; currentOrder: BoardOrderSummary }>;
+    onBreak?: BoardDriverSummary[];
     onLeave: BoardDriverSummary[];
     inactive: BoardDriverSummary[];
   };

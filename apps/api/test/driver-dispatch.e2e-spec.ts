@@ -1,11 +1,14 @@
 import { randomUUID } from "crypto";
-import { ForbiddenException, NotFoundException } from "@nestjs/common";
+import { ForbiddenException, NotFoundException, BadRequestException } from "@nestjs/common";
 import { AuditService } from "../src/audit/audit.service";
 import type { CurrentUserPayload } from "../src/auth/interfaces/current-user.interface";
 import { AssignmentPolicy } from "../src/dispatch/assignment/assignment.policy";
 import { AssignmentQueries } from "../src/dispatch/assignment/assignment.queries";
 import { DispatchesService } from "../src/dispatch/dispatches.service";
+import { notifyDriverOfAssignment } from "../src/dispatch/driver/driver-assignment-notify";
+import { DriverActionEventsService } from "../src/dispatch/driver/driver-action-events.service";
 import { DriverDispatchService } from "../src/dispatch/driver/driver-dispatch.service";
+import { DriverWorkspaceService } from "../src/dispatch/driver/driver-workspace.service";
 import { OrderWriter } from "../src/order-state/order-writer";
 import { OrdersService } from "../src/orders/orders.service";
 import { PrismaService } from "../src/prisma/prisma.service";
@@ -30,7 +33,17 @@ const audit = { log: auditLog } as unknown as AuditService;
 const wfEvents = { emit: () => {} } as any;
 const dispatches = new DispatchesService(prisma, audit, policy, writer, wfEvents, { endSessionsForDispatch: async () => 0, endSessionsOnVehicleReassign: async () => 0, endSessionsForUser: async () => 0 } as any);
 const orders = new OrdersService(prisma, audit, writer, dispatches, policy, wfEvents);
-const driverApp = new DriverDispatchService(prisma, dispatches, writer, audit, { endSessionsForDispatch: async () => 0 } as any);
+const events = { record: jest.fn().mockResolvedValue(undefined) } as unknown as DriverActionEventsService;
+const workspace = new DriverWorkspaceService(prisma, events, audit);
+const driverApp = new DriverDispatchService(
+  prisma,
+  dispatches,
+  writer,
+  audit,
+  { endSessionsForDispatch: async () => 0 } as any,
+  events,
+  workspace,
+);
 
 const PICKUP = new Date("2041-05-01T08:00:00.000Z");
 const DELIVERY = new Date("2041-05-03T18:00:00.000Z");
@@ -75,8 +88,21 @@ async function assignedDispatch(driverId = driverA, vehicleId = vehicleA) {
   return { order, dispatch };
 }
 
-const advance = (id: string, status: "EN_ROUTE_TO_PICKUP" | "AT_PICKUP" | "IN_TRANSIT" | "DELIVERED") =>
-  driverApp.updateStatus(organizationId, driverActor.userId, id, { status }, driverActor);
+const accept = (id: string) =>
+  driverApp.accept(organizationId, driverActor.userId, id, driverActor);
+
+const advance = async (
+  id: string,
+  status: "EN_ROUTE_TO_PICKUP" | "AT_PICKUP" | "IN_TRANSIT" | "DELIVERED",
+) => {
+  if (status === "EN_ROUTE_TO_PICKUP") {
+    const current = await prisma.dispatch.findUniqueOrThrow({ where: { id } });
+    if (current.driverAcceptanceStatus !== "ACCEPTED") {
+      await accept(id);
+    }
+  }
+  return driverApp.updateStatus(organizationId, driverActor.userId, id, { status }, driverActor);
+};
 
 const orderRow = (id: string) => prisma.order.findUniqueOrThrow({ where: { id } });
 
@@ -158,12 +184,32 @@ beforeAll(async () => {
   driverB = b.id;
   vehicleA = va.id;
   vehicleB = vb.id;
+
+  // Legacy trip-flow tests don't upload POD; keep checklist off by default.
+  // P3.3.4A POD gate tests flip requirements on for that org.
+  await prisma.organizationDriverSettings.create({
+    data: {
+      organizationId,
+      requirePhotos: false,
+      requireSignature: false,
+      requireReceiverName: false,
+      requireReceiverPhone: false,
+      requireNotes: false,
+    },
+  });
 });
 
 afterEach(async () => {
+  await prisma.driverActionEvent.deleteMany({ where: { organizationId } });
+  await prisma.dispatchDeliveryProof.deleteMany({ where: { organizationId } });
+  await prisma.driverBreak.deleteMany({ where: { organizationId } });
+  await prisma.vehicleInspection.deleteMany({ where: { organizationId } });
+  await prisma.expense.deleteMany({ where: { organizationId } });
+  await prisma.notification.deleteMany({ where: { organizationId } });
   await prisma.dispatch.deleteMany({ where: { organizationId } });
   await prisma.order.deleteMany({ where: { organizationId } });
   auditLog.mockClear();
+  (events.record as jest.Mock).mockClear();
 });
 
 afterAll(async () => {
@@ -245,6 +291,12 @@ describe("the driver sees the dispatch, not just the order", () => {
   it("is told what it may do next, narrowed to the driver-safe set", async () => {
     const { dispatch } = await assignedDispatch();
 
+    const pending = await driverApp.getMine(organizationId, driverActor.userId, dispatch.id);
+    // Until the driver accepts, Start Trip is gated — no transitions offered.
+    expect(pending.allowedTransitions).toEqual([]);
+    expect(pending.driverAcceptanceStatus).toBe("PENDING");
+
+    await accept(dispatch.id);
     const mine = await driverApp.getMine(organizationId, driverActor.userId, dispatch.id);
 
     // The dispatcher's view of the same dispatch also offers CANCELLED. The driver's
@@ -433,5 +485,250 @@ describe("the SOURCE, pinned — when the projection and the dispatch disagree",
     await prisma.order.update({ where: { id: order.id }, data: { driverId: driverA } });
 
     await expect(advance(dispatch.id, "EN_ROUTE_TO_PICKUP")).rejects.toThrow(NotFoundException);
+  });
+});
+
+describe("P3.3.4A — accept / reject gate", () => {
+  it("refuses EN_ROUTE until the driver accepts", async () => {
+    const { dispatch } = await assignedDispatch();
+
+    await expect(
+      driverApp.updateStatus(
+        organizationId,
+        driverActor.userId,
+        dispatch.id,
+        { status: "EN_ROUTE_TO_PICKUP" },
+        driverActor,
+      ),
+    ).rejects.toThrow(/Accept the assignment/);
+  });
+
+  it("accept unlocks Start Trip and writes an action event + notification", async () => {
+    const { dispatch } = await assignedDispatch();
+
+    const accepted = await accept(dispatch.id);
+    expect(accepted.driverAcceptanceStatus).toBe("ACCEPTED");
+    expect(accepted.allowedTransitions).toEqual(["EN_ROUTE_TO_PICKUP"]);
+
+    expect(events.record).toHaveBeenCalledWith(
+      organizationId,
+      driverA,
+      "DRIVER_ACCEPTED",
+      expect.objectContaining({ dispatchId: dispatch.id }),
+    );
+
+    const note = await prisma.notification.findFirst({
+      where: { organizationId, type: "DRIVER_ASSIGNMENT_ACCEPTED", entityId: dispatch.id },
+    });
+    expect(note).toBeTruthy();
+  });
+
+  it("reject requires a reason, hides the job from the active list, and notifies", async () => {
+    const { dispatch } = await assignedDispatch();
+
+    await expect(
+      driverApp.reject(
+        organizationId,
+        driverActor.userId,
+        dispatch.id,
+        { reason: "OTHER" } as any,
+        driverActor,
+      ),
+    ).rejects.toThrow(BadRequestException);
+
+    await driverApp.reject(
+      organizationId,
+      driverActor.userId,
+      dispatch.id,
+      { reason: "VEHICLE_ISSUE", note: "Flat tire" },
+      driverActor,
+    );
+
+    expect(await driverApp.listMine(organizationId, driverActor.userId)).toEqual([]);
+    const row = await prisma.dispatch.findUniqueOrThrow({ where: { id: dispatch.id } });
+    expect(row.driverAcceptanceStatus).toBe("REJECTED");
+    expect(row.driverId).toBe(driverA);
+
+    const note = await prisma.notification.findFirst({
+      where: { organizationId, type: "DRIVER_ASSIGNMENT_REJECTED", entityId: dispatch.id },
+    });
+    expect(note).toBeTruthy();
+  });
+});
+
+describe("P3.3.4A — POD checklist gate + breaks", () => {
+  beforeEach(async () => {
+    await prisma.organizationDriverSettings.update({
+      where: { organizationId },
+      data: {
+        requirePhotos: true,
+        requireSignature: true,
+        requireReceiverName: true,
+        requireReceiverPhone: false,
+        requireNotes: false,
+      },
+    });
+  });
+
+  afterEach(async () => {
+    await prisma.organizationDriverSettings.update({
+      where: { organizationId },
+      data: {
+        requirePhotos: false,
+        requireSignature: false,
+        requireReceiverName: false,
+        requireReceiverPhone: false,
+        requireNotes: false,
+      },
+    });
+  });
+
+  it("blocks DELIVERED when required POD fields are missing", async () => {
+    const { dispatch } = await assignedDispatch();
+    for (const s of ["EN_ROUTE_TO_PICKUP", "AT_PICKUP", "IN_TRANSIT"] as const) {
+      await advance(dispatch.id, s);
+    }
+
+    await expect(advance(dispatch.id, "DELIVERED")).rejects.toThrow(/checklist incomplete/i);
+  });
+
+  it("allows DELIVERED after required proofs + meta are present", async () => {
+    const { dispatch } = await assignedDispatch();
+    for (const s of ["EN_ROUTE_TO_PICKUP", "AT_PICKUP", "IN_TRANSIT"] as const) {
+      await advance(dispatch.id, s);
+    }
+
+    const fakeFile = {
+      buffer: Buffer.from("fake-photo"),
+      originalname: "pod.jpg",
+      mimetype: "image/jpeg",
+      size: 10,
+    } as Express.Multer.File;
+
+    await workspace.uploadProof(
+      organizationId,
+      driverActor.userId,
+      dispatch.id,
+      "PHOTO",
+      fakeFile,
+    );
+    await workspace.uploadProof(
+      organizationId,
+      driverActor.userId,
+      dispatch.id,
+      "SIGNATURE",
+      { ...fakeFile, originalname: "sig.png" } as Express.Multer.File,
+    );
+    await workspace.updatePodMeta(organizationId, driverActor.userId, dispatch.id, {
+      receiverName: "Alex Receiver",
+    });
+
+    const done = await advance(dispatch.id, "DELIVERED");
+    expect(done.status).toBe("DELIVERED");
+  });
+
+  it("start/end break toggles operational status", async () => {
+    const started = await workspace.startBreak(organizationId, driverActor.userId);
+    expect(started.id).toBeTruthy();
+
+    const me = await workspace.getMe(organizationId, driverActor.userId);
+    expect(me.operationalStatus).toBe("BREAK");
+    expect(me.onBreak).toBe(true);
+
+    await workspace.endBreak(organizationId, driverActor.userId);
+    const after = await workspace.getMe(organizationId, driverActor.userId);
+    expect(after.operationalStatus).toBe("AVAILABLE");
+    expect(after.onBreak).toBe(false);
+  });
+});
+
+describe("P3.3.4B — receipt, inspection history, assignment notify", () => {
+  it("uploads and replaces an expense receipt", async () => {
+    const created = await workspace.createExpense(
+      organizationId,
+      driverActor.userId,
+      {
+        category: "TOLL",
+        description: "Bridge",
+        amount: 12.5,
+      },
+      driverActor,
+    );
+
+    const file = {
+      buffer: Buffer.from("%PDF-1.4 receipt"),
+      originalname: "toll.pdf",
+      mimetype: "application/pdf",
+      size: 16,
+    } as Express.Multer.File;
+
+    const withReceipt = await workspace.uploadExpenseReceipt(
+      organizationId,
+      driverActor.userId,
+      created.id,
+      file,
+    );
+    expect(withReceipt.hasReceipt).toBe(true);
+
+    const replaced = await workspace.uploadExpenseReceipt(
+      organizationId,
+      driverActor.userId,
+      created.id,
+      { ...file, originalname: "toll2.pdf", buffer: Buffer.from("%PDF-1.4 b") } as Express.Multer.File,
+    );
+    expect(replaced.hasReceipt).toBe(true);
+
+    const cleared = await workspace.deleteExpenseReceipt(
+      organizationId,
+      driverActor.userId,
+      created.id,
+    );
+    expect(cleared.hasReceipt).toBe(false);
+  });
+
+  it("stores inspection photos and lists history", async () => {
+    const insp = await workspace.createInspection(organizationId, driverActor.userId, {
+      vehicleId: vehicleA,
+      tyres: true,
+      lights: true,
+      brakes: true,
+      oil: true,
+      coolant: true,
+      documents: true,
+    });
+
+    const photo = {
+      buffer: Buffer.from("jpeg-bytes"),
+      originalname: "front.jpg",
+      mimetype: "image/jpeg",
+      size: 10,
+    } as Express.Multer.File;
+
+    const withPhoto = await workspace.uploadInspectionPhoto(
+      organizationId,
+      driverActor.userId,
+      insp.id,
+      photo,
+    );
+    expect(withPhoto.photos).toHaveLength(1);
+
+    const list = await workspace.listMyInspections(organizationId, driverActor.userId);
+    expect(list.some((r) => r.id === insp.id)).toBe(true);
+  });
+
+  it("creates a driver-targeted assignment notification on accept path setup", async () => {
+    const { dispatch } = await assignedDispatch();
+    await notifyDriverOfAssignment(prisma, {
+      organizationId,
+      driverId: driverA,
+      dispatchId: dispatch.id,
+      dispatchNumber: dispatch.dispatchNumber,
+      reason: "assigned",
+    });
+
+    const inbox = await workspace.listMyNotifications(organizationId, driverActor.userId);
+    expect(inbox.items.some((n) => n.type === "DRIVER_NEW_ASSIGNMENT" && n.entityId === dispatch.id)).toBe(
+      true,
+    );
   });
 });

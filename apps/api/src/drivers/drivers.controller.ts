@@ -29,13 +29,7 @@ export class DriversController {
     return this.driversService.list(user.organizationId, query);
   }
 
-  /// Must stay declared before the `:id` route below — Nest matches path
-  /// segments in declaration order, so `:id` would otherwise swallow `/me`.
-  @Roles("DRIVER")
-  @Get("me")
-  getMe(@CurrentUser() user: CurrentUserPayload) {
-    return this.driversService.getMe(user.organizationId, user.userId);
-  }
+  /// GET /drivers/me lives on DriverMeController (workspace profile + breaks/POD config).
 
   @Roles(...ROLES)
   @Post()

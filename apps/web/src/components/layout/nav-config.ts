@@ -43,9 +43,8 @@ export type NavItem = {
 };
 
 export const DRIVER_NAV: NavItem[] = [
-  { icon: LayoutDashboard, label: "Overview", path: "/app", group: "Overview" },
-  { icon: Package, label: "Orders", path: "/app/orders", group: "Operations" },
-  { icon: PackageCheck, label: "My Deliveries", path: "/app/my-deliveries", group: "Overview" },
+  { icon: LayoutDashboard, label: "Home", path: "/app/driver", group: "Overview" },
+  { icon: PackageCheck, label: "Jobs", path: "/app/driver", group: "Overview" },
   { icon: Settings, label: "Settings", path: "/app/settings", group: "Workspace" },
 ];
 
@@ -151,6 +150,7 @@ export const DEFAULT_NAV: NavItem[] = [
 /// topbar title/breadcrumb for the current route.
 export const TITLED_ROUTES = [
   ...DEFAULT_NAV,
+  { label: "Driver Workspace", path: "/app/driver" },
   { label: "My Deliveries", path: "/app/my-deliveries" },
   { label: "Notifications", path: "/app/notifications" },
 ];

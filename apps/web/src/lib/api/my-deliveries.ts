@@ -35,6 +35,15 @@ export type DriverActionableStatus =
   | 'IN_TRANSIT'
   | 'DELIVERED';
 
+export type DriverAcceptanceStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED';
+
+export type DriverRejectReason =
+  | 'VEHICLE_ISSUE'
+  | 'SICK'
+  | 'PERSONAL_EMERGENCY'
+  | 'ALREADY_BUSY'
+  | 'OTHER';
+
 export interface MyDeliveryCustomer {
   id: string;
   companyName: string;
@@ -77,14 +86,21 @@ export interface MyDelivery {
   id: string;
   dispatchNumber: string;
   status: DispatchStatus;
+  driverAcceptanceStatus?: DriverAcceptanceStatus;
+  driverAcceptedAt?: string | null;
+  driverRejectedAt?: string | null;
+  driverRejectReason?: DriverRejectReason | null;
+  driverRejectNote?: string | null;
   /// Already narrowed by the server to what a DRIVER may do from here (R13 + the
-  /// driver-safe set). The phone renders a button per entry and decides nothing.
+  /// driver-safe set). Empty until ACCEPTED. The phone renders a button per entry.
   allowedTransitions: DriverActionableStatus[];
   pickupDateScheduled: string;
   pickupDateActual: string | null;
   deliveryDateScheduled: string;
   deliveryDateActual: string | null;
   notes: string | null;
+  arrivalLat?: string | null;
+  arrivalLng?: string | null;
   order: MyDeliveryOrder;
   customer: MyDeliveryCustomer;
   vehicle: MyDeliveryVehicle;
@@ -101,6 +117,16 @@ export interface DriverProfile {
   status: string;
   licenseNumber: string | null;
   licenseExpiry: string | null;
+  operationalStatus?: string;
+  onBreak?: boolean;
+  openBreak?: { id: string; startedAt: string } | null;
+  podChecklist?: {
+    requirePhotos: boolean;
+    requireSignature: boolean;
+    requireReceiverName: boolean;
+    requireReceiverPhone: boolean;
+    requireNotes: boolean;
+  };
 }
 
 class MyDeliveriesAPI {
@@ -124,10 +150,15 @@ class MyDeliveriesAPI {
     id: string,
     status: DriverActionableStatus,
     note?: string,
+    location?: { lat?: number; lng?: number },
   ): Promise<MyDelivery> {
+    const body: Record<string, unknown> = { status };
+    if (note) body.note = note;
+    if (location?.lat != null) body.lat = location.lat;
+    if (location?.lng != null) body.lng = location.lng;
     const response = await apiFetch(`/api/dispatches/my/${id}/status`, {
       method: 'POST',
-      body: JSON.stringify({ status, note }),
+      body: JSON.stringify(body),
     });
     return unwrapResponse(response, 'Failed to update delivery status');
   }
@@ -149,10 +180,10 @@ export function useMyDriverProfileQuery(enabled = true) {
   });
 }
 
-export function useMyDeliveriesQuery(enabled = true) {
+export function useMyDeliveriesQuery(enabled = true, includeFinished = false) {
   return useQuery({
-    queryKey: myDeliveryKeys.lists(),
-    queryFn: () => myDeliveriesAPI.list(),
+    queryKey: [...myDeliveryKeys.lists(), { includeFinished }] as const,
+    queryFn: () => myDeliveriesAPI.list(includeFinished),
     enabled,
   });
 }
@@ -174,8 +205,17 @@ export function useUpdateMyDeliveryStatusMutation(id: string) {
   const invalidateOperational = useInvalidateOperationalState();
 
   return useMutation({
-    mutationFn: ({ status, note }: { status: DriverActionableStatus; note?: string }) =>
-      myDeliveriesAPI.updateStatus(id, status, note),
+    mutationFn: ({
+      status,
+      note,
+      lat,
+      lng,
+    }: {
+      status: DriverActionableStatus;
+      note?: string;
+      lat?: number;
+      lng?: number;
+    }) => myDeliveriesAPI.updateStatus(id, status, note, { lat, lng }),
     onSuccess: invalidateOperational,
   });
 }
