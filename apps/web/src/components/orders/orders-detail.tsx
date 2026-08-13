@@ -18,7 +18,18 @@ import {
 } from '@/components/ui/select';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-states';
-import { StatusBadge } from '@/components/shared/status-badge';
+import { StatusBadge, statusLabel } from '@/components/shared/status-badge';
+
+/// What each order transition is called to the person doing it. "Move to
+/// PENDING" is the database's name for confirming a draft, and it was the only
+/// way to make a new order dispatchable — the Orders list called the same step
+/// "Activate draft", so the product had two names for it and neither was the
+/// one an operator would use.
+const TRANSITION_LABELS: Partial<Record<OrderStatus, string>> = {
+  PENDING: 'Confirm order',
+  ASSIGNED: 'Mark as assigned',
+  IN_TRANSIT: 'Mark in transit',
+};
 import { OrderTimeline } from '@/components/orders/order-timeline';
 import {
   OrderActivityTimeline,
@@ -1158,12 +1169,12 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                         <Button
                           key={nextStatus}
                           size="sm"
-                          variant="outline"
+                          variant={nextStatus === 'PENDING' ? 'default' : 'outline'}
                           className="w-full justify-start"
                           onClick={() => handleStatusTransition(nextStatus)}
                           disabled={statusLoading}
                         >
-                          Move to {nextStatus.replace(/_/g, ' ')}
+                          {TRANSITION_LABELS[nextStatus] ?? `Move to ${statusLabel(nextStatus)}`}
                         </Button>
                       ),
                     )}

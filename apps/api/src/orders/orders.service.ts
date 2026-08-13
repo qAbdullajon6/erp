@@ -3,6 +3,7 @@ import { Order, OrderStatus, Prisma, DispatchStatus, UsageMetricType } from "@pr
 import { AuditService } from "../audit/audit.service";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { isValidEntityCode } from "../common/sequential-code.util";
+import { isScheduleLate, startOfTodayUtc } from "../common/schedule-lateness.util";
 import { AssignmentPolicy } from "../dispatch/assignment/assignment.policy";
 import { notifyDriverOfAssignment } from "../dispatch/driver/driver-assignment-notify";
 import { DispatchesService } from "../dispatch/dispatches.service";
@@ -807,7 +808,7 @@ export class OrdersService {
     order: Order & { statusHistory?: { id: string; status: OrderStatus; changedByUserId: string | null; note: string | null; createdAt: Date }[] },
   ) {
     const isDelayed =
-      order.status !== "DELIVERED" && order.status !== "CANCELLED" && order.deliveryDate.getTime() < Date.now();
+      order.status !== "DELIVERED" && order.status !== "CANCELLED" && isScheduleLate(order.deliveryDate);
 
     return {
       id: order.id,

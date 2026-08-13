@@ -71,6 +71,18 @@ test('RC4: dispatcher assigns and drives a dispatch through its lifecycle', asyn
     return;
   }
 
+  // A new order is a DRAFT, and a draft may not reserve a driver or vehicle.
+  // Confirming it is the same step the dispatcher takes in the UI before the
+  // order becomes dispatchable.
+  const confirmed = await request.post(`${API}/orders/${order.id}/status`, {
+    headers: disp,
+    data: { status: 'PENDING' },
+  });
+  if (!confirmed.ok()) {
+    fail('P0', `dispatcher cannot confirm their own order: ${confirmed.status()} ${await confirmed.text()}`);
+    return;
+  }
+
   const created = await request.post(`${API}/dispatches`, {
     headers: disp,
     data: { orderId: order.id, driverId: linked.id, vehicleId: vehicle.id },
@@ -299,7 +311,10 @@ test('RC6: accountant and sales see only what they may', async ({ request }) => 
     ['/customers', 200],
     ['/orders', 200],
     ['/finance/summary', 200],
-    ['/reports/financial', 200],
+    // Detailed financial reporting is ADMIN/ACCOUNTANT only (FINANCE_API.md);
+    // sales gets the headline summary but not the breakdown, and the Reports
+    // screen hides the Financial tab from them to match.
+    ['/reports/financial', 403],
     ['/dispatches', 403],
     ['/drivers', 403],
     ['/vehicles', 403],

@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
+import { isScheduleLate } from "../../common/schedule-lateness.util";
 import type { CurrentCustomerPayload } from "../auth/interfaces/current-customer.interface";
 import {
   type CustomerNotificationPreferences,
@@ -191,7 +192,7 @@ export class CustomerNotificationsService {
       // excluded here the same way the status-pulse branch below excludes it,
       // so an unconfirmed order can't generate a false "delayed" notification.
       const delayed =
-        o.deliveryDate < now && !["DELIVERED", "CANCELLED", "DRAFT"].includes(o.status);
+        isScheduleLate(o.deliveryDate, now) && !["DELIVERED", "CANCELLED", "DRAFT"].includes(o.status);
 
       if (delayed) {
         items.push({

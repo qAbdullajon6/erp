@@ -56,11 +56,24 @@ describe("Telematics Geofence E2E", () => {
     // Setup
     adminToken = await loginAs(app, SEEDED_ADMIN_EMAIL);
 
+    // Unique per run. These were the constants "GEO-TEST-001" / "GEO-01" /
+    // "GEO-TEST-DEVICE", and the vehicle is not cleaned up in afterAll — so a
+    // second run against the same disposable database got a 409 and all eight
+    // tests failed reading `.id` off an error body.
+    const suffix = `${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`;
     const vehicleRes = await request(app.getHttpServer())
       .post("/vehicles")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ vehicleCode: "GEO-TEST-001", plateNumber: "GEO-01", type: "VAN", capacity: 1000 })
+      .send({
+        vehicleCode: `GEO-TEST-${suffix}`,
+        plateNumber: `GEO-${suffix}`.slice(0, 20),
+        type: "VAN",
+        capacity: 1000,
+      })
       .then(typedResponse<GeofenceResponseBody>);
+    if (!vehicleRes.body.data) {
+      throw new Error(`Could not create the geofence test vehicle: ${JSON.stringify(vehicleRes.body)}`);
+    }
     vehicleId = vehicleRes.body.data.id;
 
     const deviceRes = await request(app.getHttpServer())
@@ -68,11 +81,14 @@ describe("Telematics Geofence E2E", () => {
       .set("Authorization", `Bearer ${adminToken}`)
       .send({
         provider: "MANUAL",
-        externalId: "GEO-TEST-DEVICE",
+        externalId: `GEO-TEST-DEVICE-${suffix}`,
         name: "Geofence Test Device",
         vehicleId,
       })
       .then(typedResponse<GeofenceResponseBody>);
+    if (!deviceRes.body.data) {
+      throw new Error(`Could not create the geofence test device: ${JSON.stringify(deviceRes.body)}`);
+    }
     deviceId = deviceRes.body.data.id;
     deviceSecret = deviceRes.body.data.ingestSecret;
   });

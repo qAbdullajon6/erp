@@ -741,6 +741,16 @@ describe('Developer Portal (e2e)', () => {
       // (interval disabled) waited forever. It must now coalesce instead.
       receivedRequests = [];
 
+      // Two pieces of leftover state used to decide this test instead of the
+      // behaviour it is guarding. Earlier tests in this block deliberately make
+      // the receiver fail, which trips the endpoint's circuit breaker — an open
+      // circuit returns a delivery to PENDING with a backoff rather than
+      // sending it. And nothing clears this endpoint's queue between runs, so
+      // on a reused disposable database drain() spent its batch on a backlog of
+      // older PENDING rows and never reached the two enqueued here.
+      dispatcher.resetCircuitForManualRetry(hookId);
+      await prisma.webhookDelivery.deleteMany({ where: { status: 'PENDING' } });
+
       const first = await dispatcher.enqueue({
         organizationId: createdOrganizationIds[0],
         endpointId: hookId,

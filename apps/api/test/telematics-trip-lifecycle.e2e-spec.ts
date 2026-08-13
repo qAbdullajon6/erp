@@ -53,12 +53,23 @@ describe("Telematics Trip Lifecycle E2E", () => {
 
     adminToken = await loginAs(app, SEEDED_ADMIN_EMAIL);
 
-    // Create vehicle
+    // Create vehicle. Unique per run — the fixed "TRIP-TEST-001" survived into
+    // the next run of the same disposable database and turned every test in
+    // this file into a 409 read as `.id` of an error body.
+    const suffix = `${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`;
     const vehicleRes = await request(app.getHttpServer())
       .post("/vehicles")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ vehicleCode: "TRIP-TEST-001", plateNumber: "TRIP-01", type: "VAN", capacity: 1000 })
+      .send({
+        vehicleCode: `TRIP-TEST-${suffix}`,
+        plateNumber: `TRIP-${suffix}`.slice(0, 20),
+        type: "VAN",
+        capacity: 1000,
+      })
       .then(typedResponse<TripLifecycleResponseBody>);
+    if (!vehicleRes.body.data) {
+      throw new Error(`Could not create the trip test vehicle: ${JSON.stringify(vehicleRes.body)}`);
+    }
     vehicleId = vehicleRes.body.data.id;
 
     // Create device
@@ -67,11 +78,14 @@ describe("Telematics Trip Lifecycle E2E", () => {
       .set("Authorization", `Bearer ${adminToken}`)
       .send({
         provider: "MANUAL",
-        externalId: "TRIP-TEST-DEVICE",
+        externalId: `TRIP-TEST-DEVICE-${suffix}`,
         name: "Trip Test Device",
         vehicleId,
       })
       .then(typedResponse<TripLifecycleResponseBody>);
+    if (!deviceRes.body.data) {
+      throw new Error(`Could not create the trip test device: ${JSON.stringify(deviceRes.body)}`);
+    }
     deviceId = deviceRes.body.data.id;
     deviceSecret = deviceRes.body.data.ingestSecret;
   });

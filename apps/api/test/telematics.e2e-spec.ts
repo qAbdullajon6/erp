@@ -139,17 +139,26 @@ describe("Fleet Telematics E2E", () => {
     adminToken = await loginAs(app, SEEDED_ADMIN_EMAIL);
     driverToken = await loginAs(app, SEEDED_DRIVER_EMAIL);
 
-    // Create test vehicle
+    // Create test vehicle.
+    //
+    // The code and plate are unique per run: they used to be the constants
+    // "FLEET-TEST-001" / "TEST-GPS-01", so the second run against the same
+    // disposable database got a 409 here and every one of this file's 28 tests
+    // failed on `data.id` of an error body — a first-run-only suite.
+    const suffix = `${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`;
     const vehicleRes = await request(app.getHttpServer())
       .post("/vehicles")
       .set("Authorization", `Bearer ${adminToken}`)
       .send({
-        vehicleCode: "FLEET-TEST-001",
-        plateNumber: "TEST-GPS-01",
+        vehicleCode: `FLEET-TEST-${suffix}`,
+        plateNumber: `GPS-${suffix}`.slice(0, 20),
         type: "VAN",
         capacity: 1000,
       })
       .then(typedResponse<TelematicsResponseBody>);
+    if (!vehicleRes.body.data) {
+      throw new Error(`Could not create the telematics test vehicle: ${JSON.stringify(vehicleRes.body)}`);
+    }
     vehicleId = vehicleRes.body.data.id;
 
     const driver = await prisma.driver.findFirst({

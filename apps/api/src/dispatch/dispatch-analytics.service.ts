@@ -9,6 +9,7 @@ import {
   percentChange,
   resolveBucketGranularity,
 } from "../reports/report-filters.util";
+import { startOfTodayUtc, wasDeliveredOnTime } from "../common/schedule-lateness.util";
 import { ACTIVE_DISPATCH_STATUSES } from "./assignment/assignment.queries";
 import { DispatchAnalyticsQueryDto } from "./dto/dispatch-analytics-query.dto";
 
@@ -98,7 +99,7 @@ export class DispatchAnalyticsService {
           organizationId,
           status: { notIn: TERMINAL },
           order: { archivedAt: null },
-          OR: [{ pickupDateScheduled: { lt: now } }, { deliveryDateScheduled: { lt: now } }],
+          OR: [{ pickupDateScheduled: { lt: startOfTodayUtc(now) } }, { deliveryDateScheduled: { lt: startOfTodayUtc(now) } }],
         },
       }),
     ]);
@@ -134,7 +135,7 @@ export class DispatchAnalyticsService {
 
     const delivered = deliveredRows.length;
     const onTime = deliveredRows.filter(
-      (d) => d.deliveryDateActual && d.deliveryDateActual.getTime() <= d.deliveryDateScheduled.getTime(),
+      (d) => d.deliveryDateActual && wasDeliveredOnTime(d.deliveryDateActual, d.deliveryDateScheduled),
     ).length;
     const onTimeDeliveryRate = delivered > 0 ? Math.round((onTime / delivered) * 1000) / 10 : 0;
 
@@ -284,7 +285,7 @@ export class DispatchAnalyticsService {
         organizationId,
         status: { notIn: TERMINAL },
         order: { archivedAt: null },
-        OR: [{ pickupDateScheduled: { lt: now } }, { deliveryDateScheduled: { lt: now } }],
+        OR: [{ pickupDateScheduled: { lt: startOfTodayUtc(now) } }, { deliveryDateScheduled: { lt: startOfTodayUtc(now) } }],
       },
       select: {
         status: true,

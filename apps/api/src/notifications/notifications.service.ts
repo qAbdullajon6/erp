@@ -12,6 +12,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { ListNotificationsQueryDto } from "./dto/list-notifications-query.dto";
 import { UpdateNotificationSettingsDto } from "./dto/update-notification-settings.dto";
 import { categoriesForRole } from "./notification-roles.util";
+import { startOfTodayUtc } from "../common/schedule-lateness.util";
 
 interface QualifyingEntity {
   entityId: string;
@@ -188,7 +189,7 @@ export class NotificationsService {
         organizationId,
         archivedAt: null,
         status: { notIn: ["DELIVERED", "CANCELLED"] },
-        deliveryDate: { lt: now },
+        deliveryDate: { lt: startOfTodayUtc(now) },
       },
       select: { id: true, orderNumber: true, deliveryDate: true },
     });

@@ -248,7 +248,7 @@ function ExpandedOrderRow({
               )}
               {needsActivate && (
                 <Button size="sm" variant="default" onClick={() => navigate({ to: `/app/orders/${order.id}` })}>
-                  Activate draft
+                  Confirm order
                 </Button>
               )}
               <Button size="sm" variant="outline" onClick={() => navigate({ to: `/app/orders/${order.id}` })}>

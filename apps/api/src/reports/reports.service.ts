@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { isScheduleLate, startOfTodayUtc, wasDeliveredOnTime } from "../common/schedule-lateness.util";
 import { toCsv, reportCsvFilename } from "./csv.util";
 import { ExportReportQueryDto } from "./dto/export-report-query.dto";
 import { ReportFilterDto } from "./dto/report-filter.dto";
@@ -177,10 +178,12 @@ export class ReportsService {
     const now = new Date();
     const deliveredRows = orderRows.filter((o) => o.status === "DELIVERED");
     const delayedOrders = orderRows.filter(
-      (o) => o.status !== "DELIVERED" && o.status !== "CANCELLED" && o.deliveryDate < now,
+      (o) => o.status !== "DELIVERED" && o.status !== "CANCELLED" && isScheduleLate(o.deliveryDate, now),
     ).length;
     const deliveredWithTimestamp = deliveredRows.filter((o) => o.deliveredAt);
-    const onTimeCount = deliveredWithTimestamp.filter((o) => o.deliveredAt! <= o.deliveryDate).length;
+    const onTimeCount = deliveredWithTimestamp.filter((o) =>
+      wasDeliveredOnTime(o.deliveredAt!, o.deliveryDate),
+    ).length;
 
     const totalRevenue = revenueAgg._sum.price ?? ZERO;
     const approvedExpenses = expenseAgg._sum.amount ?? ZERO;
@@ -471,7 +474,7 @@ export class ReportsService {
     const delayedWhere: Prisma.OrderWhereInput = {
       ...buildExceptionOrderWhere(organizationId, filter),
       status: { notIn: ["DELIVERED", "CANCELLED"] },
-      deliveryDate: { lt: new Date() },
+      deliveryDate: { lt: startOfTodayUtc() },
     };
     const [delayedDeliveries, overdueInvoices] = await Promise.all([
       this.prisma.order.count({ where: delayedWhere }),
@@ -584,7 +587,7 @@ export class ReportsService {
     const where: Prisma.OrderWhereInput = {
       ...buildExceptionOrderWhere(organizationId, filter),
       status: { notIn: ["DELIVERED", "CANCELLED"] },
-      deliveryDate: { lt: new Date() },
+      deliveryDate: { lt: startOfTodayUtc() },
     };
     const [total, items] = await Promise.all([
       this.prisma.order.count({ where }),
@@ -770,7 +773,7 @@ export class ReportsService {
 
     const [delayed, unassigned, cancelled, deliveredInRange] = await Promise.all([
       this.prisma.order.findMany({
-        where: { ...exceptionWhere, status: { notIn: ["DELIVERED", "CANCELLED"] }, deliveryDate: { lt: now } },
+        where: { ...exceptionWhere, status: { notIn: ["DELIVERED", "CANCELLED"] }, deliveryDate: { lt: startOfTodayUtc(now) } },
         select: exceptionOrderSelect,
       }),
       this.prisma.order.findMany({
