@@ -1,4 +1,4 @@
-import { IsBoolean, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
+import { IsBoolean, IsOptional, IsString, IsUUID, MaxLength, MinLength } from "class-validator";
 
 export class UpdateDeviceDto {
   @IsOptional()
@@ -8,7 +8,7 @@ export class UpdateDeviceDto {
   name?: string;
 
   @IsOptional()
-  @IsString()
+  @IsUUID()
   vehicleId?: string | null;
 
   @IsOptional()

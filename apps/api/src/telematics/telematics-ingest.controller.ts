@@ -1,8 +1,8 @@
-import { BadRequestException, Body, Controller, Headers, Param, Post, Query, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Headers, Logger, Param, Post, Query, UnauthorizedException } from "@nestjs/common";
 import { SkipThrottle } from "@nestjs/throttler";
 import { DeviceService } from "./devices/device.service";
 import { ProviderRegistry } from "./providers/provider-registry";
-import { ProviderNormalizationError } from "./providers/telematics-provider.interface";
+import { ProviderNormalizationError, type NormalizedPosition } from "./providers/telematics-provider.interface";
 import { TrackingService } from "./tracking/tracking.service";
 
 /// The device ingestion endpoint — NOT session-authenticated.
@@ -24,6 +24,8 @@ import { TrackingService } from "./tracking/tracking.service";
 @SkipThrottle()
 @Controller("telematics/ingest")
 export class TelematicsIngestController {
+  private readonly logger = new Logger(TelematicsIngestController.name);
+
   constructor(
     private readonly devices: DeviceService,
     private readonly tracking: TrackingService,
@@ -39,9 +41,12 @@ export class TelematicsIngestController {
   ) {
     const secret = headerSecret || (typeof query.secret === "string" ? query.secret : undefined);
     if (!secret) {
+      this.logger.warn(`Ingest rejected: no secret presented (deviceId=${deviceId})`);
       throw new UnauthorizedException("Missing device ingest secret");
     }
 
+    // Never logs `secret` itself — authenticateForIngest logs the outcome
+    // (unknown device / bad secret / unbound device), never the value.
     const device = await this.devices.authenticateForIngest(deviceId, secret);
     const provider = this.providers.forType(device.provider);
 
@@ -53,20 +58,58 @@ export class TelematicsIngestController {
     const bodyHasData = body != null && typeof body === "object" && Object.keys(body).length > 0;
     const payload = bodyHasData ? body : Object.keys(queryData).length > 0 ? queryData : body;
 
-    let positions;
+    let positions: NormalizedPosition[];
     try {
       positions = provider.normalize(payload);
     } catch (err) {
       if (err instanceof ProviderNormalizationError) {
+        this.logger.warn(
+          `Ingest rejected: malformed ${device.provider} payload (deviceId=${deviceId}, org=${device.organizationId}): ${err.message}`,
+        );
         throw new BadRequestException(err.message);
       }
       throw err;
     }
 
-    return this.tracking.receiveForDevice(
+    this.logger.log(
+      `Ingest received: ${positions.length} position(s) from ${device.provider} (deviceId=${deviceId}, org=${device.organizationId}, vehicleId=${device.vehicleId})`,
+    );
+
+    // Cross-check the payload's own device identifier (Traccar's `id` /
+    // uniqueId — the IMEI, for Navtelecom and Teltonika alike, since Traccar
+    // normalizes the wire protocol away before this webhook fires) against
+    // what THIS url+secret is actually authorized for. The secret alone
+    // already stops an unregistered device from reaching this pipeline at
+    // all; this additionally stops a *misconfigured* Traccar notification —
+    // e.g. one device's webhook accidentally wired to another device's
+    // FlowERP URL — from writing its positions onto the wrong vehicle. A
+    // position with no identifier at all (some protocols/transports never
+    // send one) is not treated as a mismatch — there is nothing to check.
+    const mismatched = positions.find(
+      (p) => p.externalDeviceId != null && p.externalDeviceId !== device.externalId,
+    );
+    if (mismatched) {
+      this.logger.warn(
+        `Ingest rejected: device identity mismatch — url authorizes externalId=${device.externalId} ` +
+          `but payload reports externalId=${mismatched.externalDeviceId} ` +
+          `(deviceId=${deviceId}, org=${device.organizationId}, provider=${device.provider})`,
+      );
+      throw new UnauthorizedException(
+        "Payload device identifier does not match the authenticated device",
+      );
+    }
+
+    const result = await this.tracking.receiveForDevice(
       device.organizationId,
       { vehicleId: device.vehicleId, deviceId: device.deviceId },
       positions,
     );
+
+    this.logger.log(
+      `Ingest complete: accepted=${result.accepted} rejected=${result.rejected} ` +
+        `(deviceId=${deviceId}, org=${device.organizationId}, vehicleId=${device.vehicleId})`,
+    );
+
+    return result;
   }
 }

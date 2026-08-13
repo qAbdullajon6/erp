@@ -40,6 +40,7 @@ import { formatRelativeTime } from '@/lib/format';
 import { toCsv, downloadCsv } from '@/lib/csv';
 import { cn } from '@/lib/utils';
 import {
+  AlertTriangle,
   Download,
   Edit2,
   ExternalLink,
@@ -110,10 +111,9 @@ export function VehiclesList() {
   });
 
   const liveDispatches = useDispatches(1, 200, { statuses: LIVE_DISPATCH });
-  const allDispatchesForCounts = useDispatches(1, 200);
   const opsIndex = useMemo(
-    () => buildVehicleOpsIndex([...(liveDispatches.data ?? []), ...(allDispatchesForCounts.data ?? [])]),
-    [liveDispatches.data, allDispatchesForCounts.data],
+    () => buildVehicleOpsIndex(liveDispatches.data ?? []),
+    [liveDispatches.data],
   );
 
   const orderIds = useMemo(() => {
@@ -139,8 +139,12 @@ export function VehiclesList() {
     return map;
   }, [ordersQuery.data]);
 
-  const availableMeta = useVehiclesList({ status: 'AVAILABLE', limit: 1 });
-  const inUseMeta = useVehiclesList({ status: 'IN_USE', limit: 1 });
+  /// liveDispatches is capped at 200 and the cargo lookup at 100 orders — an
+  /// org past either ceiling gets some understated availability/capacity
+  /// badges below rather than a silent, confidently-wrong number.
+  const dataTruncated =
+    (liveDispatches.meta?.total ?? 0) > 200 || (ordersQuery.meta?.total ?? 0) > 100;
+
   const maintenanceMeta = useVehiclesList({ status: 'MAINTENANCE', limit: 1 });
 
   const [localSearch, setLocalSearch] = useState(search);
@@ -253,6 +257,7 @@ export function VehiclesList() {
         type: v.type,
         make: v.make ?? '',
         model: v.model ?? '',
+        year: v.year ?? '',
         status: v.status,
         availability: avail.label,
         driver: live?.driver
@@ -272,6 +277,7 @@ export function VehiclesList() {
         { key: 'type', label: 'Type' },
         { key: 'make', label: 'Make' },
         { key: 'model', label: 'Model' },
+        { key: 'year', label: 'Year' },
         { key: 'status', label: 'Status' },
         { key: 'availability', label: 'Availability' },
         { key: 'driver', label: 'Driver' },
@@ -294,8 +300,6 @@ export function VehiclesList() {
   ].filter((c) => c.value > 0);
 
   const hasFilters = Boolean(search || tab !== 'available');
-  const availableCount = availableMeta.meta?.total ?? 0;
-  const assignedCount = inUseMeta.meta?.total ?? 0;
 
   return (
     <div className="space-y-4" data-testid="vehicles-page">
@@ -307,7 +311,10 @@ export function VehiclesList() {
               ? 'Loading…'
               : error
                 ? 'Could not load vehicles'
-                : `${meta?.total ?? 0} in fleet · ${availableCount} available · ${assignedCount} assigned`}
+                : // Same live-dispatch-aware counts as the filter chips below —
+                  // a vehicle.status of AVAILABLE with a live dispatch still
+                  // reads as assigned (see stripCounts).
+                  `${meta?.total ?? 0} in fleet · ${stripCounts.available} available · ${stripCounts.assigned} assigned`}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -371,6 +378,15 @@ export function VehiclesList() {
           Archived
         </Button>
       </div>
+
+      {dataTruncated && (
+        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-foreground">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warning" />
+          Live dispatches or order cargo data exceed what this page can total — availability, capacity,
+          and dispatch badges below may be understated for some vehicles. Open a vehicle to see its own
+          current assignment.
+        </div>
+      )}
 
       {summaryChips.length > 0 && (
         <div className="flex flex-wrap gap-1.5">

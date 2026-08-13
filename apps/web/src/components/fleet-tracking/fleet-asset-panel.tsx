@@ -8,7 +8,7 @@ import { StatusBadge, statusLabel } from '@/components/shared/status-badge';
 import { formatRelativeTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { describeError } from '@/lib/api/describe-error';
-import type { TrackingHistoryPoint, TrackingVehicle } from '@/lib/api/tracking';
+import type { TrackingHistoryPoint, TrackingVehicle, StreamStatus } from '@/lib/api/tracking';
 import type { ApiDispatch } from '@/lib/api/dispatches';
 import {
   useAcknowledgeAlertMutation,
@@ -58,8 +58,10 @@ type AlertFilter = 'active' | 'critical' | 'warning' | 'resolved';
 interface Props {
   vehicle: TrackingVehicle | null;
   liveDispatch: ApiDispatch | null;
+  /** True when the SSE transport is open (connected_waiting or live). */
   streamLive: boolean;
   streamStatusLabel: string;
+  streamStatus?: StreamStatus;
   historyPointCount?: number;
   recentHistory?: TrackingHistoryPoint[];
   detailLoading?: boolean;
@@ -71,6 +73,7 @@ export function FleetAssetPanel({
   liveDispatch,
   streamLive,
   streamStatusLabel,
+  streamStatus,
   historyPointCount,
   recentHistory = [],
   detailLoading = false,
@@ -100,6 +103,7 @@ export function FleetAssetPanel({
       liveDispatch={liveDispatch}
       streamLive={streamLive}
       streamStatusLabel={streamStatusLabel}
+      streamStatus={streamStatus}
       historyPointCount={historyPointCount}
       recentHistory={recentHistory}
       detailLoading={detailLoading}
@@ -113,6 +117,7 @@ function FleetAssetPanelBody({
   liveDispatch,
   streamLive,
   streamStatusLabel,
+  streamStatus,
   historyPointCount,
   recentHistory,
   detailLoading,
@@ -122,6 +127,7 @@ function FleetAssetPanelBody({
   liveDispatch: ApiDispatch | null;
   streamLive: boolean;
   streamStatusLabel: string;
+  streamStatus?: StreamStatus;
   historyPointCount?: number;
   recentHistory: TrackingHistoryPoint[];
   detailLoading: boolean;
@@ -280,11 +286,17 @@ function FleetAssetPanelBody({
             <Row label="Last heartbeat">
               {vehicle.lastHeartbeatAt ? formatRelativeTime(vehicle.lastHeartbeatAt) : '—'}
             </Row>
-            {!streamLive && (
+            {streamStatus === 'connected_waiting' ? (
+              <Row label="Note">
+                <span className="text-muted-foreground">
+                  Connected — waiting for GPS events
+                </span>
+              </Row>
+            ) : !streamLive ? (
               <Row label="Note">
                 <span className="text-muted-foreground">SSE disconnected — snapshot mode</span>
               </Row>
-            )}
+            ) : null}
           </dl>
         </Section>
 
@@ -303,7 +315,7 @@ function FleetAssetPanelBody({
           </dl>
         </Section>
 
-        <Section title="Risk">
+        <Section title="Risk" defaultOpen={false}>
           <dl className="space-y-2 rounded-lg border border-border/60 bg-surface px-3 py-2.5 text-xs">
             <Row label="Risk level">
               <span
@@ -396,13 +408,30 @@ function FleetAssetPanelBody({
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  children,
+  defaultOpen = true,
+}: {
+  title: string;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <section>
-      <h3 className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-        {title}
-      </h3>
-      {children}
+      <button
+        type="button"
+        className="mb-1.5 flex w-full items-center justify-between gap-2 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <h3 className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          {title}
+        </h3>
+        <span className="text-[10px] text-muted-foreground">{open ? 'Hide' : 'Show'}</span>
+      </button>
+      {open ? children : null}
     </section>
   );
 }

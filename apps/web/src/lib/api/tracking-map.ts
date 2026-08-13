@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from './fetch';
 import { unwrapResponse as unwrap } from './error';
 import { describeError } from './describe-error';
+import { quantizeMapPoint } from '@/components/fleet-tracking/fleet-tracking-hardening';
 
 export interface MapPoint {
   lat: number;
@@ -111,17 +112,27 @@ export function useDirectionsQuery(
     Number.isFinite(input.destination.lat) &&
     Number.isFinite(input.destination.lng);
 
+  const quantized = enabled
+    ? {
+        origin: quantizeMapPoint(input.origin!),
+        destination: quantizeMapPoint(input.destination!),
+        waypoints: input.waypoints?.map((w) => quantizeMapPoint(w)),
+      }
+    : null;
+
   const result = useQuery({
-    queryKey: trackingMapKeys.directions({
-      origin: input.origin ?? { lat: 0, lng: 0 },
-      destination: input.destination ?? { lat: 0, lng: 0 },
-      waypoints: input.waypoints,
-    }),
+    queryKey: trackingMapKeys.directions(
+      quantized ?? {
+        origin: { lat: 0, lng: 0 },
+        destination: { lat: 0, lng: 0 },
+        waypoints: input.waypoints,
+      },
+    ),
     queryFn: () =>
       trackingMapAPI.directions({
-        origin: input.origin!,
-        destination: input.destination!,
-        waypoints: input.waypoints,
+        origin: quantized!.origin,
+        destination: quantized!.destination,
+        waypoints: quantized!.waypoints,
       }),
     enabled,
     staleTime: 30_000,
@@ -153,10 +164,12 @@ export function useReverseGeocodeQuery(
     Number.isFinite(point.lat) &&
     Number.isFinite(point.lng);
 
+  const quantized = enabled && point ? quantizeMapPoint(point) : null;
+
   const result = useQuery({
-    queryKey: trackingMapKeys.reverse(point ?? { lat: 0, lng: 0 }),
-    queryFn: () => trackingMapAPI.reverseGeocode(point!),
-    enabled,
+    queryKey: trackingMapKeys.reverse(quantized ?? { lat: 0, lng: 0 }),
+    queryFn: () => trackingMapAPI.reverseGeocode(quantized!),
+    enabled: enabled && quantized != null,
     staleTime: 120_000,
   });
 

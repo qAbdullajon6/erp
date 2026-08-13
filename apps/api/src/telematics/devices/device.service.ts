@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { Prisma, TelematicsDevice } from "@prisma/client";
 import { AuditService } from "../../audit/audit.service";
 import type { CurrentUserPayload } from "../../auth/interfaces/current-user.interface";
@@ -16,10 +16,17 @@ export interface AuthenticatedDevice {
   organizationId: string;
   vehicleId: string;
   provider: import("@prisma/client").TelematicsProviderType;
+  /// The device's id in the PROVIDER's system (IMEI, for Traccar/Navtelecom/
+  /// Teltonika). Lets the ingest controller cross-check the payload's own
+  /// device identifier against what this URL+secret is actually authorized
+  /// for — see TelematicsIngestController.
+  externalId: string;
 }
 
 @Injectable()
 export class DeviceService {
+  private readonly logger = new Logger(DeviceService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -65,10 +72,19 @@ export class DeviceService {
   }
 
   async list(organizationId: string, query: ListDevicesQueryDto) {
+    if (query.vehicleId && query.assignment) {
+      throw new BadRequestException("vehicleId cannot be combined with assignment");
+    }
     const where: Prisma.TelematicsDeviceWhereInput = {
       organizationId,
       ...(query.includeArchived ? {} : { archivedAt: null }),
       ...(query.provider ? { provider: query.provider } : {}),
+      ...(query.vehicleId ? { vehicleId: query.vehicleId } : {}),
+      ...(query.assignment === "ASSIGNED"
+        ? { vehicleId: { not: null } }
+        : query.assignment === "UNASSIGNED"
+          ? { vehicleId: null }
+          : {}),
       ...(query.search
         ? { OR: [{ name: { contains: query.search, mode: "insensitive" } }, { externalId: { contains: query.search, mode: "insensitive" } }] }
         : {}),
@@ -130,24 +146,44 @@ export class DeviceService {
 
   /// Authenticates an ingest post. Loads by id, verifies the presented secret
   /// in constant time, and rejects an archived/inactive/unbound device. Never
-  /// reveals which of those failed — every failure is a flat 401.
+  /// reveals which of those failed — every failure is a flat 401, and the
+  /// presented secret itself is never logged (only its outcome).
   async authenticateForIngest(deviceId: string, presentedSecret: string): Promise<AuthenticatedDevice> {
-    const device = await this.prisma.telematicsDevice.findUnique({ where: { id: deviceId } });
+    const device = await this.prisma.telematicsDevice.findUnique({
+      where: { id: deviceId },
+      include: { vehicle: { select: { organizationId: true, archivedAt: true } } },
+    });
     if (!device || device.archivedAt || !device.active || !device.ingestSecretHash) {
+      this.logger.warn(`Ingest auth rejected: unknown/inactive/archived device (deviceId=${deviceId})`);
       throw new UnauthorizedException("Invalid device credentials");
     }
     const presentedHash = hashDeviceSecret(presentedSecret);
     if (!timingSafeSecretEquals(presentedHash, device.ingestSecretHash)) {
+      this.logger.warn(`Ingest auth rejected: secret mismatch (deviceId=${deviceId}, org=${device.organizationId})`);
       throw new UnauthorizedException("Invalid device credentials");
     }
     if (!device.vehicleId) {
+      this.logger.warn(`Ingest auth rejected: device not bound to a vehicle (deviceId=${deviceId}, org=${device.organizationId})`);
       throw new BadRequestException("This device is not bound to a vehicle yet");
     }
-    return { deviceId: device.id, organizationId: device.organizationId, vehicleId: device.vehicleId, provider: device.provider };
+    if (!device.vehicle || device.vehicle.organizationId !== device.organizationId || device.vehicle.archivedAt) {
+      this.logger.warn(`Ingest auth rejected: vehicle unavailable for device (deviceId=${deviceId}, org=${device.organizationId})`);
+      throw new UnauthorizedException("Invalid device credentials");
+    }
+    return {
+      deviceId: device.id,
+      organizationId: device.organizationId,
+      vehicleId: device.vehicleId,
+      provider: device.provider,
+      externalId: device.externalId,
+    };
   }
 
   private async assertVehicle(organizationId: string, vehicleId: string): Promise<void> {
-    const vehicle = await this.prisma.vehicle.findFirst({ where: { id: vehicleId, organizationId }, select: { id: true } });
+    const vehicle = await this.prisma.vehicle.findFirst({
+      where: { id: vehicleId, organizationId, archivedAt: null },
+      select: { id: true },
+    });
     if (!vehicle) throw new NotFoundException("Vehicle not found");
   }
 

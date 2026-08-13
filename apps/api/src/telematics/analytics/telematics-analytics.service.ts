@@ -92,13 +92,17 @@ export class TelematicsAnalyticsService {
       _count: { _all: true },
     });
 
+    // archivedAt: null — a vehicle sold/decommissioned should stop
+    // contributing to "how well is our fleet utilized", the same as it stops
+    // appearing everywhere else once archived.
     const vehicles = await this.prisma.vehicle.findMany({
-      where: { id: { in: grouped.map((g) => g.vehicleId) }, organizationId },
+      where: { id: { in: grouped.map((g) => g.vehicleId) }, organizationId, archivedAt: null },
       select: { id: true, vehicleCode: true, plateNumber: true, type: true },
     });
     const vehicleById = new Map(vehicles.map((v) => [v.id, v]));
 
     const rows = grouped
+      .filter((g) => vehicleById.has(g.vehicleId))
       .map((g) => {
         const movingSec = g._sum.movingSec ?? 0;
         const idleSec = g._sum.idleSec ?? 0;
@@ -137,13 +141,13 @@ export class TelematicsAnalyticsService {
 
     const driverIds = grouped.map((g) => g.driverId).filter((id): id is string => !!id);
     const drivers = await this.prisma.driver.findMany({
-      where: { id: { in: driverIds }, organizationId },
+      where: { id: { in: driverIds }, organizationId, archivedAt: null },
       select: { id: true, employeeCode: true, firstName: true, lastName: true },
     });
     const driverById = new Map(drivers.map((d) => [d.id, d]));
 
     const rows = grouped
-      .filter((g) => g.driverId)
+      .filter((g) => g.driverId && driverById.has(g.driverId))
       .map((g) => {
         const distanceKm = Number(g._sum.distanceKm ?? 0);
         const harsh = (g._sum.harshAccelCount ?? 0) + (g._sum.harshBrakeCount ?? 0) + (g._sum.harshCornerCount ?? 0);
@@ -179,14 +183,14 @@ export class TelematicsAnalyticsService {
       _sum: { distanceKm: true, fuelConsumedL: true, idleSec: true },
     });
     const vehicles = await this.prisma.vehicle.findMany({
-      where: { id: { in: grouped.map((g) => g.vehicleId) }, organizationId },
+      where: { id: { in: grouped.map((g) => g.vehicleId) }, organizationId, archivedAt: null },
       select: { id: true, vehicleCode: true, plateNumber: true, type: true },
     });
     const vehicleById = new Map(vehicles.map((v) => [v.id, v]));
 
     let totalDistance = 0;
     let totalFuel = 0;
-    const rows = grouped.map((g) => {
+    const rows = grouped.filter((g) => vehicleById.has(g.vehicleId)).map((g) => {
       const v = vehicleById.get(g.vehicleId);
       const distanceKm = Number(g._sum.distanceKm ?? 0);
       // Prefer the stored per-trip estimate; fall back to the model if absent.

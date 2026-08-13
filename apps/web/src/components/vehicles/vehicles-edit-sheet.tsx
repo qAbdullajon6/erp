@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import {
   Select,
   SelectContent,
@@ -27,43 +26,23 @@ import {
 } from '@/lib/api/vehicles';
 import { describeError } from '@/lib/api/describe-error';
 import { statusLabel } from '@/components/shared/status-badge';
-import { cn } from '@/lib/utils';
+import {
+  Field,
+  Section,
+  VEHICLE_FIELD_SECTION,
+  emptySectionCounts,
+  toOptionalNumber,
+  validateVehicleField,
+  validateVehicleFields,
+  type VehicleFormFields,
+} from '@/components/vehicles/vehicle-form-shared';
 import { FileText, Gauge, Truck } from 'lucide-react';
 import { toast } from 'sonner';
 
-type SectionKey = 'identity' | 'capacity' | 'documents' | 'status';
-
-const FIELD_SECTION: Record<string, SectionKey> = {
-  vehicleCode: 'identity',
-  plateNumber: 'identity',
-  type: 'identity',
-  make: 'identity',
-  model: 'identity',
-  year: 'identity',
-  capacityKg: 'capacity',
-  capacityM3: 'capacity',
-  insuranceExpiry: 'documents',
-  inspectionExpiry: 'documents',
-  status: 'status',
-};
-
 type Errors = Record<string, string>;
-type FormState = {
-  vehicleCode: string;
-  plateNumber: string;
-  type: string;
-  make: string;
-  model: string;
-  year: string;
-  capacityKg: string;
-  capacityM3: string;
-  insuranceExpiry: string;
-  inspectionExpiry: string;
-  status: VehicleStatus;
-};
+type FormState = VehicleFormFields & { status: VehicleStatus };
 
-const ALL_FIELDS = Object.keys(FIELD_SECTION);
-const CURRENT_YEAR = new Date().getUTCFullYear();
+const ALL_FIELDS = Object.keys(VEHICLE_FIELD_SECTION);
 const STATUSES: VehicleStatus[] = ['AVAILABLE', 'IN_USE', 'MAINTENANCE', 'INACTIVE'];
 
 function toForm(vehicle: Vehicle): FormState {
@@ -80,62 +59,6 @@ function toForm(vehicle: Vehicle): FormState {
     inspectionExpiry: vehicle.inspectionExpiry?.slice(0, 10) ?? '',
     status: vehicle.status,
   };
-}
-
-function toOptionalNumber(value: string): number | undefined {
-  if (value.trim() === '') return undefined;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : undefined;
-}
-
-function validateField(field: string, data: FormState): string | null {
-  switch (field) {
-    case 'plateNumber':
-      if (!data.plateNumber.trim()) return 'Required';
-      if (data.plateNumber.length > 50) return 'Max 50 characters';
-      return null;
-    case 'type':
-      if (!data.type.trim()) return 'Required';
-      if (data.type.length > 100) return 'Max 100 characters';
-      return null;
-    case 'vehicleCode':
-      if (!data.vehicleCode.trim()) return 'Required';
-      if (!/^[A-Za-z0-9][A-Za-z0-9-]*$/.test(data.vehicleCode)) {
-        return 'Letters, numbers, and hyphens only';
-      }
-      if (data.vehicleCode.length > 50) return 'Max 50 characters';
-      return null;
-    case 'make':
-    case 'model':
-      if (data[field as 'make' | 'model'].length > 100) return 'Max 100 characters';
-      return null;
-    case 'year': {
-      if (!data.year.trim()) return null;
-      const y = Number(data.year);
-      if (!Number.isInteger(y) || y < 1980 || y > CURRENT_YEAR + 1) {
-        return `Between 1980 and ${CURRENT_YEAR + 1}`;
-      }
-      return null;
-    }
-    case 'capacityKg':
-    case 'capacityM3': {
-      if (!data[field as 'capacityKg' | 'capacityM3'].trim()) return null;
-      const n = Number(data[field as 'capacityKg' | 'capacityM3']);
-      if (!Number.isFinite(n) || n < 0) return 'Must be ≥ 0';
-      return null;
-    }
-    case 'insuranceExpiry':
-    case 'inspectionExpiry':
-      if (
-        data[field as 'insuranceExpiry' | 'inspectionExpiry'] &&
-        !/^\d{4}-\d{2}-\d{2}$/.test(data[field as 'insuranceExpiry' | 'inspectionExpiry'])
-      ) {
-        return 'Use YYYY-MM-DD';
-      }
-      return null;
-    default:
-      return null;
-  }
 }
 
 function toUpdateInput(data: FormState): UpdateVehicleInput {
@@ -156,41 +79,6 @@ function toUpdateInput(data: FormState): UpdateVehicleInput {
   const capacityM3 = toOptionalNumber(data.capacityM3);
   if (capacityM3 !== undefined) input.capacityM3 = capacityM3;
   return input;
-}
-
-function Field({
-  id,
-  label,
-  required,
-  error,
-  children,
-  className,
-  hint,
-}: {
-  id: string;
-  label: string;
-  required?: boolean;
-  error?: string;
-  children: React.ReactNode;
-  className?: string;
-  hint?: string;
-}) {
-  return (
-    <div className={cn('space-y-1', className)} data-field={id}>
-      <Label htmlFor={id} className="text-xs font-medium text-muted-foreground">
-        {label}
-        {required && <span className="ml-0.5 text-destructive">*</span>}
-      </Label>
-      {children}
-      {error ? (
-        <p className="text-[11px] font-medium text-destructive" role="alert">
-          {error}
-        </p>
-      ) : hint ? (
-        <p className="text-[11px] text-muted-foreground">{hint}</p>
-      ) : null}
-    </div>
-  );
 }
 
 interface Props {
@@ -217,7 +105,7 @@ export function VehiclesEditSheet({ open, onOpenChange, vehicle }: Props) {
     setFormData(next);
     setErrors((prev) => {
       const out = { ...prev };
-      const err = validateField(field, next);
+      const err = validateVehicleField(field, next, { requireVehicleCode: true });
       if (err) out[field] = err;
       else delete out[field];
       return out;
@@ -225,25 +113,16 @@ export function VehiclesEditSheet({ open, onOpenChange, vehicle }: Props) {
   };
 
   const errorsBySection = useMemo(() => {
-    const counts: Record<SectionKey, number> = {
-      identity: 0,
-      capacity: 0,
-      documents: 0,
-      status: 0,
-    };
+    const counts = emptySectionCounts();
     for (const field of Object.keys(errors)) {
-      const section = FIELD_SECTION[field];
+      const section = VEHICLE_FIELD_SECTION[field];
       if (section) counts[section] += 1;
     }
     return counts;
   }, [errors]);
 
   const handleSave = async () => {
-    const all: Errors = {};
-    for (const f of ALL_FIELDS) {
-      const err = validateField(f, formData);
-      if (err) all[f] = err;
-    }
+    const all = validateVehicleFields(ALL_FIELDS, formData, { requireVehicleCode: true });
     setErrors(all);
     if (Object.keys(all).length > 0) {
       toast.error('Fix the highlighted fields');
@@ -396,34 +275,5 @@ export function VehiclesEditSheet({ open, onOpenChange, vehicle }: Props) {
         </div>
       </SheetContent>
     </Sheet>
-  );
-}
-
-function Section({
-  icon: Icon,
-  title,
-  errorCount,
-  children,
-}: {
-  icon: typeof Truck;
-  title: string;
-  errorCount: number;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="space-y-3">
-      <div className="flex items-center gap-2">
-        <span className="flex h-6 w-6 items-center justify-center rounded-md bg-brand/10 text-brand">
-          <Icon className="h-3.5 w-3.5" />
-        </span>
-        <h3 className="text-sm font-semibold">{title}</h3>
-        {errorCount > 0 && (
-          <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">
-            {errorCount}
-          </Badge>
-        )}
-      </div>
-      {children}
-    </section>
   );
 }

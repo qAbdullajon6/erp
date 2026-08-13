@@ -12,6 +12,7 @@ import {
   Crosshair,
   Eye,
   EyeOff,
+  Focus,
   Layers,
   LocateFixed,
   Moon,
@@ -104,7 +105,7 @@ export function FleetMapToolbar({
           icon={Car}
         />
         <Tool
-          label={labels ? 'Labels on' : 'Labels off'}
+          label={labels ? 'Map labels on' : 'Map labels off'}
           active={labels}
           onClick={() => onLabelsChange(!labels)}
           icon={labels ? Eye : EyeOff}
@@ -126,7 +127,7 @@ export function FleetMapToolbar({
           }
           disabled={selectedCount === 0}
           onClick={onFitSelected}
-          icon={Crosshair}
+          icon={Focus}
         />
       </div>
     </TooltipProvider>

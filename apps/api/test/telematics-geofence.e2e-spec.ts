@@ -3,6 +3,25 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "../src/app.module";
 import { PrismaService } from "../src/prisma/prisma.service";
+import { typedResponse } from "./support/typed-response";
+import { loginAs, SEEDED_ADMIN_EMAIL } from "./support/seeded-org";
+
+interface GeofenceEventBody {
+  geofenceId: string;
+  eventType: string;
+}
+
+interface GeofenceResponseBody {
+  accessToken: string;
+  id: string;
+  secret: string;
+  type: string;
+  radiusM: number;
+  vertices: unknown[];
+  events: GeofenceEventBody[];
+  geofences: unknown[];
+  archivedAt: string;
+}
 
 describe("Telematics Geofence E2E", () => {
   let app: INestApplication;
@@ -30,15 +49,13 @@ describe("Telematics Geofence E2E", () => {
     await prisma.telematicsDevice.deleteMany({});
 
     // Setup
-    const authRes = await request(app.getHttpServer())
-      .post("/auth/login")
-      .send({ email: "admin@test.com", password: "password" });
-    adminToken = authRes.body.accessToken;
+    adminToken = await loginAs(app, SEEDED_ADMIN_EMAIL);
 
     const vehicleRes = await request(app.getHttpServer())
       .post("/vehicles")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ vehicleCode: "GEO-TEST-001", plateNumber: "GEO-01", type: "VAN", capacity: 1000 });
+      .send({ vehicleCode: "GEO-TEST-001", plateNumber: "GEO-01", type: "VAN", capacity: 1000 })
+      .then(typedResponse<GeofenceResponseBody>);
     vehicleId = vehicleRes.body.id;
 
     const deviceRes = await request(app.getHttpServer())
@@ -49,7 +66,8 @@ describe("Telematics Geofence E2E", () => {
         externalId: "GEO-TEST-DEVICE",
         name: "Geofence Test Device",
         vehicleId,
-      });
+      })
+      .then(typedResponse<GeofenceResponseBody>);
     deviceId = deviceRes.body.id;
     deviceSecret = deviceRes.body.secret;
   });
@@ -75,7 +93,8 @@ describe("Telematics Geofence E2E", () => {
         alertOnEnter: true,
         alertOnExit: true,
       })
-      .expect(201);
+      .expect(201)
+      .then(typedResponse<GeofenceResponseBody>);
 
     circleGeofenceId = res.body.id;
     expect(res.body.type).toBe("CIRCLE");
@@ -97,7 +116,8 @@ describe("Telematics Geofence E2E", () => {
         ],
         alertOnEnter: true,
       })
-      .expect(201);
+      .expect(201)
+      .then(typedResponse<GeofenceResponseBody>);
 
     polygonGeofenceId = res.body.id;
     expect(res.body.type).toBe("POLYGON");
@@ -121,10 +141,11 @@ describe("Telematics Geofence E2E", () => {
     const res = await request(app.getHttpServer())
       .get(`/telematics/geofences/events?vehicleId=${vehicleId}`)
       .set("Authorization", `Bearer ${adminToken}`)
-      .expect(200);
+      .expect(200)
+      .then(typedResponse<GeofenceResponseBody>);
 
     const enterEvent = res.body.events.find(
-      (e: any) => e.geofenceId === circleGeofenceId && e.eventType === "ENTER"
+      (e) => e.geofenceId === circleGeofenceId && e.eventType === "ENTER",
     );
     expect(enterEvent).toBeDefined();
   });
@@ -146,10 +167,11 @@ describe("Telematics Geofence E2E", () => {
     const res = await request(app.getHttpServer())
       .get(`/telematics/geofences/events?vehicleId=${vehicleId}`)
       .set("Authorization", `Bearer ${adminToken}`)
-      .expect(200);
+      .expect(200)
+      .then(typedResponse<GeofenceResponseBody>);
 
     const exitEvent = res.body.events.find(
-      (e: any) => e.geofenceId === circleGeofenceId && e.eventType === "EXIT"
+      (e) => e.geofenceId === circleGeofenceId && e.eventType === "EXIT",
     );
     expect(exitEvent).toBeDefined();
   });
@@ -171,10 +193,11 @@ describe("Telematics Geofence E2E", () => {
     const res = await request(app.getHttpServer())
       .get(`/telematics/geofences/events?vehicleId=${vehicleId}`)
       .set("Authorization", `Bearer ${adminToken}`)
-      .expect(200);
+      .expect(200)
+      .then(typedResponse<GeofenceResponseBody>);
 
     const enterEvent = res.body.events.find(
-      (e: any) => e.geofenceId === polygonGeofenceId && e.eventType === "ENTER"
+      (e) => e.geofenceId === polygonGeofenceId && e.eventType === "ENTER",
     );
     expect(enterEvent).toBeDefined();
   });
@@ -183,7 +206,8 @@ describe("Telematics Geofence E2E", () => {
     const res = await request(app.getHttpServer())
       .get("/telematics/geofences")
       .set("Authorization", `Bearer ${adminToken}`)
-      .expect(200);
+      .expect(200)
+      .then(typedResponse<GeofenceResponseBody>);
 
     expect(res.body.geofences.length).toBeGreaterThanOrEqual(2);
   });
@@ -197,7 +221,8 @@ describe("Telematics Geofence E2E", () => {
     const res = await request(app.getHttpServer())
       .get(`/telematics/geofences/${circleGeofenceId}`)
       .set("Authorization", `Bearer ${adminToken}`)
-      .expect(200);
+      .expect(200)
+      .then(typedResponse<GeofenceResponseBody>);
 
     expect(res.body.archivedAt).toBeDefined();
   });

@@ -1,17 +1,95 @@
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
-import type { Prisma } from "@prisma/client";
 import type { IncomingMessage } from "node:http";
 import request from "supertest";
 import { AppModule } from "../src/app.module";
 import { PrismaService } from "../src/prisma/prisma.service";
+import { typedResponse } from "./support/typed-response";
+import {
+  loginAs,
+  SEEDED_ACCOUNTANT_EMAIL,
+  SEEDED_ADMIN_EMAIL,
+  SEEDED_DRIVER_EMAIL,
+  SEEDED_ORG_SLUG,
+} from "./support/seeded-org";
+
+interface DeviceBody {
+  id: string;
+  externalId: string;
+}
+
+interface LiveVehicleBody {
+  vehicleId: string;
+  latitude: number;
+  longitude: number;
+  movementState: string;
+}
+
+interface TripBody {
+  id: string;
+  status: string;
+  vehicleId: string;
+}
+
+interface GeofenceEventBody {
+  geofenceId: string;
+  eventType: string;
+}
+
+interface AlertBody {
+  id: string;
+  type: string;
+  vehicleId: string;
+  status: string;
+}
+
+interface TelematicsResponseBody {
+  accessToken: string;
+  id: string;
+  secret: string;
+  provider: string;
+  externalId: string;
+  vehicleId: string;
+  name: string;
+  type: string;
+  status: string;
+  accepted: number;
+  rejected: number;
+  latest: { latitude: number; longitude: number };
+  devices: DeviceBody[];
+  vehicles: LiveVehicleBody[];
+  vehicle: { id: string };
+  state: { latitude: number; longitude: number; speedKph: number };
+  trail: unknown[];
+  remainingKm: number;
+  etaMinutes: number;
+  estimate: boolean;
+  tripId: string;
+  activeTrip?: { id: string };
+  trips: TripBody[];
+  distanceKm: number;
+  durationSec: number;
+  maxSpeedKph: number;
+  points: Array<{ lat: number; lng: number }>;
+  vertices: unknown[];
+  events: GeofenceEventBody[];
+  speedLimitKph: number;
+  alerts: AlertBody[];
+  totalVehicles: number;
+  activeTrips: unknown;
+  openAlerts: unknown;
+}
+
+interface RealtimeEventBody {
+  type: string;
+  vehicleId: string;
+}
 
 describe("Fleet Telematics E2E", () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let adminToken: string;
   let driverToken: string;
-  let organizationId: string;
   let vehicleId: string;
   let driverId: string;
   let deviceId: string;
@@ -35,33 +113,14 @@ describe("Fleet Telematics E2E", () => {
     await prisma.telematicsAlert.deleteMany({});
     await prisma.telematicsDevice.deleteMany({});
 
-    // Get existing test org and users
-    const org = await prisma.organization.findFirst({
-      where: { slug: "test-org" },
-    });
-    if (!org) throw new Error("Test org not found");
-    organizationId = org.id;
+    const org = await prisma.organization.findFirst({ where: { slug: SEEDED_ORG_SLUG } });
+    if (!org) throw new Error(`Seeded organisation "${SEEDED_ORG_SLUG}" not found — is the database seeded?`);
 
-    const adminUser = await prisma.user.findFirst({
-      where: { email: "admin@test.com" },
-    });
-    if (!adminUser) throw new Error("Admin user not found");
+    const driverUser = await prisma.user.findFirst({ where: { email: SEEDED_DRIVER_EMAIL } });
+    if (!driverUser) throw new Error(`Seeded driver "${SEEDED_DRIVER_EMAIL}" not found — is the database seeded?`);
 
-    const driverUser = await prisma.user.findFirst({
-      where: { email: "driver@test.com" },
-    });
-    if (!driverUser) throw new Error("Driver user not found");
-
-    // Get tokens
-    const adminAuth = await request(app.getHttpServer())
-      .post("/auth/login")
-      .send({ email: "admin@test.com", password: "password" });
-    adminToken = adminAuth.body.accessToken;
-
-    const driverAuth = await request(app.getHttpServer())
-      .post("/auth/login")
-      .send({ email: "driver@test.com", password: "password" });
-    driverToken = driverAuth.body.accessToken;
+    adminToken = await loginAs(app, SEEDED_ADMIN_EMAIL);
+    driverToken = await loginAs(app, SEEDED_DRIVER_EMAIL);
 
     // Create test vehicle
     const vehicleRes = await request(app.getHttpServer())
@@ -72,7 +131,8 @@ describe("Fleet Telematics E2E", () => {
         plateNumber: "TEST-GPS-01",
         type: "VAN",
         capacity: 1000,
-      });
+      })
+      .then(typedResponse<TelematicsResponseBody>);
     vehicleId = vehicleRes.body.id;
 
     // Create test driver
@@ -83,7 +143,8 @@ describe("Fleet Telematics E2E", () => {
         userId: driverUser.id,
         licenseNumber: "DL-GPS-001",
         licenseExpiry: "2027-12-31",
-      });
+      })
+      .then(typedResponse<TelematicsResponseBody>);
     driverId = driverRes.body.id;
   });
 
@@ -109,7 +170,8 @@ describe("Fleet Telematics E2E", () => {
           vehicleId,
           config: { traccarDeviceId: 1 },
         })
-        .expect(201);
+        .expect(201)
+        .then(typedResponse<TelematicsResponseBody>);
 
       deviceId = res.body.id;
       deviceSecret = res.body.secret;
@@ -124,7 +186,8 @@ describe("Fleet Telematics E2E", () => {
       const res = await request(app.getHttpServer())
         .get("/telematics/devices")
         .set("Authorization", `Bearer ${adminToken}`)
-        .expect(200);
+        .expect(200)
+        .then(typedResponse<TelematicsResponseBody>);
 
       expect(res.body.devices.length).toBeGreaterThan(0);
       expect(res.body.devices[0].externalId).toBe("TEST-IMEI-123456789");
@@ -134,7 +197,8 @@ describe("Fleet Telematics E2E", () => {
       const res = await request(app.getHttpServer())
         .get(`/telematics/devices/${deviceId}`)
         .set("Authorization", `Bearer ${adminToken}`)
-        .expect(200);
+        .expect(200)
+        .then(typedResponse<TelematicsResponseBody>);
 
       expect(res.body.id).toBe(deviceId);
       expect(res.body.secret).toBeUndefined(); // Secret never returned after creation
@@ -166,7 +230,8 @@ describe("Fleet Telematics E2E", () => {
           recordedAt: new Date().toISOString(),
           ignitionOn: true,
         })
-        .expect(200);
+        .expect(200)
+        .then(typedResponse<TelematicsResponseBody>);
 
       expect(res.body.accepted).toBe(1);
       expect(res.body.rejected).toBe(0);
@@ -206,7 +271,8 @@ describe("Fleet Telematics E2E", () => {
       const res = await request(app.getHttpServer())
         .post(`/telematics/ingest/${deviceId}?secret=${deviceSecret}`)
         .send({ positions })
-        .expect(200);
+        .expect(200)
+        .then(typedResponse<TelematicsResponseBody>);
 
       expect(res.body.accepted).toBe(3);
       expect(res.body.rejected).toBe(0);
@@ -221,7 +287,8 @@ describe("Fleet Telematics E2E", () => {
             { latitude: 40.7128, longitude: 999, speedKph: 0, recordedAt: new Date().toISOString() },
           ],
         })
-        .expect(200);
+        .expect(200)
+        .then(typedResponse<TelematicsResponseBody>);
 
       expect(res.body.accepted).toBe(0);
       expect(res.body.rejected).toBe(2);
@@ -233,23 +300,25 @@ describe("Fleet Telematics E2E", () => {
       const res = await request(app.getHttpServer())
         .get("/telematics/live")
         .set("Authorization", `Bearer ${adminToken}`)
-        .expect(200);
+        .expect(200)
+        .then(typedResponse<TelematicsResponseBody>);
 
       expect(res.body.vehicles).toBeDefined();
       expect(res.body.vehicles.length).toBeGreaterThan(0);
 
-      const vehicle = res.body.vehicles.find((v: any) => v.vehicleId === vehicleId);
+      const vehicle = res.body.vehicles.find((item) => item.vehicleId === vehicleId);
       expect(vehicle).toBeDefined();
-      expect(vehicle.latitude).toBe(40.8501);
-      expect(vehicle.longitude).toBe(-73.8662);
-      expect(vehicle.movementState).toBe("MOVING");
+      expect(vehicle!.latitude).toBe(40.8501);
+      expect(vehicle!.longitude).toBe(-73.8662);
+      expect(vehicle!.movementState).toBe("MOVING");
     });
 
     it("should get single vehicle live state", async () => {
       const res = await request(app.getHttpServer())
         .get(`/telematics/live/${vehicleId}`)
         .set("Authorization", `Bearer ${adminToken}`)
-        .expect(200);
+        .expect(200)
+        .then(typedResponse<TelematicsResponseBody>);
 
       expect(res.body.vehicle.id).toBe(vehicleId);
       expect(res.body.state).toBeDefined();
@@ -263,7 +332,8 @@ describe("Fleet Telematics E2E", () => {
       const res = await request(app.getHttpServer())
         .get(`/telematics/vehicles/${vehicleId}/eta?lat=42.3601&lng=-71.0589`)
         .set("Authorization", `Bearer ${adminToken}`)
-        .expect(200);
+        .expect(200)
+        .then(typedResponse<TelematicsResponseBody>);
 
       expect(res.body.vehicleId).toBe(vehicleId);
       expect(res.body.remainingKm).toBeGreaterThan(0);
@@ -284,7 +354,8 @@ describe("Fleet Telematics E2E", () => {
           recordedAt: new Date(Date.now() - 120000).toISOString(),
           ignitionOn: false,
         })
-        .expect(200);
+        .expect(200)
+        .then(typedResponse<TelematicsResponseBody>);
 
       // Wait for stop classification
       await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -299,7 +370,8 @@ describe("Fleet Telematics E2E", () => {
           recordedAt: new Date().toISOString(),
           ignitionOn: true,
         })
-        .expect(200);
+        .expect(200)
+        .then(typedResponse<TelematicsResponseBody>);
 
       expect(res.body.tripId).toBeDefined();
 
@@ -307,12 +379,13 @@ describe("Fleet Telematics E2E", () => {
       const tripsRes = await request(app.getHttpServer())
         .get("/telematics/trips")
         .set("Authorization", `Bearer ${adminToken}`)
-        .expect(200);
+        .expect(200)
+        .then(typedResponse<TelematicsResponseBody>);
 
-      const trip = tripsRes.body.trips.find((t: any) => t.id === res.body.tripId);
+      const trip = tripsRes.body.trips.find((item) => item.id === res.body.tripId);
       expect(trip).toBeDefined();
-      expect(trip.status).toBe("ACTIVE");
-      expect(trip.vehicleId).toBe(vehicleId);
+      expect(trip!.status).toBe("ACTIVE");
+      expect(trip!.vehicleId).toBe(vehicleId);
     });
 
     it("should rollup trip aggregates", async () => {
@@ -320,7 +393,8 @@ describe("Fleet Telematics E2E", () => {
       const liveRes = await request(app.getHttpServer())
         .get(`/telematics/live/${vehicleId}`)
         .set("Authorization", `Bearer ${adminToken}`)
-        .expect(200);
+        .expect(200)
+        .then(typedResponse<TelematicsResponseBody>);
 
       const tripId = liveRes.body.activeTrip?.id;
       expect(tripId).toBeDefined();
@@ -352,7 +426,8 @@ describe("Fleet Telematics E2E", () => {
       const tripRes = await request(app.getHttpServer())
         .get(`/telematics/trips/${tripId}`)
         .set("Authorization", `Bearer ${adminToken}`)
-        .expect(200);
+        .expect(200)
+        .then(typedResponse<TelematicsResponseBody>);
 
       expect(tripRes.body.distanceKm).toBeGreaterThan(0);
       expect(tripRes.body.durationSec).toBeGreaterThan(0);
@@ -363,14 +438,16 @@ describe("Fleet Telematics E2E", () => {
       const liveRes = await request(app.getHttpServer())
         .get(`/telematics/live/${vehicleId}`)
         .set("Authorization", `Bearer ${adminToken}`)
-        .expect(200);
+        .expect(200)
+        .then(typedResponse<TelematicsResponseBody>);
 
       const tripId = liveRes.body.activeTrip?.id;
 
       const res = await request(app.getHttpServer())
         .get(`/telematics/trips/${tripId}/replay?limit=100`)
         .set("Authorization", `Bearer ${adminToken}`)
-        .expect(200);
+        .expect(200)
+        .then(typedResponse<TelematicsResponseBody>);
 
       expect(res.body.tripId).toBe(tripId);
       expect(res.body.points).toBeDefined();
@@ -397,7 +474,8 @@ describe("Fleet Telematics E2E", () => {
           alertOnExit: true,
           dwellThresholdSec: 300,
         })
-        .expect(201);
+        .expect(201)
+        .then(typedResponse<TelematicsResponseBody>);
 
       geofenceId = res.body.id;
       expect(res.body.name).toBe("Test Depot");
@@ -421,10 +499,11 @@ describe("Fleet Telematics E2E", () => {
       const res = await request(app.getHttpServer())
         .get(`/telematics/geofences/events?vehicleId=${vehicleId}`)
         .set("Authorization", `Bearer ${adminToken}`)
-        .expect(200);
+        .expect(200)
+        .then(typedResponse<TelematicsResponseBody>);
 
       const enterEvent = res.body.events.find(
-        (e: any) => e.geofenceId === geofenceId && e.eventType === "ENTER",
+        (event) => event.geofenceId === geofenceId && event.eventType === "ENTER",
       );
       expect(enterEvent).toBeDefined();
     });
@@ -446,10 +525,11 @@ describe("Fleet Telematics E2E", () => {
       const res = await request(app.getHttpServer())
         .get(`/telematics/geofences/events?vehicleId=${vehicleId}`)
         .set("Authorization", `Bearer ${adminToken}`)
-        .expect(200);
+        .expect(200)
+        .then(typedResponse<TelematicsResponseBody>);
 
       const exitEvent = res.body.events.find(
-        (e: any) => e.geofenceId === geofenceId && e.eventType === "EXIT",
+        (event) => event.geofenceId === geofenceId && event.eventType === "EXIT",
       );
       expect(exitEvent).toBeDefined();
     });
@@ -469,7 +549,8 @@ describe("Fleet Telematics E2E", () => {
           ],
           alertOnEnter: true,
         })
-        .expect(201);
+        .expect(201)
+        .then(typedResponse<TelematicsResponseBody>);
 
       expect(res.body.type).toBe("POLYGON");
       expect(res.body.vertices).toHaveLength(4);
@@ -482,7 +563,8 @@ describe("Fleet Telematics E2E", () => {
       const settingsRes = await request(app.getHttpServer())
         .get("/telematics/settings")
         .set("Authorization", `Bearer ${adminToken}`)
-        .expect(200);
+        .expect(200)
+        .then(typedResponse<TelematicsResponseBody>);
 
       const speedLimit = settingsRes.body.speedLimitKph;
 
@@ -502,20 +584,22 @@ describe("Fleet Telematics E2E", () => {
       const res = await request(app.getHttpServer())
         .get("/telematics/alerts?vehicleId=" + vehicleId)
         .set("Authorization", `Bearer ${adminToken}`)
-        .expect(200);
+        .expect(200)
+        .then(typedResponse<TelematicsResponseBody>);
 
       const speedingAlert = res.body.alerts.find(
-        (a: any) => a.type === "SPEEDING" && a.vehicleId === vehicleId,
+        (alert) => alert.type === "SPEEDING" && alert.vehicleId === vehicleId,
       );
       expect(speedingAlert).toBeDefined();
-      expect(speedingAlert.status).toBe("OPEN");
+      expect(speedingAlert!.status).toBe("OPEN");
     });
 
     it("should acknowledge alert", async () => {
       const alertsRes = await request(app.getHttpServer())
         .get("/telematics/alerts")
         .set("Authorization", `Bearer ${adminToken}`)
-        .expect(200);
+        .expect(200)
+        .then(typedResponse<TelematicsResponseBody>);
 
       const alert = alertsRes.body.alerts[0];
 
@@ -527,7 +611,8 @@ describe("Fleet Telematics E2E", () => {
       const res = await request(app.getHttpServer())
         .get(`/telematics/alerts/${alert.id}`)
         .set("Authorization", `Bearer ${adminToken}`)
-        .expect(200);
+        .expect(200)
+        .then(typedResponse<TelematicsResponseBody>);
 
       expect(res.body.status).toBe("ACKNOWLEDGED");
     });
@@ -536,7 +621,8 @@ describe("Fleet Telematics E2E", () => {
       const alertsRes = await request(app.getHttpServer())
         .get("/telematics/alerts")
         .set("Authorization", `Bearer ${adminToken}`)
-        .expect(200);
+        .expect(200)
+        .then(typedResponse<TelematicsResponseBody>);
 
       const alert = alertsRes.body.alerts[0];
 
@@ -548,7 +634,8 @@ describe("Fleet Telematics E2E", () => {
       const res = await request(app.getHttpServer())
         .get(`/telematics/alerts/${alert.id}`)
         .set("Authorization", `Bearer ${adminToken}`)
-        .expect(200);
+        .expect(200)
+        .then(typedResponse<TelematicsResponseBody>);
 
       expect(res.body.status).toBe("RESOLVED");
     });
@@ -562,7 +649,8 @@ describe("Fleet Telematics E2E", () => {
       const res = await request(app.getHttpServer())
         .get(`/telematics/vehicles/${vehicleId}/playback?from=${from}&to=${to}&limit=100`)
         .set("Authorization", `Bearer ${adminToken}`)
-        .expect(200);
+        .expect(200)
+        .then(typedResponse<TelematicsResponseBody>);
 
       expect(res.body.vehicleId).toBe(vehicleId);
       expect(res.body.points).toBeDefined();
@@ -583,7 +671,8 @@ describe("Fleet Telematics E2E", () => {
           deliveryPostalCode: "10001",
           orderDate: new Date().toISOString(),
         })
-        .expect(201);
+        .expect(201)
+        .then(typedResponse<TelematicsResponseBody>);
 
       await request(app.getHttpServer())
         .post(`/orders/${orderRes.body.id}/assign`)
@@ -610,7 +699,8 @@ describe("Fleet Telematics E2E", () => {
             },
           ],
         })
-        .expect(200);
+        .expect(200)
+        .then(typedResponse<TelematicsResponseBody>);
 
       expect(res.body.accepted).toBe(1);
 
@@ -618,7 +708,8 @@ describe("Fleet Telematics E2E", () => {
       const liveRes = await request(app.getHttpServer())
         .get(`/telematics/live/${vehicleId}`)
         .set("Authorization", `Bearer ${adminToken}`)
-        .expect(200);
+        .expect(200)
+        .then(typedResponse<TelematicsResponseBody>);
 
       expect(liveRes.body.state.latitude).toBe(45.0);
       expect(liveRes.body.state.longitude).toBe(-76.0);
@@ -661,7 +752,8 @@ describe("Fleet Telematics E2E", () => {
       const res = await request(app.getHttpServer())
         .get("/telematics/analytics/overview")
         .set("Authorization", `Bearer ${adminToken}`)
-        .expect(200);
+        .expect(200)
+        .then(typedResponse<TelematicsResponseBody>);
 
       expect(res.body.totalVehicles).toBeGreaterThan(0);
       expect(res.body.activeTrips).toBeDefined();
@@ -675,48 +767,26 @@ describe("Fleet Telematics E2E", () => {
       const res = await request(app.getHttpServer())
         .get(`/telematics/analytics/fleet-utilization?from=${from}&to=${to}`)
         .set("Authorization", `Bearer ${adminToken}`)
-        .expect(200);
+        .expect(200)
+        .then(typedResponse<TelematicsResponseBody>);
 
       expect(res.body.vehicles).toBeDefined();
     });
   });
 
   describe("RBAC", () => {
+    /// Uses the seeded accountant rather than creating one here. The local
+    /// version stored the literal string "hashed" as the password hash, so its
+    /// login always failed and the request that followed carried no token —
+    /// the endpoint answered 401 (unauthenticated) and never exercised the
+    /// role check this test exists to prove.
     it("should deny access to telematics for non-ops roles", async () => {
-      // Create accountant user
-      const accountantUser = await prisma.user.create({
-        data: {
-          email: "accountant-gps@test.com",
-          passwordHash: "hashed",
-          firstName: "Test",
-          lastName: "Accountant",
-          status: "ACTIVE",
-        },
-      });
-
-      await prisma.membership.create({
-        data: {
-          userId: accountantUser.id,
-          organizationId,
-          role: "ACCOUNTANT",
-          status: "ACTIVE",
-        },
-      });
-
-      const authRes = await request(app.getHttpServer())
-        .post("/auth/login")
-        .send({ email: "accountant-gps@test.com", password: "password" });
-
-      const accountantToken = authRes.body.accessToken;
+      const accountantToken = await loginAs(app, SEEDED_ACCOUNTANT_EMAIL);
 
       await request(app.getHttpServer())
         .get("/telematics/live")
         .set("Authorization", `Bearer ${accountantToken}`)
         .expect(403);
-
-      // Cleanup
-      await prisma.membership.deleteMany({ where: { userId: accountantUser.id } });
-      await prisma.user.delete({ where: { id: accountantUser.id } });
     });
   });
 
@@ -736,7 +806,9 @@ describe("Fleet Telematics E2E", () => {
           const data = chunk.toString();
           if (data.startsWith("data:") && !receivedEvent) {
             receivedEvent = true;
-            const json = JSON.parse(data.replace("data: ", "").trim());
+            const json = JSON.parse(
+              data.replace("data: ", "").trim(),
+            ) as unknown as RealtimeEventBody;
             expect(json.type).toBeDefined();
             expect(["position", "state", "alert", "geofence", "trip"]).toContain(json.type);
             res.destroy(); // Close connection
@@ -746,7 +818,7 @@ describe("Fleet Telematics E2E", () => {
 
         // Post a position to trigger SSE event
         setTimeout(() => {
-          request(app.getHttpServer())
+          void request(app.getHttpServer())
             .post(`/telematics/ingest/${deviceId}?secret=${deviceSecret}`)
             .send({
               latitude: 46.0,
@@ -755,11 +827,16 @@ describe("Fleet Telematics E2E", () => {
               recordedAt: new Date().toISOString(),
               ignitionOn: true,
             })
-            .then(() => {});
+            .then(
+              () => undefined,
+              (error: unknown) => {
+                done(error instanceof Error ? error : new Error(String(error)));
+              },
+            );
         }, 1000);
       });
 
-      req.on("error", (err: any) => {
+      req.on("error", (err: NodeJS.ErrnoException) => {
         if (err.code !== "ECONNRESET") done(err);
       });
     });
@@ -777,7 +854,9 @@ describe("Fleet Telematics E2E", () => {
           const data = chunk.toString();
           if (data.startsWith("data:") && !receivedEvent) {
             receivedEvent = true;
-            const json = JSON.parse(data.replace("data: ", "").trim());
+            const json = JSON.parse(
+              data.replace("data: ", "").trim(),
+            ) as unknown as RealtimeEventBody;
             expect(json.vehicleId).toBe(vehicleId);
             res.destroy();
             done();
@@ -785,7 +864,7 @@ describe("Fleet Telematics E2E", () => {
         });
 
         setTimeout(() => {
-          request(app.getHttpServer())
+          void request(app.getHttpServer())
             .post(`/telematics/ingest/${deviceId}?secret=${deviceSecret}`)
             .send({
               latitude: 46.1,
@@ -794,11 +873,16 @@ describe("Fleet Telematics E2E", () => {
               recordedAt: new Date().toISOString(),
               ignitionOn: true,
             })
-            .then(() => {});
+            .then(
+              () => undefined,
+              (error: unknown) => {
+                done(error instanceof Error ? error : new Error(String(error)));
+              },
+            );
         }, 1000);
       });
 
-      req.on("error", (err: any) => {
+      req.on("error", (err: NodeJS.ErrnoException) => {
         if (err.code !== "ECONNRESET") done(err);
       });
     });

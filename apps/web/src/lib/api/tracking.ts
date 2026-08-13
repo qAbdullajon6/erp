@@ -85,7 +85,21 @@ interface LiveFleetResponse {
   vehicles: TrackingVehicle[];
 }
 
-export type StreamStatus = "connecting" | "live" | "disconnected";
+/// SSE transport + GPS data delivery status for Fleet Tracking.
+/// Keep-alive comment frames alone never advance to `live`.
+export type StreamStatus =
+  | "connecting"
+  | "connected_waiting"
+  | "live"
+  | "reconnecting"
+  | "error"
+  | "disconnected";
+
+export interface StreamLiveOptions {
+  signal?: AbortSignal;
+  /// Fired once the HTTP SSE response is open (status OK + body available).
+  onOpen?: () => void;
+}
 
 class TrackingAPI {
   private baseUrl = "/api";
@@ -128,18 +142,27 @@ class TrackingAPI {
   }
 
   /// Authenticated SSE over fetch (EventSource cannot send Authorization).
-  /// Yields parsed events until the stream ends or `signal` aborts.
-  async *streamLive(signal?: AbortSignal): AsyncGenerator<TrackingEvent> {
+  /// Yields parsed application `data:` events until the stream ends or aborts.
+  /// Comment frames (e.g. `: keep-alive`) are ignored and never yielded.
+  async *streamLive(
+    signalOrOptions?: AbortSignal | StreamLiveOptions,
+  ): AsyncGenerator<TrackingEvent> {
+    const options: StreamLiveOptions =
+      signalOrOptions instanceof AbortSignal || signalOrOptions == null
+        ? { signal: signalOrOptions ?? undefined }
+        : signalOrOptions;
     const token = sessionManager.getAccessToken();
     const response = await fetch(`${this.baseUrl}/tracking/live-stream`, {
       method: "GET",
       headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      signal,
+      signal: options.signal,
     });
 
     if (!response.ok || !response.body) {
       throw new Error(`Tracking stream failed (${response.status})`);
     }
+
+    options.onOpen?.();
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder("utf-8");
@@ -206,12 +229,13 @@ export function useTrackingLiveQuery(opts?: { enabled?: boolean; refetchInterval
 
 export function useTrackingVehicleQuery(
   vehicleId: string | null,
-  opts?: { enabled?: boolean },
+  opts?: { enabled?: boolean; refetchInterval?: number | false },
 ) {
   const result = useQuery({
     queryKey: trackingKeys.vehicle(vehicleId ?? ""),
     queryFn: () => trackingAPI.getVehicleLatest(vehicleId!),
     enabled: (opts?.enabled ?? true) && !!vehicleId,
+    refetchInterval: opts?.refetchInterval,
     refetchOnReconnect: true,
   });
 
@@ -255,13 +279,125 @@ export function useTrackingHistoryQuery(
   };
 }
 
-/// Apply an SSE event onto a fleet snapshot. Never invents coordinates —
-/// missing payload fields leave the prior value.
+/// Prefer lastReceivedAt (server ingest time); fall back to lastRecordedAt.
+export function trackingTimestampMs(vehicle: Pick<TrackingVehicle, "lastReceivedAt" | "lastRecordedAt">): number {
+  const raw = vehicle.lastReceivedAt ?? vehicle.lastRecordedAt;
+  if (!raw) return 0;
+  const t = Date.parse(raw);
+  return Number.isFinite(t) ? t : 0;
+}
+
+/// Merge a REST `/tracking/live` snapshot into local fleet state without
+/// letting an older snapshot clobber fresher SSE position fields.
+/// Snapshot membership is authoritative for who is in the fleet (archived /
+/// removed vehicles drop out).
+export function mergeLiveFleetSnapshot(
+  current: TrackingVehicle[],
+  snapshot: TrackingVehicle[],
+): TrackingVehicle[] {
+  const currentById = new Map(current.map((v) => [v.vehicleId, v]));
+  const next: TrackingVehicle[] = [];
+
+  for (const snap of snapshot) {
+    const prev = currentById.get(snap.vehicleId);
+    if (!prev) {
+      next.push(snap);
+      continue;
+    }
+
+    if (trackingTimestampMs(prev) > trackingTimestampMs(snap)) {
+      next.push({
+        ...snap,
+        latitude: prev.latitude,
+        longitude: prev.longitude,
+        speedKph: prev.speedKph,
+        heading: prev.heading,
+        movementState: prev.movementState,
+        isStale: prev.isStale,
+        lastReceivedAt: prev.lastReceivedAt,
+        lastRecordedAt: prev.lastRecordedAt,
+        ignitionOn: prev.ignitionOn ?? snap.ignitionOn,
+        odometerKm: prev.odometerKm ?? snap.odometerKm,
+        fuelLevelPct: prev.fuelLevelPct ?? snap.fuelLevelPct,
+        lastHeartbeatAt: prev.lastHeartbeatAt ?? snap.lastHeartbeatAt,
+        sessionId: prev.sessionId ?? snap.sessionId,
+      });
+    } else {
+      next.push(snap);
+    }
+  }
+
+  return next;
+}
+
+/// Soft-merge a single-vehicle REST detail into local state (same freshness rule).
+export function mergeVehicleDetail(
+  current: TrackingVehicle,
+  detail: TrackingVehicle,
+): TrackingVehicle {
+  if (trackingTimestampMs(current) > trackingTimestampMs(detail)) {
+    return {
+      ...detail,
+      latitude: current.latitude,
+      longitude: current.longitude,
+      speedKph: current.speedKph,
+      heading: current.heading,
+      movementState: current.movementState,
+      isStale: current.isStale,
+      lastReceivedAt: current.lastReceivedAt,
+      lastRecordedAt: current.lastRecordedAt,
+      ignitionOn: current.ignitionOn ?? detail.ignitionOn,
+      odometerKm: current.odometerKm ?? detail.odometerKm,
+      fuelLevelPct: current.fuelLevelPct ?? detail.fuelLevelPct,
+      lastHeartbeatAt: current.lastHeartbeatAt ?? detail.lastHeartbeatAt,
+      sessionId: current.sessionId ?? detail.sessionId,
+    };
+  }
+  return { ...current, ...detail };
+}
+
+function emptyVehicleFromEvent(vehicleId: string, event: TrackingEvent): TrackingVehicle {
+  return {
+    vehicleId,
+    vehicleCode: null,
+    plateNumber: null,
+    driverId: event.payload.driverId ?? null,
+    driverName: null,
+    dispatchId: null,
+    hasActiveDispatch: false,
+    tripId: event.payload.tripId ?? null,
+    sessionId: event.payload.sessionId ?? null,
+    sessionSource: null,
+    latitude: event.payload.latitude ?? null,
+    longitude: event.payload.longitude ?? null,
+    speedKph: event.payload.speedKph ?? null,
+    heading: event.payload.heading ?? null,
+    ignitionOn: event.payload.ignitionOn ?? null,
+    odometerKm: event.payload.odometerKm ?? null,
+    fuelLevelPct: event.payload.fuelLevelPct ?? null,
+    movementState: event.payload.movementState ?? "UNKNOWN",
+    isStale: false,
+    lastRecordedAt: event.at ?? null,
+    lastReceivedAt: event.at ?? null,
+    lastHeartbeatAt: event.payload.lastHeartbeatAt ?? null,
+  };
+}
+
+/// Apply an SSE event onto a fleet snapshot. Upserts unknown vehicleIds for
+/// position/state events. Never invents coordinates — missing payload fields
+/// leave the prior value.
 export function applyTrackingEvent(
   vehicles: TrackingVehicle[],
   event: TrackingEvent,
 ): TrackingVehicle[] {
   if (!event.vehicleId) return vehicles;
+
+  const index = vehicles.findIndex((v) => v.vehicleId === event.vehicleId);
+
+  if (index === -1) {
+    if (event.type !== "state" && event.type !== "position") return vehicles;
+    return [...vehicles, emptyVehicleFromEvent(event.vehicleId, event)];
+  }
 
   return vehicles.map((v) => {
     if (v.vehicleId !== event.vehicleId) return v;
@@ -276,7 +412,7 @@ export function applyTrackingEvent(
 
     if (event.type !== "state" && event.type !== "position") return v;
 
-    const next: TrackingVehicle = {
+    return {
       ...v,
       latitude: event.payload.latitude !== undefined ? event.payload.latitude : v.latitude,
       longitude: event.payload.longitude !== undefined ? event.payload.longitude : v.longitude,
@@ -295,6 +431,5 @@ export function applyTrackingEvent(
       lastRecordedAt: event.at ?? v.lastRecordedAt,
       isStale: false,
     };
-    return next;
   });
 }

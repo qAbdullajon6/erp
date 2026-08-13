@@ -7,21 +7,32 @@ import { providerLabel } from '@/components/fleet-devices/devices-ops';
 
 export { providerLabel, TELEMATICS_PROVIDERS };
 
-/// Device communication status derived only from backend fields —
-/// never from invented heartbeat windows.
+/// Device communication status derived from backend fields.
+/// `stale` uses the same default offline window as TelematicsSettings (600s)
+/// when a custom threshold is not supplied — never invents "connected" from
+/// row existence alone.
 export type DeviceCommStatus =
   | 'connected'
   | 'disconnected'
   | 'waiting'
+  | 'stale'
   | 'archived'
   | 'unknown';
 
-export function deviceCommStatus(device: TelematicsDevice): DeviceCommStatus {
+export const DEFAULT_DEVICE_STALE_MS = 600_000;
+
+export function deviceCommStatus(
+  device: TelematicsDevice,
+  opts?: { now?: number; staleMs?: number },
+): DeviceCommStatus {
   if (device.archivedAt) return 'archived';
   if (!device.active) return 'disconnected';
   if (device.lastSeenAt == null) return 'waiting';
-  if (device.lastSeenAt) return 'connected';
-  return 'unknown';
+  const now = opts?.now ?? Date.now();
+  const staleMs = opts?.staleMs ?? DEFAULT_DEVICE_STALE_MS;
+  const seenAt = new Date(device.lastSeenAt).getTime();
+  if (Number.isFinite(seenAt) && now - seenAt > staleMs) return 'stale';
+  return 'connected';
 }
 
 export function deviceCommStatusLabel(status: DeviceCommStatus): string {
@@ -32,6 +43,8 @@ export function deviceCommStatusLabel(status: DeviceCommStatus): string {
       return 'Disconnected';
     case 'waiting':
       return 'Waiting';
+    case 'stale':
+      return 'Stale';
     case 'archived':
       return 'Archived';
     case 'unknown':
@@ -46,6 +59,8 @@ export function deviceCommStatusClass(status: DeviceCommStatus): string {
     case 'disconnected':
       return 'bg-muted text-muted-foreground';
     case 'waiting':
+      return 'bg-warning/15 text-warning';
+    case 'stale':
       return 'bg-warning/15 text-warning';
     case 'archived':
       return 'bg-destructive/10 text-destructive';

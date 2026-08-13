@@ -3,6 +3,24 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "../src/app.module";
 import { PrismaService } from "../src/prisma/prisma.service";
+import { typedResponse } from "./support/typed-response";
+import { loginAs, SEEDED_ADMIN_EMAIL } from "./support/seeded-org";
+
+interface TripListItemBody {
+  id: string;
+}
+
+interface TripLifecycleResponseBody {
+  accessToken: string;
+  id: string;
+  secret: string;
+  tripId: string;
+  activeTrip?: { id: string };
+  vehicleId: string;
+  status: string;
+  distanceKm: number;
+  trips: TripListItemBody[];
+}
 
 describe("Telematics Trip Lifecycle E2E", () => {
   let app: INestApplication;
@@ -26,18 +44,14 @@ describe("Telematics Trip Lifecycle E2E", () => {
     await prisma.trip.deleteMany({});
     await prisma.telematicsDevice.deleteMany({});
 
-    // Get org and auth
-    const org = await prisma.organization.findFirst({ where: { slug: "test-org" } });
-    const authRes = await request(app.getHttpServer())
-      .post("/auth/login")
-      .send({ email: "admin@test.com", password: "password" });
-    adminToken = authRes.body.accessToken;
+    adminToken = await loginAs(app, SEEDED_ADMIN_EMAIL);
 
     // Create vehicle
     const vehicleRes = await request(app.getHttpServer())
       .post("/vehicles")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ vehicleCode: "TRIP-TEST-001", plateNumber: "TRIP-01", type: "VAN", capacity: 1000 });
+      .send({ vehicleCode: "TRIP-TEST-001", plateNumber: "TRIP-01", type: "VAN", capacity: 1000 })
+      .then(typedResponse<TripLifecycleResponseBody>);
     vehicleId = vehicleRes.body.id;
 
     // Create device
@@ -49,7 +63,8 @@ describe("Telematics Trip Lifecycle E2E", () => {
         externalId: "TRIP-TEST-DEVICE",
         name: "Trip Test Device",
         vehicleId,
-      });
+      })
+      .then(typedResponse<TripLifecycleResponseBody>);
     deviceId = deviceRes.body.id;
     deviceSecret = deviceRes.body.secret;
   });
@@ -72,7 +87,8 @@ describe("Telematics Trip Lifecycle E2E", () => {
         recordedAt: new Date(Date.now() - 180000).toISOString(),
         ignitionOn: false,
       })
-      .expect(200);
+      .expect(200)
+      .then(typedResponse<TripLifecycleResponseBody>);
 
     // Wait for stop classification
     await new Promise((r) => setTimeout(r, 1000));
@@ -87,7 +103,8 @@ describe("Telematics Trip Lifecycle E2E", () => {
         recordedAt: new Date().toISOString(),
         ignitionOn: true,
       })
-      .expect(200);
+      .expect(200)
+      .then(typedResponse<TripLifecycleResponseBody>);
 
     expect(res.body.tripId).toBeDefined();
 
@@ -102,7 +119,8 @@ describe("Telematics Trip Lifecycle E2E", () => {
     const live = await request(app.getHttpServer())
       .get(`/telematics/live/${vehicleId}`)
       .set("Authorization", `Bearer ${adminToken}`)
-      .expect(200);
+      .expect(200)
+      .then(typedResponse<TripLifecycleResponseBody>);
 
     const tripId = live.body.activeTrip?.id;
     expect(tripId).toBeDefined();
@@ -150,7 +168,8 @@ describe("Telematics Trip Lifecycle E2E", () => {
     const live = await request(app.getHttpServer())
       .get(`/telematics/live/${vehicleId}`)
       .set("Authorization", `Bearer ${adminToken}`)
-      .expect(200);
+      .expect(200)
+      .then(typedResponse<TripLifecycleResponseBody>);
 
     const tripId = live.body.activeTrip?.id;
     expect(tripId).toBeDefined();
@@ -164,7 +183,8 @@ describe("Telematics Trip Lifecycle E2E", () => {
     const live = await request(app.getHttpServer())
       .get(`/telematics/live/${vehicleId}`)
       .set("Authorization", `Bearer ${adminToken}`)
-      .expect(200);
+      .expect(200)
+      .then(typedResponse<TripLifecycleResponseBody>);
 
     const tripId = live.body.activeTrip?.id;
 
@@ -172,7 +192,8 @@ describe("Telematics Trip Lifecycle E2E", () => {
     const tripRes = await request(app.getHttpServer())
       .get(`/telematics/trips/${tripId}`)
       .set("Authorization", `Bearer ${adminToken}`)
-      .expect(200);
+      .expect(200)
+      .then(typedResponse<TripLifecycleResponseBody>);
 
     expect(tripRes.body.id).toBe(tripId);
     expect(tripRes.body.vehicleId).toBe(vehicleId);
@@ -183,9 +204,10 @@ describe("Telematics Trip Lifecycle E2E", () => {
     const listRes = await request(app.getHttpServer())
       .get("/telematics/trips")
       .set("Authorization", `Bearer ${adminToken}`)
-      .expect(200);
+      .expect(200)
+      .then(typedResponse<TripLifecycleResponseBody>);
 
-    const found = listRes.body.trips.find((t: any) => t.id === tripId);
+    const found = listRes.body.trips.find((trip) => trip.id === tripId);
     expect(found).toBeDefined();
   });
 });

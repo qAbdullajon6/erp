@@ -1,5 +1,5 @@
 import { TelematicsProviderType } from "@prisma/client";
-import { IsEnum, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
+import { IsEnum, IsOptional, IsString, IsUUID, MaxLength, MinLength } from "class-validator";
 
 export class CreateDeviceDto {
   @IsString()
@@ -20,6 +20,6 @@ export class CreateDeviceDto {
   /// The vehicle this unit is fitted to. Optional so a spare device can be
   /// registered before assignment.
   @IsOptional()
-  @IsString()
+  @IsUUID()
   vehicleId?: string;
 }

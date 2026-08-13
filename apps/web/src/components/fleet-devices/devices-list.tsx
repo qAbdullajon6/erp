@@ -106,7 +106,7 @@ export function DevicesList() {
     <div className="space-y-5 p-4 sm:p-6" data-testid="devices-page">
       <PageHeader
         title="Devices"
-        subtitle="GPS unit registration, vehicle binding, and ingest credentials."
+        subtitle="Connect GPS devices, attach vehicles, and verify real signal — not just registration."
         action={
           <Button
             size="sm"
@@ -118,7 +118,7 @@ export function DevicesList() {
             }
           >
             <Plus className="mr-1.5 h-3.5 w-3.5" />
-            Register device
+            Connect GPS device
           </Button>
         }
       />
@@ -129,7 +129,7 @@ export function DevicesList() {
           <input
             value={localSearch}
             onChange={(e) => setLocalSearch(e.target.value)}
-            placeholder="Search name or external id…"
+            placeholder="Search name or IMEI…"
             className="h-9 w-full rounded-md border border-border bg-background pl-8 pr-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
             aria-label="Search devices"
           />
@@ -195,7 +195,7 @@ export function DevicesList() {
           description={
             search || provider
               ? 'Try a different search or provider filter.'
-              : 'Register a GPS device to start ingesting live positions.'
+              : 'Connect a GPS device to start verifying live positions.'
           }
           action={
             !search && !provider ? (
@@ -209,7 +209,7 @@ export function DevicesList() {
                 }
               >
                 <Plus className="mr-1.5 h-3.5 w-3.5" />
-                Register device
+                Connect GPS device
               </Button>
             ) : undefined
           }
@@ -297,10 +297,17 @@ export function DevicesList() {
 
       <DevicesCreateSheet
         open={createOpen}
+        defaultVehicleId={
+          typeof searchState.vehicleId === 'string' ? searchState.vehicleId : undefined
+        }
         onOpenChange={(open) =>
           void navigate({
             to: '/app/devices',
-            search: (prev) => ({ ...prev, create: open || undefined }),
+            search: (prev) => ({
+              ...prev,
+              create: open || undefined,
+              vehicleId: open ? prev.vehicleId : undefined,
+            }),
           })
         }
         onCreated={(deviceId) =>
