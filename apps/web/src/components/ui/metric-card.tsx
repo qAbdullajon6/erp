@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SurfaceCard } from "@/components/ui/surface-card";
@@ -24,6 +25,11 @@ export interface MetricCardProps {
   /// A single note line with its own icon — status never travels as colour
   /// alone (see kpi-cards.tsx's original TONE_STYLES this generalizes).
   note?: { icon: LucideIcon; text: string; tone: MetricTone };
+  /// A trailing slot for figures that carry their own element rather than a
+  /// plain sentence — a period-over-period comparison badge, say. Kept separate
+  /// from `note` so that the colour-plus-icon rule above still governs anything
+  /// expressing status.
+  footer?: ReactNode;
   /// Visual weight within a row of otherwise-equal tiles (Financial
   /// Overview: Revenue is the headline figure, Profit the runner-up, Expenses/
   /// Outstanding supporting context — not four equally-weighted numbers).
@@ -40,8 +46,16 @@ export function MetricCard({
   variant = "default",
   size = "default",
   note,
+  footer,
   emphasis = "default",
 }: MetricCardProps) {
+  const noteLine =
+    note !== undefined ? (
+      <p className={cn("flex items-center gap-1.5 font-medium", NOTE_TONE_CLASS[note.tone])}>
+        <note.icon className="h-3.5 w-3.5 shrink-0" />
+        <span className="truncate">{note.text}</span>
+      </p>
+    ) : null;
   if (variant === "compact") {
     return (
       <SurfaceCard
@@ -61,6 +75,8 @@ export function MetricCard({
         >
           {value}
         </p>
+        {noteLine ? <div className="mt-2 text-xs">{noteLine}</div> : null}
+        {footer ? <div className="mt-2 text-xs text-muted-foreground">{footer}</div> : null}
       </SurfaceCard>
     );
   }
@@ -88,17 +104,13 @@ export function MetricCard({
           >
             {value}
           </p>
-          {note ? (
-            <p
-              className={cn(
-                "flex items-center gap-1.5 font-medium",
-                dense ? "mt-1.5 text-xs" : "mt-3 text-sm",
-                NOTE_TONE_CLASS[note.tone],
-              )}
-            >
-              <note.icon className={cn("shrink-0", dense ? "h-3 w-3" : "h-3.5 w-3.5")} />
-              <span className="truncate">{note.text}</span>
-            </p>
+          {noteLine ? (
+            <div className={cn(dense ? "mt-1.5 text-xs" : "mt-3 text-sm")}>{noteLine}</div>
+          ) : null}
+          {footer ? (
+            <div className={cn("text-muted-foreground", dense ? "mt-1.5 text-xs" : "mt-3 text-sm")}>
+              {footer}
+            </div>
           ) : null}
         </div>
         <span

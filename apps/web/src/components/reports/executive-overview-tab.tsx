@@ -1,6 +1,21 @@
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import {
+  AlertTriangle,
+  Banknote,
+  CheckCircle2,
+  Clock,
+  FileText,
+  HandCoins,
+  Hourglass,
+  Package,
+  PackageCheck,
+  Receipt,
+  TrendingUp,
+  Truck,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { MetricCard } from '@/components/ui/metric-card';
 import { formatMoney } from '@/lib/format';
 import { revenueExpensesChartConfig } from '@/lib/chart-theme';
 import { useExecutiveOverviewQuery, type ReportFilterParams, type ComparisonPair } from '@/lib/api/reports';
@@ -70,23 +85,24 @@ export function ExecutiveOverviewTab({ params }: ExecutiveOverviewTabProps) {
         ? 'vs prior period'
         : 'vs comparison';
   const kpis = [
-    { label: 'Total Orders', value: totals.totalOrders.toLocaleString(), pair: comparison?.totalOrders },
-    { label: 'Delivered', value: totals.deliveredOrders.toLocaleString(), pair: comparison?.deliveredOrders },
-    { label: 'Active', value: totals.activeOrders.toLocaleString() },
-    { label: 'Delayed', value: totals.delayedOrders.toLocaleString(), warn: totals.delayedOrders > 0 },
-    { label: 'Revenue', value: money(totals.totalRevenue), pair: comparison?.totalRevenue },
-    { label: 'Approved Expenses', value: money(totals.approvedExpenses), pair: comparison?.approvedExpenses },
-    { label: 'Total Invoiced', value: money(totals.totalInvoiced), pair: comparison?.totalInvoiced },
-    { label: 'Collected', value: money(totals.totalCollected), pair: comparison?.totalCollected },
-    { label: 'Outstanding Receivables', value: money(totals.outstandingReceivables) },
+    { label: 'Total Orders', value: totals.totalOrders.toLocaleString(), icon: Package, pair: comparison?.totalOrders },
+    { label: 'Delivered', value: totals.deliveredOrders.toLocaleString(), icon: PackageCheck, pair: comparison?.deliveredOrders },
+    { label: 'Active', value: totals.activeOrders.toLocaleString(), icon: Truck },
+    { label: 'Delayed', value: totals.delayedOrders.toLocaleString(), icon: AlertTriangle, warn: totals.delayedOrders > 0 },
+    { label: 'Revenue', value: money(totals.totalRevenue), icon: Banknote, pair: comparison?.totalRevenue },
+    { label: 'Approved Expenses', value: money(totals.approvedExpenses), icon: Receipt, pair: comparison?.approvedExpenses },
+    { label: 'Total Invoiced', value: money(totals.totalInvoiced), icon: FileText, pair: comparison?.totalInvoiced },
+    { label: 'Collected', value: money(totals.totalCollected), icon: HandCoins, pair: comparison?.totalCollected },
+    { label: 'Outstanding Receivables', value: money(totals.outstandingReceivables), icon: Hourglass },
     {
       label: 'Est. Gross Profit',
       value: money(totals.estimatedGrossProfit),
+      icon: TrendingUp,
       pair: comparison?.estimatedGrossProfit,
       hint: 'delivered revenue − approved expenses',
     },
-    { label: 'Delivery Completion', value: `${totals.deliveryCompletionRate.toFixed(1)}%`, pair: comparison?.deliveryCompletionRate },
-    { label: 'On-Time Rate', value: `${totals.onTimeDeliveryRate.toFixed(1)}%`, pair: comparison?.onTimeDeliveryRate },
+    { label: 'Delivery Completion', value: `${totals.deliveryCompletionRate.toFixed(1)}%`, icon: CheckCircle2, pair: comparison?.deliveryCompletionRate },
+    { label: 'On-Time Rate', value: `${totals.onTimeDeliveryRate.toFixed(1)}%`, icon: Clock, pair: comparison?.onTimeDeliveryRate },
   ];
 
   const hasRevenueData = data.revenueVsExpensesTimeSeries.some((b) => b.revenue > 0 || b.expenses > 0);
@@ -123,23 +139,31 @@ export function ExecutiveOverviewTab({ params }: ExecutiveOverviewTabProps) {
       )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {kpis.map((kpi) => (
-          <div key={kpi.label} className="rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50 p-6">
-            <div className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{kpi.label}</div>
-            <div className="mt-3 font-display text-2xl font-bold text-foreground">{kpi.value}</div>
-            <div className="mt-2">
-              {kpi.pair && kpi.pair.changePercent !== null && kpi.pair.changePercent !== undefined ? (
-                <ChangeBadge pair={kpi.pair} label={comparisonLabel} />
-              ) : kpi.warn ? (
-                <span className="text-xs font-medium text-destructive">needs attention</span>
-              ) : kpi.hint ? (
-                <span className="text-xs text-muted-foreground">{kpi.hint}</span>
-              ) : (
-                <span className="text-xs text-muted-foreground">&nbsp;</span>
-              )}
-            </div>
-          </div>
-        ))}
+        {kpis.map((kpi) => {
+          const hasComparison =
+            kpi.pair && kpi.pair.changePercent !== null && kpi.pair.changePercent !== undefined;
+          return (
+            <MetricCard
+              key={kpi.label}
+              label={kpi.label}
+              value={kpi.value}
+              icon={kpi.icon}
+              variant="compact"
+              note={
+                !hasComparison && kpi.warn
+                  ? { icon: AlertTriangle, text: 'needs attention', tone: 'warning' }
+                  : undefined
+              }
+              footer={
+                hasComparison ? (
+                  <ChangeBadge pair={kpi.pair} label={comparisonLabel} />
+                ) : !kpi.warn && kpi.hint ? (
+                  kpi.hint
+                ) : undefined
+              }
+            />
+          );
+        })}
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
