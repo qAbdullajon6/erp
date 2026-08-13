@@ -152,6 +152,9 @@ export function FleetTrackingScreen() {
   /// navigates away from a deep link (back/forward), not while sessionStorage
   /// selection is waiting to be validated against the live snapshot.
   const prevUrlVehicleIdRef = useRef<string | null | undefined>(undefined);
+  /// Selection value the URL is currently asking for, while the state update
+  /// carrying it is still in flight. `undefined` means nothing is pending.
+  const awaitingUrlRef = useRef<string | null | undefined>(undefined);
 
   // SSE is the primary live path (FleetMap â†’ /tracking/live-stream). When the
   // stream is down, poll the snapshot so a newly arriving real GPS fix still
@@ -244,6 +247,7 @@ export function FleetTrackingScreen() {
     prevUrlVehicleIdRef.current = fromUrl;
 
     if (fromUrl) {
+      awaitingUrlRef.current = fromUrl;
       setSelectedVehicleId((prev) => (prev === fromUrl ? prev : fromUrl));
       setSelectedIds((prev) => {
         if (prev.size === 1 && prev.has(fromUrl)) return prev;
@@ -252,10 +256,12 @@ export function FleetTrackingScreen() {
       return;
     }
 
-    // URL lost vehicleId after having one (browser back / fail-closed strip).
+    // URL lost vehicleId after having one (browser back, the sidebar entry
+    // linking to the bare route, or the fail-closed strip below).
     // Do not clear when URL never had an id — sessionStorage selection may be
     // pending validation and must not fight the snapshot wait state.
     if (prevUrl) {
+      awaitingUrlRef.current = null;
       setSelectedVehicleId(null);
       setSelectedIds(new Set());
     }
@@ -286,6 +292,19 @@ export function FleetTrackingScreen() {
   }, [data, selectedVehicleId, isSuccess, isError, navigate]);
 
   useEffect(() => {
+    // The effect above has just taken a URL change and called setState for it,
+    // but that state lands on the *next* render — so on this pass
+    // `selectedVehicleId` still holds the value the URL just moved away from.
+    // Acting on it would navigate straight back to the old id, which the other
+    // effect would then undo, and the two would trade the query string forever
+    // (clicking the sidebar's Fleet Tracking entry with a vehicle selected used
+    // to hang the page doing exactly this). Stand down until state has caught
+    // up with the URL; from then on this effect owns the sync again.
+    if (awaitingUrlRef.current !== undefined) {
+      if (awaitingUrlRef.current !== selectedVehicleId) return;
+      awaitingUrlRef.current = undefined;
+    }
+
     writeStoredSelection(selectedVehicleId);
     const urlId = vehicleIdFromUrl ?? null;
     const snapshotSucceeded = isSuccess && Array.isArray(data);
