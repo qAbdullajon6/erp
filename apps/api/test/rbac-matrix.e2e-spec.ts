@@ -312,10 +312,11 @@ describe("RBAC matrix (e2e)", () => {
       ),
     )("%s resolves for a permitted role", async (_name, testCase) => {
       const res = await call(testCase, tokens.get(testCase.allow[0])!);
-      // A missing row answers 404 too, so only Nest's own "no such route" body is a failure.
-      expect(String((res.body as { message?: unknown }).message ?? "")).not.toMatch(
-        /^Cannot (GET|POST|PATCH|PUT|DELETE) /,
-      );
+      // A missing row answers 404 too, so only Nest's own "no such route" body
+      // counts as a failure here.
+      const body = res.body as { error?: { message?: string }; message?: string };
+      const message = body.error?.message ?? body.message ?? "";
+      expect(message).not.toMatch(/^Cannot (GET|POST|PATCH|PUT|DELETE) /);
     });
   });
 
@@ -346,9 +347,7 @@ describe("RBAC matrix (e2e)", () => {
 
   describe("no protected route answers an unauthenticated caller", () => {
     it.each(
-      CASES.filter((c) => c.method === "get" && !c.path.includes(UNKNOWN)).map(
-        (c) => c.path as string,
-      ),
+      CASES.filter((c) => c.method === "get" && !c.path.includes(UNKNOWN)).map((c) => c.path),
     )("GET %s without a token", async (path) => {
       await request(app.getHttpServer()).get(path).expect(401);
     });
