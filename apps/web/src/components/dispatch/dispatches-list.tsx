@@ -16,6 +16,7 @@ import { useDispatches, useDispatchBoardSummary } from '@/lib/hooks/use-dispatch
 import { useCurrentUser } from '@/lib/api/auth';
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { ErrorState, EmptyState, TableSkeleton } from '@/components/shared/list-states';
+import { PageHeader } from '@/components/shared/page-header';
 import { DispatchesCreateSheet } from '@/components/dispatch/dispatches-create-sheet';
 import { DispatchReassignDialog } from '@/components/dispatch/dispatch-reassign-dialog';
 import { PaginationBar } from '@/components/shared/pagination-bar';
@@ -413,14 +414,13 @@ export function DispatchesList() {
 
   return (
     <div className="flex h-full flex-col gap-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="font-display text-2xl font-bold text-foreground">Dispatches</h1>
-          <p className="text-sm text-muted-foreground">
-            {loading ? 'Loading...' : `${metaSafe.total} total dispatches`}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+      <PageHeader
+        title="Dispatches"
+        subtitle={
+          loading ? undefined : `${metaSafe.total} total dispatch${metaSafe.total === 1 ? '' : 'es'}`
+        }
+        action={
+          <>
           <div className="relative min-w-0 flex-1 sm:flex-none">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -449,8 +449,9 @@ export function DispatchesList() {
               New Dispatch
             </Button>
           )}
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <div
         role="tablist"

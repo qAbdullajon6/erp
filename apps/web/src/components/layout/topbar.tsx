@@ -1,4 +1,4 @@
-import { useLocation } from "@tanstack/react-router";
+import { Link, useLocation } from "@tanstack/react-router";
 import { Search } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
 import { Button } from "@/components/ui/button";
@@ -6,12 +6,14 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import {
   Breadcrumb,
   BreadcrumbItem,
+  BreadcrumbLink,
   BreadcrumbList,
   BreadcrumbPage,
+  BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { UserMenu } from "@/components/layout/user-menu";
-import { resolveCurrentPage } from "@/components/layout/nav-config";
+import { resolveBreadcrumbTrail } from "@/components/layout/nav-config";
 import type { CurrentUser } from "@/lib/api/auth";
 
 export function Topbar({
@@ -24,28 +26,50 @@ export function Topbar({
   onOpenCommandPalette: () => void;
 }) {
   const location = useLocation();
-  const currentPage = resolveCurrentPage(location.pathname);
+  const trail = resolveBreadcrumbTrail(location.pathname);
+  const leaf = trail.at(-1);
 
   return (
     <div className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex h-16 items-center justify-between gap-4 px-4 sm:px-8">
         <div className="flex min-w-0 items-center gap-3">
           <SidebarTrigger />
-          <Logo showWordmark={false} className="md:hidden" />
+          {/* Below lg the sidebar is a drawer, so its logo is off-canvas and this
+              is the only mark on screen. */}
+          <Logo showWordmark={false} className="shrink-0 lg:hidden" />
           {/* Which screen you're on: the sidebar highlight is off-canvas on
-              mobile, and on desktop it's easy to lose at a glance. */}
-          <Breadcrumb className="hidden md:block">
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <BreadcrumbPage className="font-display text-lg font-semibold text-foreground">
-                  {currentPage?.label ?? "Overview"}
+              mobile, and on desktop it's easy to lose at a glance. Nested
+              screens also show the section above them — several of them live on
+              a path that does not contain their parent (Devices is at
+              /app/devices), so this is the only place that relationship is
+              stated, and the only way back up in one click. */}
+          <Breadcrumb className="hidden min-w-0 md:block">
+            <BreadcrumbList className="flex-nowrap">
+              {trail.length > 1 ? (
+                <>
+                  <BreadcrumbItem>
+                    <BreadcrumbLink asChild>
+                      <Link
+                        to={trail[0].path}
+                        className="whitespace-nowrap text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        {trail[0].label}
+                      </Link>
+                    </BreadcrumbLink>
+                  </BreadcrumbItem>
+                  <BreadcrumbSeparator />
+                </>
+              ) : null}
+              <BreadcrumbItem className="min-w-0">
+                <BreadcrumbPage className="truncate font-display text-lg font-semibold text-foreground">
+                  {leaf?.label ?? "Overview"}
                 </BreadcrumbPage>
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
         </div>
 
-        <div className="flex items-center gap-1 sm:gap-3">
+        <div className="flex shrink-0 items-center gap-1 sm:gap-3">
           <Button
             variant="outline"
             size="sm"

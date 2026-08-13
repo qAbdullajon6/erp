@@ -20,6 +20,7 @@ import {
 } from '@/lib/api/telematics-devices';
 import { useVehiclesList } from '@/lib/api/vehicles';
 import { describeError } from '@/lib/api/describe-error';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { providerLabel } from '@/components/fleet-devices/devices-ops';
 import { DeviceConnectionVerifyPanel } from '@/components/fleet-devices/device-connection-verify-panel';
 import { GatewaySetupChecklist } from '@/components/fleet-devices/gateway-setup-checklist';
@@ -131,15 +132,27 @@ export function DevicesCreateSheet({
     return Object.keys(next).length === 0;
   };
 
+  /// Which device the user is trying to walk away from before saving its
+  /// one-time secret. Held in state rather than asked with window.confirm():
+  /// the native dialog blocks the event loop (and any automation driving the
+  /// page), cannot be styled, and gives a destructive-consequence prompt none of
+  /// the visual weight the rest of the app gives one.
+  const [pendingLeaveId, setPendingLeaveId] = useState<string | null>(null);
+
   const finishAndClose = (deviceId: string, opts?: { requireSecretAck?: boolean }) => {
     if (opts?.requireSecretAck && created?.ingestSecret && !secretSaved) {
-      const proceed = window.confirm(
-        'The connection secret is shown only once. Copy it before leaving, or you will need an admin to rotate a new secret later. Leave anyway?',
-      );
-      if (!proceed) return;
+      setPendingLeaveId(deviceId);
+      return;
     }
     onOpenChange(false);
     onCreated?.(deviceId);
+  };
+
+  const leaveWithoutSavingSecret = () => {
+    const deviceId = pendingLeaveId;
+    setPendingLeaveId(null);
+    onOpenChange(false);
+    if (deviceId) onCreated?.(deviceId);
   };
 
   const handleRegister = async () => {
@@ -185,10 +198,10 @@ export function DevicesCreateSheet({
   const handleOpenChange = (next: boolean) => {
     if (!next && created) {
       if (created.ingestSecret && !secretSaved && step === 4) {
-        const proceed = window.confirm(
-          'The connection secret is shown only once. Copy it before leaving, or you will need an admin to rotate a new secret later. Leave anyway?',
-        );
-        if (!proceed) return;
+        // Keep the sheet open behind the confirmation — dismissing it here would
+        // take the secret off screen before the user has answered.
+        setPendingLeaveId(created.id);
+        return;
       }
       onCreated?.(created.id);
     }
@@ -482,6 +495,23 @@ export function DevicesCreateSheet({
             ) : null}
           </div>
         </div>
+
+        <ConfirmDialog
+          open={pendingLeaveId !== null}
+          onOpenChange={(next) => {
+            if (!next) setPendingLeaveId(null);
+          }}
+          title="Leave without saving the connection secret?"
+          description={
+            created
+              ? `The secret for ${created.name} is shown once and cannot be read again. Without it the GPS unit cannot authenticate, and an admin has to rotate a new secret before the device can report. This is not reversible from this screen.`
+              : 'The connection secret is shown once and cannot be read again.'
+          }
+          confirmLabel="Leave anyway"
+          cancelLabel="Stay and copy it"
+          destructive
+          onConfirm={leaveWithoutSavingSecret}
+        />
       </SheetContent>
     </Sheet>
   );

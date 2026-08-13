@@ -3,6 +3,7 @@ import {
   DEFAULT_NAV,
   getNavForRole,
   isNavSectionActive,
+  resolveBreadcrumbTrail,
   resolveCurrentPage,
 } from "./nav-config";
 
@@ -98,5 +99,31 @@ describe("resolving the current section", () => {
     expect(resolveCurrentPage("/app/fleet-tracking/debug")?.label).toBe("Diagnostics");
     expect(resolveCurrentPage("/app/orders/create")?.label).toBe("Orders");
     expect(resolveCurrentPage("/app")?.label).toBe("Overview");
+  });
+});
+
+describe("breadcrumb trail", () => {
+  const labels = (pathname: string) => resolveBreadcrumbTrail(pathname).map((c) => c.label);
+
+  it("names the section above a nested screen", () => {
+    // The whole point: /app/devices does not contain its parent's path, so
+    // without this the user is told "Devices" and nothing about where that is.
+    expect(labels("/app/devices")).toEqual(["Fleet Tracking", "Devices"]);
+    expect(labels("/app/billing")).toEqual(["Settings", "Billing"]);
+    expect(labels("/app/dispatches/analytics")).toEqual(["Dispatch", "Analytics"]);
+  });
+
+  it("links the section to the section's own route, not the child's", () => {
+    expect(resolveBreadcrumbTrail("/app/devices")[0].path).toBe("/app/fleet-tracking");
+  });
+
+  it("stays a single crumb for a top-level screen", () => {
+    // "Operations / Orders" would name a sidebar heading that is not a page.
+    expect(labels("/app/orders")).toEqual(["Orders"]);
+    expect(labels("/app")).toEqual(["Overview"]);
+  });
+
+  it("keeps a detail route under its list's crumb", () => {
+    expect(labels("/app/orders/create")).toEqual(["Orders"]);
   });
 });

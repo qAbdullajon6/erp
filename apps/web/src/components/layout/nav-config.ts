@@ -204,3 +204,29 @@ export function resolveCurrentPage(pathname: string): { label: string; path: str
     .sort((a, b) => b.path.length - a.path.length)
     .find((n) => isNavPathActive(pathname, n.path));
 }
+
+export type Crumb = { label: string; path: string };
+
+/// The trail from section to current screen, for the topbar.
+///
+/// A nested screen used to announce itself with its own name and nothing else,
+/// which is thin on the screens where it matters most: "Devices" does not say
+/// that you are inside Fleet Tracking, and Devices lives at /app/devices, so the
+/// URL does not say so either. Returning the parent as well gives the user
+/// somewhere to go back up to, and matches where the sidebar has highlighted.
+///
+/// One entry for a top-level screen — a lone crumb reading "Orders" is the whole
+/// truth about /app/orders, and inventing "Operations / Orders" would name a
+/// sidebar heading that is not a page and cannot be navigated to.
+export function resolveBreadcrumbTrail(pathname: string): Crumb[] {
+  const current = resolveCurrentPage(pathname);
+  if (!current) return [];
+
+  const parent = DEFAULT_NAV.find(
+    (item) =>
+      item.path !== current.path &&
+      (item.children ?? []).some((child) => child.path === current.path),
+  );
+
+  return parent ? [{ label: parent.label, path: parent.path }, current] : [current];
+}

@@ -35,6 +35,7 @@ import { useDashboardSummary } from '@/lib/api/dashboard';
 import { useCurrentUser } from '@/lib/api/auth';
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { ErrorState, EmptyState, TableSkeleton } from '@/components/shared/list-states';
+import { PageHeader } from '@/components/shared/page-header';
 import { OrdersCreateSheet } from '@/components/orders/orders-create-sheet';
 import {
   OrdersFiltersPanel,
@@ -674,14 +675,11 @@ export function OrdersList() {
 
   return (
     <div className="flex h-full flex-col gap-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="font-display text-2xl font-bold text-foreground">Orders</h1>
-          <p className="text-sm text-muted-foreground">
-            {loading ? 'Loading...' : `${meta.total} total orders`}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+      <PageHeader
+        title="Orders"
+        subtitle={loading ? undefined : `${meta.total} total order${meta.total === 1 ? '' : 's'}`}
+        action={
+          <>
           <div className="relative min-w-0 flex-1 sm:flex-none">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -789,8 +787,9 @@ export function OrdersList() {
               New Order
             </Button>
           )}
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <OrdersFiltersPanel
         values={filters}
