@@ -694,13 +694,13 @@ export function OrdersList() {
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" disabled={exportingAll}>
+              <Button variant="outline" size="sm" disabled={exportingAll} aria-label="Export">
                 {exportingAll ? (
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  <Loader2 className="h-3.5 w-3.5 animate-spin sm:mr-1.5" />
                 ) : (
-                  <Download className="mr-1.5 h-3.5 w-3.5" />
+                  <Download className="h-3.5 w-3.5 sm:mr-1.5" />
                 )}
-                Export
+                <span className="hidden sm:inline">Export</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -717,9 +717,9 @@ export function OrdersList() {
           </DropdownMenu>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Columns3 className="mr-1.5 h-3.5 w-3.5" />
-                Columns
+              <Button variant="outline" size="sm" aria-label="Columns">
+                <Columns3 className="h-3.5 w-3.5 sm:mr-1.5" />
+                <span className="hidden sm:inline">Columns</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -747,9 +747,9 @@ export function OrdersList() {
           </DropdownMenu>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Bookmark className="mr-1.5 h-3.5 w-3.5" />
-                Saved
+              <Button variant="outline" size="sm" aria-label="Saved filters">
+                <Bookmark className="h-3.5 w-3.5 sm:mr-1.5" />
+                <span className="hidden sm:inline">Saved</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
@@ -771,9 +771,14 @@ export function OrdersList() {
             </DropdownMenuContent>
           </DropdownMenu>
           {canWriteOrder && (
-            <Button variant="outline" size="sm" onClick={() => navigate({ to: '/app/import' })}>
-              <Upload className="mr-1.5 h-3.5 w-3.5" />
-              Import
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate({ to: '/app/import' })}
+              aria-label="Import"
+            >
+              <Upload className="h-3.5 w-3.5 sm:mr-1.5" />
+              <span className="hidden sm:inline">Import</span>
             </Button>
           )}
           {canWriteOrder && (
