@@ -14,8 +14,16 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSkeleton,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
-import { NAV_GROUP_ORDER, isNavPathActive, type NavItem } from "@/components/layout/nav-config";
+import {
+  NAV_GROUP_ORDER,
+  isNavPathActive,
+  isNavSectionActive,
+  type NavItem,
+} from "@/components/layout/nav-config";
 import { cn } from "@/lib/utils";
 
 export function AppSidebar({ nav, navReady }: { nav: NavItem[]; navReady: boolean }) {
@@ -61,13 +69,17 @@ export function AppSidebar({ nav, navReady }: { nav: NavItem[]; navReady: boolea
             // user collapsed it earlier — landing on a page and not seeing
             // its own nav item highlighted anywhere would be more confusing
             // than the group re-expanding under you.
-            const containsActive = items.some((item) =>
-              isNavPathActive(location.pathname, item.path, item.activeExcludePrefixes),
-            );
+            const containsActive = items.some((item) => isNavSectionActive(location.pathname, item));
             return (
               <NavGroup key={group} label={group} containsActive={containsActive}>
                 {items.map((item) => {
                   const active = isNavPathActive(location.pathname, item.path, item.activeExcludePrefixes);
+                  // Secondary screens reveal themselves once you are inside the
+                  // section, rather than costing a permanent sidebar row. The
+                  // command palette lists them unconditionally, so they stay
+                  // findable from anywhere.
+                  const inSection = isNavSectionActive(location.pathname, item);
+                  const children = inSection ? (item.children ?? []) : [];
                   return (
                     <SidebarMenuItem key={`${item.path}:${item.label}`}>
                       <SidebarMenuButton
@@ -87,6 +99,31 @@ export function AppSidebar({ nav, navReady }: { nav: NavItem[]; navReady: boolea
                         <span>{item.label}</span>
                         {active ? <span className="sr-only">(current page)</span> : null}
                       </SidebarMenuButton>
+                      {children.length > 0 && (
+                        <SidebarMenuSub>
+                          {children.map((child) => {
+                            const childActive = isNavPathActive(location.pathname, child.path);
+                            return (
+                              <SidebarMenuSubItem key={child.path}>
+                                {/* asChild so the row is a real button: the
+                                    primitive's default <a> carries no href and
+                                    so takes no keyboard focus. */}
+                                <SidebarMenuSubButton asChild isActive={childActive}>
+                                  <button
+                                    type="button"
+                                    onClick={() => navigate({ to: child.path as any })}
+                                    aria-current={childActive ? "page" : undefined}
+                                    className="w-full text-left"
+                                  >
+                                    <span>{child.label}</span>
+                                    {childActive ? <span className="sr-only">(current page)</span> : null}
+                                  </button>
+                                </SidebarMenuSubButton>
+                              </SidebarMenuSubItem>
+                            );
+                          })}
+                        </SidebarMenuSub>
+                      )}
                     </SidebarMenuItem>
                   );
                 })}
@@ -107,7 +144,10 @@ function NavGroup({
   containsActive: boolean;
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(containsActive || label === "Operations" || label === "Overview");
+  // Eleven destinations across five groups fit without collapsing, so every
+  // group starts open; collapsing is there for people who want a shorter rail,
+  // not a default that hides half the product.
+  const [open, setOpen] = useState(true);
 
   // Route changes can happen without remounting the shell. If the destination
   // lives in a group the user previously collapsed, reveal the active child

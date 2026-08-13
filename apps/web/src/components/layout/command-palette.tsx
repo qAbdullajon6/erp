@@ -60,7 +60,18 @@ export function CommandPalette({
   role: MembershipRole | null;
 }) {
   const navigate = useNavigate();
-  const navPaths = new Set(nav.map((item) => item.path));
+  // Secondary screens only appear in the sidebar while you are inside their
+  // section, so the palette carries them everywhere — it is how you reach
+  // Devices or Billing from the other side of the product.
+  const destinations = nav.flatMap((item) => [
+    { icon: item.icon, label: item.label, path: item.path },
+    ...(item.children ?? []).map((child) => ({
+      icon: item.icon,
+      label: `${item.label} · ${child.label}`,
+      path: child.path,
+    })),
+  ]);
+  const navPaths = new Set(destinations.map((item) => item.path));
 
   const go = (path: string) => {
     onOpenChange(false);
@@ -88,7 +99,7 @@ export function CommandPalette({
         </CommandGroup>
         <CommandSeparator />
         <CommandGroup heading="Go to">
-          {nav.map((item) => (
+          {destinations.map((item) => (
             <CommandItem key={`${item.path}:${item.label}`} onSelect={() => go(item.path)}>
               <item.icon />
               <span>{item.label}</span>
