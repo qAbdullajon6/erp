@@ -50,6 +50,7 @@ export class GeofenceService {
 
   async create(organizationId: string, dto: CreateGeofenceDto, actor: CurrentUserPayload) {
     this.validateGeometry(dto);
+    await this.assertLinkedCustomerInOrganization(organizationId, dto.linkedCustomerId);
     const geofence = await this.prisma.geofence.create({
       data: {
         organizationId,
@@ -93,6 +94,7 @@ export class GeofenceService {
       radiusM: dto.radiusM ?? existing.radiusM ?? undefined,
       polygon: dto.polygon ?? (existing.polygon as unknown as CreateGeofenceDto["polygon"]) ?? undefined,
     });
+    await this.assertLinkedCustomerInOrganization(organizationId, dto.linkedCustomerId);
 
     const geofence = await this.prisma.geofence.update({
       where: { id },
@@ -166,6 +168,24 @@ export class GeofenceService {
     this.activeCache.delete(organizationId);
     await this.audit.log({ organizationId, actorUserId: actor.userId, action: "geofence.restore", entityType: "Geofence", entityId: id });
     return this.toResponse(geofence);
+  }
+
+  /// `Geofence.linkedCustomerId` carries no database foreign key (see the
+  /// model), so nothing below this method would notice a customer id belonging
+  /// to a different tenant — the row would simply be written, planting another
+  /// organization's identifier inside this one's fleet configuration and
+  /// leaking it back out through the geofence read. Checked the same way
+  /// ExpensesService checks its optional order/vehicle/driver links.
+  private async assertLinkedCustomerInOrganization(
+    organizationId: string,
+    linkedCustomerId?: string,
+  ): Promise<void> {
+    if (!linkedCustomerId) return;
+    const customer = await this.prisma.customer.findFirst({
+      where: { id: linkedCustomerId, organizationId },
+      select: { id: true },
+    });
+    if (!customer) throw new NotFoundException("Customer not found");
   }
 
   // --- Evaluation (ingest hot path) --------------------------------------
