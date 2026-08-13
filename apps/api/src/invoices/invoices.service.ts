@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { Invoice, InvoiceLineItem, Payment, Prisma } from "@prisma/client";
+import { CustomerPaymentTerms, Invoice, InvoiceLineItem, Payment, Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { isValidEntityCode } from "../common/sequential-code.util";
@@ -11,6 +11,20 @@ import { UpdateInvoiceDto } from "./dto/update-invoice.dto";
 import { generateUniqueInvoiceNumber } from "./invoice-number.util";
 
 type InvoiceWithRelations = Invoice & { lineItems?: InvoiceLineItem[]; payments?: Payment[] };
+
+/// What each customer payment term means as a deadline.
+const PAYMENT_TERM_DAYS: Record<CustomerPaymentTerms, number> = {
+  DUE_ON_RECEIPT: 0,
+  NET_15: 15,
+  NET_30: 30,
+  NET_45: 45,
+};
+
+function addDays(from: Date, days: number): Date {
+  const to = new Date(from);
+  to.setDate(to.getDate() + days);
+  return to;
+}
 
 @Injectable()
 export class InvoicesService {
@@ -142,12 +156,26 @@ export class InvoicesService {
       0,
     );
 
+    // One-click invoicing left dueDate null, so the customer got an invoice with
+    // no deadline and the invoice could never go OVERDUE — that sweep needs a
+    // due date to compare against, which also made the Finance dashboard's
+    // overdue figure quietly wrong. The customer's payment terms already say
+    // when it is due; use them.
+    const issueDate = new Date();
+    const customer = await this.prisma.customer.findFirst({
+      where: { id: order.customerId, organizationId },
+      select: { paymentTerms: true },
+    });
+    const dueDate = addDays(issueDate, PAYMENT_TERM_DAYS[customer?.paymentTerms ?? "NET_30"]);
+
     const invoice = await this.prisma.invoice.create({
       data: {
         organizationId,
         invoiceNumber,
         customerId: order.customerId,
         orderId: order.id,
+        issueDate,
+        dueDate,
         currency: order.currency,
         subtotal,
         discountAmount: new Prisma.Decimal(0),
