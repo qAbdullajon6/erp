@@ -32,7 +32,6 @@ import {
   CURRENCIES,
   Field,
   DateField,
-  dayAfter,
   validateOrderField,
   validateOrderFields,
   type OrderSectionKey,
@@ -349,7 +348,7 @@ export function OrdersEditSheet({ open, onOpenChange, order }: OrdersEditSheetPr
                   error={errors.deliveryDate}
                   value={formData.deliveryDate ?? ''}
                   onChange={(iso) => setField('deliveryDate', iso)}
-                  disabledBefore={formData.pickupDate ? dayAfter(formData.pickupDate) : undefined}
+                  disabledBefore={formData.pickupDate || undefined}
                 />
               </section>
             </div>

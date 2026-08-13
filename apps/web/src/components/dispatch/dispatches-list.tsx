@@ -418,7 +418,7 @@ export function DispatchesList() {
   return (
     <div className="flex h-full flex-col gap-4">
       <PageHeader
-        title="Dispatches"
+        title="Dispatch"
         subtitle={
           loading ? undefined : `${metaSafe.total} total dispatch${metaSafe.total === 1 ? '' : 'es'}`
         }

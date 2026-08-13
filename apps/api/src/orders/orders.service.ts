@@ -746,9 +746,12 @@ export class OrdersService {
     return this.toResponse(updated);
   }
 
+  /// Same-day city delivery is ordinary work, and both dates arrive as
+  /// date-only values, so requiring delivery strictly after pickup made it
+  /// impossible to record. Delivering before pickup remains nonsense.
   private assertValidDateRange(pickupDate: Date, deliveryDate: Date): void {
-    if (deliveryDate.getTime() <= pickupDate.getTime()) {
-      throw new BadRequestException("deliveryDate must be after pickupDate");
+    if (deliveryDate.getTime() < pickupDate.getTime()) {
+      throw new BadRequestException("deliveryDate cannot be before pickupDate");
     }
   }
 

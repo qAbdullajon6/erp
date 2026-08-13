@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { addDays, format } from 'date-fns';
+import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Calendar } from '@/components/ui/calendar';
@@ -16,14 +16,6 @@ import { CalendarIcon } from 'lucide-react';
 /// change made in one sheet and not the other was an easy miss.
 
 export const CURRENCIES = ['USD', 'EUR', 'UZS', 'RUB', 'KZT', 'GBP', 'CNY'] as const;
-
-/// Delivery must be strictly after pickup (see validateOrderField below), so the
-/// delivery date picker's `disabledBefore` needs to exclude the pickup day itself,
-/// not just days before it — otherwise picking the same day passes the calendar's
-/// own check and only fails once the user hits submit.
-export function dayAfter(iso: string): string {
-  return format(addDays(new Date(`${iso}T00:00:00`), 1), 'yyyy-MM-dd');
-}
 
 export type OrderSectionKey = 'customer' | 'pickup' | 'delivery' | 'cargo' | 'pricing' | 'notes';
 
@@ -73,8 +65,8 @@ export function validateOrderField(field: string, data: OrderFormFields): string
       return null;
     case 'deliveryDate':
       if (!data.deliveryDate) return 'Delivery date is required';
-      if (data.pickupDate && new Date(data.deliveryDate) <= new Date(data.pickupDate)) {
-        return 'Must be after pickup date';
+      if (data.pickupDate && new Date(data.deliveryDate) < new Date(data.pickupDate)) {
+        return 'Cannot be before the pickup date';
       }
       return null;
     case 'cargoDescription':

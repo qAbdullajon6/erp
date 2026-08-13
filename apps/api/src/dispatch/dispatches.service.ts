@@ -483,8 +483,11 @@ export class DispatchesService {
       nextDelivery = new Date(nextPickup.getTime() + previousDurationMs);
     }
 
-    if (nextDelivery.getTime() <= nextPickup.getTime()) {
-      throw new BadRequestException("Delivery must be after pickup");
+    // Same rule as OrdersService.assertValidDateRange: a same-day dispatch is
+    // ordinary work, so rescheduling one must not be refused for keeping it
+    // same-day. Delivering before pickup remains nonsense.
+    if (nextDelivery.getTime() < nextPickup.getTime()) {
+      throw new BadRequestException("Delivery cannot be before pickup");
     }
 
     const from = {
