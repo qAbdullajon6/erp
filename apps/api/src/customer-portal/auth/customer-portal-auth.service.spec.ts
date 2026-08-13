@@ -159,8 +159,10 @@ describe("CustomerPortalAuthService", () => {
 
       await svc.login(loginDto({ organizationSlug: "acme" }));
 
+      // An archived organization keeps whatever status it had, so the lookup
+      // has to exclude it explicitly rather than rely on status alone.
       expect(prisma.organization.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { status: "ACTIVE", slug: "acme" } }),
+        expect.objectContaining({ where: { status: "ACTIVE", deletedAt: null, slug: "acme" } }),
       );
       expect(prisma.customerPortalAccount.findMany).not.toHaveBeenCalled();
     });

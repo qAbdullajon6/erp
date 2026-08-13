@@ -52,7 +52,8 @@ export class CustomerPortalAuthService {
       !passwordOk ||
       account.status !== CustomerPortalAccountStatus.ACTIVE ||
       account.customer.status !== CustomerStatus.ACTIVE ||
-      account.organization.status !== OrganizationStatus.ACTIVE
+      account.organization.status !== OrganizationStatus.ACTIVE ||
+      account.organization.deletedAt
     ) {
       if (account) {
         await this.audit
@@ -123,7 +124,8 @@ export class CustomerPortalAuthService {
       !isRefreshTokenActive(record) ||
       record.account.status !== CustomerPortalAccountStatus.ACTIVE ||
       record.account.customer.status !== CustomerStatus.ACTIVE ||
-      record.account.organization.status !== OrganizationStatus.ACTIVE
+      record.account.organization.status !== OrganizationStatus.ACTIVE ||
+      record.account.organization.deletedAt
     ) {
       throw new UnauthorizedException("Invalid or expired refresh token");
     }
@@ -249,7 +251,7 @@ export class CustomerPortalAuthService {
   ): Promise<AccountWithRelations | null> {
     if (organizationSlug) {
       const organization = await this.prisma.organization.findFirst({
-        where: { status: OrganizationStatus.ACTIVE, slug: organizationSlug },
+        where: { status: OrganizationStatus.ACTIVE, deletedAt: null, slug: organizationSlug },
       });
       if (!organization) {
         return null;
