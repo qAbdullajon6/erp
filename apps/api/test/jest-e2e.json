@@ -6,7 +6,7 @@
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
   },
-  "setupFiles": ["<rootDir>/e2e-guard.ts"],
+  "setupFiles": ["<rootDir>/e2e-guard.ts", "<rootDir>/support/http-keepalive.ts"],
   "moduleNameMapper": {
     "^isomorphic-dompurify$": "<rootDir>/mocks/isomorphic-dompurify.js"
   },
