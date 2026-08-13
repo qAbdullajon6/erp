@@ -523,6 +523,7 @@ export class AuthService {
     }
 
     const newHash = await this.passwordService.hash(dto.newPassword);
+    const now = new Date();
     await this.prisma.$transaction([
       this.prisma.user.update({
         where: { id: user.id },
@@ -534,7 +535,16 @@ export class AuthService {
       // Force re-login on every device/session after a password change.
       this.prisma.refreshToken.updateMany({
         where: { userId: user.id, revokedAt: null },
-        data: { revokedAt: new Date() },
+        data: { revokedAt: now },
+      }),
+      // A password change is how a user reacts to suspecting their account is
+      // compromised, so any reset link already in flight has to die with the old
+      // password. Otherwise an attacker who triggered "forgot password" earlier
+      // still holds a valid credential-reset capability after the victim has
+      // locked them out of every session.
+      this.prisma.passwordResetToken.updateMany({
+        where: { userId: user.id, usedAt: null },
+        data: { usedAt: now },
       }),
     ]);
 
