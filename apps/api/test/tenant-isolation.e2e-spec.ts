@@ -951,6 +951,105 @@ describe("Tenant isolation (e2e)", () => {
     });
   });
 
+  /// Creates are the obvious place to check a foreign key, and therefore the
+  /// place a validation is most likely to already exist. Updates are where one
+  /// gets forgotten: the row is already the caller's own, so the handler is
+  /// past the ownership question by the time it writes the new reference.
+  describe("cross-tenant foreign keys cannot be injected on update", () => {
+    it("PATCH /orders/:id rejects another organization's customerId", async () => {
+      const res = await request(app.getHttpServer())
+        .patch(`/orders/${b.orderId}`)
+        .set("Authorization", `Bearer ${orgBToken}`)
+        .send({ customerId: a.customerId });
+      expect(res.status).toBeGreaterThanOrEqual(400);
+      const order = await prisma.order.findUniqueOrThrow({ where: { id: b.orderId } });
+      expect(order.customerId).not.toBe(a.customerId);
+    });
+
+    it("PATCH /telematics/geofences/:id rejects another organization's linkedCustomerId", async () => {
+      const created = await request(app.getHttpServer())
+        .post("/telematics/geofences")
+        .set("Authorization", `Bearer ${orgBToken}`)
+        .send({
+          name: `WS8 B Geofence ${suffix}`,
+          type: "CIRCLE",
+          centerLat: 41.31,
+          centerLng: 69.21,
+          radiusM: 150,
+        })
+        .expect(201);
+      const geofenceId = (created.body as { data: { id: string } }).data.id;
+
+      const res = await request(app.getHttpServer())
+        .patch(`/telematics/geofences/${geofenceId}`)
+        .set("Authorization", `Bearer ${orgBToken}`)
+        .send({ linkedCustomerId: a.customerId });
+      expect(res.status).toBeGreaterThanOrEqual(400);
+
+      const geofence = await prisma.geofence.findUniqueOrThrow({ where: { id: geofenceId } });
+      expect(geofence.linkedCustomerId).toBeNull();
+      await prisma.geofence.delete({ where: { id: geofenceId } });
+    });
+
+    it("PATCH /telematics/devices/:id rejects another organization's vehicleId", async () => {
+      const created = await request(app.getHttpServer())
+        .post("/telematics/devices")
+        .set("Authorization", `Bearer ${orgBToken}`)
+        .send({
+          provider: "MANUAL",
+          externalId: `WS8-B-DEV-UPD-${suffix}`,
+          name: "B device",
+        })
+        .expect(201);
+      const deviceId = (created.body as { data: { id: string } }).data.id;
+
+      const res = await request(app.getHttpServer())
+        .patch(`/telematics/devices/${deviceId}`)
+        .set("Authorization", `Bearer ${orgBToken}`)
+        .send({ vehicleId: a.vehicleId });
+      expect(res.status).toBeGreaterThanOrEqual(400);
+
+      const device = await prisma.telematicsDevice.findUniqueOrThrow({ where: { id: deviceId } });
+      expect(device.vehicleId).toBeNull();
+      await prisma.telematicsDevice.delete({ where: { id: deviceId } });
+    });
+
+    it("POST /payments rejects another organization's invoiceId", async () => {
+      const res = await request(app.getHttpServer())
+        .post("/payments")
+        .set("Authorization", `Bearer ${orgBToken}`)
+        .send({ invoiceId: a.invoiceId, amount: 1, method: "CASH" });
+      expect(res.status).toBeGreaterThanOrEqual(400);
+      const leaked = await prisma.payment.findFirst({
+        where: { organizationId: orgBId, invoiceId: a.invoiceId },
+      });
+      expect(leaked).toBeNull();
+    });
+
+    it("POST /orders/:id/notes rejects another organization's order", async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/orders/${a.orderId}/notes`)
+        .set("Authorization", `Bearer ${orgBToken}`)
+        .send({ body: "Written by B into A" });
+      expect(res.status).toBeGreaterThanOrEqual(400);
+      const leaked = await prisma.orderNote.findFirst({
+        where: { orderId: a.orderId, organizationId: orgBId },
+      });
+      expect(leaked).toBeNull();
+    });
+
+    it("POST /customers/:id/portal-access/invitations rejects another organization's customer", async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/customers/${a.customerId}/portal-access/invitations`)
+        .set("Authorization", `Bearer ${orgBToken}`);
+      expect(res.status).toBeGreaterThanOrEqual(400);
+      const leaked = await prisma.customerPortalInvitation.findFirst({
+        where: { customerId: a.customerId },
+      });
+      expect(leaked).toBeNull();
+    });
+  });
+
   describe("a client-supplied organization id is never trusted", () => {
     it("ignores organizationId in a create body", async () => {
       const res = await request(app.getHttpServer())
