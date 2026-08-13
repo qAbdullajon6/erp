@@ -47,6 +47,14 @@ export interface CustomerPortalInvitationEmailMessage {
   expiresAt: Date;
 }
 
+export interface PasswordResetEmailMessage {
+  to: string;
+  firstName: string;
+  /// Fully assembled opaque URL. Providers must never log it.
+  resetUrl: string;
+  expiresAt: Date;
+}
+
 export interface RawEmailMessage {
   to: string;
   subject: string;
@@ -104,6 +112,7 @@ export abstract class MailService {
   abstract sendCustomerPortalInvitationEmail(
     message: CustomerPortalInvitationEmailMessage,
   ): Promise<void>;
+  abstract sendPasswordResetEmail(message: PasswordResetEmailMessage): Promise<void>;
   abstract sendRawEmail(message: RawEmailMessage): Promise<void>;
   abstract sendLeadNotificationEmail(message: LeadNotificationEmailMessage): Promise<void>;
   abstract sendDemoConfirmationEmail(message: DemoConfirmationEmailMessage): Promise<void>;

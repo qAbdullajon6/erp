@@ -31,6 +31,7 @@ export interface AuthConfig {
   /// satisfy either, so this is a number end-to-end to sidestep that.
   jwtAccessExpiresInSeconds: number;
   refreshTokenExpiresInDays: number;
+  passwordResetExpiresInMinutes: number;
 }
 
 export interface InvitationConfig {
@@ -48,6 +49,9 @@ export interface InvitationConfig {
   /// credentials — it is read here but never logged.
   smtpUrl?: string;
   mailFrom?: string;
+  /// Optional TCP destination override. TLS verification still uses the
+  /// hostname from smtpUrl, so this value is never a trust override.
+  smtpConnectHost?: string;
 }
 
 export interface LeadsConfig {
@@ -154,6 +158,30 @@ export default (): {
   if (!Number.isInteger(invitationExpiresInDays) || invitationExpiresInDays <= 0) {
     throw new Error(
       "INVITATION_EXPIRES_IN_DAYS must be a positive integer number of days (default 7).",
+    );
+  }
+
+  const jwtAccessExpiresInSeconds = parseInt(
+    process.env.JWT_ACCESS_EXPIRES_IN_SECONDS ?? "900",
+    10,
+  );
+  if (!Number.isInteger(jwtAccessExpiresInSeconds) || jwtAccessExpiresInSeconds <= 0) {
+    throw new Error("JWT_ACCESS_EXPIRES_IN_SECONDS must be a positive integer (default 900).");
+  }
+  const refreshTokenExpiresInDays = parseInt(
+    process.env.REFRESH_TOKEN_EXPIRES_IN_DAYS ?? "30",
+    10,
+  );
+  if (!Number.isInteger(refreshTokenExpiresInDays) || refreshTokenExpiresInDays <= 0) {
+    throw new Error("REFRESH_TOKEN_EXPIRES_IN_DAYS must be a positive integer (default 30).");
+  }
+  const passwordResetExpiresInMinutes = parseInt(
+    process.env.PASSWORD_RESET_EXPIRES_IN_MINUTES ?? "60",
+    10,
+  );
+  if (!Number.isInteger(passwordResetExpiresInMinutes) || passwordResetExpiresInMinutes <= 0) {
+    throw new Error(
+      "PASSWORD_RESET_EXPIRES_IN_MINUTES must be a positive integer (default 60).",
     );
   }
 
@@ -289,8 +317,9 @@ export default (): {
     },
     auth: {
       jwtAccessSecret,
-      jwtAccessExpiresInSeconds: parseInt(process.env.JWT_ACCESS_EXPIRES_IN_SECONDS ?? "900", 10),
-      refreshTokenExpiresInDays: parseInt(process.env.REFRESH_TOKEN_EXPIRES_IN_DAYS ?? "30", 10),
+      jwtAccessExpiresInSeconds,
+      refreshTokenExpiresInDays,
+      passwordResetExpiresInMinutes,
     },
     invitation: {
       appPublicUrl,
@@ -299,6 +328,7 @@ export default (): {
       // configured" as a simple presence check.
       smtpUrl: process.env.SMTP_URL || undefined,
       mailFrom: process.env.MAIL_FROM || undefined,
+      smtpConnectHost: process.env.SMTP_CONNECT_HOST?.trim() || undefined,
     },
     leads: {
       notifyEmail: process.env.LEADS_NOTIFY_EMAIL || process.env.MAIL_FROM || undefined,

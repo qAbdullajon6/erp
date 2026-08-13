@@ -7,6 +7,7 @@ import {
   type DemoConfirmationEmailMessage,
   type InvitationEmailMessage,
   type LeadNotificationEmailMessage,
+  type PasswordResetEmailMessage,
   type RawEmailMessage,
 } from "../mail.service";
 import { redactEmail, redactEmailList } from "../mail.util";
@@ -15,30 +16,64 @@ import { renderInvitationEmail } from "../templates/invitation-email.template";
 import { renderCustomerPortalInvitationEmail } from "../templates/customer-portal-invitation-email.template";
 import { renderLeadNotificationEmail } from "../templates/lead-notification-email.template";
 import { renderDemoConfirmationEmail } from "../templates/demo-confirmation-email.template";
+import { renderPasswordResetEmail } from "../templates/password-reset-email.template";
+
+export const SMTP_CONNECTION_TIMEOUT_MS = 5_000;
+export const SMTP_GREETING_TIMEOUT_MS = 5_000;
+export const SMTP_SOCKET_TIMEOUT_MS = 10_000;
 
 /// Builds nodemailer options from SMTP_URL. When SMTP_CONNECT_HOST is set
 /// (e.g. a resolved IP while local DNS is flaky), connect there but keep TLS
 /// servername = URL hostname so the certificate still verifies.
-function buildSmtpTransportOptions(smtpUrl: string): SMTPTransport.Options | string {
-  const connectHost = process.env.SMTP_CONNECT_HOST?.trim();
-  if (!connectHost) {
-    return smtpUrl;
+export function buildSmtpTransportOptions(
+  smtpUrl: string,
+  smtpConnectHost?: string,
+): SMTPTransport.Options {
+  let parsed: URL;
+  try {
+    parsed = new URL(smtpUrl);
+  } catch {
+    throw new Error("Invalid mail configuration");
   }
 
-  const parsed = new URL(smtpUrl);
-  const port = parsed.port ? Number(parsed.port) : 587;
-  const secure = port === 465;
+  if (
+    (parsed.protocol !== "smtp:" && parsed.protocol !== "smtps:") ||
+    !parsed.hostname ||
+    (parsed.pathname !== "/" && parsed.pathname !== "") ||
+    parsed.search ||
+    parsed.hash
+  ) {
+    throw new Error("Invalid mail configuration");
+  }
+
+  const secure = parsed.protocol === "smtps:";
+  const port = parsed.port ? Number(parsed.port) : secure ? 465 : 587;
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new Error("Invalid mail configuration");
+  }
+
+  let user: string;
+  let pass: string;
+  try {
+    user = decodeURIComponent(parsed.username);
+    pass = decodeURIComponent(parsed.password);
+  } catch {
+    throw new Error("Invalid mail configuration");
+  }
 
   return {
-    host: connectHost,
+    host: smtpConnectHost?.trim() || parsed.hostname,
     port,
     secure,
-    auth: {
-      user: decodeURIComponent(parsed.username),
-      pass: decodeURIComponent(parsed.password),
-    },
+    requireTLS: !secure,
+    auth: user || pass ? { user, pass } : undefined,
+    connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,
+    greetingTimeout: SMTP_GREETING_TIMEOUT_MS,
+    socketTimeout: SMTP_SOCKET_TIMEOUT_MS,
     tls: {
       servername: parsed.hostname,
+      rejectUnauthorized: true,
+      minVersion: "TLSv1.2",
     },
   };
 }
@@ -52,8 +87,9 @@ export class SmtpMailService extends MailService {
 
   constructor(
     smtpUrl: string,
-    private readonly from: string | undefined,
+    private readonly from: string,
     marketingUrl: string,
+    smtpConnectHost?: string,
   ) {
     super();
     // createTransport parses the URL but does NOT open a connection here — the
@@ -63,7 +99,7 @@ export class SmtpMailService extends MailService {
     // Optional SMTP_CONNECT_HOST: connect by IP (or alternate host) while
     // keeping TLS SNI / cert verification against the URL hostname. Useful
     // when local DNS is broken but the SMTP host is still reachable by IP.
-    this.transporter = createTransport(buildSmtpTransportOptions(smtpUrl));
+    this.transporter = createTransport(buildSmtpTransportOptions(smtpUrl, smtpConnectHost));
     this.branding = {
       marketingUrl,
       // The marketing site serves apps/web/public verbatim at its root (see
@@ -135,6 +171,29 @@ export class SmtpMailService extends MailService {
         `Failed to deliver customer portal invitation email to ${redactEmail(message.to)}${code ? ` (${code})` : ""}`,
       );
       throw new Error("Failed to deliver customer portal invitation email");
+    }
+  }
+
+  async sendPasswordResetEmail(message: PasswordResetEmailMessage): Promise<void> {
+    const { subject, text, html } = renderPasswordResetEmail(message, this.branding);
+    try {
+      const info = await this.transporter.sendMail({
+        from: this.from,
+        to: message.to,
+        subject,
+        text,
+        html,
+      });
+      this.logDelivered("Password reset email", info);
+    } catch (error) {
+      const code =
+        error && typeof error === "object" && "code" in error
+          ? String((error as { code?: unknown }).code)
+          : undefined;
+      this.logger.error(
+        `Failed to deliver password reset email to ${redactEmail(message.to)}${code ? ` (${code})` : ""}`,
+      );
+      throw new Error("Failed to deliver password reset email");
     }
   }
 

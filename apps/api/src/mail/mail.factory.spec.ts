@@ -5,13 +5,20 @@ import { OutboxMailService } from "./providers/outbox-mail.service";
 import { SmtpMailService } from "./providers/smtp-mail.service";
 import { UnavailableMailService } from "./providers/unavailable-mail.service";
 import { redactEmail } from "./mail.util";
-import type { InvitationEmailMessage } from "./mail.service";
+import type { InvitationEmailMessage, PasswordResetEmailMessage } from "./mail.service";
 
 const sampleMessage: InvitationEmailMessage = {
   to: "jane.doe@example.com",
   organizationName: "Acme Logistics",
   inviterName: "Alex Admin",
   acceptUrl: "https://app.flowerp.uz/auth/accept-invite?token=SUPER-SECRET-TOKEN",
+  expiresAt: new Date("2026-07-17T00:00:00.000Z"),
+};
+
+const samplePasswordReset: PasswordResetEmailMessage = {
+  to: "jane.doe@example.com",
+  firstName: "Jane",
+  resetUrl: "https://app.flowerp.uz/auth/reset-password?token=SUPER-SECRET-RESET-TOKEN",
   expiresAt: new Date("2026-07-17T00:00:00.000Z"),
 };
 
@@ -23,6 +30,16 @@ describe("createMailService — provider selection", () => {
 
   it("uses the dev outbox under NODE_ENV=test", () => {
     const svc = createMailService({ nodeEnv: "test", outbox: new MailOutbox() });
+    expect(svc).toBeInstanceOf(OutboxMailService);
+  });
+
+  it("never selects real SMTP in tests even when a developer env file configures it", () => {
+    const svc = createMailService({
+      nodeEnv: "test",
+      smtpUrl: "smtp://user:pass@localhost:2525",
+      mailFrom: "not a valid sender",
+      outbox: new MailOutbox(),
+    });
     expect(svc).toBeInstanceOf(OutboxMailService);
   });
 
@@ -40,9 +57,30 @@ describe("createMailService — provider selection", () => {
     const svc = createMailService({
       nodeEnv: "production",
       smtpUrl: "smtp://user:pass@localhost:2525",
+      mailFrom: "FlowERP <no-reply@flowerp.uz>",
       outbox: new MailOutbox(),
     });
     expect(svc).toBeInstanceOf(SmtpMailService);
+  });
+
+  it.each([undefined, "", "not-an-email", "FlowERP <broken>", "a@example.com\r\nBcc: x@y.test"])(
+    "rejects a missing or malformed MAIL_FROM when SMTP is configured",
+    (mailFrom) => {
+      expect(() =>
+        createMailService({
+          nodeEnv: "production",
+          smtpUrl: "smtp://user:secret@smtp.example.com:587",
+          mailFrom,
+          outbox: new MailOutbox(),
+        }),
+      ).toThrow("Invalid mail configuration");
+    },
+  );
+
+  it("does not require MAIL_FROM when production SMTP is intentionally unavailable", () => {
+    expect(
+      createMailService({ nodeEnv: "production", outbox: new MailOutbox() }),
+    ).toBeInstanceOf(UnavailableMailService);
   });
 
   it("uses the unavailable provider in production when SMTP is not configured", () => {
@@ -101,6 +139,20 @@ describe("production no-SMTP safety rule", () => {
 
     // Exact message: no accept URL, token, recipient, or SMTP detail.
     expect(caught?.message).toBe("Email delivery is not configured");
+  });
+
+  it("rejects password recovery without SMTP and never logs its reset capability", async () => {
+    const svc = createMailService({ nodeEnv: "production", outbox: new MailOutbox() });
+
+    await expect(svc.sendPasswordResetEmail(samplePasswordReset)).rejects.toThrow(
+      "Email delivery is not configured",
+    );
+
+    const logged = JSON.stringify(errorSpy.mock.calls);
+    expect(logged).not.toContain(samplePasswordReset.resetUrl);
+    expect(logged).not.toContain("SUPER-SECRET-RESET-TOKEN");
+    expect(logged).not.toContain(samplePasswordReset.to);
+    expect(logged).toContain(redactEmail(samplePasswordReset.to));
   });
 });
 

@@ -313,6 +313,9 @@ model User {
   /// organization by an admin) before ever setting a password.
   passwordHash    String?
   status          UserStatus @default(ACTIVE)
+  /// Incremented whenever credentials are reset or changed. Access JWTs carry
+  /// the value and are rejected immediately when it no longer matches.
+  sessionVersion  Int        @default(0)
   /// FlowERP staff, not a customer. Grants access to platform-wide data that
   /// belongs to no organization — currently the Lead pipeline captured from
   /// the marketing site. Deliberately separate from MembershipRole.ADMIN,
@@ -327,6 +330,7 @@ model User {
 
   memberships                   Membership[]
   refreshTokens                 RefreshToken[]
+  passwordResetTokens           PasswordResetToken[]
   auditLogEntries               AuditLog[]                 @relation("AuditLogActor")
   orderStatusChanges            OrderStatusHistory[]       @relation("OrderStatusChangedBy")
   dispatchStatusChanges         DispatchStatusHistory[]    @relation("DispatchStatusChangedBy")
@@ -403,6 +407,9 @@ model RefreshToken {
   id             String    @id @default(uuid())
   userId         String
   organizationId String
+  /// Rotated refresh tokens remain in one family. Reuse of any revoked member
+  /// revokes every still-active token in that family.
+  familyId       String
   tokenHash      String    @unique
   expiresAt      DateTime
   revokedAt      DateTime?
@@ -414,7 +421,25 @@ model RefreshToken {
 
   @@index([userId])
   @@index([organizationId])
+  @@index([familyId])
   @@map("refresh_tokens")
+}
+
+/// One-time staff password recovery capability. The raw token only exists in
+/// the emailed link; the database stores its SHA-256 hash.
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, usedAt])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
 }
 
 /// A pending invitation for a person to join one Organization with a given
@@ -637,6 +662,9 @@ model Customer {
   @@unique([organizationId, customerCode])
   @@index([organizationId])
   @@index([organizationId, status])
+  /// The list's default sort (and the "new this month" / recent-customers
+  /// reads on the Customers page) is createdAt desc.
+  @@index([organizationId, createdAt])
   @@map("customers")
 }
 
@@ -794,6 +822,11 @@ model Order {
   /// this, that scan falls back to the plain organizationId index and
   /// filters deliveryDate row-by-row.
   @@index([organizationId, deliveryDate])
+  /// createdAt is the Orders list's default sort column (list-orders-query.dto.ts)
+  /// — without this, the default view sorts unindexed at scale.
+  @@index([organizationId, createdAt])
+  /// pickupDate is both a list filter and sort option, same reasoning as deliveryDate above.
+  @@index([organizationId, pickupDate])
   @@index([driverId])
   @@index([vehicleId])
   @@index([customerId])
@@ -921,6 +954,12 @@ model Dispatch {
   @@index([orderId])
   @@index([driverId])
   @@index([vehicleId])
+  /// Dispatch Analytics date-range aggregation (period counts, groupBy driver/
+  /// vehicle workload, dispatches-by-day) filters on createdAt within an
+  /// organization — same reasoning as Order.createdAt above.
+  @@index([organizationId, createdAt])
+  /// Dispatches-by-day charting buckets on the scheduled pickup date.
+  @@index([organizationId, pickupDateScheduled])
   /// R2 — one live dispatch per order is enforced by the partial unique index
   /// `dispatches_one_live_per_order` (WHERE status NOT IN CANCELLED/DELIVERED).
   /// Prisma cannot express partial uniques in schema; see migration
@@ -995,6 +1034,9 @@ model DispatchStatusHistory {
 
   @@index([organizationId])
   @@index([dispatchId])
+  /// Dispatch Analytics reads true DRAFT->ASSIGNED elapsed time from this
+  /// table, filtered by organization + status + a createdAt window.
+  @@index([organizationId, status, createdAt])
   @@map("dispatch_status_histories")
 }
 
@@ -1194,6 +1236,15 @@ model Notification {
   readAt         DateTime?
   isArchived     Boolean              @default(false)
   archivedAt     DateTime?
+  /// Set only when a USER archives/deletes this rule-based notification —
+  /// never by the reconcile loop's own auto-resolve. Distinguishes "the
+  /// condition went away" (system-archived, dismissedAt null — eligible to
+  /// re-fire if the entity qualifies again later, e.g. a renewed expiry)
+  /// from "a person dismissed this while it was still true" (dismissedAt
+  /// set — must not be recreated for as long as this row exists, or every
+  /// Archive click on a still-open condition would be silently undone by
+  /// the very next reconcile pass).
+  dismissedAt    DateTime?
   createdAt      DateTime             @default(now())
   metadata       Json?
 

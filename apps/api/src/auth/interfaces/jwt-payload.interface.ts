@@ -8,6 +8,8 @@ export interface JwtPayload {
   sub: string;
   /// membershipId — identifies which organization this session is scoped to
   mid: string;
+  /// Credential/session generation at issuance time.
+  sv?: number;
   /// Separates staff tokens from customer-portal JWTs that share the signing secret.
   typ?: "staff";
 }

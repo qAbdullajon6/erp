@@ -44,6 +44,17 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (membership.user.status !== "ACTIVE") {
       throw new UnauthorizedException("User account is not active");
     }
+    if (membership.user.deletedAt) {
+      throw new UnauthorizedException("User account is not active");
+    }
+    // `sv` is optional only for JWTs issued before this hardening deployment;
+    // those map to the migration's default generation zero.
+    if ((payload.sv ?? 0) !== membership.user.sessionVersion) {
+      throw new UnauthorizedException("Session is no longer valid");
+    }
+    if (membership.organization.deletedAt) {
+      throw new UnauthorizedException("Organization is not active");
+    }
     if (membership.organization.status !== "ACTIVE") {
       // Platform staff keep a JWT tied to a "home" membership for Platform
       // Console work. Suspending that org must NOT lock them out of restoring

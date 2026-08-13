@@ -7,6 +7,9 @@ import { ChangePasswordDto } from "./dto/change-password.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RefreshDto } from "./dto/refresh.dto";
 import { RegisterDto } from "./dto/register.dto";
+import { ForgotPasswordDto } from "./dto/forgot-password.dto";
+import { ResetPasswordDto } from "./dto/reset-password.dto";
+import { ValidateResetTokenDto } from "./dto/validate-reset-token.dto";
 import { CurrentUser } from "./decorators/current-user.decorator";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import type { CurrentUserPayload } from "./interfaces/current-user.interface";
@@ -43,6 +46,32 @@ export class AuthController {
     return this.authService.refresh(dto, { ip: req.ip });
   }
 
+  @Post("forgot-password")
+  @Throttle(AUTH_THROTTLE)
+  @HttpCode(200)
+  async forgotPassword(@Body() dto: ForgotPasswordDto, @Req() req: Request) {
+    await this.authService.forgotPassword(dto, { ip: req.ip });
+    return {
+      success: true,
+      message: "If an eligible account exists, a password reset link has been sent.",
+    };
+  }
+
+  @Post("reset-password/validate")
+  @Throttle(AUTH_REFRESH_THROTTLE)
+  @HttpCode(200)
+  validateResetToken(@Body() dto: ValidateResetTokenDto) {
+    return this.authService.validateResetToken(dto);
+  }
+
+  @Post("reset-password")
+  @Throttle(AUTH_THROTTLE)
+  @HttpCode(200)
+  async resetPassword(@Body() dto: ResetPasswordDto, @Req() req: Request) {
+    await this.authService.resetPassword(dto, { ip: req.ip });
+    return { success: true };
+  }
+
   @UseGuards(JwtAuthGuard)
   @Post("logout")
   @HttpCode(200)
@@ -66,6 +95,7 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Post("change-password")
+  @Throttle(AUTH_THROTTLE)
   @HttpCode(200)
   async changePassword(@Body() dto: ChangePasswordDto, @CurrentUser() user: CurrentUserPayload) {
     await this.authService.changePassword(dto, user);

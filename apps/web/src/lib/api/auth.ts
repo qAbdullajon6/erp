@@ -71,6 +71,22 @@ export interface CurrentUser {
 class AuthAPI {
   private baseUrl = '/api';
 
+  private async publicAuthRequest(path: string, body: object): Promise<unknown> {
+    const response = await fetch(`${this.baseUrl}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const message = payload?.error?.message ?? payload?.message;
+      throw new Error(
+        Array.isArray(message) ? message[0] : message || 'Authentication request failed',
+      );
+    }
+    return payload?.data;
+  }
+
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
     try {
       const response = await fetch(`${this.baseUrl}/auth/login`, {
@@ -146,8 +162,20 @@ class AuthAPI {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || 'Failed to change password');
+      throw new Error(error?.error?.message ?? error.message ?? 'Failed to change password');
     }
+  }
+
+  async forgotPassword(email: string): Promise<void> {
+    await this.publicAuthRequest('/auth/forgot-password', { email });
+  }
+
+  async validateResetToken(token: string): Promise<void> {
+    await this.publicAuthRequest('/auth/reset-password/validate', { token });
+  }
+
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    await this.publicAuthRequest('/auth/reset-password', { token, newPassword });
   }
 }
 

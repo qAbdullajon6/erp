@@ -4,6 +4,7 @@ import type {
   DemoConfirmationEmailMessage,
   InvitationEmailMessage,
   LeadNotificationEmailMessage,
+  PasswordResetEmailMessage,
   RawEmailMessage,
 } from "./mail.service";
 
@@ -14,6 +15,10 @@ export interface StoredInvitationEmail extends InvitationEmailMessage {
 
 export interface StoredCustomerPortalInvitationEmail extends CustomerPortalInvitationEmailMessage {
   /// When the outbox captured the message (not a real send timestamp).
+  capturedAt: Date;
+}
+
+export interface StoredPasswordResetEmail extends PasswordResetEmailMessage {
   capturedAt: Date;
 }
 
@@ -42,6 +47,7 @@ export interface StoredDemoConfirmationEmail extends DemoConfirmationEmailMessag
 export class MailOutbox {
   private readonly messages: StoredInvitationEmail[] = [];
   private readonly customerPortalMessages: StoredCustomerPortalInvitationEmail[] = [];
+  private readonly passwordResetMessages: StoredPasswordResetEmail[] = [];
 
   record(message: InvitationEmailMessage): void {
     this.messages.push({ ...message, capturedAt: new Date() });
@@ -65,6 +71,18 @@ export class MailOutbox {
 
   lastCustomerPortalInvitation(): StoredCustomerPortalInvitationEmail | undefined {
     return this.customerPortalMessages[this.customerPortalMessages.length - 1];
+  }
+
+  recordPasswordReset(message: PasswordResetEmailMessage): void {
+    this.passwordResetMessages.push({ ...message, capturedAt: new Date() });
+  }
+
+  listPasswordResets(): readonly StoredPasswordResetEmail[] {
+    return [...this.passwordResetMessages];
+  }
+
+  lastPasswordReset(): StoredPasswordResetEmail | undefined {
+    return this.passwordResetMessages[this.passwordResetMessages.length - 1];
   }
 
   private readonly rawMessages: Array<RawEmailMessage & { capturedAt: Date }> = [];
@@ -108,6 +126,7 @@ export class MailOutbox {
   clear(): void {
     this.messages.length = 0;
     this.customerPortalMessages.length = 0;
+    this.passwordResetMessages.length = 0;
     this.rawMessages.length = 0;
     this.leadNotifications.length = 0;
     this.demoConfirmations.length = 0;
