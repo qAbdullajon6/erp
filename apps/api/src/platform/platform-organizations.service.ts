@@ -456,6 +456,38 @@ export class PlatformOrganizationsService {
     return this.auth.issueSessionForMembership(actor.userId, membershipId);
   }
 
+  /// Closes every open Open ERP session for one operator and tears down the
+  /// tenant-side credentials each of them minted. Used when the operator's own
+  /// staff flag is revoked: `isPlatformAdmin` is read fresh on every request, so
+  /// the moment it flips false JwtStrategy stops applying the support-session
+  /// ownership rules — and the temporary tenant ADMIN membership Open ERP
+  /// created would otherwise keep working as an ordinary membership.
+  async endAllSupportSessions(userId: string): Promise<number> {
+    const open = await this.prisma.platformSupportSession.findMany({
+      where: { userId, endedAt: null },
+      select: {
+        targetOrganizationId: true,
+        targetMembershipId: true,
+        homeMembershipId: true,
+      },
+    });
+    if (open.length === 0) return 0;
+
+    await this.prisma.platformSupportSession.updateMany({
+      where: { userId, endedAt: null },
+      data: { endedAt: new Date() },
+    });
+    for (const session of open) {
+      await this.revokeSupportTenantAccess({
+        userId,
+        targetOrganizationId: session.targetOrganizationId,
+        targetMembershipId: session.targetMembershipId,
+        homeMembershipId: session.homeMembershipId,
+      });
+    }
+    return open.length;
+  }
+
   /// Ends the tenant-side credentials minted for an Open ERP session:
   /// refresh tokens for the target org, and (when the target membership is
   /// not the operator's Platform Console home) the temporary ADMIN

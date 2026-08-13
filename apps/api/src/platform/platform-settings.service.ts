@@ -2,12 +2,14 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
+import { PlatformOrganizationsService } from "./platform-organizations.service";
 
 @Injectable()
 export class PlatformSettingsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly organizations: PlatformOrganizationsService,
   ) {}
 
   async listStaff() {
@@ -57,12 +59,22 @@ export class PlatformSettingsService {
       },
     });
 
+    // Revoking the flag must also end any Open ERP session the operator is
+    // currently inside. Without this they keep the temporary tenant ADMIN
+    // membership that Open ERP minted: it stays ACTIVE, and with the staff flag
+    // gone JwtStrategy no longer requires it to match a live support session, so
+    // a de-staffed operator would hold ordinary ADMIN rights over the last
+    // customer they were supporting.
+    const endedSupportSessions = isPlatformAdmin
+      ? 0
+      : await this.organizations.endAllSupportSessions(userId);
+
     await this.audit.log({
       actorUserId: actor.userId,
       action: isPlatformAdmin ? "platform.staff.grant" : "platform.staff.revoke",
       entityType: "User",
       entityId: userId,
-      metadata: { email: user.email },
+      metadata: { email: user.email, ...(endedSupportSessions ? { endedSupportSessions } : {}) },
     });
 
     return updated;
