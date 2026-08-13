@@ -141,6 +141,10 @@
     text-rendering: optimizeLegibility;
     /* The marketing nav is a set of in-page #anchors; without this they jump. */
     scroll-behavior: smooth;
+    /* The product is dark, but the browser did not know that: native <select>
+       menus, date pickers, scrollbars and autofilled fields all rendered in
+       light OS chrome against it. */
+    color-scheme: dark;
   }
   /* Vestibular safety: honour the OS "reduce motion" setting. */
 @media (prefers-reduced-motion: reduce) {
