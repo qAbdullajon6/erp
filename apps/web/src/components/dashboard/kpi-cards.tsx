@@ -99,7 +99,7 @@ export function KpiCards({ data, loading }: KpiCardsProps) {
             <Skeleton key={i} className="h-[120px] rounded-2xl" />
           ))}
         </div>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3 min-[720px]:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className="h-[72px] rounded-xl" />
           ))}
@@ -185,16 +185,27 @@ export function KpiCards({ data, loading }: KpiCardsProps) {
         />
       </div>
 
-      <div className="grid grid-cols-3 gap-3 opacity-90">
-        {secondaryCards.map((card) => (
-          <MetricCard
+      {/* Three across on a 375px phone left ~110px a tile, which wrapped the
+          label onto two lines and cut the note down to "A…". Two across until
+          there is room for three, with the odd one out taking the full row. */}
+      <div className="grid grid-cols-2 gap-3 opacity-90 min-[720px]:grid-cols-3">
+        {secondaryCards.map((card, index) => (
+          <div
             key={card.label}
-            label={card.label}
-            value={card.value}
-            icon={card.icon}
-            size="sm"
-            note={card.note}
-          />
+            className={cn(
+              index === secondaryCards.length - 1 && secondaryCards.length % 2 === 1
+                ? 'col-span-2 min-[720px]:col-span-1'
+                : undefined,
+            )}
+          >
+            <MetricCard
+              label={card.label}
+              value={card.value}
+              icon={card.icon}
+              size="sm"
+              note={card.note}
+            />
+          </div>
         ))}
       </div>
     </div>

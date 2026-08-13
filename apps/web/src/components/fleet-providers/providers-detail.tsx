@@ -238,9 +238,9 @@ export function ProvidersDetail() {
                 }
               />
               <OverviewStat
-                label="Connection"
-                value="Not available"
-                hint="No provider connection API"
+                label="Reporting"
+                value={summary.total > 0 ? `${summary.active} of ${summary.total}` : 'No devices'}
+                hint="Devices currently enabled for this provider"
               />
             </section>
 

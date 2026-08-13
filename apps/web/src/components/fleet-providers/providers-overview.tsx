@@ -87,8 +87,8 @@ export function ProvidersOverview() {
   return (
     <div className="space-y-5 p-4 sm:p-6" data-testid="providers-overview">
       <PageHeader
-        title="GPS Providers"
-        subtitle="Administrator view of supported ingest providers and their registered devices. Connection credentials beyond device secrets are not exposed by the API."
+        title="GPS providers"
+        subtitle="The tracking services this workspace can receive positions from, and how many of your devices report through each."
         action={
           <Button size="sm" variant="outline" asChild>
             <Link to="/app/devices">
@@ -99,14 +99,13 @@ export function ProvidersOverview() {
         }
       />
 
+      {/* This paragraph used to explain, to a paying customer, which endpoints
+          the backend does not have and which database columns the figures come
+          from. What an operator needs to know is where to look when a provider
+          looks quiet. */}
       <p className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-        Provider connection status:{' '}
-        <span className="font-medium text-foreground">Not available</span> —
-        the backend has no provider-level connection or OAuth health endpoints.
-        Status below is derived only from registered devices (
-        <code className="text-[10px]">active</code>,{' '}
-        <code className="text-[10px]">archivedAt</code>,{' '}
-        <code className="text-[10px]">lastSeenAt</code>).
+        A provider is healthy when its devices are reporting. If one looks quiet,
+        open it to see which devices have stopped sending positions.
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -179,8 +178,10 @@ function ProviderCard({
           </p>
         ) : null}
         <div className="mt-2 flex justify-between gap-2">
-          <span>Connection</span>
-          <span className="font-medium text-foreground">Not available</span>
+          <span>Reporting</span>
+          <span className="font-medium text-foreground">
+            {summary.active > 0 ? `${summary.active} of ${summary.total} devices` : 'No devices yet'}
+          </span>
         </div>
       </div>
     </Link>
