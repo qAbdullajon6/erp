@@ -18,7 +18,9 @@ const TabsList = React.forwardRef<
       // container and scrolling inside keeps every tab reachable and the page
       // still. justify-start rather than centre: a centred overflowing strip
       // clips its first tab off the left edge, where nothing can scroll to it.
-      "inline-flex h-9 max-w-full items-center justify-start overflow-x-auto rounded-lg bg-muted p-1 text-muted-foreground scrollbar-thin",
+      // scroll-hint-x puts a shadow on whichever edge still has tabs behind it,
+      // so a half-cut label reads as "scroll for more" rather than as a bug.
+      "inline-flex h-9 max-w-full items-center justify-start overflow-x-auto rounded-lg bg-muted p-1 text-muted-foreground scrollbar-thin scroll-hint-x [--scroll-hint-bg:var(--color-muted)]",
       className,
     )}
     {...props}

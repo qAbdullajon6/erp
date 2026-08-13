@@ -19,7 +19,7 @@ export function DateRangeFilter({ value, onPresetChange, onCustomChange }: DateR
       {/* One scrollable row rather than a wrapping grid: on a phone these five
           chips wrapped into a five-deep stack that pushed the report itself off
           the first screen. */}
-      <div className="-mx-1 flex max-w-full gap-2 overflow-x-auto px-1 scrollbar-thin">
+      <div className="-mx-1 flex max-w-full gap-2 overflow-x-auto px-1 scrollbar-thin scroll-hint-x">
         {PRESETS.map((preset) => (
           <button
             key={preset}

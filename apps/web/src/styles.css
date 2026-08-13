@@ -361,3 +361,25 @@
     background-color: var(--color-border);
   }
 }
+
+/* A horizontally scrollable strip (tab bars, wide tables) looks identical to
+   one that is simply cut off, and on platforms with overlay scrollbars there is
+   nothing on screen to say otherwise until you happen to drag it. These two
+   pairs of gradients solve that without measuring anything in JavaScript: the
+   solid pair scrolls with the content and covers the shadow pair, which is
+   pinned to the element, so a shadow is revealed on an edge exactly when
+   content is hidden past it and hides again when you reach the end. Set
+   --scroll-hint-bg to whatever the strip sits on, or the cover will not match. */
+@utility scroll-hint-x {
+  --scroll-hint-bg: var(--color-surface);
+
+  background-image:
+    linear-gradient(to right, var(--scroll-hint-bg) 60%, transparent),
+    linear-gradient(to left, var(--scroll-hint-bg) 60%, transparent),
+    linear-gradient(to right, oklch(0 0 0 / 0.4), transparent),
+    linear-gradient(to left, oklch(0 0 0 / 0.4), transparent);
+  background-position: left center, right center, left center, right center;
+  background-size: 28px 100%, 28px 100%, 14px 100%, 14px 100%;
+  background-repeat: no-repeat;
+  background-attachment: local, local, scroll, scroll;
+}
