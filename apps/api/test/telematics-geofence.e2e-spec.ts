@@ -47,13 +47,15 @@ describe("Telematics Geofence E2E", () => {
     await app.init();
     prisma = app.get(PrismaService);
 
-    // Clean up
-    await prisma.geofenceEvent.deleteMany({});
-    await prisma.geofence.deleteMany({});
-    await prisma.gpsPosition.deleteMany({});
-    await prisma.telematicsDevice.deleteMany({});
-
-    // Setup
+    // This used to open with four unfiltered `deleteMany({})` calls. An empty
+    // Prisma filter matches every row in the table, so running the e2e suites
+    // in parallel — which is the default — meant this suite deleted the
+    // devices, geofences and positions belonging to every *other* suite's
+    // fixtures mid-run. tenant-isolation.e2e-spec.ts failed here, looking for
+    // a device it had created and this suite had silently destroyed.
+    //
+    // Nothing below needs a clean table: every assertion is scoped to an id
+    // this suite created, or is a lower bound.
     adminToken = await loginAs(app, SEEDED_ADMIN_EMAIL);
 
     // Unique per run. These were the constants "GEO-TEST-001" / "GEO-01" /
@@ -94,9 +96,10 @@ describe("Telematics Geofence E2E", () => {
   });
 
   afterAll(async () => {
-    await prisma.geofenceEvent.deleteMany({});
-    await prisma.geofence.deleteMany({});
-    await prisma.gpsPosition.deleteMany({});
+    const own = { in: [circleGeofenceId, polygonGeofenceId].filter(Boolean) };
+    await prisma.geofenceEvent.deleteMany({ where: { geofenceId: own } });
+    await prisma.geofence.deleteMany({ where: { id: own } });
+    await prisma.gpsPosition.deleteMany({ where: { deviceId } });
     await prisma.telematicsDevice.deleteMany({ where: { id: deviceId } });
     await app.close();
   });

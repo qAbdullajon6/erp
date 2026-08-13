@@ -46,11 +46,10 @@ describe("Telematics Trip Lifecycle E2E", () => {
     await app.init();
     prisma = app.get(PrismaService);
 
-    // Clean up
-    await prisma.gpsPosition.deleteMany({});
-    await prisma.trip.deleteMany({});
-    await prisma.telematicsDevice.deleteMany({});
-
+    // No table-wide wipe here. An empty Prisma filter matches every row, and
+    // the e2e suites run in parallel, so this used to delete the devices,
+    // trips and positions belonging to other suites' fixtures mid-run. Every
+    // assertion below is scoped to this suite's own vehicle or trip id.
     adminToken = await loginAs(app, SEEDED_ADMIN_EMAIL);
 
     // Create vehicle. Unique per run — the fixed "TRIP-TEST-001" survived into
@@ -91,8 +90,8 @@ describe("Telematics Trip Lifecycle E2E", () => {
   });
 
   afterAll(async () => {
-    await prisma.gpsPosition.deleteMany({});
-    await prisma.trip.deleteMany({});
+    await prisma.gpsPosition.deleteMany({ where: { deviceId } });
+    await prisma.trip.deleteMany({ where: { vehicleId } });
     await prisma.telematicsDevice.deleteMany({ where: { id: deviceId } });
     await app.close();
   });

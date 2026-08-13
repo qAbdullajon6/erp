@@ -115,14 +115,10 @@ describe("Fleet Telematics E2E", () => {
 
     prisma = app.get(PrismaService);
 
-    // Clean up telematics data
-    await prisma.gpsPosition.deleteMany({});
-    await prisma.vehicleTelematicsState.deleteMany({});
-    await prisma.trip.deleteMany({});
-    await prisma.geofenceEvent.deleteMany({});
-    await prisma.telematicsAlert.deleteMany({});
-    await prisma.telematicsDevice.deleteMany({});
-
+    // No table-wide wipe. An empty Prisma filter matches every row, and the
+    // e2e suites run in parallel, so opening with six of them deleted other
+    // suites' fixtures out from under them mid-run. Every assertion below is a
+    // lower bound or scoped to this suite's own vehicle, device or trip.
     const org = await prisma.organization.findFirst({ where: { slug: SEEDED_ORG_SLUG } });
     if (!org) throw new Error(`Seeded organisation "${SEEDED_ORG_SLUG}" not found — is the database seeded?`);
     organizationId = org.id;
@@ -170,12 +166,15 @@ describe("Fleet Telematics E2E", () => {
   });
 
   afterAll(async () => {
-    await prisma.gpsPosition.deleteMany({});
-    await prisma.vehicleTelematicsState.deleteMany({});
-    await prisma.trip.deleteMany({});
-    await prisma.geofenceEvent.deleteMany({});
-    await prisma.telematicsAlert.deleteMany({});
-    await prisma.telematicsDevice.deleteMany({});
+    const own = { vehicleId };
+    await prisma.gpsPosition.deleteMany({ where: own });
+    await prisma.vehicleTelematicsState.deleteMany({ where: own });
+    await prisma.trip.deleteMany({ where: own });
+    await prisma.geofenceEvent.deleteMany({ where: own });
+    await prisma.telematicsAlert.deleteMany({ where: own });
+    await prisma.telematicsDevice.deleteMany({ where: own });
+    /// The vehicle itself stays: dispatches created here reference it, and its
+    /// code and plate are unique per run, so it costs nothing to leave behind.
     await app.close();
   });
 

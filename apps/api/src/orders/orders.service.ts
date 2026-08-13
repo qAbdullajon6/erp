@@ -3,7 +3,7 @@ import { Order, OrderStatus, Prisma, DispatchStatus, UsageMetricType } from "@pr
 import { AuditService } from "../audit/audit.service";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { isValidEntityCode } from "../common/sequential-code.util";
-import { isScheduleLate, startOfTodayUtc } from "../common/schedule-lateness.util";
+import { isScheduleLate } from "../common/schedule-lateness.util";
 import { AssignmentPolicy } from "../dispatch/assignment/assignment.policy";
 import { notifyDriverOfAssignment } from "../dispatch/driver/driver-assignment-notify";
 import { DispatchesService } from "../dispatch/dispatches.service";

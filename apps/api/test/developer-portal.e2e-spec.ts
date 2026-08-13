@@ -741,15 +741,13 @@ describe('Developer Portal (e2e)', () => {
       // (interval disabled) waited forever. It must now coalesce instead.
       receivedRequests = [];
 
-      // Two pieces of leftover state used to decide this test instead of the
-      // behaviour it is guarding. Earlier tests in this block deliberately make
-      // the receiver fail, which trips the endpoint's circuit breaker — an open
-      // circuit returns a delivery to PENDING with a backoff rather than
-      // sending it. And nothing clears this endpoint's queue between runs, so
-      // on a reused disposable database drain() spent its batch on a backlog of
-      // older PENDING rows and never reached the two enqueued here.
+      // Earlier tests in this block deliberately make the receiver fail, which
+      // trips the endpoint's circuit breaker — an open circuit returns a
+      // delivery to PENDING with a backoff rather than sending it.
       dispatcher.resetCircuitForManualRetry(hookId);
-      await prisma.webhookDelivery.deleteMany({ where: { status: 'PENDING' } });
+      await prisma.webhookDelivery.deleteMany({
+        where: { endpointId: hookId, status: 'PENDING' },
+      });
 
       const first = await dispatcher.enqueue({
         organizationId: createdOrganizationIds[0],
@@ -768,13 +766,24 @@ describe('Developer Portal (e2e)', () => {
         payload: { wave: 2 },
       });
       await inFlight;
-      await dispatcher.drain();
 
-      const rows = await prisma.webhookDelivery.findMany({
-        where: { id: { in: [first.id, second.id] } },
-        select: { status: true },
-      });
-      expect(rows.map((r) => r.status).sort()).toEqual(['DELIVERED', 'DELIVERED']);
+      // The queue is process-wide and this suite shares a database with every
+      // other e2e suite, so a single drain's batch is not guaranteed to reach
+      // these two rows — it may be spent on another organization's backlog.
+      // What the old latch broke was that the second row was *dropped*: no
+      // amount of draining would ever send it. So drain until both land, and
+      // let the bound fail the test if one never does.
+      const rows = async () =>
+        prisma.webhookDelivery.findMany({
+          where: { id: { in: [first.id, second.id] } },
+          select: { status: true },
+        });
+      for (let attempt = 0; attempt < 10; attempt++) {
+        if ((await rows()).every((r) => r.status === 'DELIVERED')) break;
+        await dispatcher.drain();
+      }
+
+      expect((await rows()).map((r) => r.status).sort()).toEqual(['DELIVERED', 'DELIVERED']);
     });
 
     it('de-duplicates an enqueue by idempotency key', async () => {

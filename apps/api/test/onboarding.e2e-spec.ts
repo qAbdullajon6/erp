@@ -73,18 +73,18 @@ describe("Onboarding (e2e)", () => {
     return body.data;
   }
 
-  function getProgress(accessToken: string) {
-    return request(app.getHttpServer())
+  async function getProgress(accessToken: string): Promise<ProgressBody["data"]> {
+    const res = await request(app.getHttpServer())
       .get("/onboarding/progress")
       .set("Authorization", `Bearer ${accessToken}`)
       .expect(200);
+    return (res.body as ProgressBody).data;
   }
 
   it("reports every step outstanding for a freshly registered organization", async () => {
     const admin = await registerAdmin();
 
-    const res = await getProgress(admin.accessToken);
-    const progress = (res.body as ProgressBody).data;
+    const progress = await getProgress(admin.accessToken);
 
     expect(progress.organizationId).toBe(admin.organization.id);
     expect(progress.completed).toBe(false);
@@ -110,28 +110,28 @@ describe("Onboarding (e2e)", () => {
       .set(auth)
       .send({ legalName: "Onboarding Logistics LLC" })
       .expect(200);
-    expect((await getProgress(admin.accessToken)).body.data.steps.organizationProfile).toBe(true);
+    expect((await getProgress(admin.accessToken)).steps.organizationProfile).toBe(true);
 
     const customer = await request(app.getHttpServer())
       .post("/customers")
       .set(auth)
       .send({ companyName: "Acme Logistics", contactName: "Jane Doe" })
       .expect(201);
-    expect((await getProgress(admin.accessToken)).body.data.steps.firstCustomer).toBe(true);
+    expect((await getProgress(admin.accessToken)).steps.firstCustomer).toBe(true);
 
     await request(app.getHttpServer())
       .post("/drivers")
       .set(auth)
       .send({ firstName: "Aziz", lastName: "Karimov", phone: "+998901234567" })
       .expect(201);
-    expect((await getProgress(admin.accessToken)).body.data.steps.firstDriver).toBe(true);
+    expect((await getProgress(admin.accessToken)).steps.firstDriver).toBe(true);
 
     await request(app.getHttpServer())
       .post("/vehicles")
       .set(auth)
       .send({ plateNumber: `01A${Math.floor(Math.random() * 900 + 100)}BC`, type: "truck" })
       .expect(201);
-    expect((await getProgress(admin.accessToken)).body.data.steps.firstVehicle).toBe(true);
+    expect((await getProgress(admin.accessToken)).steps.firstVehicle).toBe(true);
 
     const today = new Date().toISOString().slice(0, 10);
     await request(app.getHttpServer())
@@ -150,9 +150,9 @@ describe("Onboarding (e2e)", () => {
       })
       .expect(201);
 
-    const final = (await getProgress(admin.accessToken)).body as ProgressBody;
-    expect(final.data.steps.firstOrder).toBe(true);
-    expect(final.data.completed).toBe(true);
+    const final = await getProgress(admin.accessToken);
+    expect(final.steps.firstOrder).toBe(true);
+    expect(final.completed).toBe(true);
   });
 
   it("remembers that an admin dismissed the checklist", async () => {
@@ -163,7 +163,6 @@ describe("Onboarding (e2e)", () => {
       .set("Authorization", `Bearer ${admin.accessToken}`)
       .expect(200);
 
-    const progress = (await getProgress(admin.accessToken)).body as ProgressBody;
-    expect(progress.data.skipped).toBe(true);
+    expect((await getProgress(admin.accessToken)).skipped).toBe(true);
   });
 });
