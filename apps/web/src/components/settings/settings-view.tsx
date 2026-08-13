@@ -1,56 +1,48 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Building2, CreditCard, Image, Mail, UserRound, Users } from 'lucide-react';
+import { useEffect, useMemo } from 'react';
+import { useNavigate, useSearch } from '@tanstack/react-router';
+import { Building2, FileText, UserRound, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCurrentUser } from '@/lib/api/auth';
 import { cn } from '@/lib/utils';
-import { CompanyBrandingSection } from './company-branding-section';
+import type { SettingsTab } from '@/routes/app.settings';
 import { CompanyGeneralSection } from './company-general-section';
-import { CompanyLegalSection } from './company-legal-section';
-import { InvitationsSection } from './invitations-section';
-import { MembersTab } from './members-tab';
+import { CompanyIdentitySection } from './company-identity-section';
+import { MembersSection } from './members-section';
 import { ProfileTab } from './profile-tab';
 
-type SectionId =
-  | 'company-general'
-  | 'company-legal'
-  | 'company-branding'
-  | 'team-members'
-  | 'team-invitations'
-  | 'personal-profile';
-
 interface SectionDefinition {
-  id: SectionId;
+  id: SettingsTab;
   label: string;
-  group: 'Company' | 'Team' | 'Personal';
+  group: 'Company' | 'Personal';
   icon: typeof Building2;
-  /// Team management is ADMIN-only because every mutation behind it is; the
+  /// Member management is ADMIN-only because every mutation behind it is; the
   /// Company sections render read-only for everyone else rather than hiding
   /// information a dispatcher may legitimately need to look up.
   adminOnly: boolean;
 }
 
 const SECTIONS: SectionDefinition[] = [
-  { id: 'company-general', label: 'General', group: 'Company', icon: Building2, adminOnly: false },
-  { id: 'company-legal', label: 'Legal & tax', group: 'Company', icon: CreditCard, adminOnly: false },
-  { id: 'company-branding', label: 'Branding', group: 'Company', icon: Image, adminOnly: false },
-  { id: 'team-members', label: 'Members', group: 'Team', icon: Users, adminOnly: true },
-  { id: 'team-invitations', label: 'Invitations', group: 'Team', icon: Mail, adminOnly: true },
-  { id: 'personal-profile', label: 'Your profile', group: 'Personal', icon: UserRound, adminOnly: false },
+  { id: 'general', label: 'General', group: 'Company', icon: Building2, adminOnly: false },
+  { id: 'identity', label: 'Company identity', group: 'Company', icon: FileText, adminOnly: false },
+  { id: 'members', label: 'Members', group: 'Company', icon: Users, adminOnly: true },
+  { id: 'profile', label: 'Your profile', group: 'Personal', icon: UserRound, adminOnly: false },
 ];
 
-const GROUP_ORDER: SectionDefinition['group'][] = ['Company', 'Team', 'Personal'];
+const GROUP_ORDER: SectionDefinition['group'][] = ['Company', 'Personal'];
 
 const GROUP_DESCRIPTIONS: Record<SectionDefinition['group'], string> = {
-  Company: 'Shared settings for the whole organization',
-  Team: 'Who has access, and with which role',
+  Company: 'Shared by everyone in this workspace',
   Personal: 'Only affects your own account',
 };
 
 export function SettingsView() {
   const { data: currentUser, loading, error, refetch } = useCurrentUser();
-  const [activeSection, setActiveSection] = useState<SectionId>('company-general');
+  const navigate = useNavigate({ from: '/app/settings' });
+  const search = useSearch({ from: '/app/settings' });
 
+  /// The session payload is cached across the whole app; a role change made
+  /// elsewhere should be reflected on the screen that acts on roles.
   useEffect(() => {
     refetch();
   }, [refetch]);
@@ -64,13 +56,20 @@ export function SettingsView() {
     [isAdmin],
   );
 
-  /// A non-admin landing on a Team section (or a stale selection after a role
-  /// change) would otherwise render nothing at all.
-  useEffect(() => {
-    if (!sections.some((section) => section.id === activeSection)) {
-      setActiveSection('company-general');
-    }
-  }, [sections, activeSection]);
+  /// A non-admin who follows a link to ?tab=members — or keeps a bookmark from
+  /// before their role changed — would otherwise land on a section that renders
+  /// nothing at all.
+  const requested = search.tab;
+  const activeSection: SettingsTab = sections.some((section) => section.id === requested)
+    ? (requested as SettingsTab)
+    : 'general';
+
+  const selectSection = (id: SettingsTab) => {
+    void navigate({
+      to: '/app/settings',
+      search: () => (id === 'general' ? {} : { tab: id }),
+    });
+  };
 
   if (loading) {
     return <Skeleton className="h-96 rounded-xl" />;
@@ -88,7 +87,7 @@ export function SettingsView() {
   }
 
   /// A driver has no company administration surface at all — no company fields,
-  /// no team management — so the nav would be a single item. Show the profile
+  /// no member management — so the nav would be a single item. Show the profile
   /// directly instead of a menu with one entry.
   if (isDriver) {
     return (
@@ -116,15 +115,13 @@ export function SettingsView() {
         <SettingsNav
           sections={sections}
           activeSection={activeSection}
-          onSelect={setActiveSection}
+          onSelect={selectSection}
         />
         <div className="min-w-0">
-          {activeSection === 'company-general' && <CompanyGeneralSection isAdmin={isAdmin} />}
-          {activeSection === 'company-legal' && <CompanyLegalSection isAdmin={isAdmin} />}
-          {activeSection === 'company-branding' && <CompanyBrandingSection isAdmin={isAdmin} />}
-          {activeSection === 'team-members' && <MembersTab />}
-          {activeSection === 'team-invitations' && <InvitationsSection />}
-          {activeSection === 'personal-profile' && <ProfileTab />}
+          {activeSection === 'general' && <CompanyGeneralSection isAdmin={isAdmin} />}
+          {activeSection === 'identity' && <CompanyIdentitySection isAdmin={isAdmin} />}
+          {activeSection === 'members' && <MembersSection />}
+          {activeSection === 'profile' && <ProfileTab />}
         </div>
       </div>
     </div>
@@ -140,12 +137,12 @@ function SettingsNav({
   onSelect,
 }: {
   sections: SectionDefinition[];
-  activeSection: SectionId;
-  onSelect: (id: SectionId) => void;
+  activeSection: SettingsTab;
+  onSelect: (id: SettingsTab) => void;
 }) {
   return (
     <nav aria-label="Settings sections" className="lg:sticky lg:top-4">
-      <div className="flex gap-2 overflow-x-auto pb-2 lg:hidden">
+      <div className="scroll-hint-x flex gap-2 overflow-x-auto pb-2 lg:hidden">
         {sections.map((section) => (
           <SettingsNavButton
             key={section.id}
@@ -194,7 +191,7 @@ function SettingsNavButton({
 }: {
   section: SectionDefinition;
   isActive: boolean;
-  onSelect: (id: SectionId) => void;
+  onSelect: (id: SettingsTab) => void;
   className?: string;
 }) {
   const Icon = section.icon;

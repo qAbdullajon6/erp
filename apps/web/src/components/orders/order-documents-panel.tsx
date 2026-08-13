@@ -23,7 +23,6 @@ import {
 } from '@/lib/api/orders';
 import type { Invoice } from '@/lib/api/invoices';
 import { useInvoiceQuery } from '@/lib/api/invoices';
-import { useCurrentUser } from '@/lib/api/auth';
 import { useOrganizationQuery } from '@/lib/api/organizations';
 import { InvoiceDetailSheet } from '@/components/finance/invoice-detail-sheet';
 import { printInvoiceDocument } from '@/components/finance/invoice-print';
@@ -326,7 +325,6 @@ export function OrderDocumentsPanel({
   invoice,
   canViewInvoices,
 }: OrderDocumentsPanelProps) {
-  const { data: currentUser } = useCurrentUser();
   /// Printing needs the full company identity, not the session's org summary.
   const { data: organization } = useOrganizationQuery();
   const { data: documents, loading, error, refetch } = useOrderDocuments(orderId);

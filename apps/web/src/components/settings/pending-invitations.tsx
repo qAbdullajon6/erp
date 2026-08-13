@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { StatusBadge, statusLabel } from '@/components/shared/status-badge';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-states';
+import { describeError } from '@/lib/api/describe-error';
 import { formatDate } from '@/lib/format';
 import { useCurrentUser } from '@/lib/api/auth';
 import {
@@ -28,7 +29,7 @@ function displayStatus(invitation: InvitationListItem): string {
   return invitation.status;
 }
 
-/// Rendered inside InvitationsSection, which SettingsView already gates behind
+/// Rendered inside MembersSection, which SettingsView already gates behind
 /// `isAdmin` — no RBAC check is repeated here. The surrounding section supplies
 /// the heading and card, so this renders only the table.
 export function PendingInvitations() {
@@ -48,7 +49,7 @@ export function PendingInvitations() {
       await resend.mutateAsync({ organizationId, invitationId });
       toast.success('Invitation resent');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to resend invitation');
+      toast.error(describeError(err, 'Failed to resend invitation'));
     }
   };
 
@@ -58,7 +59,7 @@ export function PendingInvitations() {
       await revoke.mutateAsync({ organizationId, invitationId });
       toast.success('Invitation revoked');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to revoke invitation');
+      toast.error(describeError(err, 'Failed to revoke invitation'));
     }
   };
 
@@ -68,7 +69,7 @@ export function PendingInvitations() {
           <LoadingState label="Loading invitations…" />
         ) : isError ? (
           <ErrorState
-            message={error instanceof Error ? error.message : 'Failed to load invitations'}
+            message={describeError(error, 'Failed to load invitations')}
             onRetry={() => refetch()}
           />
         ) : !invitations?.length ? (

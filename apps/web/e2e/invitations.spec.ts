@@ -198,9 +198,9 @@ test('6 — Pending Invitations reflects invite, resend and revoke without a rel
   await expect(page.getByText('Invitation revoked')).toBeVisible();
   await expect(row.getByText('Revoked', { exact: true })).toBeVisible();
 
-  // ...and it is persisted, not just optimistic UI.
+  // ...and it is persisted, not just optimistic UI. The section is in the URL,
+  // so a reload comes back to it rather than to the default section.
   await page.reload();
-  await page.getByRole('tab', { name: 'Members' }).click();
   await expect(invitationRow(page, email).getByText('Revoked', { exact: true })).toBeVisible();
 });
 

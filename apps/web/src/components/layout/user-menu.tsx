@@ -39,7 +39,10 @@ export function UserMenu({ currentUser, onSignOut }: { currentUser: CurrentUser 
             limit — "FlowERP Test Logistics" wrapped onto four lines and stretched
             the 4rem topbar to nearly double height. Both strings are in the
             dropdown, so a tablet loses nothing by showing only the avatar. */}
-        <DropdownMenuTrigger className="flex shrink-0 items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-brand/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+        <DropdownMenuTrigger
+          aria-label="Account menu"
+          className="flex shrink-0 items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-brand/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
           <Avatar className="h-8 w-8 shrink-0">
             <AvatarFallback className="bg-gradient-brand text-xs font-semibold text-brand-foreground">
               {initials(user?.firstName, user?.lastName)}
@@ -67,11 +70,19 @@ export function UserMenu({ currentUser, onSignOut }: { currentUser: CurrentUser 
 
           <DropdownMenuSeparator />
 
-          <DropdownMenuItem onClick={() => navigate({ to: '/app/settings' })} className="gap-2">
+          {/* Both entries used to open the same screen at the same section.
+              They now land where their label says. */}
+          <DropdownMenuItem
+            onClick={() => navigate({ to: '/app/settings', search: { tab: 'profile' } })}
+            className="gap-2"
+          >
             <User className="h-4 w-4" />
-            Profile
+            Your profile
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => navigate({ to: '/app/settings' })} className="gap-2">
+          <DropdownMenuItem
+            onClick={() => navigate({ to: '/app/settings', search: {} })}
+            className="gap-2"
+          >
             <Settings className="h-4 w-4" />
             Settings
           </DropdownMenuItem>
