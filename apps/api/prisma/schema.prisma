@@ -218,11 +218,44 @@ enum NotificationCategory {
 /// off an Organization, directly or indirectly.
 model Organization {
   id              String             @id @default(uuid())
+  /// Trading name — what the app shows in nav, headers and emails.
   name            String
   slug            String             @unique
   status          OrganizationStatus @default(ACTIVE)
   defaultCurrency String             @default("USD")
   timezone        String             @default("UTC")
+
+  /// Company identity, all optional because an organization is created (by
+  /// self-registration or lead conversion) long before an admin fills any of
+  /// this in. Every field here exists to be printed on customer-facing
+  /// documents — invoices in particular, which legally need the issuing
+  /// entity's registered name, tax identity and address, not just a trading
+  /// name. Deliberately mirrors Customer's flat address shape
+  /// (address/city/country) so both parties on an invoice are modelled the
+  /// same way, rather than introducing a second address convention.
+  ///
+  /// The registered entity name, when it differs from the trading `name`
+  /// (e.g. "FlowERP Logistics LLC" vs "FlowERP"). Invoices prefer this and
+  /// fall back to `name`.
+  legalName          String?
+  /// State company-registration identifier. Naming and format vary by
+  /// jurisdiction, so it is stored as an opaque string and never parsed.
+  registrationNumber String?
+  /// VAT / TIN, same role as Customer.taxId on the other side of an invoice.
+  taxId              String?
+  /// Where customers reply — not any individual member's email.
+  email              String?
+  phone              String?
+  website            String?
+  address            String?
+  city               String?
+  postalCode         String?
+  country            String?
+  /// Absolute http(s) URL to a logo, rendered on printed documents. A URL
+  /// rather than an upload because this codebase has no blob storage; the
+  /// field is honest about being a reference to an externally hosted image.
+  logoUrl            String?
+
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
   /// Soft-delete marker — an archived organization is never hard-deleted.

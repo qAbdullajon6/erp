@@ -7,6 +7,43 @@ import type { CurrentUserPayload } from "../auth/interfaces/current-user.interfa
 import { UpdateMemberDto } from "./dto/update-member.dto";
 import { UpdateOrganizationDto } from "./dto/update-organization.dto";
 
+/// Three distinct client intentions have to survive the round trip:
+/// `undefined` (field absent — leave the column alone), an explicit value, and
+/// "clear this field". The UI clears by submitting an empty input, so `""` and
+/// whitespace-only input both fold to `null` rather than being stored as an
+/// empty string that would later print as a blank line on an invoice.
+function normalizeOptionalText(value: string | null | undefined): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
+function normalizeOptionalEmail(value: string | null | undefined): string | null | undefined {
+  const normalized = normalizeOptionalText(value);
+  return typeof normalized === "string" ? normalized.toLowerCase() : normalized;
+}
+
+type CompanyIdentityRow = {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  defaultCurrency: string;
+  timezone: string;
+  legalName: string | null;
+  registrationNumber: string | null;
+  taxId: string | null;
+  email: string | null;
+  phone: string | null;
+  website: string | null;
+  address: string | null;
+  city: string | null;
+  postalCode: string | null;
+  country: string | null;
+  logoUrl: string | null;
+};
+
 @Injectable()
 export class OrganizationsService {
   constructor(
@@ -27,22 +64,42 @@ export class OrganizationsService {
     dto: UpdateOrganizationDto,
     actor: CurrentUserPayload,
   ) {
+    const data = {
+      name: dto.name?.trim(),
+      defaultCurrency: dto.defaultCurrency,
+      timezone: dto.timezone,
+      legalName: normalizeOptionalText(dto.legalName),
+      registrationNumber: normalizeOptionalText(dto.registrationNumber),
+      taxId: normalizeOptionalText(dto.taxId),
+      email: normalizeOptionalEmail(dto.email),
+      phone: normalizeOptionalText(dto.phone),
+      website: normalizeOptionalText(dto.website),
+      address: normalizeOptionalText(dto.address),
+      city: normalizeOptionalText(dto.city),
+      postalCode: normalizeOptionalText(dto.postalCode),
+      country: normalizeOptionalText(dto.country),
+      logoUrl: normalizeOptionalText(dto.logoUrl),
+    };
+
     const organization = await this.prisma.organization.update({
       where: { id: organizationId },
-      data: {
-        name: dto.name,
-        defaultCurrency: dto.defaultCurrency,
-        timezone: dto.timezone,
-      },
+      data,
     });
 
+    // Log the normalized values actually written rather than the raw DTO, so
+    // the audit trail matches the stored state (a cleared field reads as null,
+    // not as the "" the client happened to send).
     await this.auditService.log({
       organizationId,
       actorUserId: actor.userId,
       action: "organization.update",
       entityType: "Organization",
       entityId: organizationId,
-      metadata: { changes: dto },
+      metadata: {
+        changes: Object.fromEntries(
+          Object.entries(data).filter(([, value]) => value !== undefined),
+        ),
+      },
     });
 
     return this.toOrganizationResponse(organization);
@@ -190,14 +247,9 @@ export class OrganizationsService {
     return resolvedMembership;
   }
 
-  private toOrganizationResponse(organization: {
-    id: string;
-    name: string;
-    slug: string;
-    status: string;
-    defaultCurrency: string;
-    timezone: string;
-  }) {
+  /// Explicit projection rather than returning the Prisma row, so adding a
+  /// column to Organization never silently widens this public payload.
+  private toOrganizationResponse(organization: CompanyIdentityRow) {
     return {
       id: organization.id,
       name: organization.name,
@@ -205,6 +257,17 @@ export class OrganizationsService {
       status: organization.status,
       defaultCurrency: organization.defaultCurrency,
       timezone: organization.timezone,
+      legalName: organization.legalName,
+      registrationNumber: organization.registrationNumber,
+      taxId: organization.taxId,
+      email: organization.email,
+      phone: organization.phone,
+      website: organization.website,
+      address: organization.address,
+      city: organization.city,
+      postalCode: organization.postalCode,
+      country: organization.country,
+      logoUrl: organization.logoUrl,
     };
   }
 
