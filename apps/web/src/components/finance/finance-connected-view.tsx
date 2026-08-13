@@ -36,7 +36,7 @@ export function FinanceConnectedView() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Financial Management" subtitle="Track invoices, payments, and expenses" />
+      <PageHeader title="Finance" subtitle="Track invoices, payments, and expenses" />
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as FinanceTab)}>
         <TabsList>

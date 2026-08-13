@@ -685,11 +685,11 @@ export function OrdersList() {
             <Input
               ref={searchInputRef}
               type="search"
-              aria-label="Search orders by number, city, or cargo"
-              placeholder="Search orders, customer, phone, driver, plate... (press /)"
+              aria-label="Search orders by number, customer, phone, driver, or plate"
+              placeholder="Search orders, driver, plate… (/)"
               value={localSearch}
               onChange={(e) => handleSearch(e.target.value)}
-              className="h-9 w-full pl-9 sm:w-64"
+              className="h-9 w-full pl-9 sm:w-72"
             />
           </div>
           <DropdownMenu>
