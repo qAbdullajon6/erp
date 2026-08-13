@@ -59,6 +59,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { describeError } from '@/lib/api/describe-error';
 
 type SectionKey = OrderSectionKey;
 
@@ -223,7 +224,7 @@ export function OrdersCreateSheet({ open, onOpenChange, onCreated, defaultCustom
       onOpenChange(false);
       onCreated?.(result);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create order');
+      toast.error(describeError(err, 'Failed to create order'));
     }
   };
 

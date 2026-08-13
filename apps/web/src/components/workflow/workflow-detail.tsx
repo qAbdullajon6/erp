@@ -21,6 +21,7 @@ import { useWorkflowDetail, useWorkflowTriggers, useWorkflowActions, useUpdateWo
 import { WorkflowExecutionsDialog } from './workflow-executions-dialog';
 import type { WorkflowConfig, WorkflowCondition, WorkflowActionConfig } from '@/lib/api/workflows';
 import { Loader2, Plus, Trash2, Zap, ArrowLeft, History } from 'lucide-react';
+import { describeError } from '@/lib/api/describe-error';
 
 const COMPARISON_OPERATORS = [
   { value: 'equals', label: 'equals' },
@@ -121,13 +122,13 @@ export function WorkflowDetail({ workflowId }: { workflowId: string }) {
       { id: workflowId, input: { name, description, active, config } },
       {
         onSuccess: () => toast.success('Workflow saved'),
-        onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to save workflow'),
+        onError: (err) => toast.error(describeError(err, 'Failed to save workflow')),
       },
     );
   }, [name, description, active, config, updateMutation, workflowId]);
 
   if (loading) return <LoadingState label="Loading workflow..." />;
-  if (error && !workflow) return <ErrorState message={error instanceof Error ? error.message : 'Failed to load workflow'} onRetry={() => refetch()} />;
+  if (error && !workflow) return <ErrorState message={describeError(error, 'Failed to load workflow')} onRetry={() => refetch()} />;
   if (!workflow) return null;
 
   return (
@@ -149,7 +150,7 @@ export function WorkflowDetail({ workflowId }: { workflowId: string }) {
               variant="outline"
               onClick={() =>
                 toggleMutation.mutate(workflowId, {
-                  onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to toggle workflow'),
+                  onError: (err) => toast.error(describeError(err, 'Failed to toggle workflow')),
                 })
               }
               className="gap-1"

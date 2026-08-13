@@ -5,6 +5,7 @@ import { formatMoney } from '@/lib/format';
 import { revenueExpensesChartConfig } from '@/lib/chart-theme';
 import { useExecutiveOverviewQuery, type ReportFilterParams, type ComparisonPair } from '@/lib/api/reports';
 import { ExportCsvButton } from './export-csv-button';
+import { describeError } from '@/lib/api/describe-error';
 
 interface ExecutiveOverviewTabProps {
   params: ReportFilterParams;
@@ -51,7 +52,7 @@ export function ExecutiveOverviewTab({ params }: ExecutiveOverviewTabProps) {
   if (isError || !data) {
     return (
       <div className="rounded-lg bg-destructive/10 p-6 text-sm text-destructive">
-        {error instanceof Error ? error.message : 'Failed to load executive overview'}
+        {describeError(error, 'Failed to load executive overview')}
         <Button onClick={() => refetch()} variant="ghost" size="sm" className="ml-4">
           Retry
         </Button>

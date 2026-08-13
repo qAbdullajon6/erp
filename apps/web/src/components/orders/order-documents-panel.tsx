@@ -41,6 +41,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { describeError } from '@/lib/api/describe-error';
 
 function formatBytes(bytes: number | null | undefined): string {
   if (!bytes) return '—';
@@ -74,7 +75,7 @@ function DocumentRow({
       const blob = await ordersAPI.fetchDocumentBlob(orderId, doc.id);
       downloadBlob(blob, doc.fileName);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Download failed');
+      toast.error(describeError(err, 'Download failed'));
     } finally {
       setDownloading(false);
     }
@@ -139,7 +140,7 @@ function DocumentRow({
                   onDeleted?.(doc.id);
                   toast.success('Document removed');
                 } catch (err) {
-                  toast.error(err instanceof Error ? err.message : 'Failed to delete');
+                  toast.error(describeError(err, 'Failed to delete'));
                 }
               }}
             >
@@ -170,7 +171,7 @@ function DocumentRow({
                   await rename(doc.id, nextName);
                   toast.success('Document renamed');
                 } catch (err) {
-                  toast.error(err instanceof Error ? err.message : 'Rename failed');
+                  toast.error(describeError(err, 'Rename failed'));
                 }
               }}
             >
@@ -266,7 +267,7 @@ function AuthenticatedPreview({
         if (!cancelled) setUrl(objectUrl);
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load preview');
+          setError(describeError(err, 'Failed to load preview'));
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -345,7 +346,7 @@ export function OrderDocumentsPanel({
         toast.success(list.length === 1 ? 'Document uploaded' : `${list.length} documents uploaded`);
         refetch();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'Upload failed');
+        toast.error(describeError(err, 'Upload failed'));
       }
     },
     [upload, refetch],

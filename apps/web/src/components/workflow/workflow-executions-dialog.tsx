@@ -13,6 +13,7 @@ import { LoadingState, ErrorState } from '@/components/shared/list-states';
 import { useWorkflowExecutions } from '@/hooks/use-workflows';
 import type { WorkflowExecution } from '@/lib/api/workflows';
 import { History } from 'lucide-react';
+import { describeError } from '@/lib/api/describe-error';
 
 export function WorkflowExecutionsDialog({
   workflowId,
@@ -38,7 +39,7 @@ export function WorkflowExecutionsDialog({
 
         {loading && <LoadingState label="Loading executions..." />}
         {error && !loading && (
-          <ErrorState message={error instanceof Error ? error.message : 'Failed to load executions'} onRetry={() => refetch()} />
+          <ErrorState message={describeError(error, 'Failed to load executions')} onRetry={() => refetch()} />
         )}
         {!loading && !error && data.length === 0 && (
           <p className="py-8 text-center text-sm text-muted-foreground">

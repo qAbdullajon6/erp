@@ -14,6 +14,7 @@ import {
   type SupportTicketPriority,
 } from '@/lib/api/platform';
 import { formatDate } from '@/lib/format';
+import { describeError } from '@/lib/api/describe-error';
 
 const STATUSES: SupportTicketStatus[] = ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'];
 const PRIORITIES: SupportTicketPriority[] = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
@@ -29,7 +30,7 @@ export function SupportTicketDetail({ ticketId }: { ticketId: string }) {
   if (isError || !data) {
     return (
       <ErrorState
-        message={error instanceof Error ? error.message : 'Failed to load ticket'}
+        message={describeError(error, 'Failed to load ticket')}
         onRetry={() => refetch()}
       />
     );
@@ -63,7 +64,7 @@ export function SupportTicketDetail({ ticketId }: { ticketId: string }) {
                   {
                     onSuccess: () => toast.success('Status updated'),
                     onError: (err) =>
-                      toast.error(err instanceof Error ? err.message : 'Update failed'),
+                      toast.error(describeError(err, 'Update failed')),
                   },
                 )
               }
@@ -90,7 +91,7 @@ export function SupportTicketDetail({ ticketId }: { ticketId: string }) {
                   {
                     onSuccess: () => toast.success('Priority updated'),
                     onError: (err) =>
-                      toast.error(err instanceof Error ? err.message : 'Update failed'),
+                      toast.error(describeError(err, 'Update failed')),
                   },
                 )
               }

@@ -2,6 +2,7 @@ import { useFinanceSummaryQuery } from '@/lib/api/finance';
 import { formatMoney } from '@/lib/format';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/shared/list-states';
+import { describeError } from '@/lib/api/describe-error';
 
 export function FinanceDashboard() {
   const { data, isLoading, isError, error, refetch } = useFinanceSummaryQuery();
@@ -19,7 +20,7 @@ export function FinanceDashboard() {
   if (isError || !data) {
     return (
       <ErrorState
-        message={error instanceof Error ? error.message : 'Failed to load finance summary'}
+        message={describeError(error, 'Failed to load finance summary')}
         onRetry={() => refetch()}
       />
     );

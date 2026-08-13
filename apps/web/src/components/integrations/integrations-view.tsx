@@ -21,6 +21,7 @@ import {
 import type { IntegrationInstance, IntegrationProviderInfo } from '@/lib/api/integrations-types';
 import { formatRelativeTime } from '@/lib/format';
 import { Plug, RefreshCw, Wand2, FileText } from 'lucide-react';
+import { describeError } from '@/lib/api/describe-error';
 
 const STATUS_VARIANT: Record<IntegrationInstance['status'], 'success' | 'warning' | 'destructive' | 'secondary'> = {
   CONNECTED: 'success',
@@ -76,7 +77,7 @@ function ConnectDialog({
           toast.success(`${provider.displayName} connected`);
           handleClose(false);
         },
-        onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to connect'),
+        onError: (err) => toast.error(describeError(err, 'Failed to connect')),
       },
     );
   };
@@ -180,21 +181,21 @@ export function IntegrationsView() {
   const handleDisconnect = (id: string, name: string) => {
     disconnectMutation.mutate(id, {
       onSuccess: () => toast.success(`${name} disconnected`),
-      onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to disconnect'),
+      onError: (err) => toast.error(describeError(err, 'Failed to disconnect')),
     });
   };
 
   const handleSync = (id: string) => {
     syncMutation.mutate(id, {
       onSuccess: (result) => toast.success(`Synced ${result.recordsProcessed} record${result.recordsProcessed === 1 ? '' : 's'}`),
-      onError: (err) => toast.error(err instanceof Error ? err.message : 'Sync failed'),
+      onError: (err) => toast.error(describeError(err, 'Sync failed')),
     });
   };
 
   const handleTest = (id: string) => {
     testMutation.mutate(id, {
       onSuccess: (result) => (result.success ? toast.success(result.message) : toast.error(result.message)),
-      onError: (err) => toast.error(err instanceof Error ? err.message : 'Connection test failed'),
+      onError: (err) => toast.error(describeError(err, 'Connection test failed')),
     });
   };
 

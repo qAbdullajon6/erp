@@ -17,6 +17,7 @@ import {
   type PlatformStaffUser,
 } from '@/lib/api/platform';
 import { formatDate } from '@/lib/format';
+import { describeError } from '@/lib/api/describe-error';
 
 export function SettingsView() {
   const { data, isLoading, isError, error, refetch } = usePlatformStaffQuery();
@@ -34,7 +35,7 @@ export function SettingsView() {
       const user = await platformAPI.lookupStaff(email.trim());
       setLookup(user);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'User not found');
+      toast.error(describeError(err, 'User not found'));
     } finally {
       setLookingUp(false);
     }
@@ -50,7 +51,7 @@ export function SettingsView() {
           {isLoading && <LoadingState label="Loading staff…" />}
           {isError && !isLoading && (
             <ErrorState
-              message={error instanceof Error ? error.message : 'Failed to load staff'}
+              message={describeError(error, 'Failed to load staff')}
               onRetry={() => refetch()}
             />
           )}
@@ -93,7 +94,7 @@ export function SettingsView() {
                             {
                               onSuccess: () => toast.success('Access revoked'),
                               onError: (err) =>
-                                toast.error(err instanceof Error ? err.message : 'Failed to revoke'),
+                                toast.error(describeError(err, 'Failed to revoke')),
                             },
                           )
                         }
@@ -157,7 +158,7 @@ export function SettingsView() {
                         setLookup({ ...lookup, isPlatformAdmin: false });
                       },
                       onError: (err) =>
-                        toast.error(err instanceof Error ? err.message : 'Failed to revoke'),
+                        toast.error(describeError(err, 'Failed to revoke')),
                     },
                   )
                 }
@@ -181,7 +182,7 @@ export function SettingsView() {
                         setLookup({ ...lookup, isPlatformAdmin: true });
                       },
                       onError: (err) =>
-                        toast.error(err instanceof Error ? err.message : 'Failed to grant'),
+                        toast.error(describeError(err, 'Failed to grant')),
                     },
                   )
                 }

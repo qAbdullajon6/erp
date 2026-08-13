@@ -18,6 +18,7 @@ import {
   useUpdateOrganizationStatusMutation,
 } from '@/lib/api/platform';
 import { formatDate, formatDateTime, formatMoney, formatRelativeTime } from '@/lib/format';
+import { describeError } from '@/lib/api/describe-error';
 
 function daysUntil(iso: string | null | undefined): number | null {
   if (!iso) return null;
@@ -52,7 +53,7 @@ export function OrganizationOverview({ orgId }: { orgId: string }) {
   if (isError || !data) {
     return (
       <ErrorState
-        message={error instanceof Error ? error.message : 'Failed to load organization'}
+        message={describeError(error, 'Failed to load organization')}
         onRetry={() => refetch()}
       />
     );
@@ -64,7 +65,7 @@ export function OrganizationOverview({ orgId }: { orgId: string }) {
         toast.success(`Support session started for ${data.name}`);
         navigate({ to: '/app' });
       },
-      onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to open ERP'),
+      onError: (err) => toast.error(describeError(err, 'Failed to open ERP')),
     });
   };
 
@@ -74,7 +75,7 @@ export function OrganizationOverview({ orgId }: { orgId: string }) {
         toast.success('Exited support session');
         void refetch();
       },
-      onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to exit support'),
+      onError: (err) => toast.error(describeError(err, 'Failed to exit support')),
     });
   };
 
@@ -159,7 +160,7 @@ export function OrganizationOverview({ orgId }: { orgId: string }) {
                       {
                         onSuccess: () => toast.success('Organization restored'),
                         onError: (err) =>
-                          toast.error(err instanceof Error ? err.message : 'Failed to restore'),
+                          toast.error(describeError(err, 'Failed to restore')),
                       },
                     )
                   }
@@ -181,7 +182,7 @@ export function OrganizationOverview({ orgId }: { orgId: string }) {
                       {
                         onSuccess: () => toast.success('Organization suspended'),
                         onError: (err) =>
-                          toast.error(err instanceof Error ? err.message : 'Failed to suspend'),
+                          toast.error(describeError(err, 'Failed to suspend')),
                       },
                     )
                   }

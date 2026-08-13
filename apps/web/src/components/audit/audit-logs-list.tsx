@@ -19,9 +19,9 @@ import {
 import { PageHeader } from "@/components/shared/page-header";
 import { ListToolbar, FilterSelect } from "@/components/shared/list-toolbar";
 import {
-  LoadingState,
   ErrorState,
   EmptyState,
+  TableSkeleton,
 } from "@/components/shared/list-states";
 import { PaginationBar } from "@/components/shared/pagination-bar";
 import { SortHeader } from "@/components/shared/sort-header";
@@ -207,7 +207,7 @@ export function AuditLogsList() {
       </ListToolbar>
 
       <div className="overflow-hidden rounded-lg border border-brand/10">
-        {loading && <LoadingState label="Loading audit logs..." />}
+        {loading && <TableSkeleton columns={[2, 3, 2, 2, 2]} label="Loading audit log" />}
 
         {error && !loading && (
           <ErrorState message={error} onRetry={() => refetch()} />

@@ -13,6 +13,7 @@ import {
   type OrganizationStatus,
 } from '@/lib/api/platform';
 import { formatDate, formatMoney, formatRelativeTime } from '@/lib/format';
+import { describeError } from '@/lib/api/describe-error';
 
 const STATUSES: OrganizationStatus[] = ['ACTIVE', 'SUSPENDED', 'ARCHIVED'];
 
@@ -69,7 +70,7 @@ export function OrganizationsList() {
         {isLoading && <LoadingState label="Loading organizations…" />}
         {isError && !isLoading && (
           <ErrorState
-            message={error instanceof Error ? error.message : 'Failed to load organizations'}
+            message={describeError(error, 'Failed to load organizations')}
             onRetry={() => refetch()}
           />
         )}

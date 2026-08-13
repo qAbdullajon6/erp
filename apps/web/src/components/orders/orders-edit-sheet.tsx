@@ -39,6 +39,7 @@ import {
 } from '@/components/orders/order-form-shared';
 import { MapPin, Package, StickyNote, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
+import { describeError } from '@/lib/api/describe-error';
 
 // Edit never changes the customer, so its section set is the shared one minus 'customer'.
 type SectionKey = Exclude<OrderSectionKey, 'customer'>;
@@ -210,7 +211,7 @@ export function OrdersEditSheet({ open, onOpenChange, order }: OrdersEditSheetPr
       toast.success('Order updated');
       onOpenChange(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update');
+      toast.error(describeError(err, 'Failed to update'));
     }
   };
 

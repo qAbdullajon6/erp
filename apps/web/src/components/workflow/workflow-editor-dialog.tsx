@@ -24,6 +24,7 @@ import { Switch } from '@/components/ui/switch';
 import { useWorkflowTriggers, useWorkflowActions, useCreateWorkflow } from '@/hooks/use-workflows';
 import type { WorkflowConfig, WorkflowCondition, WorkflowActionConfig } from '@/lib/api/workflows';
 import { Loader2, Plus, Trash2, Zap } from 'lucide-react';
+import { describeError } from '@/lib/api/describe-error';
 
 const COMPARISON_OPERATORS = [
   { value: 'equals', label: 'equals' },
@@ -129,7 +130,7 @@ export function WorkflowEditorDialog({
           toast.success('Workflow created');
           onOpenChange(false);
         },
-        onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to create workflow'),
+        onError: (err) => toast.error(describeError(err, 'Failed to create workflow')),
       },
     );
   }, [name, description, active, config, createMutation, onOpenChange]);

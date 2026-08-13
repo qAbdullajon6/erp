@@ -18,6 +18,7 @@ import { StatusBadge } from '@/components/shared/status-badge';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { RecordPaymentDialog } from './record-payment-dialog';
 import { printInvoiceDocument } from './invoice-print';
+import { describeError } from '@/lib/api/describe-error';
 
 interface InvoiceDetailSheetProps {
   invoiceId: string | null;
@@ -53,7 +54,7 @@ export function InvoiceDetailSheet({ invoiceId, onOpenChange }: InvoiceDetailShe
       await sendInvoice();
       toast.success('Invoice marked as sent');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to mark invoice as sent');
+      toast.error(describeError(err, 'Failed to mark invoice as sent'));
     }
   };
 
@@ -62,7 +63,7 @@ export function InvoiceDetailSheet({ invoiceId, onOpenChange }: InvoiceDetailShe
       await cancelInvoice();
       toast.success('Invoice cancelled');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to cancel invoice');
+      toast.error(describeError(err, 'Failed to cancel invoice'));
     }
   };
 
@@ -79,7 +80,7 @@ export function InvoiceDetailSheet({ invoiceId, onOpenChange }: InvoiceDetailShe
 
         {isError && (
           <ErrorState
-            message={error instanceof Error ? error.message : 'Failed to load invoice'}
+            message={describeError(error, 'Failed to load invoice')}
             onRetry={() => refetch()}
           />
         )}

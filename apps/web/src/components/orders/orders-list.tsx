@@ -34,7 +34,7 @@ import { useCustomersList } from '@/lib/api/customers';
 import { useDashboardSummary } from '@/lib/api/dashboard';
 import { useCurrentUser } from '@/lib/api/auth';
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
-import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-states';
+import { ErrorState, EmptyState, TableSkeleton } from '@/components/shared/list-states';
 import { OrdersCreateSheet } from '@/components/orders/orders-create-sheet';
 import {
   OrdersFiltersPanel,
@@ -77,6 +77,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { describeError } from '@/lib/api/describe-error';
 
 type OrderSortField = 'orderNumber' | 'pickupDate' | 'deliveryDate' | 'price' | 'status' | 'createdAt';
 
@@ -509,7 +510,7 @@ export function OrdersList() {
         `Exported ${rows.length} order${rows.length === 1 ? '' : 's'}${capped ? ` (capped at ${MAX_EXPORT_ROWS})` : ''}`,
       );
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Export failed');
+      toast.error(describeError(err, 'Export failed'));
     } finally {
       setExportingAll(false);
     }
@@ -529,7 +530,7 @@ export function OrdersList() {
         `Exported ${rows.length} order${rows.length === 1 ? '' : 's'}${capped ? ` (capped at ${MAX_EXPORT_ROWS})` : ''} to Excel`,
       );
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Export failed');
+      toast.error(describeError(err, 'Export failed'));
     } finally {
       setExportingAll(false);
     }
@@ -593,7 +594,7 @@ export function OrdersList() {
       await archive(order.id);
       toast.success(`${order.orderNumber} archived`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to archive');
+      toast.error(describeError(err, 'Failed to archive'));
     }
   };
 
@@ -602,7 +603,7 @@ export function OrdersList() {
       await restore(order.id);
       toast.success(`${order.orderNumber} restored`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to restore');
+      toast.error(describeError(err, 'Failed to restore'));
     }
   };
 
@@ -896,7 +897,14 @@ export function OrdersList() {
 
       {/* Main content area */}
       <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-surface">
-        {loading && <LoadingState label="Loading orders..." />}
+        {/* Column widths follow whichever columns the user has switched on, so
+            the skeleton is the shape of the table they are about to get. */}
+        {loading && (
+          <TableSkeleton
+            columns={visibleColumns.map((column) => (column === 'route' ? 3 : 2))}
+            label="Loading orders"
+          />
+        )}
         {error && !loading && <ErrorState message={error} onRetry={refetch} />}
         {!loading && !error && sortedData.length === 0 && search && (
           <EmptyState

@@ -4,6 +4,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { formatMoney } from '@/lib/format';
 import { useOperationsReportQuery, type ReportFilterParams, type OrderExceptionRow } from '@/lib/api/reports';
 import { ExportCsvButton } from './export-csv-button';
+import { describeError } from '@/lib/api/describe-error';
 
 interface OperationsTabProps {
   params: ReportFilterParams;
@@ -57,7 +58,7 @@ export function OperationsTab({ params }: OperationsTabProps) {
   if (isError || !data) {
     return (
       <div className="rounded-lg bg-destructive/10 p-6 text-sm text-destructive">
-        {error instanceof Error ? error.message : 'Failed to load operations report'}
+        {describeError(error, 'Failed to load operations report')}
         <Button onClick={() => refetch()} variant="ghost" size="sm" className="ml-4">
           Retry
         </Button>

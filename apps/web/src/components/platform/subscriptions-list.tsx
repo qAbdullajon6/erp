@@ -15,6 +15,7 @@ import {
   type SubscriptionStatus,
 } from '@/lib/api/platform';
 import { formatDate, formatMoney } from '@/lib/format';
+import { describeError } from '@/lib/api/describe-error';
 
 const STATUSES: SubscriptionStatus[] = ['TRIAL', 'ACTIVE', 'SUSPENDED', 'EXPIRED', 'CANCELLED'];
 
@@ -65,7 +66,7 @@ export function SubscriptionsList() {
         {isLoading && <LoadingState label="Loading subscriptions…" />}
         {isError && !isLoading && (
           <ErrorState
-            message={error instanceof Error ? error.message : 'Failed to load subscriptions'}
+            message={describeError(error, 'Failed to load subscriptions')}
             onRetry={() => refetch()}
           />
         )}
@@ -117,7 +118,7 @@ export function SubscriptionsList() {
                               {
                                 onSuccess: () => toast.success('Subscription updated'),
                                 onError: (err) =>
-                                  toast.error(err instanceof Error ? err.message : 'Update failed'),
+                                  toast.error(describeError(err, 'Update failed')),
                               },
                             )
                           }

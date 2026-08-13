@@ -18,6 +18,7 @@ import {
   useTestWebhookMutation,
   type WebhookEndpoint,
 } from '@/lib/api/developer';
+import { describeError } from '@/lib/api/describe-error';
 
 export function WebhooksTab() {
   const { data, isLoading, isError, refetch } = useWebhooksQuery();
@@ -85,7 +86,7 @@ export function WebhooksTab() {
         resetForm();
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to save webhook');
+      toast.error(describeError(err, 'Failed to save webhook'));
     }
   };
 
@@ -99,7 +100,7 @@ export function WebhooksTab() {
         toast.error(`Test failed: ${result.errorMessage ?? `status ${result.status}`}`);
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to send test delivery');
+      toast.error(describeError(err, 'Failed to send test delivery'));
     } finally {
       setTestingId(null);
     }
@@ -112,7 +113,7 @@ export function WebhooksTab() {
       await remove(id);
       toast.success('Webhook deleted');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to delete webhook');
+      toast.error(describeError(err, 'Failed to delete webhook'));
     }
   };
 
@@ -122,7 +123,7 @@ export function WebhooksTab() {
       else await enable(id);
       toast.success(active ? 'Webhook disabled' : 'Webhook enabled');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to toggle webhook');
+      toast.error(describeError(err, 'Failed to toggle webhook'));
     }
   };
 
@@ -135,7 +136,7 @@ export function WebhooksTab() {
       setDialogOpen(true);
       toast.success("Secret rotated — copy it now, it won't be shown again");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to rotate secret');
+      toast.error(describeError(err, 'Failed to rotate secret'));
     }
   };
 

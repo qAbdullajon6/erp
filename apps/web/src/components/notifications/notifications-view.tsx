@@ -5,7 +5,7 @@ import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Bell } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/shared/page-header';
-import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-states';
+import { ErrorState, EmptyState, ListSkeleton } from '@/components/shared/list-states';
 import { Button } from '@/components/ui/button';
 import { describeError } from '@/lib/api/describe-error';
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
@@ -103,7 +103,9 @@ export function NotificationsView() {
     return (
       <div className="space-y-6">
         <PageHeader title="Notifications" />
-        <LoadingState label="Loading notifications..." />
+        <div className="overflow-hidden rounded-lg border border-border bg-surface">
+          <ListSkeleton rows={6} label="Loading notifications" />
+        </div>
       </div>
     );
   }
@@ -112,10 +114,7 @@ export function NotificationsView() {
     return (
       <div className="space-y-6">
         <PageHeader title="Notifications" />
-        <ErrorState
-          message={error instanceof Error ? error.message : 'Failed to load notifications'}
-          onRetry={() => refetch()}
-        />
+        <ErrorState message={describeError(error, 'Failed to load notifications')} onRetry={() => refetch()} />
       </div>
     );
   }

@@ -16,6 +16,7 @@ import {
   useMarkAllPlatformNotificationsReadMutation,
 } from '@/lib/api/platform';
 import { cn } from '@/lib/utils';
+import { describeError } from '@/lib/api/describe-error';
 
 export function PlatformNotificationBell() {
   const [open, setOpen] = useState(false);
@@ -28,13 +29,13 @@ export function PlatformNotificationBell() {
 
   const handleMarkRead = (id: string) =>
     markRead(id, {
-      onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to mark as read'),
+      onError: (err) => toast.error(describeError(err, 'Failed to mark as read')),
     });
 
   const handleMarkAllRead = () =>
     markAllRead(undefined, {
       onSuccess: () => toast.success('All notifications marked as read'),
-      onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to mark all as read'),
+      onError: (err) => toast.error(describeError(err, 'Failed to mark all as read')),
     });
 
   return (
@@ -78,7 +79,7 @@ export function PlatformNotificationBell() {
 
             {isError && !isLoading && (
               <ErrorState
-                message={error instanceof Error ? error.message : 'Failed to load notifications'}
+                message={describeError(error, 'Failed to load notifications')}
                 onRetry={() => refetch()}
               />
             )}

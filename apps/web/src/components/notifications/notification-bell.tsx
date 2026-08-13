@@ -17,6 +17,7 @@ import {
   useMarkAllReadMutation,
 } from '@/lib/api/notifications';
 import { NotificationItem } from './notification-item';
+import { describeError } from '@/lib/api/describe-error';
 
 /// DRIVER has no @Roles entry on NotificationsController at all — every
 /// route 403s for it. The bell must not fire any notification request for
@@ -114,7 +115,7 @@ export function NotificationBell() {
 
             {isError && !isLoading && (
               <ErrorState
-                message={error instanceof Error ? error.message : 'Failed to load notifications'}
+                message={describeError(error, 'Failed to load notifications')}
                 onRetry={() => refetch()}
               />
             )}

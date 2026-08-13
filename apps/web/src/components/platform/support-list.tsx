@@ -30,6 +30,7 @@ import {
   type SupportTicketPriority,
 } from '@/lib/api/platform';
 import { formatDate } from '@/lib/format';
+import { describeError } from '@/lib/api/describe-error';
 
 const STATUSES: SupportTicketStatus[] = ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'];
 const PRIORITIES: SupportTicketPriority[] = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
@@ -82,7 +83,7 @@ export function SupportList() {
       setCreateOpen(false);
       resetCreate();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create ticket');
+      toast.error(describeError(err, 'Failed to create ticket'));
     }
   };
 
@@ -130,7 +131,7 @@ export function SupportList() {
         {isLoading && <LoadingState label="Loading tickets…" />}
         {isError && !isLoading && (
           <ErrorState
-            message={error instanceof Error ? error.message : 'Failed to load tickets'}
+            message={describeError(error, 'Failed to load tickets')}
             onRetry={() => refetch()}
           />
         )}

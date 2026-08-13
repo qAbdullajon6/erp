@@ -10,6 +10,7 @@ import {
   type ProfitabilityOrderRow,
 } from '@/lib/api/reports';
 import { ExportCsvButton } from './export-csv-button';
+import { describeError } from '@/lib/api/describe-error';
 
 interface FinancialTabProps {
   params: ReportFilterParams;
@@ -103,7 +104,7 @@ export function FinancialTab({ params }: FinancialTabProps) {
   if (isError || !data) {
     return (
       <div className="rounded-lg bg-destructive/10 p-6 text-sm text-destructive">
-        {error instanceof Error ? error.message : 'Failed to load financial report'}
+        {describeError(error, 'Failed to load financial report')}
         <Button onClick={() => refetch()} variant="ghost" size="sm" className="ml-4">
           Retry
         </Button>

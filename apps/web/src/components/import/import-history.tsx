@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PageHeader } from '@/components/shared/page-header';
 import { ListToolbar, FilterSelect } from '@/components/shared/list-toolbar';
-import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-states';
+import { ErrorState, EmptyState, TableSkeleton } from '@/components/shared/list-states';
+import { describeError } from '@/lib/api/describe-error';
 import { PaginationBar } from '@/components/shared/pagination-bar';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { useImportHistory, useImportEntities } from '@/hooks/use-imports';
@@ -65,9 +66,9 @@ export function ImportHistory() {
       </ListToolbar>
 
       <div className="overflow-hidden rounded-lg border border-brand/10">
-        {loading && <LoadingState label="Loading imports..." />}
+        {loading && <TableSkeleton columns={[3, 2, 2, 2, 2]} label="Loading imports" />}
         {error && !loading && (
-          <ErrorState message={error instanceof Error ? error.message : 'Failed to load imports'} onRetry={() => refetch()} />
+          <ErrorState message={describeError(error, 'Failed to load imports')} onRetry={() => refetch()} />
         )}
         {!loading && !error && data.length === 0 && (
           <EmptyState

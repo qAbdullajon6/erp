@@ -6,7 +6,8 @@ import { toast } from 'sonner';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PageHeader } from '@/components/shared/page-header';
 import { ListToolbar, FilterSelect } from '@/components/shared/list-toolbar';
-import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-states';
+import { LoadingState, ErrorState, EmptyState, TableSkeleton } from '@/components/shared/list-states';
+import { describeError } from '@/lib/api/describe-error';
 import { PaginationBar } from '@/components/shared/pagination-bar';
 import { StatusBadge, statusLabel } from '@/components/shared/status-badge';
 import {
@@ -72,7 +73,7 @@ export function LeadsList() {
       { id, status },
       {
         onSuccess: () => toast.success(`Lead moved to ${statusLabel(status)}`),
-        onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to update lead'),
+        onError: (err) => toast.error(describeError(err, 'Failed to update lead')),
       },
     );
 
@@ -158,11 +159,11 @@ export function LeadsList() {
       </ListToolbar>
 
       <div className="overflow-hidden rounded-lg border border-brand/10">
-        {isLoading && <LoadingState label="Loading leads..." />}
+        {isLoading && <TableSkeleton columns={[3, 2, 2, 2, 2]} label="Loading leads" />}
 
         {isError && !isLoading && (
           <ErrorState
-            message={error instanceof Error ? error.message : 'Failed to load leads'}
+            message={describeError(error, 'Failed to load leads')}
             onRetry={() => refetch()}
           />
         )}
@@ -372,7 +373,7 @@ export function LeadsList() {
                                 }
                               }
                             } catch (err) {
-                              toast.error(err instanceof Error ? err.message : 'Resend failed');
+                              toast.error(describeError(err, 'Resend failed'));
                             }
                           })();
                         }}

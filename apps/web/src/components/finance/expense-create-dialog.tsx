@@ -15,6 +15,7 @@ import { Plus } from 'lucide-react';
 import { ordersAPI } from '@/lib/api/orders';
 import { useFinanceDriverLookupsQuery, useFinanceVehicleLookupsQuery } from '@/lib/api/finance';
 import { useCreateExpenseMutation, type ExpenseCategory } from '@/lib/api/expenses';
+import { describeError } from '@/lib/api/describe-error';
 
 const CATEGORIES: ExpenseCategory[] = ['FUEL', 'TOLL', 'MAINTENANCE', 'DRIVER_ADVANCE', 'PARKING', 'INSURANCE', 'OTHER'];
 
@@ -88,7 +89,7 @@ export function ExpenseCreateDialog() {
       toast.success('Expense created');
       handleOpenChange(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create expense');
+      toast.error(describeError(err, 'Failed to create expense'));
     }
   };
 

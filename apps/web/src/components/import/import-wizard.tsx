@@ -35,6 +35,7 @@ import {
   XCircle,
   Save,
 } from 'lucide-react';
+import { describeError } from '@/lib/api/describe-error';
 
 type Step = 'upload' | 'mapping' | 'preview' | 'execute' | 'complete';
 
@@ -83,7 +84,7 @@ export function ImportWizard() {
       setMapping(result.defaultMapping);
       setStep('mapping');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Upload failed');
+      toast.error(describeError(err, 'Upload failed'));
     }
   }, [file, entityType, parseMutation]);
 
@@ -100,7 +101,7 @@ export function ImportWizard() {
       setValidateResult(result);
       setStep('preview');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Validation failed');
+      toast.error(describeError(err, 'Validation failed'));
     }
   }, [sessionId, mapping, saveMappingMutation, validateMutation]);
 
@@ -113,7 +114,7 @@ export function ImportWizard() {
       toast.success(`Mapping saved as "${templateName.trim()}"`);
       setTemplateName('');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to save mapping');
+      toast.error(describeError(err, 'Failed to save mapping'));
     }
   }, [sessionId, templateName, mapping, saveTemplateMutation]);
 
@@ -142,7 +143,7 @@ export function ImportWizard() {
       // step polls for the real outcome rather than claiming success here.
       setStep('complete');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Execution failed');
+      toast.error(describeError(err, 'Execution failed'));
     }
   }, [sessionId, duplicateStrategy, executeMutation]);
 
@@ -152,7 +153,7 @@ export function ImportWizard() {
       await cancelMutation.mutateAsync(sessionId);
       toast.success('Cancellation requested');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to cancel');
+      toast.error(describeError(err, 'Failed to cancel'));
     }
   }, [sessionId, cancelMutation]);
 

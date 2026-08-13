@@ -11,6 +11,7 @@ import {
   useRetryDeliveryMutation,
   type WebhookDeliveryAttempt,
 } from '@/lib/api/developer';
+import { describeError } from '@/lib/api/describe-error';
 
 const STATUS_BADGE: Record<string, 'default' | 'outline' | 'secondary' | 'destructive'> = {
   PENDING: 'outline',
@@ -40,7 +41,7 @@ export function DeliveriesTab() {
       toast.success(`Replay queued (new delivery: ${result.newDeliveryId.slice(0, 8)}...)`);
       setSelectedDeliveryId(result.newDeliveryId);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to replay delivery');
+      toast.error(describeError(err, 'Failed to replay delivery'));
     } finally {
       setBusy(false);
     }
@@ -59,7 +60,7 @@ export function DeliveriesTab() {
         toast.error(`Retry failed: ${result.errorMessage ?? result.status}`);
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to retry delivery');
+      toast.error(describeError(err, 'Failed to retry delivery'));
     } finally {
       setBusy(false);
     }

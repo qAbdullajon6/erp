@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PageHeader } from '@/components/shared/page-header';
-import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-states';
+import { ErrorState, EmptyState, TableSkeleton } from '@/components/shared/list-states';
+import { describeError } from '@/lib/api/describe-error';
 import { PaginationBar } from '@/components/shared/pagination-bar';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
@@ -36,21 +37,21 @@ export function WorkflowList() {
           toast.success('Workflow published and activated — it will run on matching events');
         }
       },
-      onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to toggle workflow'),
+      onError: (err) => toast.error(describeError(err, 'Failed to toggle workflow')),
     });
   }, [toggleMutation]);
 
   const handleDelete = useCallback((id: string) => {
     deleteMutation.mutate(id, {
       onSuccess: () => toast.success('Workflow deleted'),
-      onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to delete workflow'),
+      onError: (err) => toast.error(describeError(err, 'Failed to delete workflow')),
     });
   }, [deleteMutation]);
 
   const handleExecute = useCallback((id: string) => {
     executeMutation.mutate(id, {
       onSuccess: () => toast.success('Workflow run started — check History for the result'),
-      onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to run workflow'),
+      onError: (err) => toast.error(describeError(err, 'Failed to run workflow')),
     });
   }, [executeMutation]);
 
@@ -71,9 +72,9 @@ export function WorkflowList() {
       />
 
       <div className="overflow-hidden rounded-lg border border-brand/10">
-        {loading && <LoadingState label="Loading workflows..." />}
+        {loading && <TableSkeleton columns={[3, 2, 2, 2]} label="Loading workflows" />}
         {error && !loading && (
-          <ErrorState message={error instanceof Error ? error.message : 'Failed to load workflows'} onRetry={() => refetch()} />
+          <ErrorState message={describeError(error, 'Failed to load workflows')} onRetry={() => refetch()} />
         )}
         {!loading && !error && data.length === 0 && (
           <EmptyState

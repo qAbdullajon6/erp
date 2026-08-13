@@ -97,6 +97,7 @@ import {
 import { formatMoney, formatDate, formatRelativeTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { describeError } from '@/lib/api/describe-error';
 
 interface OrderDetailProps {
   orderId: string;
@@ -371,7 +372,7 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
       setVehicleId('');
       setAssignError('');
     } catch (err) {
-      setAssignError(err instanceof Error ? err.message : 'Failed to assign');
+      setAssignError(describeError(err, 'Failed to assign'));
     }
   };
 
@@ -380,7 +381,7 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
       await updateStatus(orderId, { status: newStatus });
       toast.success(`Moved to ${newStatus.replace(/_/g, ' ')}`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed');
+      toast.error(describeError(err, 'Failed'));
     }
   };
 
@@ -390,7 +391,7 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
       toast.success('Order cancelled');
       setShowCancel(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed');
+      toast.error(describeError(err, 'Failed'));
     }
   };
 
@@ -400,7 +401,7 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
       toast.success('Order archived');
       setShowArchiveConfirm(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to archive');
+      toast.error(describeError(err, 'Failed to archive'));
     }
   };
 
@@ -410,7 +411,7 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
       toast.success('Order restored');
       setShowRestoreConfirm(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to restore');
+      toast.error(describeError(err, 'Failed to restore'));
     }
   };
 
@@ -505,7 +506,7 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                     await createInvoiceFromOrder(orderId);
                     toast.success('Invoice created');
                   } catch (err) {
-                    toast.error(err instanceof Error ? err.message : 'Failed');
+                    toast.error(describeError(err, 'Failed'));
                   }
                 }}
               >
@@ -1105,7 +1106,7 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                           await createInvoiceFromOrder(orderId);
                           toast.success('Invoice created');
                         } catch (err) {
-                          toast.error(err instanceof Error ? err.message : 'Failed');
+                          toast.error(describeError(err, 'Failed'));
                         }
                       }}
                     >

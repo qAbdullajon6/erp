@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { useRecordPaymentMutation, type PaymentMethod } from '@/lib/api/payments';
 import { formatMoney } from '@/lib/format';
+import { describeError } from '@/lib/api/describe-error';
 
 interface RecordPaymentDialogProps {
   invoiceId: string;
@@ -66,7 +67,7 @@ export function RecordPaymentDialog({ invoiceId, balanceDue, currency }: RecordP
       toast.success('Payment recorded');
       handleOpenChange(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to record payment');
+      toast.error(describeError(err, 'Failed to record payment'));
     }
   };
 

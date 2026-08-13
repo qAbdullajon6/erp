@@ -13,6 +13,7 @@ import {
 import { formatDateTime, formatRelativeTime } from '@/lib/format';
 import { Pencil, StickyNote, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { describeError } from '@/lib/api/describe-error';
 
 interface OrderNotesPanelProps {
   orderId: string;
@@ -41,7 +42,7 @@ export function OrderNotesPanel({ orderId, canWrite }: OrderNotesPanelProps) {
       await create(trimmed);
       toast.success('Note added');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to add note');
+      toast.error(describeError(err, 'Failed to add note'));
       setBody(trimmed);
     } finally {
       setPendingBody(null);
@@ -101,7 +102,7 @@ export function OrderNotesPanel({ orderId, canWrite }: OrderNotesPanelProps) {
                           setEditingId(null);
                           toast.success('Note updated');
                         } catch (err) {
-                          toast.error(err instanceof Error ? err.message : 'Failed to update');
+                          toast.error(describeError(err, 'Failed to update'));
                         }
                       }}
                     >
@@ -154,7 +155,7 @@ export function OrderNotesPanel({ orderId, canWrite }: OrderNotesPanelProps) {
                             await remove(note.id);
                             toast.success('Note removed');
                           } catch (err) {
-                            toast.error(err instanceof Error ? err.message : 'Failed');
+                            toast.error(describeError(err, 'Failed'));
                           }
                         }}
                       >

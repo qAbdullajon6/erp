@@ -25,6 +25,7 @@ import {
   useCreateSubscriptionMutation,
   type Plan,
 } from "@/lib/api/billing";
+import { describeError } from "@/lib/api/describe-error";
 
 /// Create-subscription flow, shown when the org has no subscription yet. Reuses
 /// the shared Dialog + Select + form controls — no bespoke modal.
@@ -55,7 +56,7 @@ export function CreateSubscriptionDialog({ plans, trigger }: { plans: Plan[]; tr
       reset();
       setOpen(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to create subscription");
+      toast.error(describeError(err, "Failed to create subscription"));
     }
   };
 

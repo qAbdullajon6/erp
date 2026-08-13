@@ -29,6 +29,7 @@ import {
   useCreateFeatureFlagMutation,
   useUpdateFeatureFlagMutation,
 } from '@/lib/api/platform';
+import { describeError } from '@/lib/api/describe-error';
 
 export function SystemView() {
   const [createOpen, setCreateOpen] = useState(false);
@@ -70,7 +71,7 @@ export function SystemView() {
       setCreateOpen(false);
       resetCreate();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create flag');
+      toast.error(describeError(err, 'Failed to create flag'));
     }
   };
 
@@ -90,7 +91,7 @@ export function SystemView() {
           {health.isLoading && <LoadingState label="Checking health…" />}
           {health.isError && (
             <ErrorState
-              message={health.error instanceof Error ? health.error.message : 'Health check failed'}
+              message={describeError(health.error, 'Health check failed')}
               onRetry={() => health.refetch()}
             />
           )}
@@ -112,7 +113,7 @@ export function SystemView() {
           {workers.isLoading && <LoadingState label="Loading workers…" />}
           {workers.isError && (
             <ErrorState
-              message={workers.error instanceof Error ? workers.error.message : 'Failed to load workers'}
+              message={describeError(workers.error, 'Failed to load workers')}
               onRetry={() => workers.refetch()}
             />
           )}
@@ -135,7 +136,7 @@ export function SystemView() {
           {queues.isLoading && <LoadingState label="Loading queues…" />}
           {queues.isError && (
             <ErrorState
-              message={queues.error instanceof Error ? queues.error.message : 'Failed to load queues'}
+              message={describeError(queues.error, 'Failed to load queues')}
               onRetry={() => queues.refetch()}
             />
           )}
@@ -163,7 +164,7 @@ export function SystemView() {
           {flags.isLoading && <LoadingState label="Loading flags…" />}
           {flags.isError && (
             <ErrorState
-              message={flags.error instanceof Error ? flags.error.message : 'Failed to load flags'}
+              message={describeError(flags.error, 'Failed to load flags')}
               onRetry={() => flags.refetch()}
             />
           )}
@@ -193,7 +194,7 @@ export function SystemView() {
                             {
                               onSuccess: () => toast.success('Flag updated'),
                               onError: (err) =>
-                                toast.error(err instanceof Error ? err.message : 'Update failed'),
+                                toast.error(describeError(err, 'Update failed')),
                             },
                           )
                         }

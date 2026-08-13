@@ -6,6 +6,7 @@ import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-s
 import { StatusBadge } from '@/components/shared/status-badge';
 import { usePlatformAnalyticsQuery } from '@/lib/api/platform';
 import { formatMoney } from '@/lib/format';
+import { describeError } from '@/lib/api/describe-error';
 
 function Section({
   title,
@@ -38,7 +39,7 @@ export function AnalyticsView() {
   if (isError || !data) {
     return (
       <ErrorState
-        message={error instanceof Error ? error.message : 'Failed to load analytics'}
+        message={describeError(error, 'Failed to load analytics')}
         onRetry={() => refetch()}
       />
     );

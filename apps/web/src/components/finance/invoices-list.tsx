@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { Input } from '@/components/ui/input';
 import { useCurrentUser } from '@/lib/api/auth';
 import { useInvoicesQuery, type InvoiceStatus } from '@/lib/api/invoices';
 import { customersAPI } from '@/lib/api/customers';
+import { describeError } from '@/lib/api/describe-error';
 import type { MembershipRole } from '@/lib/api/organizations';
 import { formatMoney } from '@/lib/format';
 import { INVOICE_WRITE_ROLES } from '@/lib/role-access';
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
-import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-states';
+import { ErrorState, EmptyState, TableSkeleton } from '@/components/shared/list-states';
+import { ListToolbar, FilterSelect } from '@/components/shared/list-toolbar';
 import { PaginationBar } from '@/components/shared/pagination-bar';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { InvoiceCreateDialog } from './invoice-create-dialog';
@@ -83,68 +84,79 @@ export function InvoicesList() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-sm text-muted-foreground">
-            {isLoading ? 'Loading...' : isError ? 'Error loading invoices' : `${data?.meta.total ?? 0} invoices`}
-          </p>
-        </div>
+        <p className="text-sm text-muted-foreground" aria-live="polite">
+          {/* The skeleton already says "loading"; repeating it here just adds a
+              second thing that changes on arrival. */}
+          {isLoading || isError
+            ? null
+            : `${data?.meta.total ?? 0} ${(data?.meta.total ?? 0) === 1 ? 'invoice' : 'invoices'}`}
+        </p>
         {canWrite && <InvoiceCreateDialog />}
       </div>
 
-      <div className="grid gap-4 rounded-lg border border-brand/10 bg-surface p-4 sm:grid-cols-2">
-        <div>
-          <label htmlFor="invoice-search" className="text-sm font-medium text-foreground">Search</label>
-          <Input
-            id="invoice-search"
-            placeholder="Invoice number..."
-            value={localSearch}
-            onChange={(e) => setLocalSearch(e.target.value)}
-            className="mt-1"
-          />
-        </div>
-        <div>
-          <label htmlFor="invoice-status" className="text-sm font-medium text-foreground">Status</label>
-          <select
-            id="invoice-status"
-            value={status}
-            onChange={(e) => setStatus(e.target.value as InvoiceStatus | '')}
-            className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            <option value="">All Statuses</option>
-            {STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>
-                {s.replace(/_/g, ' ')}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+      <ListToolbar
+        searchValue={localSearch}
+        onSearchChange={setLocalSearch}
+        searchPlaceholder="Invoice number..."
+      >
+        <FilterSelect
+          label="Status"
+          value={status}
+          onChange={(next) => setStatus(next as InvoiceStatus | '')}
+        >
+          <option value="">All statuses</option>
+          {STATUS_OPTIONS.map((s) => (
+            <option key={s} value={s}>
+              {s.replace(/_/g, ' ')}
+            </option>
+          ))}
+        </FilterSelect>
+      </ListToolbar>
 
       <div className="overflow-hidden rounded-lg border border-brand/10">
-        {isLoading && <LoadingState label="Loading invoices..." />}
+        {isLoading && <TableSkeleton columns={[2, 3, 2, 2, 2, 2]} label="Loading invoices" />}
 
         {isError && !isLoading && (
           <ErrorState
-            message={error instanceof Error ? error.message : 'Failed to load invoices'}
+            message={describeError(error, 'Failed to load invoices')}
             onRetry={() => refetch()}
           />
         )}
 
         {!isLoading && !isError && (data?.items.length ?? 0) === 0 && (
-          <EmptyState title="No invoices found" description="Try adjusting search or status filters." />
+          <EmptyState
+            title={search || status ? 'No invoices match these filters' : 'No invoices yet'}
+            description={
+              search || status
+                ? 'Clear the search box or choose a different status to widen the results.'
+                : 'Invoices you raise against a customer order will appear here.'
+            }
+          />
         )}
 
         {!isLoading && (data?.items.length ?? 0) > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full" aria-label="Invoices">
               <thead>
-                <tr className="border-b border-brand/10 bg-surface/50">
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">Invoice #</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">Customer</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">Due Date</th>
-                  <th className="px-6 py-3 text-right text-sm font-semibold text-foreground">Total</th>
-                  <th className="px-6 py-3 text-right text-sm font-semibold text-foreground">Balance</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">Status</th>
+                <tr className="border-b border-brand/10 bg-muted/30">
+                  <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Invoice #
+                  </th>
+                  <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Customer
+                  </th>
+                  <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Due date
+                  </th>
+                  <th className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Total
+                  </th>
+                  <th className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Balance
+                  </th>
+                  <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Status
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-brand/10">
@@ -162,20 +174,22 @@ export function InvoicesList() {
                       }
                     }}
                   >
-                    <td className="px-6 py-4 text-sm font-medium text-foreground">{invoice.invoiceNumber}</td>
-                    <td className="px-6 py-4 text-sm text-muted-foreground">
+                    <td className="whitespace-nowrap px-4 py-3 font-mono text-sm font-medium text-foreground">
+                      {invoice.invoiceNumber}
+                    </td>
+                    <td className="max-w-[16rem] truncate px-4 py-3 text-sm text-foreground">
                       {customerNameById.get(invoice.customerId) ?? invoice.customerId}
                     </td>
-                    <td className="px-6 py-4 text-sm text-muted-foreground">
+                    <td className="whitespace-nowrap px-4 py-3 text-sm text-muted-foreground">
                       {invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : '—'}
                     </td>
-                    <td className="px-6 py-4 text-right text-sm font-mono text-foreground">
+                    <td className="whitespace-nowrap px-4 py-3 text-right font-mono text-sm text-foreground">
                       {formatMoney(invoice.totalAmount, invoice.currency)}
                     </td>
-                    <td className="px-6 py-4 text-right text-sm font-mono text-foreground">
+                    <td className="whitespace-nowrap px-4 py-3 text-right font-mono text-sm font-semibold text-foreground">
                       {formatMoney(invoice.balanceDue, invoice.currency)}
                     </td>
-                    <td className="px-6 py-4 text-sm">
+                    <td className="px-4 py-3 text-sm">
                       <StatusBadge status={invoice.status} />
                     </td>
                   </tr>

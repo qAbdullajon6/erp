@@ -7,6 +7,7 @@ import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-s
 import { StatusBadge } from '@/components/shared/status-badge';
 import { usePlatformDashboardQuery } from '@/lib/api/platform';
 import { formatMoney, formatRelativeTime } from '@/lib/format';
+import { describeError } from '@/lib/api/describe-error';
 
 function KpiCard({
   label,
@@ -42,7 +43,7 @@ export function PlatformDashboard() {
   if (isError || !data) {
     return (
       <ErrorState
-        message={error instanceof Error ? error.message : 'Failed to load dashboard'}
+        message={describeError(error, 'Failed to load dashboard')}
         onRetry={() => refetch()}
       />
     );

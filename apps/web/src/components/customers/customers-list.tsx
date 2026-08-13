@@ -19,7 +19,7 @@ import {
 import { useCurrentUser } from '@/lib/api/auth';
 import { CUSTOMER_WRITE_ROLES, INVOICE_READ_ROLES } from '@/lib/role-access';
 import type { MembershipRole } from '@/lib/api/organizations';
-import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-states';
+import { ErrorState, EmptyState, ListSkeleton } from '@/components/shared/list-states';
 import { PaginationBar } from '@/components/shared/pagination-bar';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { CustomersCreateSheet } from '@/components/customers/customers-create-sheet';
@@ -389,7 +389,7 @@ export function CustomersList() {
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border/70 bg-surface">
-        {loading && <LoadingState label="Loading customers…" />}
+        {loading && <ListSkeleton rows={6} label="Loading customers" />}
         {error && !loading && <ErrorState message={error} onRetry={() => refetch()} />}
 
         {!loading && !error && displayRows.length === 0 && (

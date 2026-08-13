@@ -9,6 +9,7 @@ import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-s
 import { PaginationBar } from '@/components/shared/pagination-bar';
 import { usePlatformAuditQuery } from '@/lib/api/platform';
 import { formatDate } from '@/lib/format';
+import { describeError } from '@/lib/api/describe-error';
 
 export function AuditList() {
   const [page, setPage] = useState(1);
@@ -45,7 +46,7 @@ export function AuditList() {
         {isLoading && <LoadingState label="Loading audit log…" />}
         {isError && !isLoading && (
           <ErrorState
-            message={error instanceof Error ? error.message : 'Failed to load audit log'}
+            message={describeError(error, 'Failed to load audit log')}
             onRetry={() => refetch()}
           />
         )}

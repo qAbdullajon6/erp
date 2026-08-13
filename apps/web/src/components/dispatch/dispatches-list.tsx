@@ -15,7 +15,7 @@ import {
 import { useDispatches, useDispatchBoardSummary } from '@/lib/hooks/use-dispatches';
 import { useCurrentUser } from '@/lib/api/auth';
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
-import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-states';
+import { ErrorState, EmptyState, TableSkeleton } from '@/components/shared/list-states';
 import { DispatchesCreateSheet } from '@/components/dispatch/dispatches-create-sheet';
 import { DispatchReassignDialog } from '@/components/dispatch/dispatch-reassign-dialog';
 import { PaginationBar } from '@/components/shared/pagination-bar';
@@ -527,7 +527,7 @@ export function DispatchesList() {
       )}
 
       <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-surface">
-        {loading && <LoadingState label="Loading dispatches..." />}
+        {loading && <TableSkeleton columns={[3, 2, 2, 2, 2, 2]} label="Loading dispatches" />}
         {error && !loading && <ErrorState message={error} onRetry={refetch} />}
         {!loading && !error && items.length === 0 && search && (
           <EmptyState

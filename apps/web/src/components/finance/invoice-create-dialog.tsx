@@ -16,6 +16,7 @@ import { customersAPI } from '@/lib/api/customers';
 import { ordersAPI } from '@/lib/api/orders';
 import { useCreateInvoiceMutation, type InvoiceLineItemInput } from '@/lib/api/invoices';
 import { formatMoney } from '@/lib/format';
+import { describeError } from '@/lib/api/describe-error';
 
 interface LineItemRow extends InvoiceLineItemInput {
   key: string;
@@ -115,7 +116,7 @@ export function InvoiceCreateDialog() {
       toast.success('Invoice created');
       handleOpenChange(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create invoice');
+      toast.error(describeError(err, 'Failed to create invoice'));
     }
   };
 
