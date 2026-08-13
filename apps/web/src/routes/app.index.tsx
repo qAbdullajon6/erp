@@ -10,6 +10,7 @@ import { DashboardCharts } from "@/components/dashboard/dashboard-charts";
 import { KpiCards } from "@/components/dashboard/kpi-cards";
 import { LiveDispatch } from "@/components/dashboard/live-dispatch";
 import { RecentActivity } from "@/components/dashboard/recent-activity";
+import { SetupChecklist } from "@/components/dashboard/setup-checklist";
 import { UnassignedQueue } from "@/components/dashboard/unassigned-queue";
 import { useCurrentUser } from "@/lib/api/auth";
 import { useDashboardSummary } from "@/lib/api/dashboard";
@@ -17,7 +18,7 @@ import { useFinanceSummaryQuery } from "@/lib/api/finance";
 import { useLiveFleetQuery } from "@/lib/api/telematics";
 import { useDispatchBoardSummary } from "@/lib/hooks/use-dispatches";
 import { LoadingState, ErrorState } from "@/components/shared/list-states";
-import { ORDER_WRITE_ROLES, DISPATCH_WRITE_ROLES, DISPATCH_ROLES, FLEET_ROLES } from "@/lib/role-access";
+import { ADMIN_OPS_ROLES, ORDER_WRITE_ROLES, DISPATCH_WRITE_ROLES, DISPATCH_ROLES, FLEET_ROLES } from "@/lib/role-access";
 import type { MembershipRole } from "@/lib/api/organizations";
 import { formatRelativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -263,6 +264,8 @@ function OperationsCommandCenter({
           </button>
         </div>
       )}
+
+      <SetupChecklist canDismiss={ADMIN_OPS_ROLES.includes(role)} />
 
       <KpiCards data={summary.data} loading={summary.loading} />
       <DashboardCharts data={summary.data} loading={summary.loading} />

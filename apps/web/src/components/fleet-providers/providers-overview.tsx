@@ -172,9 +172,8 @@ function ProviderCard({
           </p>
         ) : null}
         {summary.aggregatesPartial ? (
-          <p className="mt-1 text-[10px] text-warning">
-            Activity/assignment counts use the latest {summary.loaded.length}{' '}
-            devices by create time; total configured is exact ({summary.total}).
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            Based on the {summary.loaded.length} most recently added devices.
           </p>
         ) : null}
         <div className="mt-2 flex justify-between gap-2">
