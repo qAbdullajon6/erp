@@ -139,7 +139,7 @@ export function AuditLogsList() {
   return (
     <div className="space-y-6" data-testid="audit-logs-page">
       <PageHeader
-        title="Audit Log"
+        title="Activity log"
         subtitle={
           loading
             ? "Loading..."

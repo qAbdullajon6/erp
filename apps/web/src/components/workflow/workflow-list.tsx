@@ -58,8 +58,12 @@ export function WorkflowList() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Workflows"
-        subtitle={loading ? 'Loading...' : `${meta.total} workflow(s) configured`}
+        title="Automation"
+        subtitle={
+          loading
+            ? 'Loading...'
+            : `${meta.total} workflow${meta.total === 1 ? '' : 's'} running on your operation`
+        }
         action={
           <Button
             onClick={() => setEditorOpen(true)}

@@ -8,7 +8,10 @@ import type { NotificationCategory, NotificationSeverity } from "@/lib/api/notif
 const CATEGORIES: readonly NotificationCategory[] = ["OPERATIONS", "FINANCE", "CUSTOMERS", "FLEET"];
 const SEVERITIES: readonly NotificationSeverity[] = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
 
+export type NotificationsTab = "preferences";
+
 export type NotificationsSearch = {
+  tab?: NotificationsTab;
   search?: string;
   category?: NotificationCategory;
   severity?: NotificationSeverity;
@@ -26,6 +29,7 @@ export const Route = createFileRoute("/app/notifications")({
     const severity = search.severity;
     const page = search.page;
     return {
+      tab: search.tab === "preferences" ? "preferences" : undefined,
       search: asSearchString(search.search),
       category: (CATEGORIES as readonly unknown[]).includes(category)
         ? (category as NotificationCategory)

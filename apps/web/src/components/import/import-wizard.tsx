@@ -193,7 +193,7 @@ export function ImportWizard() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Bulk Import"
+        title="Data import"
         subtitle={`Import ${entityType ? entityType.toLowerCase() + 's' : 'data'} from a CSV or Excel file`}
       />
 

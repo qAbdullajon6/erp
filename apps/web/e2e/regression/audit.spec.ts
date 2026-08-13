@@ -8,6 +8,9 @@ test.describe('regression · audit', () => {
     expect(res.status).toBe(200);
 
     await gotoApp(page, ROUTES.audit);
-    await expect(page.getByText(/audit/i).first()).toBeVisible({ timeout: 30_000 });
+    // The screen is called "Activity log" — the same words the nav entry that
+    // reaches it uses. A loose /audit/i match passed on any stray occurrence.
+    await expect(page.getByTestId('audit-logs-page')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('heading', { name: 'Activity log' })).toBeVisible();
   });
 });

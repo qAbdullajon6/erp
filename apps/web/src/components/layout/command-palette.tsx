@@ -20,6 +20,14 @@ import {
   ORDER_WRITE_ROLES,
 } from "@/lib/role-access";
 
+type Destination = {
+  icon: typeof Package;
+  label: string;
+  path: string;
+  /// Only set for entries that address a section within a screen.
+  search?: Record<string, string>;
+};
+
 type QuickAction = {
   icon: typeof Package;
   label: string;
@@ -63,7 +71,7 @@ export function CommandPalette({
   // Secondary screens only appear in the sidebar while you are inside their
   // section, so the palette carries them everywhere — it is how you reach
   // Devices or Billing from the other side of the product.
-  const destinations = nav.flatMap((item) => [
+  const destinations: Destination[] = nav.flatMap((item) => [
     { icon: item.icon, label: item.label, path: item.path },
     ...(item.children ?? []).map((child) => ({
       icon: item.icon,
@@ -73,9 +81,23 @@ export function CommandPalette({
   ]);
   const navPaths = new Set(destinations.map((item) => item.path));
 
-  const go = (path: string) => {
+  /// Settings' own sections are not routes of their own, so nothing above lists
+  /// them — and "where do I add a teammate" is a question the palette should be
+  /// able to answer. Members is ADMIN-only, matching the section itself.
+  const settings = nav.find((item) => item.path === "/app/settings");
+  if (settings) {
+    destinations.push(
+      { icon: settings.icon, label: "Settings · Company identity", path: settings.path, search: { tab: "identity" } },
+      ...(role === "ADMIN"
+        ? [{ icon: settings.icon, label: "Settings · Members", path: settings.path, search: { tab: "members" } }]
+        : []),
+      { icon: settings.icon, label: "Settings · Your profile", path: settings.path, search: { tab: "profile" } },
+    );
+  }
+
+  const go = (destination: Destination) => {
     onOpenChange(false);
-    navigate({ to: path as any });
+    navigate({ to: destination.path as any, search: (destination.search ?? {}) as any });
   };
 
   const actions = QUICK_ACTIONS.filter((action) => {
@@ -91,7 +113,7 @@ export function CommandPalette({
         <CommandEmpty>No results found.</CommandEmpty>
         <CommandGroup heading="Quick actions">
           {actions.map((action) => (
-            <CommandItem key={action.path} onSelect={() => go(action.path)}>
+            <CommandItem key={action.path} onSelect={() => go({ ...action })}>
               <action.icon />
               <span>{action.label}</span>
             </CommandItem>
@@ -100,7 +122,7 @@ export function CommandPalette({
         <CommandSeparator />
         <CommandGroup heading="Go to">
           {destinations.map((item) => (
-            <CommandItem key={`${item.path}:${item.label}`} onSelect={() => go(item.path)}>
+            <CommandItem key={`${item.path}:${item.label}`} onSelect={() => go(item)}>
               <item.icon />
               <span>{item.label}</span>
             </CommandItem>

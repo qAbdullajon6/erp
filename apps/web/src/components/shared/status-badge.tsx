@@ -77,11 +77,15 @@ export function statusVariant(status: string): BadgeVariant {
   return STATUS_VARIANTS[status] ?? 'muted';
 }
 
-/** Renders `IN_TRANSIT` as `In Transit`. */
+/// Title-casing every word turns an acronym into a word: SALES_CRM_MANAGER
+/// read as "Sales Crm Manager" in the role picker and on every member row.
+const ACRONYMS = new Set(['API', 'CRM', 'ETA', 'GPS', 'ID', 'KPI', 'POD', 'SMS', 'VAT']);
+
+/** Renders `IN_TRANSIT` as `In Transit`, and `SALES_CRM_MANAGER` as `Sales CRM Manager`. */
 export function statusLabel(status: string): string {
   return status
     .split('_')
-    .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
+    .map((word) => (ACRONYMS.has(word) ? word : word.charAt(0) + word.slice(1).toLowerCase()))
     .join(' ');
 }
 
