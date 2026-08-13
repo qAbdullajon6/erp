@@ -21,6 +21,7 @@ import { useCurrentUser } from '@/lib/api/auth';
 import { CUSTOMER_WRITE_ROLES, INVOICE_READ_ROLES } from '@/lib/role-access';
 import type { MembershipRole } from '@/lib/api/organizations';
 import { ErrorState, EmptyState, ListSkeleton } from '@/components/shared/list-states';
+import { FilterTabs } from '@/components/shared/filter-tabs';
 import { PaginationBar } from '@/components/shared/pagination-bar';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { CustomersCreateSheet } from '@/components/customers/customers-create-sheet';
@@ -283,7 +284,13 @@ export function CustomersList() {
     <div className="space-y-4" data-testid="customers-page">
       <PageHeader
         title="Customers"
-        subtitle={loading ? 'Loading…' : error ? 'Could not load accounts' : `${meta.total} accounts`}
+        subtitle={
+          loading
+            ? 'Loading…'
+            : error
+              ? 'Could not load accounts'
+              : `${meta.total} account${meta.total === 1 ? '' : 's'}`
+        }
         action={
           <>
             <Button size="sm" variant="outline" onClick={handleExport} disabled={displayRows.length === 0}>
@@ -316,32 +323,6 @@ export function CustomersList() {
             className="h-9 w-full rounded-md border border-border bg-background pl-8 pr-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
           />
         </div>
-        <Button
-          size="sm"
-          variant={tab === 'active' ? 'secondary' : 'outline'}
-          className="h-9"
-          onClick={() => setTab('active')}
-        >
-          Active
-        </Button>
-        {canViewInvoices && (
-          <Button
-            size="sm"
-            variant={tab === 'outstanding' ? 'secondary' : 'outline'}
-            className="h-9"
-            onClick={() => setTab('outstanding')}
-          >
-            Outstanding
-          </Button>
-        )}
-        <Button
-          size="sm"
-          variant={tab === 'high_value' ? 'secondary' : 'outline'}
-          className="h-9"
-          onClick={() => setTab('high_value')}
-        >
-          High value
-        </Button>
       </div>
 
       {relationships.truncated && (
@@ -367,24 +348,12 @@ export function CustomersList() {
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="flex flex-wrap gap-1 border-b border-border/60">
-        {TAB_CONFIG.filter((t) => t.key !== 'outstanding' || canViewInvoices).map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setTab(t.key)}
-            className={cn(
-              '-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors',
-              tab === t.key
-                ? 'border-brand text-foreground'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <FilterTabs
+        tabs={TAB_CONFIG.filter((t) => t.key !== 'outstanding' || canViewInvoices)}
+        value={tab}
+        onChange={setTab}
+        label="Customer filters"
+      />
 
       <div className="overflow-hidden rounded-xl border border-border/70 bg-surface">
         {loading && <ListSkeleton rows={6} label="Loading customers" />}

@@ -20,6 +20,7 @@ import {
   type ConvertPlanChoice,
 } from '@/lib/api/platform';
 import type { Lead } from '@/lib/api/leads';
+import { CURRENCIES, timezoneOptions } from '@/lib/locale';
 import { cn } from '@/lib/utils';
 
 const STEPS = [
@@ -36,17 +37,7 @@ const PLANS: { id: ConvertPlanChoice; name: string; blurb: string }[] = [
   { id: 'enterprise', name: 'Enterprise', blurb: 'Large orgs with custom limits and support.' },
 ];
 
-const TIMEZONES = [
-  'UTC',
-  'Asia/Tashkent',
-  'Asia/Almaty',
-  'Europe/Moscow',
-  'Europe/Istanbul',
-  'America/New_York',
-  'America/Los_Angeles',
-];
-
-const CURRENCIES = ['USD', 'EUR', 'UZS', 'KZT', 'RUB', 'GBP'];
+const TIMEZONES = timezoneOptions().map((option) => option.value);
 
 function slugifyClient(input: string): string {
   return input

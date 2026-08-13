@@ -1,6 +1,7 @@
 import type { FormEvent } from 'react';
 import { StatusBadge } from '@/components/shared/status-badge';
-import { SettingsField, SettingsReadOnlyField } from './settings-field';
+import { currencyOptions, timezoneOptions } from '@/lib/locale';
+import { SettingsField, SettingsReadOnlyField, SettingsSelectField } from './settings-field';
 import {
   SettingsFormActions,
   SettingsFormError,
@@ -62,23 +63,21 @@ export function CompanyGeneralSection({ isAdmin }: { isAdmin: boolean }) {
                 maxLength={200}
                 autoComplete="organization"
               />
-              <SettingsField
+              <SettingsSelectField
                 id="company-timezone"
                 label="Timezone"
                 value={form.values.timezone}
                 onChange={(value) => form.setValue('timezone', value)}
-                placeholder="Asia/Tashkent"
-                hint="IANA name. Report date ranges and daily figures are bucketed in this zone."
-                maxLength={100}
+                options={timezoneOptions(organization.timezone)}
+                hint="Report date ranges and daily figures are bucketed in this zone."
               />
-              <SettingsField
+              <SettingsSelectField
                 id="company-currency"
                 label="Default currency"
                 value={form.values.defaultCurrency}
-                onChange={(value) => form.setValue('defaultCurrency', value.toUpperCase())}
-                placeholder="USD"
-                hint="ISO 4217 code used for new orders, invoices and finance totals."
-                maxLength={3}
+                onChange={(value) => form.setValue('defaultCurrency', value)}
+                options={currencyOptions(organization.defaultCurrency)}
+                hint="Used for new orders, invoices and finance totals."
               />
             </div>
             {form.formError && <SettingsFormError message={form.formError} />}

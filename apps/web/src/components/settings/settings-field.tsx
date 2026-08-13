@@ -1,6 +1,13 @@
 import type { ReactNode } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 
 interface SettingsFieldProps {
@@ -48,6 +55,55 @@ export function SettingsField({
         onChange={(event) => onChange(event.target.value)}
         aria-describedby={hintId}
       />
+      {hint && (
+        <p id={hintId} className="text-xs text-muted-foreground">
+          {hint}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/// Same shell as SettingsField for settings whose valid values are a known set.
+/// Typing them by hand meant knowing that the timezone wants "Asia/Tashkent" and
+/// not "Tashkent", and that the currency wants "UZS" and not "so'm" — knowledge
+/// the first screen of a new workspace should not assume.
+export function SettingsSelectField({
+  id,
+  label,
+  value,
+  onChange,
+  options,
+  hint,
+  className,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: readonly { value: string; label: string }[];
+  hint?: string;
+  className?: string;
+}) {
+  const hintId = hint ? `${id}-hint` : undefined;
+
+  return (
+    <div className={cn('grid gap-2', className)}>
+      <Label htmlFor={id} className="text-[13px] font-medium text-foreground/90">
+        {label}
+      </Label>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger id={id} aria-describedby={hintId} className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
       {hint && (
         <p id={hintId} className="text-xs text-muted-foreground">
           {hint}

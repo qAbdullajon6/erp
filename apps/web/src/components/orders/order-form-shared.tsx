@@ -15,7 +15,7 @@ import { CalendarIcon } from 'lucide-react';
 /// DateField, and per-field validation rules, which meant a validation-rule
 /// change made in one sheet and not the other was an easy miss.
 
-export const CURRENCIES = ['USD', 'EUR', 'UZS', 'RUB', 'KZT', 'GBP', 'CNY'] as const;
+export { CURRENCIES } from '@/lib/locale';
 
 export type OrderSectionKey = 'customer' | 'pickup' | 'delivery' | 'cargo' | 'pricing' | 'notes';
 

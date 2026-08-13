@@ -1,9 +1,22 @@
 import { useEffect, useMemo } from 'react';
-import { useNavigate, useSearch } from '@tanstack/react-router';
-import { Building2, FileText, UserRound, Users } from 'lucide-react';
+import { Link, useNavigate, useSearch } from '@tanstack/react-router';
+import {
+  Bell,
+  Building2,
+  CreditCard,
+  FileText,
+  History,
+  Terminal,
+  Upload,
+  UserRound,
+  Users,
+  Workflow,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCurrentUser } from '@/lib/api/auth';
+import { getNavForRole } from '@/components/layout/nav-config';
+import type { MembershipRole } from '@/lib/api/organizations';
 import { cn } from '@/lib/utils';
 import type { SettingsTab } from '@/routes/app.settings';
 import { CompanyGeneralSection } from './company-general-section';
@@ -36,6 +49,21 @@ const GROUP_DESCRIPTIONS: Record<SectionDefinition['group'], string> = {
   Personal: 'Only affects your own account',
 };
 
+/// Billing, Notifications, Data import, Automation, Developer and Activity log
+/// are configuration too, but they are full screens of their own rather than
+/// sections of this one. They were only listed under Settings in the app
+/// sidebar, so an admin who opened Settings looking for notification
+/// preferences found a menu that did not mention them. They are listed here as
+/// links to where they actually live.
+const WORKSPACE_ICONS: Record<string, typeof Building2> = {
+  '/app/billing': CreditCard,
+  '/app/notifications': Bell,
+  '/app/import': Upload,
+  '/app/workflows': Workflow,
+  '/app/developer': Terminal,
+  '/app/audit-logs': History,
+};
+
 export function SettingsView() {
   const { data: currentUser, loading, error, refetch } = useCurrentUser();
   const navigate = useNavigate({ from: '/app/settings' });
@@ -55,6 +83,15 @@ export function SettingsView() {
     () => SECTIONS.filter((section) => isAdmin || !section.adminOnly),
     [isAdmin],
   );
+
+  const isPlatformAdmin = Boolean(currentUser?.user.isPlatformAdmin);
+  const workspaceLinks = useMemo(() => {
+    if (!role) return [];
+    const settingsItem = getNavForRole(role as MembershipRole, isPlatformAdmin).find(
+      (item) => item.path === '/app/settings',
+    );
+    return settingsItem?.children ?? [];
+  }, [role, isPlatformAdmin]);
 
   /// A non-admin who follows a link to ?tab=members — or keeps a bookmark from
   /// before their role changed — would otherwise land on a section that renders
@@ -116,6 +153,7 @@ export function SettingsView() {
           sections={sections}
           activeSection={activeSection}
           onSelect={selectSection}
+          workspaceLinks={workspaceLinks}
         />
         <div className="min-w-0">
           {activeSection === 'general' && <CompanyGeneralSection isAdmin={isAdmin} />}
@@ -135,10 +173,12 @@ function SettingsNav({
   sections,
   activeSection,
   onSelect,
+  workspaceLinks,
 }: {
   sections: SectionDefinition[];
   activeSection: SettingsTab;
   onSelect: (id: SettingsTab) => void;
+  workspaceLinks: { label: string; path: string }[];
 }) {
   return (
     // A grid item refuses to shrink below its content, so without min-w-0 the
@@ -154,6 +194,9 @@ function SettingsNav({
             onSelect={onSelect}
             className="shrink-0"
           />
+        ))}
+        {workspaceLinks.map((link) => (
+          <WorkspaceNavLink key={link.path} link={link} className="shrink-0" />
         ))}
       </div>
 
@@ -181,8 +224,47 @@ function SettingsNav({
             </div>
           );
         })}
+
+        {workspaceLinks.length > 0 && (
+          <div className="grid gap-1.5">
+            <p className="px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Workspace
+            </p>
+            <p className="px-2 pb-1 text-xs text-muted-foreground/80">
+              Configured on their own screens
+            </p>
+            {workspaceLinks.map((link) => (
+              <WorkspaceNavLink key={link.path} link={link} />
+            ))}
+          </div>
+        )}
       </div>
     </nav>
+  );
+}
+
+function WorkspaceNavLink({
+  link,
+  className,
+}: {
+  link: { label: string; path: string };
+  className?: string;
+}) {
+  const Icon = WORKSPACE_ICONS[link.path] ?? Building2;
+
+  return (
+    <Link
+      to={link.path}
+      className={cn(
+        'flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition-colors',
+        'text-muted-foreground hover:bg-surface hover:text-foreground',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        className,
+      )}
+    >
+      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+      <span className="whitespace-nowrap">{link.label}</span>
+    </Link>
   );
 }
 

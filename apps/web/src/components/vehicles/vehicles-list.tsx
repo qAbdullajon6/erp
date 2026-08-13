@@ -16,6 +16,7 @@ import { useVehiclesList, type Vehicle, type VehicleStatus } from '@/lib/api/veh
 import { useDispatches } from '@/lib/hooks/use-dispatches';
 import { useOrdersList } from '@/lib/api/orders';
 import { ErrorState, EmptyState } from '@/components/shared/list-states';
+import { FilterTabs } from '@/components/shared/filter-tabs';
 import { PaginationBar } from '@/components/shared/pagination-bar';
 import { VehiclesCreateSheet } from '@/components/vehicles/vehicles-create-sheet';
 import { VehiclesEditSheet } from '@/components/vehicles/vehicles-edit-sheet';
@@ -346,38 +347,6 @@ export function VehiclesList() {
             className="h-9 w-full rounded-md border border-border bg-background pl-8 pr-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
           />
         </div>
-        <Button
-          size="sm"
-          variant={tab === 'available' ? 'secondary' : 'outline'}
-          className="h-9"
-          onClick={() => setTab('available')}
-        >
-          Available
-        </Button>
-        <Button
-          size="sm"
-          variant={tab === 'assigned' ? 'secondary' : 'outline'}
-          className="h-9"
-          onClick={() => setTab('assigned')}
-        >
-          Assigned
-        </Button>
-        <Button
-          size="sm"
-          variant={tab === 'maintenance' ? 'secondary' : 'outline'}
-          className="h-9"
-          onClick={() => setTab('maintenance')}
-        >
-          Maintenance
-        </Button>
-        <Button
-          size="sm"
-          variant={tab === 'archived' ? 'secondary' : 'outline'}
-          className="h-9"
-          onClick={() => setTab('archived')}
-        >
-          Archived
-        </Button>
       </div>
 
       {dataTruncated && (
@@ -403,23 +372,7 @@ export function VehiclesList() {
         </div>
       )}
 
-      <div className="flex flex-wrap gap-1 border-b border-border/60">
-        {TAB_CONFIG.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setTab(t.key)}
-            className={cn(
-              '-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors',
-              tab === t.key
-                ? 'border-brand text-foreground'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <FilterTabs tabs={TAB_CONFIG} value={tab} onChange={setTab} label="Vehicle filters" />
 
       <div className="overflow-hidden rounded-xl border border-border/70 bg-surface">
         {loading && <VehiclesListSkeleton />}

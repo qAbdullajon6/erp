@@ -15,6 +15,7 @@ import {
 import { useDriversList, type Driver, type DriverStatus } from '@/lib/api/drivers';
 import { useDispatches } from '@/lib/hooks/use-dispatches';
 import { ErrorState, EmptyState } from '@/components/shared/list-states';
+import { FilterTabs } from '@/components/shared/filter-tabs';
 import { PaginationBar } from '@/components/shared/pagination-bar';
 import { DriversCreateSheet } from '@/components/drivers/drivers-create-sheet';
 import { DriversEditSheet } from '@/components/drivers/drivers-edit-sheet';
@@ -312,30 +313,6 @@ export function DriversList() {
             className="h-9 w-full rounded-md border border-border bg-background pl-8 pr-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
           />
         </div>
-        <Button
-          size="sm"
-          variant={tab === 'available' ? 'secondary' : 'outline'}
-          className="h-9"
-          onClick={() => setTab('available')}
-        >
-          Available
-        </Button>
-        <Button
-          size="sm"
-          variant={tab === 'on_leave' ? 'secondary' : 'outline'}
-          className="h-9"
-          onClick={() => setTab('on_leave')}
-        >
-          On leave
-        </Button>
-        <Button
-          size="sm"
-          variant={tab === 'archived' ? 'secondary' : 'outline'}
-          className="h-9"
-          onClick={() => setTab('archived')}
-        >
-          Archived
-        </Button>
       </div>
 
       {liveDispatchesTruncated && (
@@ -361,23 +338,7 @@ export function DriversList() {
         </div>
       )}
 
-      <div className="flex flex-wrap gap-1 border-b border-border/60">
-        {TAB_CONFIG.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setTab(t.key)}
-            className={cn(
-              '-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors',
-              tab === t.key
-                ? 'border-brand text-foreground'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <FilterTabs tabs={TAB_CONFIG} value={tab} onChange={setTab} label="Driver filters" />
 
       <div className="overflow-hidden rounded-xl border border-border/70 bg-surface">
         {loading && <DriversListSkeleton />}
