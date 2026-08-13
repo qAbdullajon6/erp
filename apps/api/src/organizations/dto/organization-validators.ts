@@ -1,6 +1,17 @@
+import { Transform } from "class-transformer";
 import { registerDecorator, type ValidationOptions } from "class-validator";
 import { isActiveIso4217Code } from "../../orders/currency-codes.util";
 import { isSupportedTimezone } from "../timezone.util";
+
+/// Trims before validation rather than in the service, so the value the
+/// validators judge is the value that will be stored. Without this, pasting
+/// " admin@example.com " into the settings form fails @IsEmail and the admin
+/// gets a "must be a valid email" error about an address that looks correct.
+export function Trim() {
+  return Transform(({ value }: { value: unknown }) =>
+    typeof value === "string" ? value.trim() : value,
+  );
+}
 
 /// Both validators intentionally pass through `undefined`/`null`/`""` and let
 /// `@IsOptional` (and the service's empty-string folding) decide what those
