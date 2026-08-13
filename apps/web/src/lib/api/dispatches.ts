@@ -1,4 +1,4 @@
-import { unwrapResponse } from './error';
+import { ApiError, unwrapResponse } from './error';
 import { apiFetch } from './fetch';
 
 export type DispatchStatus =
@@ -106,6 +106,40 @@ export interface ListDispatchesResponse {
   };
 }
 
+export interface ProofOfDeliveryFile {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  uploadedAt: string;
+  uploadedByUserId: string;
+}
+
+export interface ProofOfDeliveryResponse {
+  dispatchId: string;
+  orderId: string | null;
+  status: DispatchStatus;
+  deliveryDateScheduled: string;
+  deliveryDateActual: string | null;
+  driver: {
+    id: string;
+    employeeCode: string;
+    firstName: string;
+    lastName: string;
+    phone: string;
+  } | null;
+  receiverName: string | null;
+  receiverPhone: string | null;
+  notes: string | null;
+  odometerKm: string | null;
+  /// Only GPS this flow captures — recorded on the AT_PICKUP transition, not a
+  /// delivery-point reading. Label is server-supplied so the UI never implies
+  /// it's the drop-off location.
+  arrivalLocation: { label: string; lat: string; lng: string } | null;
+  photos: ProofOfDeliveryFile[];
+  signatures: ProofOfDeliveryFile[];
+}
+
 class DispatchesAPI {
   async list(
     page = 1,
@@ -208,6 +242,25 @@ class DispatchesAPI {
       body: JSON.stringify({}),
     });
     return unwrapResponse(response, 'Failed to cancel dispatch');
+  }
+
+  async getProofOfDelivery(id: string): Promise<ProofOfDeliveryResponse> {
+    const response = await apiFetch(`/api/dispatches/${id}/proof-of-delivery`, { method: 'GET' });
+    return unwrapResponse(response, 'Failed to fetch proof of delivery');
+  }
+
+  /// Authenticated blob download — `<img src>` / bare `<a href>` cannot send JWT.
+  async fetchProofOfDeliveryFileBlob(dispatchId: string, proofId: string): Promise<Blob> {
+    const response = await apiFetch(
+      `/api/dispatches/${dispatchId}/proof-of-delivery/${proofId}/file`,
+      { method: 'GET' },
+    );
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      const message = body?.error?.message ?? body?.message ?? 'Failed to download file';
+      throw new ApiError(Array.isArray(message) ? message[0] : message, response.status);
+    }
+    return response.blob();
   }
 }
 

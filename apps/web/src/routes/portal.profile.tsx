@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   usePortalProfile,
@@ -6,6 +6,7 @@ import {
   type PortalNotificationPreferences,
 } from "@/lib/api/portal-profile";
 import { usePortalChangePassword } from "@/lib/api/portal-auth";
+import { portalSessionManager } from "@/lib/api/portal-session";
 import { formatMoney } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +35,7 @@ const PREF_LABELS: { key: keyof PortalNotificationPreferences; label: string }[]
 ];
 
 function PortalProfilePage() {
+  const navigate = useNavigate();
   const { data: profile, loading, error, refetch } = usePortalProfile();
   const profileUpdate = usePortalProfileUpdate();
   const { changePassword, loading: pwLoading, error: pwError } = usePortalChangePassword();
@@ -89,9 +91,9 @@ function PortalProfilePage() {
     if (!currentPassword || !newPassword) return;
     try {
       await changePassword(currentPassword, newPassword);
-      toast.success("Password changed successfully");
-      setCurrentPassword("");
-      setNewPassword("");
+      portalSessionManager.clearTokens();
+      toast.success("Password changed. Sign in again with your new password.");
+      await navigate({ to: "/portal/login", replace: true });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to change password");
     }

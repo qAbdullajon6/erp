@@ -8,6 +8,8 @@ import { asDependency } from "../test-support/portal-spec.helpers";
 import { CustomerPortalProvisioningService } from "./customer-portal-provisioning.service";
 import {
   CustomerPortalAccountAlreadyExistsError,
+  CustomerPortalAccountNotFoundError,
+  CustomerPortalCustomerEmailMissingError,
   CustomerPortalCustomerInactiveError,
   CustomerPortalInvitationAlreadyExistsError,
   CustomerPortalInvitationExpiredError,
@@ -162,7 +164,7 @@ describe("CustomerPortalProvisioningService", () => {
     it("rejects when the customer has no email on file", async () => {
       prisma.customer.findFirst.mockResolvedValue({ ...customer, email: null });
 
-      await expect(svc.createInvitation(input)).rejects.toThrow(CustomerPortalInvitationNotFoundError);
+      await expect(svc.createInvitation(input)).rejects.toThrow(CustomerPortalCustomerEmailMissingError);
     });
   });
 
@@ -254,7 +256,15 @@ describe("CustomerPortalProvisioningService", () => {
       prisma.customerPortalAccount.updateMany.mockResolvedValue({ count: 0 });
 
       await expect(svc.suspendAccess("org-1", "cust-1", "user-1")).rejects.toThrow(
-        CustomerPortalInvitationNotFoundError,
+        CustomerPortalAccountNotFoundError,
+      );
+    });
+
+    it("throws not-found when there is no account to reactivate", async () => {
+      prisma.customerPortalAccount.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(svc.reactivateAccess("org-1", "cust-1", "user-1")).rejects.toThrow(
+        CustomerPortalAccountNotFoundError,
       );
     });
   });

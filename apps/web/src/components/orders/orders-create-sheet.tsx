@@ -2,14 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from '@tanstack/react-router';
-import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Command,
@@ -42,10 +39,18 @@ import type { MembershipRole } from '@/lib/api/organizations';
 import { formatMoney } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import {
+  CURRENCIES,
+  Field,
+  DateField,
+  dayAfter,
+  validateOrderField,
+  validateOrderFields,
+  type OrderSectionKey,
+} from '@/components/orders/order-form-shared';
+import {
   AlertTriangle,
   ArrowRight,
   Building2,
-  CalendarIcon,
   Check,
   ChevronsUpDown,
   MapPin,
@@ -55,9 +60,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-const CURRENCIES = ['USD', 'EUR', 'UZS', 'RUB', 'KZT', 'GBP', 'CNY'] as const;
-
-type SectionKey = 'customer' | 'pickup' | 'delivery' | 'cargo' | 'pricing' | 'notes';
+type SectionKey = OrderSectionKey;
 
 const FIELD_SECTION: Record<string, SectionKey> = {
   customerId: 'customer',
@@ -80,75 +83,10 @@ interface Errors {
   [key: string]: string;
 }
 
-/// Mirrors CreateOrderDto (apps/api/src/orders/dto/create-order.dto.ts) exactly:
-/// required strings with max lengths, ISO date strings, non-negative decimals,
-/// 3-letter ISO currency. One field at a time so validation can run live.
-function validateField(field: string, data: CreateOrderInput): string | null {
-  switch (field) {
-    case 'customerId':
-      return data.customerId ? null : 'Select a customer';
-    case 'pickupAddress':
-      if (!data.pickupAddress?.trim()) return 'Pickup address is required';
-      if (data.pickupAddress.length > 300) return 'Max 300 characters';
-      return null;
-    case 'pickupCity':
-      if (!data.pickupCity?.trim()) return 'Pickup city is required';
-      if (data.pickupCity.length > 100) return 'Max 100 characters';
-      return null;
-    case 'pickupDate':
-      return data.pickupDate ? null : 'Pickup date is required';
-    case 'deliveryAddress':
-      if (!data.deliveryAddress?.trim()) return 'Delivery address is required';
-      if (data.deliveryAddress.length > 300) return 'Max 300 characters';
-      return null;
-    case 'deliveryCity':
-      if (!data.deliveryCity?.trim()) return 'Delivery city is required';
-      if (data.deliveryCity.length > 100) return 'Max 100 characters';
-      return null;
-    case 'deliveryDate':
-      if (!data.deliveryDate) return 'Delivery date is required';
-      if (data.pickupDate && new Date(data.deliveryDate) < new Date(data.pickupDate)) {
-        return 'Cannot be before pickup date';
-      }
-      return null;
-    case 'cargoDescription':
-      if (!data.cargoDescription?.trim()) return 'Cargo description is required';
-      if (data.cargoDescription.length > 2000) return 'Max 2000 characters';
-      return null;
-    case 'cargoWeightKg':
-      if (data.cargoWeightKg !== undefined && data.cargoWeightKg < 0) return 'Must be ≥ 0';
-      return null;
-    case 'cargoVolumeM3':
-      if (data.cargoVolumeM3 !== undefined && data.cargoVolumeM3 < 0) return 'Must be ≥ 0';
-      return null;
-    case 'price':
-      if (data.price === undefined || Number.isNaN(data.price) || data.price < 0) {
-        return 'Price must be ≥ 0';
-      }
-      return null;
-    case 'currency':
-      if (data.currency && !/^[A-Z]{3}$/.test(data.currency)) return '3-letter ISO code';
-      return null;
-    case 'notes':
-      if (data.notes && data.notes.length > 2000) return 'Max 2000 characters';
-      return null;
-    case 'deliveryNotes':
-      if (data.deliveryNotes && data.deliveryNotes.length > 2000) return 'Max 2000 characters';
-      return null;
-    default:
-      return null;
-  }
-}
-
 const ALL_FIELDS = Object.keys(FIELD_SECTION);
 
 function validateAll(data: CreateOrderInput): Errors {
-  const errors: Errors = {};
-  for (const field of ALL_FIELDS) {
-    const err = validateField(field, data);
-    if (err) errors[field] = err;
-  }
-  return errors;
+  return validateOrderFields(ALL_FIELDS, data);
 }
 
 const EMPTY_FORM: CreateOrderInput = {
@@ -195,103 +133,17 @@ function SectionTitle({
   );
 }
 
-function Field({
-  id,
-  label,
-  required,
-  error,
-  children,
-  className,
-}: {
-  id: string;
-  label: string;
-  required?: boolean;
-  error?: string;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={cn('space-y-1', className)} data-field={id}>
-      <Label htmlFor={id} className="text-xs font-medium text-muted-foreground">
-        {label}
-        {required && <span className="ml-0.5 text-destructive">*</span>}
-      </Label>
-      {children}
-      {error && (
-        <p className="text-[11px] font-medium text-destructive" role="alert">
-          {error}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function DateField({
-  id,
-  label,
-  required,
-  error,
-  value,
-  onChange,
-  disabledBefore,
-}: {
-  id: string;
-  label: string;
-  required?: boolean;
-  error?: string;
-  value: string;
-  onChange: (iso: string) => void;
-  disabledBefore?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const date = value ? new Date(`${value}T00:00:00`) : undefined;
-
-  return (
-    <Field id={id} label={label} required={required} error={error}>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            id={id}
-            type="button"
-            variant="outline"
-            aria-invalid={Boolean(error)}
-            data-testid={`orders-${id}`}
-            className={cn(
-              'h-9 w-full justify-start px-3 text-left text-sm font-normal',
-              !value && 'text-muted-foreground',
-              error && 'border-destructive',
-            )}
-          >
-            <CalendarIcon className="mr-2 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            {date ? format(date, 'EEE, MMM d, yyyy') : 'Pick a date'}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
-          <Calendar
-            mode="single"
-            selected={date}
-            defaultMonth={date}
-            disabled={
-              disabledBefore ? { before: new Date(`${disabledBefore}T00:00:00`) } : undefined
-            }
-            onSelect={(d) => {
-              if (d) onChange(format(d, 'yyyy-MM-dd'));
-              setOpen(false);
-            }}
-          />
-        </PopoverContent>
-      </Popover>
-    </Field>
-  );
-}
-
 interface OrdersCreateSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated?: (order: Order) => void;
+  /// Pre-selects a customer when the sheet opens — used when the sheet is
+  /// launched from a customer's own detail page, where re-picking them from
+  /// the dropdown would just repeat what the admin already navigated from.
+  defaultCustomerId?: string;
 }
 
-export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreateSheetProps) {
+export function OrdersCreateSheet({ open, onOpenChange, onCreated, defaultCustomerId }: OrdersCreateSheetProps) {
   const { create, loading } = useCreateOrder();
   const { check, loading: checkingDuplicate } = useCheckDuplicateOrder();
   const { data: currentUser } = useCurrentUser();
@@ -320,8 +172,10 @@ export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreat
       setErrors({});
       setTouched(new Set());
       acknowledgeDuplicateRef.current = false;
+    } else if (defaultCustomerId) {
+      setFormData((prev) => ({ ...prev, customerId: defaultCustomerId }));
     }
-  }, [open]);
+  }, [open, defaultCustomerId]);
 
   const setField = (field: keyof CreateOrderInput, value: string | number | undefined) => {
     const next = { ...formData, [field]: value };
@@ -331,7 +185,7 @@ export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreat
     setErrors((prev) => {
       const out = { ...prev };
       for (const f of [field, 'deliveryDate'] as string[]) {
-        const err = validateField(f, next);
+        const err = validateOrderField(f, next);
         if (err && (touched.has(f) || f === field)) out[f] = err;
         else delete out[f];
       }
@@ -572,6 +426,7 @@ export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreat
                 </Field>
                 <DateField
                   id="pickupDate"
+                  testId="orders-pickupDate"
                   label="Date"
                   required
                   error={errors.pickupDate}
@@ -615,12 +470,13 @@ export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreat
                 </Field>
                 <DateField
                   id="deliveryDate"
+                  testId="orders-deliveryDate"
                   label="Date"
                   required
                   error={errors.deliveryDate}
                   value={formData.deliveryDate}
                   onChange={(iso) => setField('deliveryDate', iso)}
-                  disabledBefore={formData.pickupDate || undefined}
+                  disabledBefore={formData.pickupDate ? dayAfter(formData.pickupDate) : undefined}
                 />
               </section>
             </div>

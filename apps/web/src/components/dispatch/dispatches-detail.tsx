@@ -24,6 +24,7 @@ import { useLiveFleetQuery } from '@/lib/api/telematics';
 import { useCurrentUser } from '@/lib/api/auth';
 import { DispatchOperationalTimeline } from '@/components/dispatch/dispatch-operational-timeline';
 import { DispatchConflictPanel } from '@/components/dispatch/dispatch-conflict-panel';
+import { ProofOfDeliveryPanel } from '@/components/dispatch/proof-of-delivery-panel';
 import {
   DISPATCH_WRITE_ROLES,
   FLEET_ROLES,
@@ -785,6 +786,14 @@ export function DispatchesDetail({ dispatchId }: DispatchesDetailProps) {
                     </p>
                   </div>
                 )}
+              </div>
+            </section>
+
+            {/* Proof of delivery */}
+            <section className="p-5" id="proof-of-delivery">
+              <SectionHeader icon={FileText} title="Proof of Delivery" />
+              <div className="mt-3">
+                <ProofOfDeliveryPanel dispatchId={dispatch.id} />
               </div>
             </section>
 

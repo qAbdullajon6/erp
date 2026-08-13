@@ -3,16 +3,22 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { OrderDocumentKind } from "@prisma/client";
+import { OrderDocumentKind, UsageMetricType } from "@prisma/client";
 import { createReadStream, existsSync, mkdirSync, unlinkSync, writeFileSync } from "fs";
 import { join } from "path";
 import { randomUUID } from "crypto";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { UsageMeteringService, BYTES_PER_GB } from "../billing/usage-metering.service";
+import { assertOrderExists } from "./order-exists.util";
+import { matchesDeclaredMimeType } from "./order-document-signature.util";
 
 const UPLOAD_ROOT = join(process.cwd(), "uploads", "orders");
-const MAX_FILE_BYTES = 10 * 1024 * 1024;
+/// Single source of truth for the upload size cap — orders.controller.ts's
+/// Multer interceptor limit imports this too, so the two enforcement points
+/// (interceptor + this service's own check) cannot silently diverge.
+export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
 const ALLOWED_MIME = new Set([
   "application/pdf",
@@ -32,10 +38,11 @@ export class OrderDocumentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly usageMetering: UsageMeteringService,
   ) {}
 
   async list(organizationId: string, orderId: string) {
-    await this.assertOrderExists(organizationId, orderId);
+    await assertOrderExists(this.prisma, organizationId, orderId);
     const rows = await this.prisma.orderDocument.findMany({
       where: { organizationId, orderId },
       orderBy: { createdAt: "desc" },
@@ -53,7 +60,7 @@ export class OrderDocumentsService {
     kind: OrderDocumentKind | undefined,
     actor: CurrentUserPayload,
   ) {
-    await this.assertOrderExists(organizationId, orderId);
+    await assertOrderExists(this.prisma, organizationId, orderId);
     if (!file?.buffer?.length) {
       throw new BadRequestException("No file uploaded");
     }
@@ -62,6 +69,11 @@ export class OrderDocumentsService {
     }
     if (!ALLOWED_MIME.has(file.mimetype)) {
       throw new BadRequestException(`File type ${file.mimetype} is not allowed`);
+    }
+    // The mimetype above is the client-supplied Content-Type — spoofable.
+    // Verify the bytes actually match before writing anything to disk.
+    if (!matchesDeclaredMimeType(file.buffer, file.mimetype)) {
+      throw new BadRequestException("File content does not match its declared type");
     }
 
     const resolvedKind = kind ?? OrderDocumentKind.ATTACHMENT;
@@ -73,6 +85,12 @@ export class OrderDocumentsService {
         throw new BadRequestException("A POD document already exists — delete it before uploading a new one");
       }
     }
+
+    await this.usageMetering.enforceLimit(
+      organizationId,
+      UsageMetricType.STORAGE_GB,
+      file.size / BYTES_PER_GB,
+    );
 
     mkdirSync(join(UPLOAD_ROOT, organizationId, orderId), { recursive: true });
     const storageName = `${randomUUID()}-${file.originalname.replace(/[^\w.\-()+ ]/g, "_")}`;
@@ -188,14 +206,6 @@ export class OrderDocumentsService {
       throw new NotFoundException("File not found on disk");
     }
     return { doc, stream: createReadStream(absolutePath) };
-  }
-
-  private async assertOrderExists(organizationId: string, orderId: string) {
-    const order = await this.prisma.order.findFirst({ where: { id: orderId, organizationId } });
-    if (!order) {
-      throw new NotFoundException("Order not found");
-    }
-    return order;
   }
 
   private toResponse(

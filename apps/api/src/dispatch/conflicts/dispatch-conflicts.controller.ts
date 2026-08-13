@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, UseGuards } from "@nestjs/common";
 import type { MembershipRole } from "@prisma/client";
 import { CurrentUser } from "../../auth/decorators/current-user.decorator";
 import { Roles } from "../../auth/decorators/roles.decorator";
@@ -25,14 +25,14 @@ export class DispatchConflictsController {
 
   @Roles(...ROLES_READ)
   @Get(":id/conflicts")
-  list(@Param("id") id: string, @CurrentUser() user: CurrentUserPayload) {
+  list(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {
     return this.conflictsService.getConflicts(user.organizationId, id);
   }
 
   @Roles(...ROLES_READ)
   @Post(":id/check-conflicts")
   check(
-    @Param("id") id: string,
+    @Param("id", ParseUUIDPipe) id: string,
     @Body() dto: CheckDispatchConflictsDto,
     @CurrentUser() user: CurrentUserPayload,
   ) {
@@ -42,7 +42,9 @@ export class DispatchConflictsController {
   @Roles(...ROLES_WRITE)
   @Post(":id/conflicts/:conflictId/ignore")
   ignore(
-    @Param("id") id: string,
+    @Param("id", ParseUUIDPipe) id: string,
+    // conflictId is the engine's stable sha256-derived key (dispatch-conflict.engine.ts),
+    // not a UUID — it must not go through ParseUUIDPipe.
     @Param("conflictId") conflictId: string,
     @CurrentUser() user: CurrentUserPayload,
   ) {
@@ -52,7 +54,7 @@ export class DispatchConflictsController {
   @Roles(...ROLES_WRITE)
   @Post(":id/conflicts/:conflictId/resolve")
   resolve(
-    @Param("id") id: string,
+    @Param("id", ParseUUIDPipe) id: string,
     @Param("conflictId") conflictId: string,
     @CurrentUser() user: CurrentUserPayload,
   ) {

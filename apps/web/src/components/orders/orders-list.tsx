@@ -21,7 +21,9 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
+  ordersAPI,
   useOrdersList,
   useArchiveOrder,
   useRestoreOrder,
@@ -40,7 +42,6 @@ import {
   loadVisibleColumns,
   persistSavedFilters,
   saveVisibleColumns,
-  DEFAULT_ORDERS_COLUMNS,
   type OrdersFilterValues,
   type OrdersListColumn,
   type SavedOrdersFilter,
@@ -59,6 +60,7 @@ import {
   Package,
   Search,
   Download,
+  Upload,
   ArrowRight,
   AlertTriangle,
   ChevronDown,
@@ -72,6 +74,7 @@ import {
   ExternalLink,
   Archive,
   ArchiveRestore,
+  Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -274,7 +277,10 @@ export function OrdersList() {
   const activeTabConfig = TAB_CONFIG.find((t) => t.key === currentTab)!;
   const tabStatuses = filters.archivedOnly ? null : activeTabConfig.statuses;
 
-  const { data, meta, loading, error, refetch } = useOrdersList({
+  // Shared between the live list query and the "export all matching filters"
+  // fetcher below, so the two can never silently drift apart on which filters
+  // they apply.
+  const listQuery = {
     page,
     limit,
     search: search || undefined,
@@ -299,7 +305,9 @@ export function OrdersList() {
     archivedOnly: filters.archivedOnly,
     sortBy,
     sortOrder,
-  });
+  };
+
+  const { data, meta, loading, error, refetch } = useOrdersList(listQuery);
 
   const { archive } = useArchiveOrder();
   const { restore } = useRestoreOrder();
@@ -319,6 +327,9 @@ export function OrdersList() {
   // /app/orders/create route redirects here).
   const [createOpen, setCreateOpen] = useState(Boolean(searchState.create));
   const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [exportingAll, setExportingAll] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkRunning, setBulkRunning] = useState(false);
 
   useEffect(() => {
     if (searchState.create) setCreateOpen(true);
@@ -414,34 +425,44 @@ export function OrdersList() {
 
   const sortProps = { activeField: sortBy, order: sortOrder, onSort: handleSort };
 
+  const mapOrderForExport = (o: Order) => ({
+    orderNumber: o.orderNumber,
+    customer: customerNameById.get(o.customerId) ?? o.customerId,
+    route: `${o.pickupCity} → ${o.deliveryCity}`,
+    pickupDate: o.pickupDate,
+    deliveryDate: o.deliveryDate,
+    cargoDescription: o.cargoDescription,
+    price: o.price,
+    currency: o.currency,
+    status: o.status,
+  });
+  const EXPORT_CSV_COLUMNS = [
+    { key: 'orderNumber' as const, label: 'Order #' },
+    { key: 'customer' as const, label: 'Customer' },
+    { key: 'route' as const, label: 'Route' },
+    { key: 'pickupDate' as const, label: 'Pickup Date' },
+    { key: 'deliveryDate' as const, label: 'Delivery Date' },
+    { key: 'cargoDescription' as const, label: 'Cargo' },
+    { key: 'price' as const, label: 'Price' },
+    { key: 'currency' as const, label: 'Currency' },
+    { key: 'status' as const, label: 'Status' },
+  ];
+  const EXPORT_EXCEL_COLUMNS = [
+    { key: 'orderNumber' as const, label: 'Order #' },
+    { key: 'customer' as const, label: 'Customer' },
+    { key: 'route' as const, label: 'Route' },
+    { key: 'pickupDate' as const, label: 'Pickup Date' },
+    { key: 'deliveryDate' as const, label: 'Delivery Date' },
+    { key: 'price' as const, label: 'Price' },
+    { key: 'status' as const, label: 'Status' },
+  ];
+
   const handleExportCsv = () => {
     if (data.length === 0) {
       toast.error('No rows to export');
       return;
     }
-    const rows = data.map((o) => ({
-      orderNumber: o.orderNumber,
-      customer: customerNameById.get(o.customerId) ?? o.customerId,
-      route: `${o.pickupCity} → ${o.deliveryCity}`,
-      pickupDate: o.pickupDate,
-      deliveryDate: o.deliveryDate,
-      cargoDescription: o.cargoDescription,
-      price: o.price,
-      currency: o.currency,
-      status: o.status,
-    }));
-    const columns = [
-      { key: 'orderNumber' as const, label: 'Order #' },
-      { key: 'customer' as const, label: 'Customer' },
-      { key: 'route' as const, label: 'Route' },
-      { key: 'pickupDate' as const, label: 'Pickup Date' },
-      { key: 'deliveryDate' as const, label: 'Delivery Date' },
-      { key: 'cargoDescription' as const, label: 'Cargo' },
-      { key: 'price' as const, label: 'Price' },
-      { key: 'currency' as const, label: 'Currency' },
-      { key: 'status' as const, label: 'Status' },
-    ];
-    downloadCsv(`orders-${currentTab}-page-${page}.csv`, toCsv(rows, columns));
+    downloadCsv(`orders-${currentTab}-page-${page}.csv`, toCsv(data.map(mapOrderForExport), EXPORT_CSV_COLUMNS));
     toast.success(`Exported ${data.length} order${data.length === 1 ? '' : 's'} from this page`);
   };
 
@@ -450,26 +471,68 @@ export function OrdersList() {
       toast.error('No rows to export');
       return;
     }
-    const rows = data.map((o) => ({
-      orderNumber: o.orderNumber,
-      customer: customerNameById.get(o.customerId) ?? o.customerId,
-      route: `${o.pickupCity} → ${o.deliveryCity}`,
-      pickupDate: o.pickupDate,
-      deliveryDate: o.deliveryDate,
-      price: o.price,
-      status: o.status,
-    }));
-    const xml = toExcelXml(rows, [
-      { key: 'orderNumber', label: 'Order #' },
-      { key: 'customer', label: 'Customer' },
-      { key: 'route', label: 'Route' },
-      { key: 'pickupDate', label: 'Pickup Date' },
-      { key: 'deliveryDate', label: 'Delivery Date' },
-      { key: 'price', label: 'Price' },
-      { key: 'status', label: 'Status' },
-    ]);
+    const xml = toExcelXml(data.map(mapOrderForExport), EXPORT_EXCEL_COLUMNS);
     downloadExcel(`orders-${currentTab}-page-${page}`, xml);
     toast.success(`Exported ${data.length} order${data.length === 1 ? '' : 's'} to Excel`);
+  };
+
+  // "This page" export above is capped by the page size the user is currently
+  // viewing (≤100). This one walks every page matching the current filters —
+  // the server itself caps a single request's `limit` at 100, so a full
+  // export loops. MAX_EXPORT_ROWS is a sane upper bound so a very large,
+  // unfiltered org can't turn one click into thousands of sequential requests.
+  const MAX_EXPORT_ROWS = 5000;
+  const fetchAllMatchingOrders = async (): Promise<{ rows: Order[]; capped: boolean }> => {
+    const rows: Order[] = [];
+    let fetchPage = 1;
+    for (;;) {
+      const res = await ordersAPI.listOrders({ ...listQuery, page: fetchPage, limit: 100 });
+      rows.push(...res.items);
+      const capped = rows.length >= MAX_EXPORT_ROWS;
+      if (capped || res.items.length === 0 || rows.length >= res.meta.total) {
+        return { rows: rows.slice(0, MAX_EXPORT_ROWS), capped };
+      }
+      fetchPage += 1;
+    }
+  };
+
+  const handleExportAllCsv = async () => {
+    setExportingAll(true);
+    try {
+      const { rows, capped } = await fetchAllMatchingOrders();
+      if (rows.length === 0) {
+        toast.error('No rows to export');
+        return;
+      }
+      downloadCsv(`orders-${currentTab}-all.csv`, toCsv(rows.map(mapOrderForExport), EXPORT_CSV_COLUMNS));
+      toast.success(
+        `Exported ${rows.length} order${rows.length === 1 ? '' : 's'}${capped ? ` (capped at ${MAX_EXPORT_ROWS})` : ''}`,
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Export failed');
+    } finally {
+      setExportingAll(false);
+    }
+  };
+
+  const handleExportAllExcel = async () => {
+    setExportingAll(true);
+    try {
+      const { rows, capped } = await fetchAllMatchingOrders();
+      if (rows.length === 0) {
+        toast.error('No rows to export');
+        return;
+      }
+      const xml = toExcelXml(rows.map(mapOrderForExport), EXPORT_EXCEL_COLUMNS);
+      downloadExcel(`orders-${currentTab}-all`, xml);
+      toast.success(
+        `Exported ${rows.length} order${rows.length === 1 ? '' : 's'}${capped ? ` (capped at ${MAX_EXPORT_ROWS})` : ''} to Excel`,
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Export failed');
+    } finally {
+      setExportingAll(false);
+    }
   };
 
   const handleApplyFilters = (values: OrdersFilterValues) => {
@@ -543,6 +606,56 @@ export function OrdersList() {
     }
   };
 
+  // Selection only ever refers to rows currently on screen — a new page,
+  // tab, or filter set means the selected ids may no longer be visible (or
+  // may no longer mean what the user thinks), so it's cleared rather than
+  // carried forward silently.
+  const filtersKey = JSON.stringify(filters);
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [currentTab, page, search, sortBy, sortOrder, filtersKey]);
+
+  const toggleSelected = (id: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const selectedOrders = data.filter((o) => selectedIds.has(o.id));
+  const pageAllSelected = data.length > 0 && data.every((o) => selectedIds.has(o.id));
+  const pageSomeSelected = !pageAllSelected && data.some((o) => selectedIds.has(o.id));
+  const bulkArchivable = selectedOrders.filter(
+    (o) => !o.archivedAt && (o.status === 'DELIVERED' || o.status === 'CANCELLED'),
+  );
+  const bulkRestorable = selectedOrders.filter((o) => o.archivedAt);
+
+  async function runBulk(orders: Order[], action: (id: string) => Promise<unknown>, verb: string) {
+    setBulkRunning(true);
+    let succeeded = 0;
+    let failed = 0;
+    for (const order of orders) {
+      try {
+        await action(order.id);
+        succeeded += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    setBulkRunning(false);
+    setSelectedIds(new Set());
+    if (failed === 0) {
+      toast.success(`${verb} ${succeeded} order${succeeded === 1 ? '' : 's'}`);
+    } else {
+      toast.error(`${verb} ${succeeded} order${succeeded === 1 ? '' : 's'}, ${failed} failed`);
+    }
+  }
+
+  const handleBulkArchive = () => runBulk(bulkArchivable, archive, 'Archived');
+  const handleBulkRestore = () => runBulk(bulkRestorable, restore, 'Restored');
+
   // Only boost delayed/unassigned when the user has not chosen an explicit
   // column sort — otherwise Value/Status headers would lie about order.
   const sortedData = useMemo(() => {
@@ -582,14 +695,25 @@ export function OrdersList() {
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Download className="mr-1.5 h-3.5 w-3.5" />
+              <Button variant="outline" size="sm" disabled={exportingAll}>
+                {exportingAll ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Download className="mr-1.5 h-3.5 w-3.5" />
+                )}
                 Export
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={handleExportCsv}>Export page (CSV)</DropdownMenuItem>
               <DropdownMenuItem onClick={handleExportExcel}>Export page (Excel)</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleExportAllCsv}>
+                Export all matching filters (CSV)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportAllExcel}>
+                Export all matching filters (Excel)
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <DropdownMenu>
@@ -647,10 +771,12 @@ export function OrdersList() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button variant="outline" size="sm" onClick={handleExportCsv}>
-            <Download className="mr-1.5 h-3.5 w-3.5" />
-            CSV
-          </Button>
+          {canWriteOrder && (
+            <Button variant="outline" size="sm" onClick={() => navigate({ to: '/app/import' })}>
+              <Upload className="mr-1.5 h-3.5 w-3.5" />
+              Import
+            </Button>
+          )}
           {canWriteOrder && (
             <Button
               onClick={() => setCreateOpen(true)}
@@ -712,6 +838,50 @@ export function OrdersList() {
         })}
       </div>
 
+      {canOperateOrder && selectedIds.size > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-brand/30 bg-brand/5 px-4 py-2.5">
+          <span className="text-sm font-medium text-foreground">
+            {selectedIds.size} selected
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={bulkRunning || bulkArchivable.length === 0}
+              onClick={handleBulkArchive}
+            >
+              {bulkRunning ? (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Archive className="mr-1.5 h-3.5 w-3.5" />
+              )}
+              Archive {bulkArchivable.length > 0 ? `(${bulkArchivable.length})` : ''}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={bulkRunning || bulkRestorable.length === 0}
+              onClick={handleBulkRestore}
+            >
+              {bulkRunning ? (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <ArchiveRestore className="mr-1.5 h-3.5 w-3.5" />
+              )}
+              Restore {bulkRestorable.length > 0 ? `(${bulkRestorable.length})` : ''}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
+              Clear selection
+            </Button>
+          </div>
+          {selectedOrders.length > bulkArchivable.length + bulkRestorable.length && (
+            <span className="text-xs text-muted-foreground">
+              Some selected orders aren&apos;t eligible for either action and will be skipped.
+            </span>
+          )}
+        </div>
+      )}
+
       {currentTab === 'action' && delayedTotal > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-2.5">
           <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
@@ -769,6 +939,23 @@ export function OrdersList() {
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-surface">
                 <TableRow className="border-b border-border bg-surface/95 backdrop-blur hover:bg-surface/95">
+                  {canOperateOrder && (
+                    <TableHead className="w-8 pl-4">
+                      <Checkbox
+                        aria-label="Select all orders on this page"
+                        checked={pageAllSelected ? true : pageSomeSelected ? 'indeterminate' : false}
+                        onCheckedChange={(checked) => {
+                          setSelectedIds((prev) => {
+                            const next = new Set(prev);
+                            const pageIds = sortedData.map((o) => o.id);
+                            if (checked) pageIds.forEach((id) => next.add(id));
+                            else pageIds.forEach((id) => next.delete(id));
+                            return next;
+                          });
+                        }}
+                      />
+                    </TableHead>
+                  )}
                   <TableHead className="w-8" />
                   {visibleColumns.includes('route') && (
                     <TableHead className="font-medium text-xs uppercase tracking-wider">Route</TableHead>
@@ -839,6 +1026,15 @@ export function OrdersList() {
                           }
                         }}
                       >
+                        {canOperateOrder && (
+                          <TableCell className="py-3 pl-4" onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                              aria-label={`Select order ${order.orderNumber}`}
+                              checked={selectedIds.has(order.id)}
+                              onCheckedChange={(checked) => toggleSelected(order.id, checked === true)}
+                            />
+                          </TableCell>
+                        )}
                         <TableCell className="py-3 pl-4 pr-0">
                           {isExpanded ? (
                             <ChevronDown className="h-4 w-4 text-muted-foreground" />
@@ -960,7 +1156,7 @@ export function OrdersList() {
                           order={order}
                           customerName={customerName}
                           canOperate={canOperateOrder}
-                          colSpan={visibleColumns.length + 2}
+                          colSpan={visibleColumns.length + 2 + (canOperateOrder ? 1 : 0)}
                         />
                       )}
                     </Fragment>
@@ -988,6 +1184,7 @@ export function OrdersList() {
           open={createOpen}
           onOpenChange={handleCreateOpenChange}
           onCreated={handleCreated}
+          defaultCustomerId={searchState.customerId}
         />
       )}
 

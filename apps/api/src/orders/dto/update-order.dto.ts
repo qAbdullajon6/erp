@@ -1,5 +1,6 @@
 import {
   IsDateString,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
@@ -9,6 +10,7 @@ import {
   Min,
   MinLength,
 } from "class-validator";
+import { ACTIVE_ISO_4217_CODES } from "../currency-codes.util";
 
 /// Deliberately excludes `status`, `driverId`, and `vehicleId` — those only
 /// ever change through /orders/:id/assign, /orders/:id/status, and
@@ -81,7 +83,7 @@ export class UpdateOrderDto {
 
   @IsOptional()
   @IsString()
-  @Matches(/^[A-Z]{3}$/, { message: "currency must be a 3-letter ISO 4217 code, e.g. USD" })
+  @IsIn([...ACTIVE_ISO_4217_CODES], { message: "currency must be a valid ISO 4217 code, e.g. USD" })
   currency?: string;
 
   @IsOptional()

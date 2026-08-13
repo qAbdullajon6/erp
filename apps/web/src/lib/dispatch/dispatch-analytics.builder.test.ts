@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildDispatchAnalytics } from './dispatch-analytics.builder';
+import { buildDispatchAnalyticsInsights } from './dispatch-analytics.builder';
 import type { ApiDispatch } from '@/lib/api/dispatches';
 import type { DispatchBoardSummary } from '@/lib/api/dashboard';
 
@@ -20,105 +20,78 @@ function dispatch(partial: Partial<ApiDispatch> & Pick<ApiDispatch, 'id' | 'stat
   } as ApiDispatch;
 }
 
-describe('buildDispatchAnalytics', () => {
-  it('computes core KPIs from dispatches and board summary', () => {
-    const now = new Date('2026-07-29T12:00:00.000Z');
-    const dispatches = [
-      dispatch({ id: 'd1', status: 'ASSIGNED', driverId: 'drv-1', vehicleId: 'veh-1' }),
-      dispatch({ id: 'd2', status: 'DRAFT' }),
-      dispatch({
-        id: 'd3',
-        status: 'DELIVERED',
-        deliveryDateActual: '2026-07-29T10:00:00.000Z',
-      }),
-    ];
-    const board: DispatchBoardSummary = {
-      unassignedOrders: [],
-      drivers: {
-        available: [],
-        busy: [
-          {
-            driver: {
-              id: 'drv-1',
-              employeeCode: 'D1',
-              firstName: 'A',
-              lastName: 'B',
-              phone: '',
-              status: 'ACTIVE',
-            },
-            currentOrder: {
-              id: 'o1',
-              orderNumber: 'ORD-1',
-              customerName: 'Acme',
-              pickupCity: 'Tashkent',
-              deliveryCity: 'Samarkand',
-              pickupDate: now.toISOString(),
-              deliveryDate: now.toISOString(),
-              status: 'IN_TRANSIT',
-            },
-          },
-        ],
-        onLeave: [],
-        inactive: [],
-      },
-      vehicles: {
-        available: [],
-        busy: [
-          {
-            vehicle: {
-              id: 'veh-1',
-              vehicleCode: 'V1',
-              plateNumber: 'ABC-1',
-              type: 'TRUCK',
-              status: 'IN_USE',
-            },
-            currentOrder: {
-              id: 'o1',
-              orderNumber: 'ORD-1',
-              customerName: 'Acme',
-              pickupCity: 'Tashkent',
-              deliveryCity: 'Samarkand',
-              pickupDate: now.toISOString(),
-              deliveryDate: now.toISOString(),
-              status: 'IN_TRANSIT',
-            },
-          },
-        ],
-        inUse: [],
-        maintenance: [],
-        inactive: [],
-      },
-    };
+const EMPTY_BOARD: DispatchBoardSummary = {
+  unassignedOrders: [],
+  drivers: { available: [], busy: [], onLeave: [], inactive: [] },
+  vehicles: { available: [], busy: [], inUse: [], maintenance: [], inactive: [] },
+};
 
-    const snapshot = buildDispatchAnalytics({
-      dispatches,
-      board,
-      conflictsByDispatchId: {},
-      now,
-    });
-
-    expect(snapshot.kpis.activeDispatches).toBe(1);
-    expect(snapshot.kpis.draftDispatches).toBe(1);
-    expect(snapshot.kpis.completedToday).toBe(1);
-    expect(snapshot.kpis.activeDrivers).toBe(1);
-    expect(snapshot.kpis.activeVehicles).toBe(1);
-    expect(snapshot.dispatchesByStatus.some((s) => s.status === 'DRAFT')).toBe(true);
-  });
-
-  it('emits deterministic insights for overloaded drivers', () => {
+describe('buildDispatchAnalyticsInsights', () => {
+  it('flags an overloaded driver and emits a matching insight', () => {
     const dispatches = [
       dispatch({ id: 'd1', status: 'ASSIGNED', driverId: 'drv-1', vehicleId: 'veh-1' }),
       dispatch({ id: 'd2', status: 'IN_TRANSIT', driverId: 'drv-1', vehicleId: 'veh-2' }),
     ];
 
-    const snapshot = buildDispatchAnalytics({
-      dispatches,
-      board: null,
+    const snapshot = buildDispatchAnalyticsInsights({
+      activeDispatches: dispatches,
+      board: EMPTY_BOARD,
       conflictsByDispatchId: {},
+      topDelayedRoutes: [],
       now: new Date('2026-07-29T12:00:00.000Z'),
     });
 
     expect(snapshot.insights.some((i) => i.id === 'driver-overloaded')).toBe(true);
     expect(snapshot.driversNeedingAttention.some((d) => d.id === 'drv-1')).toBe(true);
+  });
+
+  it('summarizes active conflicts from the conflicts-by-dispatch map', () => {
+    const dispatches = [dispatch({ id: 'd1', status: 'ASSIGNED', driverId: 'drv-1', vehicleId: 'veh-1' })];
+
+    const snapshot = buildDispatchAnalyticsInsights({
+      activeDispatches: dispatches,
+      board: EMPTY_BOARD,
+      conflictsByDispatchId: {
+        d1: {
+          dispatchId: 'd1',
+          checkedAt: new Date().toISOString(),
+          summary: { total: 1, critical: 1, high: 0, medium: 0, low: 0, unresolved: 1 },
+          items: [
+            {
+              id: 'c1',
+              type: 'vehicle.maintenance',
+              category: 'vehicle',
+              severity: 'critical',
+              message: 'Vehicle in maintenance',
+              description: '',
+              recommendation: '',
+              recommendations: [],
+              autoResolvable: false,
+              ignored: false,
+              resolved: false,
+              detectedAt: new Date().toISOString(),
+            },
+          ],
+        },
+      },
+      topDelayedRoutes: [],
+      now: new Date('2026-07-29T12:00:00.000Z'),
+    });
+
+    expect(snapshot.conflictSummary.total).toBe(1);
+    expect(snapshot.conflictSummary.critical).toBe(1);
+    expect(snapshot.insights.some((i) => i.id === 'conflict-attention')).toBe(true);
+  });
+
+  it('raises a route-congestion insight from backend-computed delayed routes, without re-deriving the delay predicate', () => {
+    const snapshot = buildDispatchAnalyticsInsights({
+      activeDispatches: [],
+      board: EMPTY_BOARD,
+      conflictsByDispatchId: {},
+      topDelayedRoutes: [{ route: 'Tashkent → Samarkand', count: 3 }],
+      now: new Date('2026-07-29T12:00:00.000Z'),
+    });
+
+    expect(snapshot.insights.some((i) => i.id === 'route-congestion')).toBe(true);
   });
 });

@@ -21,9 +21,19 @@ const queries = new AssignmentQueries(prisma);
 const policy = new AssignmentPolicy(prisma, queries);
 const writer = new OrderWriter();
 const audit = { log: jest.fn().mockResolvedValue(undefined) } as unknown as AuditService;
-const wfEvents = { emit: () => {} } as any;
-const dispatches = new DispatchesService(prisma, audit, policy, writer, wfEvents, { endSessionsForDispatch: async () => 0, endSessionsOnVehicleReassign: async () => 0, endSessionsForUser: async () => 0 } as any);
-const orders = new OrdersService(prisma, audit, writer, dispatches, policy, wfEvents);
+const wfEvents = {
+  emit: jest.fn(),
+} as unknown as ConstructorParameters<typeof DispatchesService>[4];
+const usageMetering = {
+  enforceLimit: jest.fn().mockResolvedValue(undefined),
+} as unknown as ConstructorParameters<typeof OrdersService>[6];
+const tracking = {
+  endSessionsForDispatch: jest.fn().mockResolvedValue(0),
+  endSessionsOnVehicleReassign: jest.fn().mockResolvedValue(0),
+  endSessionsForUser: jest.fn().mockResolvedValue(0),
+} as unknown as ConstructorParameters<typeof DispatchesService>[5];
+const dispatches = new DispatchesService(prisma, audit, policy, writer, wfEvents, tracking);
+const orders = new OrdersService(prisma, audit, writer, dispatches, policy, wfEvents, usageMetering);
 const board = new DispatchService(prisma, queries);
 
 const PICKUP = new Date("2037-03-01T08:00:00.000Z");

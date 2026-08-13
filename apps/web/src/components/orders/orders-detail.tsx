@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
+import { auditLogKeys } from '@/lib/api/query-keys';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -16,7 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
-import { LoadingState, ErrorState } from '@/components/shared/list-states';
+import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-states';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { OrderTimeline } from '@/components/orders/order-timeline';
 import {
@@ -25,6 +26,7 @@ import {
 } from '@/components/orders/order-activity-timeline';
 import { OrderDocumentsPanel } from '@/components/orders/order-documents-panel';
 import { OrderNotesPanel } from '@/components/orders/order-notes-panel';
+import { ProofOfDeliveryPanel } from '@/components/dispatch/proof-of-delivery-panel';
 import {
   driverFromDispatch,
   hasEffectiveAssignment,
@@ -40,7 +42,6 @@ import {
   useCancelOrder,
   useArchiveOrder,
   useRestoreOrder,
-  type Order,
   type OrderStatus,
 } from '@/lib/api/orders';
 import { auditLogsAPI } from '@/lib/api/audit-logs';
@@ -49,7 +50,7 @@ import { useDriver, type Driver } from '@/lib/api/drivers';
 import { useVehicle, type Vehicle } from '@/lib/api/vehicles';
 import { useCustomerDetail } from '@/lib/api/customers';
 import { useDispatches } from '@/lib/hooks/use-dispatches';
-import { useInvoicesQuery, useCreateInvoiceFromOrderMutation, type Invoice } from '@/lib/api/invoices';
+import { useInvoicesQuery, useCreateInvoiceFromOrderMutation } from '@/lib/api/invoices';
 import { useExpensesQuery, type Expense } from '@/lib/api/expenses';
 import { useLiveFleetQuery } from '@/lib/api/telematics';
 import { useCurrentUser } from '@/lib/api/auth';
@@ -88,93 +89,17 @@ import {
   Route as RouteIcon,
   Ruler,
   Scale,
-  StickyNote,
   Truck,
   User,
   UserPlus,
-  Wallet,
-  Workflow,
   XCircle,
 } from 'lucide-react';
-import { formatMoney, formatDate, formatDateTime, formatRelativeTime } from '@/lib/format';
+import { formatMoney, formatDate, formatRelativeTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 interface OrderDetailProps {
   orderId: string;
-}
-
-type ActivityKind = 'status' | 'assignment' | 'invoice' | 'dispatch' | 'payment' | 'workflow' | 'note';
-
-type ActivityItem = {
-  id: string;
-  at: string;
-  title: string;
-  detail?: string | null;
-  status?: OrderStatus;
-  kind: ActivityKind;
-};
-
-const ACTIVITY_STYLE: Record<
-  ActivityKind,
-  { icon: typeof Clock; className: string }
-> = {
-  status: { icon: CheckCircle2, className: 'bg-brand/15 text-brand' },
-  assignment: { icon: UserPlus, className: 'bg-success/15 text-success' },
-  invoice: { icon: Receipt, className: 'bg-warning/15 text-warning' },
-  dispatch: { icon: RouteIcon, className: 'bg-brand/15 text-brand' },
-  payment: { icon: Wallet, className: 'bg-success/15 text-success' },
-  workflow: { icon: Workflow, className: 'bg-muted text-muted-foreground' },
-  note: { icon: StickyNote, className: 'bg-muted text-muted-foreground' },
-};
-
-function kindForStatus(status: OrderStatus): ActivityKind {
-  if (status === 'ASSIGNED') return 'assignment';
-  if (status === 'CANCELLED') return 'note';
-  return 'status';
-}
-
-function buildActivity(
-  order: Order,
-  invoice?: Invoice | null,
-  dispatch?: ApiDispatch | null,
-): ActivityItem[] {
-  const items: ActivityItem[] = (order.statusHistory ?? []).map((e) => ({
-    id: e.id,
-    at: e.createdAt,
-    title: e.status.replace(/_/g, ' '),
-    detail: e.note,
-    status: e.status,
-    kind: kindForStatus(e.status),
-  }));
-  if (invoice) {
-    items.push({
-      id: `invoice-${invoice.id}`,
-      at: invoice.createdAt,
-      title: `Invoice ${invoice.invoiceNumber}`,
-      detail: invoice.status.replace(/_/g, ' '),
-      kind: 'invoice',
-    });
-    if (Number(invoice.paidAmount) > 0) {
-      items.push({
-        id: `paid-${invoice.id}`,
-        at: invoice.updatedAt,
-        title: 'Payment recorded',
-        detail: formatMoney(invoice.paidAmount, invoice.currency),
-        kind: 'payment',
-      });
-    }
-  }
-  if (dispatch) {
-    items.push({
-      id: `dispatch-${dispatch.id}`,
-      at: dispatch.createdAt,
-      title: `Dispatch ${dispatch.dispatchNumber}`,
-      detail: dispatch.status.replace(/_/g, ' '),
-      kind: 'dispatch',
-    });
-  }
-  return items.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
 }
 
 function Avatar({
@@ -296,7 +221,7 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
   const canViewAudit = Boolean(role && AUDIT_ROLES.includes(role));
 
   const auditQuery = useQuery({
-    queryKey: ['audit-logs', 'order', orderId],
+    queryKey: auditLogKeys.list({ entityType: 'Order', entityId: orderId }),
     queryFn: () =>
       auditLogsAPI.list({
         entityType: 'Order',
@@ -375,7 +300,20 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
 
   if (loading) return <LoadingState label="Loading order..." />;
   if (error) return <ErrorState message={error} onRetry={refetch} />;
-  if (!order) return <div className="py-12 text-center text-muted-foreground">Order not found</div>;
+  if (!order) {
+    return (
+      <EmptyState
+        icon={Package}
+        title="Order not found"
+        description="This order may have been deleted, or the link is incorrect."
+        action={
+          <Button onClick={() => navigate({ to: '/app/orders' })} variant="outline">
+            Back to Orders
+          </Button>
+        }
+      />
+    );
+  }
 
   const { driverId: effectiveDriverId, vehicleId: effectiveVehicleId, isDraftPlan } =
     resolveEffectiveAssignment(order, dispatch);
@@ -909,6 +847,21 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                 canViewInvoices={canViewInvoices}
               />
             </section>
+
+            {/* Proof of delivery (driver-submitted, via the order's dispatch) */}
+            {canViewDispatch && (
+              <section className="p-4">
+                <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <FileText className="h-3.5 w-3.5" />
+                  Proof of Delivery
+                </div>
+                {dispatchesLoading ? (
+                  <Skeleton className="h-24 w-full rounded-xl" />
+                ) : (
+                  <ProofOfDeliveryPanel dispatchId={dispatch?.id} />
+                )}
+              </section>
+            )}
 
             {/* Timeline */}
             <section ref={activityRef} className="p-4">

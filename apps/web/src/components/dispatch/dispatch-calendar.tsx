@@ -21,6 +21,7 @@ import { DispatchCalendarKpis } from '@/components/dispatch/dispatch-calendar-kp
 import { DispatchCalendarContextPanel } from '@/components/dispatch/dispatch-calendar-context-panel';
 import { applyKpiFocus, computeCalendarKpis } from '@/components/dispatch/dispatch-calendar-stats';
 import { useDispatchConflictsBatch, dispatchConflictKeys } from '@/lib/api/dispatch-conflicts';
+import { useInvalidateOperationalState } from '@/lib/api/invalidate';
 import type { CalendarKpiKey } from '@/components/dispatch/dispatch-calendar-kpis';
 import { cn } from '@/lib/utils';
 import {
@@ -230,11 +231,21 @@ export function DispatchCalendar() {
   };
 
   const queryClient = useQueryClient();
+  const invalidateOperationalState = useInvalidateOperationalState();
 
+  /// Reschedule (drag/resize) and status changes made from the calendar go
+  /// straight through `dispatchesAPI` rather than the `use-dispatches` mutation
+  /// hooks, so they must invalidate the same roots those hooks invalidate
+  /// (orders, availability, board, dashboard, reports — see invalidate.ts) —
+  /// not just the calendar's own query — or every other screen shows a stale
+  /// window after a drag.
   const handleMutated = useCallback(async () => {
-    await refetch();
-    await queryClient.invalidateQueries({ queryKey: dispatchConflictKeys.all });
-  }, [queryClient, refetch]);
+    await Promise.all([
+      refetch(),
+      invalidateOperationalState(),
+      queryClient.invalidateQueries({ queryKey: dispatchConflictKeys.all }),
+    ]);
+  }, [invalidateOperationalState, queryClient, refetch]);
 
   const handleKpiClick = useCallback(
     (key: CalendarKpiKey) => {

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Dialog,
   DialogContent,
@@ -93,13 +94,20 @@ function DocumentRow({
         </p>
       </div>
       <div className="flex shrink-0 gap-1">
-        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => onPreview(doc)}>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-8 w-8"
+          aria-label="Preview document"
+          onClick={() => onPreview(doc)}
+        >
           <Eye className="h-3.5 w-3.5" />
         </Button>
         <Button
           size="icon"
           variant="ghost"
           className="h-8 w-8"
+          aria-label="Download document"
           disabled={downloading}
           onClick={handleDownload}
         >
@@ -111,6 +119,7 @@ function DocumentRow({
               size="icon"
               variant="ghost"
               className="h-8 w-8"
+              aria-label="Rename document"
               onClick={() => {
                 setName(doc.fileName);
                 setRenameOpen(true);
@@ -122,6 +131,7 @@ function DocumentRow({
               size="icon"
               variant="ghost"
               className="h-8 w-8 text-destructive hover:text-destructive"
+              aria-label="Delete document"
               disabled={loading}
               onClick={async () => {
                 try {
@@ -315,7 +325,7 @@ export function OrderDocumentsPanel({
   canViewInvoices,
 }: OrderDocumentsPanelProps) {
   const { data: currentUser } = useCurrentUser();
-  const { data: documents, loading, refetch } = useOrderDocuments(orderId);
+  const { data: documents, loading, error, refetch } = useOrderDocuments(orderId);
   const { upload, loading: uploading } = useUploadOrderDocument(orderId);
   const [previewDoc, setPreviewDoc] = useState<OrderDocument | null>(null);
   const [invoiceSheetId, setInvoiceSheetId] = useState<string | null>(null);
@@ -392,9 +402,15 @@ export function OrderDocumentsPanel({
           )}
         </div>
         {loading ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Loading documents…
+          <div className="space-y-2">
+            <Skeleton className="h-14 w-full rounded-lg" />
+          </div>
+        ) : error ? (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+            <span>{error}</span>
+            <Button size="sm" variant="outline" onClick={() => refetch()}>
+              Retry
+            </Button>
           </div>
         ) : (
           <>
@@ -410,14 +426,17 @@ export function OrderDocumentsPanel({
                 }}
               />
             ))}
-            {canWrite && pods.length === 0 && (
-              <DropZone
-                label="Upload POD"
-                accept="application/pdf,image/*"
-                disabled={uploading}
-                onFiles={(files) => handleUpload(files, 'POD')}
-              />
-            )}
+            {pods.length === 0 &&
+              (canWrite ? (
+                <DropZone
+                  label="Upload POD"
+                  accept="application/pdf,image/*"
+                  disabled={uploading}
+                  onFiles={(files) => handleUpload(files, 'POD')}
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground">No proof of delivery on file yet.</p>
+              ))}
           </>
         )}
       </div>
@@ -426,19 +445,25 @@ export function OrderDocumentsPanel({
         <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
           Attachments
         </div>
-        {attachments.map((doc) => (
-          <DocumentRow
-            key={doc.id}
-            doc={doc}
-            orderId={orderId}
-            canWrite={canWrite}
-            onPreview={setPreviewDoc}
-            onDeleted={(id) => {
-              setPreviewDoc((prev) => (prev?.id === id ? null : prev));
-            }}
-          />
-        ))}
-        {canWrite && (
+        {loading ? (
+          <Skeleton className="h-14 w-full rounded-lg" />
+        ) : error ? (
+          <p className="text-sm text-muted-foreground">Unable to load attachments.</p>
+        ) : (
+          attachments.map((doc) => (
+            <DocumentRow
+              key={doc.id}
+              doc={doc}
+              orderId={orderId}
+              canWrite={canWrite}
+              onPreview={setPreviewDoc}
+              onDeleted={(id) => {
+                setPreviewDoc((prev) => (prev?.id === id ? null : prev));
+              }}
+            />
+          ))
+        )}
+        {!loading && !error && canWrite && (
           <DropZone
             label="Add attachments"
             multiple

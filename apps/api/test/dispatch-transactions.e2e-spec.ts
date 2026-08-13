@@ -32,7 +32,22 @@ const audit = { log: auditLog } as unknown as AuditService;
 // these transactions have to get right, so stubbing them would hide exactly the
 // interaction under test.
 const queries = new AssignmentQueries(prisma);
-const service = new DispatchesService(prisma, audit, new AssignmentPolicy(prisma, queries), new OrderWriter(), { emit: () => {} } as any, { endSessionsForDispatch: async () => 0, endSessionsOnVehicleReassign: async () => 0, endSessionsForUser: async () => 0 } as any);
+const workflowEvents = {
+  emit: jest.fn(),
+} as unknown as ConstructorParameters<typeof DispatchesService>[4];
+const tracking = {
+  endSessionsForDispatch: jest.fn().mockResolvedValue(0),
+  endSessionsOnVehicleReassign: jest.fn().mockResolvedValue(0),
+  endSessionsForUser: jest.fn().mockResolvedValue(0),
+} as unknown as ConstructorParameters<typeof DispatchesService>[5];
+const service = new DispatchesService(
+  prisma,
+  audit,
+  new AssignmentPolicy(prisma, queries),
+  new OrderWriter(),
+  workflowEvents,
+  tracking,
+);
 
 const PICKUP = new Date("2032-05-01T08:00:00.000Z");
 const DELIVERY = new Date("2032-05-03T18:00:00.000Z");
@@ -186,7 +201,7 @@ async function race<T>(a: Promise<T>, b: Promise<T>) {
   const results = await Promise.allSettled([a, b]);
   return {
     fulfilled: results.filter((r) => r.status === "fulfilled"),
-    rejected: results.filter((r) => r.status === "rejected") as PromiseRejectedResult[],
+    rejected: results.filter((r) => r.status === "rejected"),
   };
 }
 

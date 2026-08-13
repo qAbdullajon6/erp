@@ -2,86 +2,95 @@
 
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { buildDispatchAnalytics } from '@/lib/dispatch/dispatch-analytics.builder';
-import type { DispatchAnalyticsSnapshot } from '@/lib/dispatch/dispatch-analytics.types';
-import { dispatchConflictsAPI } from '@/lib/api/dispatch-conflicts';
-import { dispatchAnalyticsKeys } from '@/lib/api/query-keys';
+import { buildDispatchAnalyticsInsights } from '@/lib/dispatch/dispatch-analytics.builder';
+import type { DispatchAnalyticsInsightsSnapshot } from '@/lib/dispatch/dispatch-analytics.types';
+import { dispatchConflictsAPI, dispatchConflictKeys } from '@/lib/api/dispatch-conflicts';
 import { describeError } from '@/lib/api/describe-error';
 import { useDispatches, useDispatchBoardSummary } from '@/lib/hooks/use-dispatches';
+import { useDispatchAnalyticsSnapshot, type DispatchAnalyticsQuery } from '@/lib/api/dispatch-analytics';
 
-const ANALYTICS_LIMIT = 200;
 const REFETCH_MS = 60_000;
+/// Every non-terminal status — the working set the insights half of the
+/// dashboard (overload, conflicts, maintenance, unassigned) needs to see in
+/// full. Bounded by fleet capacity in practice, not by total dispatch history.
+const OPEN_STATUSES = ['DRAFT', 'ASSIGNED', 'EN_ROUTE_TO_PICKUP', 'AT_PICKUP', 'IN_TRANSIT'];
+/// ListDispatchesQueryDto caps `limit` at 200 server-side — this must never
+/// exceed that or the request 400s.
+const OPEN_DISPATCH_LIMIT = 200;
 
-export function useDispatchAnalytics(options: { enabled?: boolean } = {}) {
+export function useDispatchAnalytics(query: DispatchAnalyticsQuery, options: { enabled?: boolean } = {}) {
   const enabled = options.enabled ?? true;
 
-  const dispatchesQuery = useDispatches(
+  // Real backend aggregation: date-range KPIs, trends, and charts.
+  const analytics = useDispatchAnalyticsSnapshot(query, enabled);
+
+  // Client-side half: board-and-conflict-derived operational recommendations
+  // that describe right now, not a historical bucket (see dispatch-analytics.types.ts).
+  const openDispatchesQuery = useDispatches(
     1,
-    ANALYTICS_LIMIT,
-    {
-      sortBy: 'pickupDateScheduled',
-      sortOrder: 'desc',
-    },
+    OPEN_DISPATCH_LIMIT,
+    { statuses: OPEN_STATUSES },
     { enabled, refetchInterval: REFETCH_MS },
   );
+  const boardQuery = useDispatchBoardSummary({ enabled, refetchInterval: REFETCH_MS });
 
-  const boardQuery = useDispatchBoardSummary({
-    enabled,
-    refetchInterval: REFETCH_MS,
-  });
-
-  const dispatchIds = useMemo(
-    () => (dispatchesQuery.data ?? []).map((d) => d.id).slice(0, 200),
-    [dispatchesQuery.data],
+  const openDispatchIds = useMemo(
+    () => (openDispatchesQuery.data ?? []).map((d) => d.id),
+    [openDispatchesQuery.data],
   );
 
   const conflictsQuery = useQuery({
-    queryKey: dispatchAnalyticsKeys.snapshot({
-      conflictsFor: dispatchIds.length,
-      ids: dispatchIds,
-    }),
-    queryFn: () => dispatchConflictsAPI.batch(dispatchIds),
-    enabled: enabled && dispatchIds.length > 0,
+    queryKey: dispatchConflictKeys.batch(openDispatchIds),
+    queryFn: () => dispatchConflictsAPI.batch(openDispatchIds),
+    enabled: enabled && openDispatchIds.length > 0,
     staleTime: 30_000,
   });
 
-  const snapshot: DispatchAnalyticsSnapshot | null = useMemo(() => {
-    if (!dispatchesQuery.data) return null;
-    return buildDispatchAnalytics({
-      dispatches: dispatchesQuery.data,
+  const insights: DispatchAnalyticsInsightsSnapshot | null = useMemo(() => {
+    if (!openDispatchesQuery.data || !analytics.data) return null;
+    return buildDispatchAnalyticsInsights({
+      activeDispatches: openDispatchesQuery.data,
       board: boardQuery.data,
       conflictsByDispatchId: conflictsQuery.data ?? {},
+      topDelayedRoutes: analytics.data.topDelayedRoutes,
     });
-  }, [dispatchesQuery.data, boardQuery.data, conflictsQuery.data]);
+  }, [openDispatchesQuery.data, boardQuery.data, conflictsQuery.data, analytics.data]);
 
-  /// Wait for dispatches + board first paint; conflicts may arrive a beat later
-  /// and must recompute the same snapshot (KPI + widgets + insights share it).
   const loading =
-    dispatchesQuery.loading ||
+    analytics.loading ||
+    openDispatchesQuery.loading ||
     boardQuery.loading ||
-    (dispatchIds.length > 0 && conflictsQuery.isPending && !conflictsQuery.data);
+    (openDispatchIds.length > 0 && conflictsQuery.isPending && !conflictsQuery.data);
   const isFetching =
-    dispatchesQuery.refreshing || boardQuery.isFetching || conflictsQuery.isFetching;
+    analytics.isFetching || openDispatchesQuery.refreshing || boardQuery.isFetching || conflictsQuery.isFetching;
 
   const error =
-    dispatchesQuery.error ??
+    analytics.error ??
+    openDispatchesQuery.error ??
     boardQuery.error ??
-    (conflictsQuery.error
-      ? describeError(conflictsQuery.error, 'Failed to load conflict analytics')
-      : null);
+    (conflictsQuery.error ? describeError(conflictsQuery.error, 'Failed to load conflict analytics') : null);
 
   return {
-    snapshot,
+    data: analytics.data,
+    insights,
+    board: boardQuery.data,
     loading,
     isFetching,
     error,
+    /// The 200-cap this used to have is gone — `analytics.data` is a real
+    /// backend aggregate over the whole date range. What's left bounded is
+    /// the OPEN_DISPATCH_LIMIT safety net on the insights half, which is a
+    /// generous cap on concurrently-open work, not on historical data.
+    openDispatchesTruncated: (openDispatchesQuery.meta?.total ?? 0) > OPEN_DISPATCH_LIMIT,
     refetch: () => {
-      void dispatchesQuery.refetch();
+      void analytics.refetch();
+      void openDispatchesQuery.refetch();
       void boardQuery.refetch();
       void conflictsQuery.refetch();
     },
     dataUpdatedAt: Math.max(
-      dispatchesQuery.dataUpdatedAt ?? 0,
+      analytics.dataUpdatedAt ?? 0,
+      openDispatchesQuery.dataUpdatedAt ?? 0,
       boardQuery.dataUpdatedAt ?? 0,
       conflictsQuery.dataUpdatedAt ?? 0,
     ),

@@ -1,199 +1,18 @@
-import type { ApiDispatch, DispatchStatus } from '@/lib/api/dispatches';
 import { activeConflicts, highestActiveSeverity } from '@/lib/api/dispatch-conflicts';
 import type {
-  BuildDispatchAnalyticsInput,
+  BuildDispatchAnalyticsInsightsInput,
   DispatchAnalyticsInsight,
-  DispatchAnalyticsKpis,
-  DispatchAnalyticsSnapshot,
-  DispatchAnalyticsTrend,
+  DispatchAnalyticsInsightsSnapshot,
 } from './dispatch-analytics.types';
 
-const ACTIVE: DispatchStatus[] = ['ASSIGNED', 'EN_ROUTE_TO_PICKUP', 'AT_PICKUP', 'IN_TRANSIT'];
-const TERMINAL: DispatchStatus[] = ['DELIVERED', 'CANCELLED'];
-
-function startOfDay(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-}
-
-function dayKey(d: Date): string {
-  return startOfDay(d).toISOString().slice(0, 10);
-}
-
-function weekKey(d: Date): string {
-  const day = startOfDay(d);
-  const diff = (day.getDay() + 6) % 7;
-  day.setDate(day.getDate() - diff);
-  return day.toISOString().slice(0, 10);
-}
-
-function isDelayed(dispatch: ApiDispatch, now: Date): boolean {
-  if (TERMINAL.includes(dispatch.status)) return false;
-  const pickupLate =
-    dispatch.pickupDateScheduled &&
-    new Date(dispatch.pickupDateScheduled).getTime() < now.getTime() &&
-    !dispatch.pickupDateActual &&
-    dispatch.status !== 'DRAFT';
-  const deliveryLate =
-    dispatch.deliveryDateScheduled &&
-    new Date(dispatch.deliveryDateScheduled).getTime() < now.getTime() &&
-    dispatch.status !== 'DELIVERED';
-  return Boolean(pickupLate || deliveryLate);
-}
-
-function delayReasonFor(dispatch: ApiDispatch, now: Date): string {
-  if (
-    dispatch.pickupDateScheduled &&
-    new Date(dispatch.pickupDateScheduled).getTime() < now.getTime() &&
-    !dispatch.pickupDateActual
-  ) {
-    return 'Late pickup';
-  }
-  if (
-    dispatch.deliveryDateScheduled &&
-    new Date(dispatch.deliveryDateScheduled).getTime() < now.getTime()
-  ) {
-    return 'Late delivery';
-  }
-  if (dispatch.status === 'DRAFT') return 'Awaiting assignment';
-  return 'Schedule slip';
-}
-
-function assignmentMinutes(dispatch: ApiDispatch): number | null {
-  if (dispatch.status === 'DRAFT') return null;
-  const created = new Date(dispatch.createdAt).getTime();
-  const assigned = new Date(dispatch.updatedAt).getTime();
-  if (!Number.isFinite(created) || !Number.isFinite(assigned) || assigned <= created) return null;
-  return Math.round((assigned - created) / 60_000);
-}
-
-function trend(current: number, previous: number): DispatchAnalyticsTrend {
-  if (previous === 0) {
-    if (current === 0) return { label: '0%', direction: 'flat' };
-    return { label: '—', direction: current > 0 ? 'up' : 'flat' };
-  }
-  const pct = Math.round(((current - previous) / previous) * 100);
-  if (pct === 0) return { label: '0%', direction: 'flat' };
-  return { label: `${pct > 0 ? '+' : ''}${pct}%`, direction: pct > 0 ? 'up' : 'down' };
-}
-
-function inRange(iso: string, start: Date, end: Date): boolean {
-  const t = new Date(iso).getTime();
-  return t >= start.getTime() && t < end.getTime();
-}
-
-export function buildDispatchAnalytics(input: BuildDispatchAnalyticsInput): DispatchAnalyticsSnapshot {
+/// The board/conflict-derived half of Dispatch Analytics — see the file
+/// comment in dispatch-analytics.types.ts for why this stays client-side
+/// while KPIs/trends/historical charts moved to DispatchAnalyticsService.
+export function buildDispatchAnalyticsInsights(
+  input: BuildDispatchAnalyticsInsightsInput,
+): DispatchAnalyticsInsightsSnapshot {
   const now = input.now ?? new Date();
-  const todayStart = startOfDay(now);
-  const tomorrow = new Date(todayStart);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const last7Start = new Date(todayStart);
-  last7Start.setDate(last7Start.getDate() - 7);
-  const prev7Start = new Date(last7Start);
-  prev7Start.setDate(prev7Start.getDate() - 7);
-
-  const dispatches = input.dispatches ?? [];
-  const board = input.board;
-  const conflictsMap = input.conflictsByDispatchId ?? {};
-
-  const activeDispatches = dispatches.filter((d) => ACTIVE.includes(d.status));
-  const draftDispatches = dispatches.filter((d) => d.status === 'DRAFT');
-  const delayedDispatches = dispatches.filter((d) => isDelayed(d, now));
-  const completedToday = dispatches.filter(
-    (d) =>
-      d.status === 'DELIVERED' &&
-      d.deliveryDateActual &&
-      inRange(d.deliveryDateActual, todayStart, tomorrow),
-  );
-
-  const assignmentSamples = dispatches
-    .map(assignmentMinutes)
-    .filter((v): v is number => v != null && v >= 0 && v <= 7 * 24 * 60);
-  const avgAssignmentMinutes =
-    assignmentSamples.length > 0
-      ? Math.round(assignmentSamples.reduce((a, b) => a + b, 0) / assignmentSamples.length)
-      : 0;
-
-  let conflictTotal = 0;
-  let conflictCritical = 0;
-  let conflictHigh = 0;
-  let conflictMedium = 0;
-  let conflictLow = 0;
-  const typeCounts = new Map<string, number>();
-
-  for (const dispatch of dispatches) {
-    const entry = conflictsMap[dispatch.id];
-    if (!entry) continue;
-    const active = activeConflicts(entry);
-    conflictTotal += active.length;
-    for (const c of active) {
-      if (c.severity === 'critical') conflictCritical += 1;
-      else if (c.severity === 'high') conflictHigh += 1;
-      else if (c.severity === 'medium') conflictMedium += 1;
-      else conflictLow += 1;
-      typeCounts.set(c.type, (typeCounts.get(c.type) ?? 0) + 1);
-    }
-  }
-
-  const activeDrivers =
-    board?.drivers.busy.length ??
-    new Set(activeDispatches.map((d) => d.driverId).filter(Boolean)).size;
-  const activeVehicles =
-    board?.vehicles.busy.length ??
-    new Set(activeDispatches.map((d) => d.vehicleId).filter(Boolean)).size;
-
-  const current7 = dispatches.filter((d) => inRange(d.createdAt, last7Start, tomorrow));
-  const previous7 = dispatches.filter((d) => inRange(d.createdAt, prev7Start, last7Start));
-
-  const countIn = (rows: ApiDispatch[], pred: (d: ApiDispatch) => boolean) => rows.filter(pred).length;
-
-  const kpis: DispatchAnalyticsKpis = {
-    activeDispatches: activeDispatches.length,
-    draftDispatches: draftDispatches.length,
-    delayedDispatches: delayedDispatches.length,
-    completedToday: completedToday.length,
-    activeDrivers,
-    activeVehicles,
-    avgAssignmentMinutes,
-    currentConflicts: conflictTotal,
-    trends: {
-      activeDispatches: trend(
-        countIn(current7, (d) => ACTIVE.includes(d.status)),
-        countIn(previous7, (d) => ACTIVE.includes(d.status)),
-      ),
-      draftDispatches: trend(
-        countIn(current7, (d) => d.status === 'DRAFT'),
-        countIn(previous7, (d) => d.status === 'DRAFT'),
-      ),
-      delayedDispatches: trend(
-        countIn(current7, (d) => isDelayed(d, now)),
-        countIn(previous7, (d) => isDelayed(d, now)),
-      ),
-      completedToday: trend(
-        countIn(current7, (d) => d.status === 'DELIVERED'),
-        countIn(previous7, (d) => d.status === 'DELIVERED'),
-      ),
-      activeDrivers: trend(activeDrivers, board?.drivers.busy.length ?? activeDrivers),
-      activeVehicles: trend(activeVehicles, board?.vehicles.busy.length ?? activeVehicles),
-      avgAssignmentMinutes: trend(avgAssignmentMinutes, avgAssignmentMinutes),
-      currentConflicts: trend(conflictTotal, Math.max(0, conflictTotal - 1)),
-    },
-  };
-
-  const byDay = new Map<string, number>();
-  for (let i = 13; i >= 0; i -= 1) {
-    const d = new Date(todayStart);
-    d.setDate(d.getDate() - i);
-    byDay.set(dayKey(d), 0);
-  }
-  for (const dispatch of dispatches) {
-    const key = dayKey(new Date(dispatch.pickupDateScheduled));
-    if (byDay.has(key)) byDay.set(key, (byDay.get(key) ?? 0) + 1);
-  }
-
-  const statusCounts = new Map<string, number>();
-  for (const dispatch of dispatches) {
-    statusCounts.set(dispatch.status, (statusCounts.get(dispatch.status) ?? 0) + 1);
-  }
+  const { activeDispatches, board, conflictsByDispatchId: conflictsMap, topDelayedRoutes } = input;
 
   const driverCounts = new Map<string, { id: string; label: string; count: number }>();
   for (const dispatch of activeDispatches) {
@@ -217,34 +36,27 @@ export function buildDispatchAnalytics(input: BuildDispatchAnalyticsInput): Disp
     vehicleCounts.set(id, row);
   }
 
-  const delayReasonCounts = new Map<string, number>();
-  for (const dispatch of delayedDispatches) {
-    const reason = delayReasonFor(dispatch, now);
-    delayReasonCounts.set(reason, (delayReasonCounts.get(reason) ?? 0) + 1);
+  let conflictTotal = 0;
+  let conflictCritical = 0;
+  let conflictHigh = 0;
+  let conflictMedium = 0;
+  let conflictLow = 0;
+  const typeCounts = new Map<string, number>();
+  for (const dispatch of activeDispatches) {
+    const entry = conflictsMap[dispatch.id];
+    if (!entry) continue;
+    const active = activeConflicts(entry);
+    conflictTotal += active.length;
+    for (const c of active) {
+      if (c.severity === 'critical') conflictCritical += 1;
+      else if (c.severity === 'high') conflictHigh += 1;
+      else if (c.severity === 'medium') conflictMedium += 1;
+      else conflictLow += 1;
+      typeCounts.set(c.type, (typeCounts.get(c.type) ?? 0) + 1);
+    }
   }
 
-  const weekly = new Map<string, number>();
-  for (let i = 7; i >= 0; i -= 1) {
-    const d = new Date(todayStart);
-    d.setDate(d.getDate() - i * 7);
-    weekly.set(weekKey(d), 0);
-  }
-  for (const dispatch of dispatches) {
-    const key = weekKey(new Date(dispatch.createdAt));
-    if (weekly.has(key)) weekly.set(key, (weekly.get(key) ?? 0) + 1);
-  }
-
-  const routeCounts = new Map<string, DispatchAnalyticsSnapshot['topDelayedRoutes'][0]>();
-  for (const dispatch of delayedDispatches) {
-    const from = dispatch.order?.pickupCity ?? '—';
-    const to = dispatch.order?.deliveryCity ?? '—';
-    const route = `${from} → ${to}`;
-    const row = routeCounts.get(route) ?? { route, count: 0, sampleDispatchId: dispatch.id };
-    row.count += 1;
-    routeCounts.set(route, row);
-  }
-
-  const driversNeedingAttention: DispatchAnalyticsSnapshot['driversNeedingAttention'] = [];
+  const driversNeedingAttention: DispatchAnalyticsInsightsSnapshot['driversNeedingAttention'] = [];
   for (const row of [...driverCounts.values()].sort((a, b) => b.count - a.count)) {
     if (row.count >= 2) {
       driversNeedingAttention.push({
@@ -263,7 +75,7 @@ export function buildDispatchAnalytics(input: BuildDispatchAnalyticsInput): Disp
       dispatchCount: 0,
     });
   }
-  for (const dispatch of dispatches) {
+  for (const dispatch of activeDispatches) {
     const entry = conflictsMap[dispatch.id];
     if (!entry) continue;
     const driverConflicts = activeConflicts(entry).filter((c) => c.category === 'driver');
@@ -277,14 +89,14 @@ export function buildDispatchAnalytics(input: BuildDispatchAnalyticsInput): Disp
     });
   }
 
-  const vehiclesNeedingMaintenance: DispatchAnalyticsSnapshot['vehiclesNeedingMaintenance'] = [
+  const vehiclesNeedingMaintenance: DispatchAnalyticsInsightsSnapshot['vehiclesNeedingMaintenance'] = [
     ...(board?.vehicles.maintenance ?? []).map((v) => ({
       id: v.id,
       plate: v.plateNumber,
       status: 'MAINTENANCE',
     })),
   ];
-  for (const dispatch of dispatches) {
+  for (const dispatch of activeDispatches) {
     const entry = conflictsMap[dispatch.id];
     if (!entry || !dispatch.vehicle) continue;
     const vehicleConflicts = activeConflicts(entry).filter((c) => c.category === 'vehicle');
@@ -297,7 +109,7 @@ export function buildDispatchAnalytics(input: BuildDispatchAnalyticsInput): Disp
     });
   }
 
-  const unassignedDispatches: DispatchAnalyticsSnapshot['unassignedDispatches'] = (
+  const unassignedDispatches: DispatchAnalyticsInsightsSnapshot['unassignedDispatches'] = (
     board?.unassignedOrders ?? []
   ).slice(0, 8).map((o) => ({
     orderId: o.id,
@@ -307,60 +119,51 @@ export function buildDispatchAnalytics(input: BuildDispatchAnalyticsInput): Disp
     pickupDate: o.pickupDate,
   }));
 
+  const conflictSummary: DispatchAnalyticsInsightsSnapshot['conflictSummary'] = {
+    total: conflictTotal,
+    critical: conflictCritical,
+    high: conflictHigh,
+    medium: conflictMedium,
+    low: conflictLow,
+    byType: [...typeCounts.entries()]
+      .map(([type, count]) => ({ type, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8),
+  };
+
   const insights = buildInsights({
-    dispatches,
+    dispatches: activeDispatches,
     board,
     conflictsMap,
-    kpis,
+    conflictTotal,
     driverCounts,
     vehicleCounts,
-    delayedDispatches,
+    topDelayedRoutes,
     now,
   });
 
   return {
-    kpis,
-    dispatchesByDay: [...byDay.entries()].map(([label, value]) => ({ label, value })),
-    dispatchesByStatus: [...statusCounts.entries()].map(([status, count]) => ({ status, count })),
-    driverWorkload: [...driverCounts.values()].sort((a, b) => b.count - a.count).slice(0, 8),
-    vehicleUtilization: [...vehicleCounts.values()].sort((a, b) => b.count - a.count).slice(0, 8),
-    delayReasons: [...delayReasonCounts.entries()]
-      .map(([reason, count]) => ({ reason, count }))
-      .sort((a, b) => b.count - a.count),
-    weeklyVolume: [...weekly.entries()].map(([label, value]) => ({ label, value })),
-    topDelayedRoutes: [...routeCounts.values()].sort((a, b) => b.count - a.count).slice(0, 6),
     driversNeedingAttention: driversNeedingAttention.slice(0, 6),
     vehiclesNeedingMaintenance: vehiclesNeedingMaintenance.slice(0, 6),
     unassignedDispatches,
-    conflictSummary: {
-      total: conflictTotal,
-      critical: conflictCritical,
-      high: conflictHigh,
-      medium: conflictMedium,
-      low: conflictLow,
-      byType: [...typeCounts.entries()]
-        .map(([type, count]) => ({ type, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 8),
-    },
+    conflictSummary,
     insights,
     generatedAt: now.toISOString(),
   };
 }
 
 function buildInsights(args: {
-  dispatches: ApiDispatch[];
-  board: BuildDispatchAnalyticsInput['board'];
-  conflictsMap: BuildDispatchAnalyticsInput['conflictsByDispatchId'];
-  kpis: DispatchAnalyticsKpis;
+  dispatches: BuildDispatchAnalyticsInsightsInput['activeDispatches'];
+  board: BuildDispatchAnalyticsInsightsInput['board'];
+  conflictsMap: BuildDispatchAnalyticsInsightsInput['conflictsByDispatchId'];
+  conflictTotal: number;
   driverCounts: Map<string, { id: string; label: string; count: number }>;
   vehicleCounts: Map<string, { id: string; label: string; count: number }>;
-  delayedDispatches: ApiDispatch[];
+  topDelayedRoutes: BuildDispatchAnalyticsInsightsInput['topDelayedRoutes'];
   now: Date;
 }): DispatchAnalyticsInsight[] {
   const insights: DispatchAnalyticsInsight[] = [];
-  const { board, kpis, driverCounts, vehicleCounts, delayedDispatches, conflictsMap, dispatches } =
-    args;
+  const { board, driverCounts, vehicleCounts, conflictTotal, conflictsMap, dispatches, topDelayedRoutes } = args;
 
   const overloaded = [...driverCounts.values()].find((d) => d.count >= 2);
   if (overloaded) {
@@ -391,17 +194,12 @@ function buildInsights(args: {
     });
   }
 
-  const routeBuckets = new Map<string, number>();
-  for (const d of delayedDispatches) {
-    const route = `${d.order?.pickupCity ?? '—'} → ${d.order?.deliveryCity ?? '—'}`;
-    routeBuckets.set(route, (routeBuckets.get(route) ?? 0) + 1);
-  }
-  const congested = [...routeBuckets.entries()].sort((a, b) => b[1] - a[1])[0];
-  if (congested && congested[1] >= 2) {
+  const congested = topDelayedRoutes[0];
+  if (congested && congested.count >= 2) {
     insights.push({
       id: 'route-congestion',
       title: 'Route congestion',
-      detail: `${congested[0]} has ${congested[1]} delayed dispatches. Review pickup windows and driver allocation.`,
+      detail: `${congested.route} has ${congested.count} delayed dispatches. Review pickup windows and driver allocation.`,
       severity: 'warning',
       actionLabel: 'Review delays',
       actionTo: '/app/dispatches',
@@ -423,7 +221,7 @@ function buildInsights(args: {
     });
   }
 
-  if (kpis.currentConflicts > 0) {
+  if (conflictTotal > 0) {
     const worst = dispatches
       .map((d) => ({ d, entry: conflictsMap[d.id] }))
       .filter((x) => x.entry && activeConflicts(x.entry).length > 0)

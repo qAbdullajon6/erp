@@ -33,6 +33,7 @@ export class CustomerDashboardService {
         where: {
           organizationId: orgId,
           customerId: custId,
+          archivedAt: null,
           status: { in: ["PENDING", "ASSIGNED", "PICKED_UP", "IN_TRANSIT"] },
         },
       }),
@@ -40,6 +41,7 @@ export class CustomerDashboardService {
         where: {
           organizationId: orgId,
           customerId: custId,
+          archivedAt: null,
           status: "DELIVERED",
           deliveredAt: {
             gte: monthStart,
@@ -53,12 +55,16 @@ export class CustomerDashboardService {
         sortBy: "createdAt",
         sortOrder: "desc",
         customerId: custId,
+        // DRAFT is pre-confirmation and staff-only — never shown to a
+        // customer, matching openOrdersCount above and CustomerOrdersService.
+        statuses: ["PENDING", "ASSIGNED", "PICKED_UP", "IN_TRANSIT", "DELIVERED", "CANCELLED"],
       }),
       this.prisma.order.findMany({
         where: {
           organizationId: orgId,
           customerId: custId,
-          status: { notIn: ["DELIVERED", "CANCELLED"] },
+          archivedAt: null,
+          status: { notIn: ["DRAFT", "DELIVERED", "CANCELLED"] },
           deliveryDate: { gte: new Date() },
         },
         orderBy: { deliveryDate: "asc" },

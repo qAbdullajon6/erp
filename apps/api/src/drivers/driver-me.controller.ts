@@ -19,6 +19,7 @@ import { Roles } from "../auth/decorators/roles.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
+import { RawResponse } from "../common/decorators/raw-response.decorator";
 import { DriverWorkspaceService } from "../dispatch/driver/driver-workspace.service";
 import {
   CreateDriverExpenseDto,
@@ -101,7 +102,11 @@ export class DriverMeController {
     return this.workspace.deleteExpenseReceipt(user.organizationId, user.userId, id);
   }
 
+  /// Binary body, not a JSON document — the global TransformInterceptor
+  /// wraps every response in `{ data: ... }`, which would serialize this
+  /// StreamableFile into JSON text instead of streaming its bytes.
   @Get("expenses/:id/receipt")
+  @RawResponse()
   async getReceipt(
     @Param("id", ParseUUIDPipe) id: string,
     @CurrentUser() user: CurrentUserPayload,
@@ -145,7 +150,9 @@ export class DriverMeController {
     return this.workspace.uploadInspectionPhoto(user.organizationId, user.userId, id, file);
   }
 
+  /// Binary body, not a JSON document — see getReceipt above.
   @Get("inspections/:inspectionId/photos/:photoId")
+  @RawResponse()
   async getInspectionPhoto(
     @Param("inspectionId", ParseUUIDPipe) inspectionId: string,
     @Param("photoId", ParseUUIDPipe) photoId: string,

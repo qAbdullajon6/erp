@@ -8,7 +8,7 @@ import {
 import { DriverRejectReason, Prisma } from "@prisma/client";
 import { createReadStream } from "fs";
 import { mkdir, unlink, writeFile } from "fs/promises";
-import { join } from "path";
+import { basename, join } from "path";
 import { randomUUID } from "crypto";
 import { AuditService } from "../../audit/audit.service";
 import type { CurrentUserPayload } from "../../auth/interfaces/current-user.interface";
@@ -327,7 +327,11 @@ export class DriverWorkspaceService {
     const expense = await this.assertOwnExpense(organizationId, userId, expenseId);
     if (!expense.receiptPath) throw new NotFoundException("No receipt uploaded");
     const absolute = join(EXPENSE_UPLOAD_ROOT, expense.receiptPath);
-    const fileName = expense.receiptPath.split("/").pop() ?? "receipt";
+    // basename(), not split("/") — receiptPath was built with path.join() at
+    // upload time, which is backslash-separated on Windows. split("/") was a
+    // no-op there, so the "filename" sent to the browser was the whole
+    // relative path (org id, expense id, and all) instead of just the file.
+    const fileName = basename(expense.receiptPath) || "receipt";
     const lower = fileName.toLowerCase();
     const mimeType = lower.endsWith(".pdf")
       ? "application/pdf"
@@ -501,6 +505,18 @@ export class DriverWorkspaceService {
       payload: { proofId: proof.id, type },
     });
 
+    // Logged against the Dispatch entity (not DispatchDeliveryProof) so it
+    // surfaces in the dispatch's operational timeline, which only queries
+    // audit rows by {entityType: "Dispatch", entityId: dispatchId}.
+    await this.audit.log({
+      organizationId,
+      actorUserId: userId,
+      action: "dispatch.pod_uploaded",
+      entityType: "Dispatch",
+      entityId: dispatchId,
+      metadata: { proofId: proof.id, type, fileName: file.originalname },
+    });
+
     return this.toProof(proof);
   }
 
@@ -533,6 +549,7 @@ export class DriverWorkspaceService {
           metadata: { metaOnly: true },
         },
       });
+      await this.logReceiverConfirmed(organizationId, userId, dispatchId, dto);
       return this.toProof(proof);
     }
     const updated = await this.prisma.dispatchDeliveryProof.update({
@@ -545,7 +562,28 @@ export class DriverWorkspaceService {
           dto.odometerKm != null ? new Prisma.Decimal(dto.odometerKm) : latest.odometerKm,
       },
     });
+    await this.logReceiverConfirmed(organizationId, userId, dispatchId, dto);
     return this.toProof(updated);
+  }
+
+  /// "Receiver confirmed delivery" only means something once there is a name to
+  /// attach to it — a bare notes/odometer update from updatePodMeta should not
+  /// spam the operational timeline with an empty confirmation event.
+  private async logReceiverConfirmed(
+    organizationId: string,
+    userId: string,
+    dispatchId: string,
+    dto: UpdatePodMetaDto,
+  ) {
+    if (!dto.receiverName) return;
+    await this.audit.log({
+      organizationId,
+      actorUserId: userId,
+      action: "dispatch.pod_receiver_confirmed",
+      entityType: "Dispatch",
+      entityId: dispatchId,
+      metadata: { receiverName: dto.receiverName, receiverPhone: dto.receiverPhone },
+    });
   }
 
   async getOrCreateSettings(organizationId: string) {

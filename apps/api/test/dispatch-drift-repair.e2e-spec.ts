@@ -1,5 +1,4 @@
 import { randomUUID } from "crypto";
-import { PrismaClient } from "@prisma/client";
 import { AuditService } from "../src/audit/audit.service";
 import type { CurrentUserPayload } from "../src/auth/interfaces/current-user.interface";
 import { AssignmentPolicy } from "../src/dispatch/assignment/assignment.policy";
@@ -28,7 +27,22 @@ const queries = new AssignmentQueries(prisma);
 const policy = new AssignmentPolicy(prisma, queries);
 const writer = new OrderWriter();
 const audit = { log: jest.fn().mockResolvedValue(undefined) } as unknown as AuditService;
-const dispatches = new DispatchesService(prisma, audit, policy, writer, { emit: () => {} } as any, { endSessionsForDispatch: async () => 0, endSessionsOnVehicleReassign: async () => 0, endSessionsForUser: async () => 0 } as any);
+const workflowEvents = {
+  emit: jest.fn(),
+} as unknown as ConstructorParameters<typeof DispatchesService>[4];
+const tracking = {
+  endSessionsForDispatch: jest.fn().mockResolvedValue(0),
+  endSessionsOnVehicleReassign: jest.fn().mockResolvedValue(0),
+  endSessionsForUser: jest.fn().mockResolvedValue(0),
+} as unknown as ConstructorParameters<typeof DispatchesService>[5];
+const dispatches = new DispatchesService(
+  prisma,
+  audit,
+  policy,
+  writer,
+  workflowEvents,
+  tracking,
+);
 const board = new DispatchService(prisma, queries);
 
 const PICKUP = new Date("2035-02-01T08:00:00.000Z");
@@ -43,7 +57,7 @@ let vehicleA: string;
 const userIds: string[] = [];
 
 const repair = (runId: string, dryRun: boolean) =>
-  repairDriftedDispatches(prisma as unknown as PrismaClient, { runId, dryRun, organizationId });
+  repairDriftedDispatches(prisma, { runId, dryRun, organizationId });
 
 async function makeOrder(overrides: Record<string, unknown> = {}) {
   return prisma.order.create({

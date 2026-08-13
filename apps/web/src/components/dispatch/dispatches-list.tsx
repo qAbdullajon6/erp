@@ -287,11 +287,15 @@ export function DispatchesList() {
   });
 
   /// Strip stats from a wider active slice + board (overloaded drivers). No fake fields.
-  const { data: activeSlice } = useDispatches(1, 100, { statuses: ACTIVE });
+  const { data: activeSlice, meta: activeMeta } = useDispatches(1, 100, { statuses: ACTIVE });
   const { data: board } = useDispatchBoardSummary({ enabled: true });
 
   const items = data ?? [];
   const stripItems = activeSlice ?? [];
+  /// The strip counts only the first 100 active dispatches — accurate for a
+  /// normal shift, but an org running 500+ shipments/day can have more active
+  /// dispatches than that. Say so rather than silently under-reporting.
+  const stripTruncated = (activeMeta?.total ?? 0) > 100;
 
   const overdueCount = useMemo(() => stripItems.filter(isDispatchLate).length, [stripItems]);
   const waitingPickupCount = useMemo(() => stripItems.filter(isWaitingPickup).length, [stripItems]);
@@ -513,6 +517,11 @@ export function DispatchesList() {
               <Timer className="h-4 w-4 shrink-0 text-warning" />
               {waitingPickupCount} waiting pickup
             </button>
+          )}
+          {stripTruncated && (
+            <span className="text-xs text-muted-foreground">
+              (counts from the first 100 active dispatches — more may be active)
+            </span>
           )}
         </div>
       )}

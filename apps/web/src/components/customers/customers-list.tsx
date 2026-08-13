@@ -346,6 +346,14 @@ export function CustomersList() {
         </Button>
       </div>
 
+      {relationships.truncated && (
+        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-foreground">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warning" />
+          Open orders / invoices exceed what this page can total — per-account balances and
+          utilization below may be understated. Open an account to see its own full history.
+        </div>
+      )}
+
       {/* Ops summary strip */}
       {summaryChips.length > 0 && (
         <div className="flex flex-wrap gap-1.5">

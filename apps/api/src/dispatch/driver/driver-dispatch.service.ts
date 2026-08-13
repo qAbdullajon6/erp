@@ -10,6 +10,7 @@ import type { CurrentUserPayload } from "../../auth/interfaces/current-user.inte
 import { OrderWriter } from "../../order-state/order-writer";
 import { PrismaService } from "../../prisma/prisma.service";
 import { TrackingService } from "../../telematics/tracking/tracking.service";
+import { WorkflowEventService } from "../../workflows/triggers/workflow-event.service";
 import { DispatchesService } from "../dispatches.service";
 import { allowedDispatchTransitions, DRIVER_DISPATCH_STATUSES } from "../dispatch-transitions";
 import { UpdateDispatchStatusDto } from "../dto/update-dispatch-status.dto";
@@ -28,6 +29,7 @@ export class DriverDispatchService {
     private readonly tracking: TrackingService,
     private readonly events: DriverActionEventsService,
     private readonly workspace: DriverWorkspaceService,
+    private readonly workflowEvents: WorkflowEventService,
   ) {}
 
   async listMine(organizationId: string, userId: string, includeFinished = false) {
@@ -191,7 +193,7 @@ export class DriverDispatchService {
       await this.workspace.assertDeliveredChecklist(organizationId, id);
     }
 
-    const updated = await this.dispatches.inTransaction(async (tx) => {
+    const { updated, projected } = await this.dispatches.inTransaction(async (tx) => {
       await this.dispatches.transitionInTx(
         tx,
         organizationId,
@@ -200,7 +202,7 @@ export class DriverDispatchService {
         actor,
         dto.note,
       );
-      await this.orderWriter.project(tx, organizationId, dispatch.orderId, actor, dto.note);
+      const projected = await this.orderWriter.project(tx, organizationId, dispatch.orderId, actor, dto.note);
 
       if (dto.status === "AT_PICKUP" && arrival?.lat != null && arrival?.lng != null) {
         await tx.dispatch.update({
@@ -224,7 +226,8 @@ export class DriverDispatchService {
         await tx.driver.update({ where: { id: driverId }, data: { operationalStatus: ops } });
       }
 
-      return tx.dispatch.findUniqueOrThrow({ where: { id }, include: DRIVER_INCLUDE });
+      const updated = await tx.dispatch.findUniqueOrThrow({ where: { id }, include: DRIVER_INCLUDE });
+      return { updated, projected };
     });
 
     await this.auditService.log({
@@ -258,6 +261,27 @@ export class DriverDispatchService {
     if (dto.status === "DELIVERED" || dto.status === "CANCELLED") {
       await this.tracking.endSessionsForDispatch(organizationId, id).catch(() => undefined);
     }
+
+    // This is the driver-app equivalent of DispatchesService.updateStatus() —
+    // until this was added, a driver marking their own delivery complete never
+    // fired dispatch.status_changed/dispatch.completed/order.status_changed at
+    // all, so every workflow (including "auto-invoice on delivery") silently
+    // never ran for the path real drivers actually use in the field.
+    void this.workflowEvents.emit(organizationId, "dispatch.status_changed", {
+      id,
+      dispatchNumber: dispatch.dispatchNumber,
+      orderId: dispatch.orderId,
+      from: dispatch.status,
+      to: dto.status,
+    });
+    if (dto.status === "DELIVERED") {
+      void this.workflowEvents.emit(organizationId, "dispatch.completed", {
+        id,
+        dispatchNumber: dispatch.dispatchNumber,
+        orderId: dispatch.orderId,
+      });
+    }
+    this.dispatches.emitOrderStatusChangedIfMoved(organizationId, projected);
 
     return this.toDriverResponse(updated);
   }

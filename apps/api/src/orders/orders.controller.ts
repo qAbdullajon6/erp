@@ -15,6 +15,7 @@ import {
   UseInterceptors,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
+import { Throttle } from "@nestjs/throttler";
 import { memoryStorage } from "multer";
 import type { Response } from "express";
 import type { MembershipRole } from "@prisma/client";
@@ -35,7 +36,7 @@ import { UpdateOrderStatusDto } from "./dto/update-order-status.dto";
 import { UploadOrderDocumentDto } from "./dto/upload-order-document.dto";
 import { RenameOrderDocumentDto } from "./dto/rename-order-document.dto";
 import { UpdateOrderNoteDto } from "./dto/update-order-note.dto";
-import { OrderDocumentsService } from "./order-documents.service";
+import { MAX_FILE_BYTES, OrderDocumentsService } from "./order-documents.service";
 import { OrderNotesService } from "./order-notes.service";
 import { OrdersService } from "./orders.service";
 
@@ -65,13 +66,20 @@ const CREATE_UPDATE_ROLES: MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER", "D
 const OPERATIONAL_ROLES: MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER"];
 
 const DOCUMENT_UPLOAD_LIMITS = {
-  fileSize: 10 * 1024 * 1024,
+  fileSize: MAX_FILE_BYTES,
   files: 1,
   fields: 4,
   parts: 6,
   fieldNameSize: 100,
   fieldSize: 512,
 };
+
+// Tighter than the global default (300 req/60s) for the two endpoints that
+// accept unbounded client-driven volume: order creation (a busy dispatcher
+// could plausibly need dozens/min, not hundreds) and document upload (each
+// request buffers up to MAX_FILE_BYTES in memory).
+const CREATE_ORDER_THROTTLE = { default: { limit: 30, ttl: 60_000 } };
+const UPLOAD_DOCUMENT_THROTTLE = { default: { limit: 20, ttl: 60_000 } };
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller("orders")
@@ -89,6 +97,7 @@ export class OrdersController {
   }
 
   @Roles(...CREATE_UPDATE_ROLES)
+  @Throttle(CREATE_ORDER_THROTTLE)
   @Post()
   create(@Body() dto: CreateOrderDto, @CurrentUser() user: CurrentUserPayload) {
     return this.ordersService.create(user.organizationId, dto, user);
@@ -103,14 +112,14 @@ export class OrdersController {
 
   @Roles(...READ_ROLES)
   @Get(":id")
-  getById(@Param("id") id: string, @CurrentUser() user: CurrentUserPayload) {
+  getById(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {
     return this.ordersService.getById(user.organizationId, id);
   }
 
   @Roles(...CREATE_UPDATE_ROLES)
   @Patch(":id")
   update(
-    @Param("id") id: string,
+    @Param("id", ParseUUIDPipe) id: string,
     @Body() dto: UpdateOrderDto,
     @CurrentUser() user: CurrentUserPayload,
   ) {
@@ -121,7 +130,7 @@ export class OrdersController {
   @Post(":id/assign")
   @HttpCode(200)
   assign(
-    @Param("id") id: string,
+    @Param("id", ParseUUIDPipe) id: string,
     @Body() dto: AssignOrderDto,
     @CurrentUser() user: CurrentUserPayload,
   ) {
@@ -132,7 +141,7 @@ export class OrdersController {
   @Post(":id/status")
   @HttpCode(200)
   updateStatus(
-    @Param("id") id: string,
+    @Param("id", ParseUUIDPipe) id: string,
     @Body() dto: UpdateOrderStatusDto,
     @CurrentUser() user: CurrentUserPayload,
   ) {
@@ -142,14 +151,14 @@ export class OrdersController {
   @Roles(...OPERATIONAL_ROLES)
   @Post(":id/archive")
   @HttpCode(200)
-  archive(@Param("id") id: string, @CurrentUser() user: CurrentUserPayload) {
+  archive(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {
     return this.ordersService.archive(user.organizationId, id, user);
   }
 
   @Roles(...OPERATIONAL_ROLES)
   @Post(":id/restore")
   @HttpCode(200)
-  restore(@Param("id") id: string, @CurrentUser() user: CurrentUserPayload) {
+  restore(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {
     return this.ordersService.restore(user.organizationId, id, user);
   }
 
@@ -157,7 +166,7 @@ export class OrdersController {
   @Post(":id/cancel")
   @HttpCode(200)
   cancel(
-    @Param("id") id: string,
+    @Param("id", ParseUUIDPipe) id: string,
     @Body() dto: CancelOrderDto,
     @CurrentUser() user: CurrentUserPayload,
   ) {
@@ -171,6 +180,7 @@ export class OrdersController {
   }
 
   @Roles(...CREATE_UPDATE_ROLES)
+  @Throttle(UPLOAD_DOCUMENT_THROTTLE)
   @Post(":id/documents")
   @UseInterceptors(
     FileInterceptor("file", { storage: memoryStorage(), limits: DOCUMENT_UPLOAD_LIMITS }),
@@ -220,8 +230,17 @@ export class OrdersController {
       id,
       documentId,
     );
+    // RFC 5987 filename*= alongside an ASCII-safe filename= fallback — the
+    // ASCII fallback strips everything but a conservative safe set so a
+    // stored filename can never inject header syntax, and filename* carries
+    // the accurate name for clients that support it.
+    const asciiSafeName = doc.fileName.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");
+    const encodedName = encodeURIComponent(doc.fileName);
     res.setHeader("Content-Type", doc.mimeType);
-    res.setHeader("Content-Disposition", `inline; filename="${doc.fileName.replace(/"/g, "")}"`);
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="${asciiSafeName}"; filename*=UTF-8''${encodedName}`,
+    );
     stream.pipe(res);
   }
 

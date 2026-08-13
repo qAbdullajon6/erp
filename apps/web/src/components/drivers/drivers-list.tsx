@@ -36,6 +36,7 @@ import { formatRelativeTime } from '@/lib/format';
 import { toCsv, downloadCsv } from '@/lib/csv';
 import { cn } from '@/lib/utils';
 import {
+  AlertTriangle,
   Download,
   Edit2,
   ExternalLink,
@@ -112,12 +113,17 @@ export function DriversList() {
   const liveDispatches = useDispatches(1, 200, {
     statuses: LIVE_DISPATCH,
   });
-  const allDispatchesForCounts = useDispatches(1, 200);
 
   const opsIndex = useMemo(
-    () => buildDriverOpsIndex([...(liveDispatches.data ?? []), ...(allDispatchesForCounts.data ?? [])]),
-    [liveDispatches.data, allDispatchesForCounts.data],
+    () => buildDriverOpsIndex(liveDispatches.data ?? []),
+    [liveDispatches.data],
   );
+
+  /// This fetch is capped at 200 (see ROSTER_FETCH_LIMIT comment above for the
+  /// same ceiling on the driver side). An org running more live dispatches than
+  /// that at once would have some drivers' availability/vehicle badges below
+  /// silently understated rather than shown as unknown — surface it instead.
+  const liveDispatchesTruncated = (liveDispatches.meta?.total ?? 0) > 200;
 
   const activeMeta = useDriversList({ status: 'ACTIVE', limit: 1 });
   const onLeaveMeta = useDriversList({ status: 'ON_LEAVE', limit: 1 });
@@ -330,6 +336,15 @@ export function DriversList() {
           Archived
         </Button>
       </div>
+
+      {liveDispatchesTruncated && (
+        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-foreground">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warning" />
+          Live dispatches exceed what this page can total — availability, vehicle, and dispatch
+          badges below may be understated for some drivers. Open a driver to see their own current
+          assignment.
+        </div>
+      )}
 
       {summaryChips.length > 0 && (
         <div className="flex flex-wrap gap-1.5">

@@ -187,8 +187,11 @@ export class CustomerNotificationsService {
     const items: NotificationItem[] = [];
 
     for (const o of orders) {
+      // DRAFT is pre-confirmation and never actually scheduled for dispatch —
+      // excluded here the same way the status-pulse branch below excludes it,
+      // so an unconfirmed order can't generate a false "delayed" notification.
       const delayed =
-        o.deliveryDate < now && !["DELIVERED", "CANCELLED"].includes(o.status);
+        o.deliveryDate < now && !["DELIVERED", "CANCELLED", "DRAFT"].includes(o.status);
 
       if (delayed) {
         items.push({

@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { describeError } from './describe-error';
-import { unwrapResponse } from './error';
+import { ApiError, unwrapResponse } from './error';
 import { apiFetch } from './fetch';
 import { useInvalidateOperationalState } from './invalidate';
-import { orderKeys } from './query-keys';
+import { orderKeys, auditLogKeys } from './query-keys';
 
 export type OrderStatus = 'DRAFT' | 'PENDING' | 'ASSIGNED' | 'PICKED_UP' | 'IN_TRANSIT' | 'DELIVERED' | 'CANCELLED';
 
@@ -220,17 +220,7 @@ class OrdersAPI {
 
   async getOrder(id: string): Promise<Order> {
     const response = await apiFetch(`${this.baseUrl}/orders/${id}`, { method: 'GET' });
-
-    if (!response.ok) {
-      if (response.status === 404) {
-        throw new Error('Order not found');
-      }
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || `Failed to fetch order: ${response.statusText}`);
-    }
-
-    const result = await response.json();
-    return result.data;
+    return unwrapResponse(response, 'Order not found');
   }
 
   async createOrder(input: CreateOrderInput): Promise<Order> {
@@ -351,7 +341,7 @@ class OrdersAPI {
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
       const message = body?.error?.message ?? body?.message ?? 'Failed to download document';
-      throw new Error(Array.isArray(message) ? message[0] : message);
+      throw new ApiError(Array.isArray(message) ? message[0] : message, response.status);
     }
     return response.blob();
   }
@@ -448,7 +438,9 @@ export function useUpdateOrder() {
       ordersAPI.updateOrder(id, input),
     onSuccess: async (_data, vars) => {
       await invalidate();
-      await queryClient.invalidateQueries({ queryKey: ['audit-logs', 'order', vars.id] });
+      await queryClient.invalidateQueries({
+        queryKey: auditLogKeys.list({ entityType: 'Order', entityId: vars.id }),
+      });
     },
   });
 
@@ -467,7 +459,9 @@ export function useAssignOrder() {
       ordersAPI.assignOrder(id, input),
     onSuccess: async (_data, vars) => {
       await invalidate();
-      await queryClient.invalidateQueries({ queryKey: ['audit-logs', 'order', vars.id] });
+      await queryClient.invalidateQueries({
+        queryKey: auditLogKeys.list({ entityType: 'Order', entityId: vars.id }),
+      });
     },
   });
 
@@ -489,7 +483,9 @@ export function useUpdateOrderStatus() {
       ordersAPI.updateOrderStatus(id, input),
     onSuccess: async (_data, vars) => {
       await invalidate();
-      await queryClient.invalidateQueries({ queryKey: ['audit-logs', 'order', vars.id] });
+      await queryClient.invalidateQueries({
+        queryKey: auditLogKeys.list({ entityType: 'Order', entityId: vars.id }),
+      });
     },
   });
 
@@ -502,11 +498,17 @@ export function useUpdateOrderStatus() {
 }
 
 export function useCancelOrder() {
+  const queryClient = useQueryClient();
   const invalidate = useInvalidateOperationalState();
   const mutation = useMutation({
     mutationFn: ({ id, input }: { id: string; input: CancelOrderInput }) =>
       ordersAPI.cancelOrder(id, input),
-    onSuccess: invalidate,
+    onSuccess: async (_data, vars) => {
+      await invalidate();
+      await queryClient.invalidateQueries({
+        queryKey: auditLogKeys.list({ entityType: 'Order', entityId: vars.id }),
+      });
+    },
   });
 
   return {
@@ -523,7 +525,9 @@ export function useArchiveOrder() {
     mutationFn: (id: string) => ordersAPI.archiveOrder(id),
     onSuccess: async (_data, id) => {
       await invalidate();
-      await queryClient.invalidateQueries({ queryKey: ['audit-logs', 'order', id] });
+      await queryClient.invalidateQueries({
+        queryKey: auditLogKeys.list({ entityType: 'Order', entityId: id }),
+      });
     },
   });
 
@@ -541,7 +545,9 @@ export function useRestoreOrder() {
     mutationFn: (id: string) => ordersAPI.restoreOrder(id),
     onSuccess: async (_data, id) => {
       await invalidate();
-      await queryClient.invalidateQueries({ queryKey: ['audit-logs', 'order', id] });
+      await queryClient.invalidateQueries({
+        queryKey: auditLogKeys.list({ entityType: 'Order', entityId: id }),
+      });
     },
   });
 
@@ -585,7 +591,9 @@ export function useUploadOrderDocument(orderId: string) {
       ordersAPI.uploadDocument(orderId, file, kind),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: [...orderKeys.detail(orderId), 'documents'] });
-      await queryClient.invalidateQueries({ queryKey: ['audit-logs', 'order', orderId] });
+      await queryClient.invalidateQueries({
+        queryKey: auditLogKeys.list({ entityType: 'Order', entityId: orderId }),
+      });
     },
   });
 
@@ -601,7 +609,9 @@ export function useDeleteOrderDocument(orderId: string) {
     mutationFn: (documentId: string) => ordersAPI.deleteDocument(orderId, documentId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: [...orderKeys.detail(orderId), 'documents'] });
-      await queryClient.invalidateQueries({ queryKey: ['audit-logs', 'order', orderId] });
+      await queryClient.invalidateQueries({
+        queryKey: auditLogKeys.list({ entityType: 'Order', entityId: orderId }),
+      });
     },
   });
 
@@ -618,7 +628,9 @@ export function useRenameOrderDocument(orderId: string) {
       ordersAPI.renameDocument(orderId, documentId, fileName),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: [...orderKeys.detail(orderId), 'documents'] });
-      await queryClient.invalidateQueries({ queryKey: ['audit-logs', 'order', orderId] });
+      await queryClient.invalidateQueries({
+        queryKey: auditLogKeys.list({ entityType: 'Order', entityId: orderId }),
+      });
     },
   });
 
@@ -638,6 +650,7 @@ export function useOrderNotes(orderId: string) {
   return {
     data: result.data?.items ?? [],
     loading: result.isPending,
+    error: result.error ? describeError(result.error, 'Failed to load notes') : null,
     refetch: result.refetch,
   };
 }
@@ -648,7 +661,9 @@ export function useCreateOrderNote(orderId: string) {
     mutationFn: (body: string) => ordersAPI.createNote(orderId, body),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: [...orderKeys.detail(orderId), 'notes'] });
-      await queryClient.invalidateQueries({ queryKey: ['audit-logs', 'order', orderId] });
+      await queryClient.invalidateQueries({
+        queryKey: auditLogKeys.list({ entityType: 'Order', entityId: orderId }),
+      });
     },
   });
 
@@ -665,7 +680,9 @@ export function useUpdateOrderNote(orderId: string) {
       ordersAPI.updateNote(orderId, noteId, body),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: [...orderKeys.detail(orderId), 'notes'] });
-      await queryClient.invalidateQueries({ queryKey: ['audit-logs', 'order', orderId] });
+      await queryClient.invalidateQueries({
+        queryKey: auditLogKeys.list({ entityType: 'Order', entityId: orderId }),
+      });
     },
   });
 
@@ -681,7 +698,9 @@ export function useDeleteOrderNote(orderId: string) {
     mutationFn: (noteId: string) => ordersAPI.deleteNote(orderId, noteId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: [...orderKeys.detail(orderId), 'notes'] });
-      await queryClient.invalidateQueries({ queryKey: ['audit-logs', 'order', orderId] });
+      await queryClient.invalidateQueries({
+        queryKey: auditLogKeys.list({ entityType: 'Order', entityId: orderId }),
+      });
     },
   });
 

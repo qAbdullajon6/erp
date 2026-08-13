@@ -39,7 +39,6 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock,
-  CreditCard,
   Edit2,
   ExternalLink,
   Mail,
@@ -122,28 +121,32 @@ export function CustomerDetail({ customerId }: CustomerDetailProps) {
   const { archive, loading: archiving } = useArchiveCustomer();
   const { restore, loading: restoring } = useRestoreCustomer();
 
+  // 100, not 50 — the max page size Orders/Invoices' own list endpoints allow
+  // (list-orders-query.dto.ts / list-invoices-query.dto.ts), so this account's
+  // timeline/financials miss as little as the API can give in one request.
   const ordersQuery = useOrdersList({
     customerId,
-    limit: 50,
+    limit: 100,
     sortBy: 'createdAt',
     sortOrder: 'desc',
   });
   const invoicesQuery = useInvoicesQuery(
-    { customerId, limit: 50, sortBy: 'createdAt', sortOrder: 'desc' },
+    { customerId, limit: 100, sortBy: 'createdAt', sortOrder: 'desc' },
     canViewInvoices,
   );
-  const dispatchesQuery = useDispatches(1, 100);
+  // Filtered server-side by this customer's dispatches (via the order relation
+  // — GET /dispatches?customerId=), not the org's 100 most recent dispatches
+  // filtered client-side by this customer's most recent 100 orders. The old
+  // approach silently dropped a customer's dispatches once the org had more
+  // than 100 dispatches total, regardless of how few belonged to THIS account.
+  const dispatchesQuery = useDispatches(1, 100, { customerId });
 
   const [editOpen, setEditOpen] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
 
   const orders = ordersQuery.data;
-  const invoices = invoicesQuery.data?.items ?? [];
-
-  const relatedDispatches = useMemo(() => {
-    const orderIds = new Set(orders.map((o) => o.id));
-    return (dispatchesQuery.data ?? []).filter((d) => orderIds.has(d.orderId));
-  }, [dispatchesQuery.data, orders]);
+  const invoices = useMemo(() => invoicesQuery.data?.items ?? [], [invoicesQuery.data]);
+  const relatedDispatches = useMemo(() => dispatchesQuery.data ?? [], [dispatchesQuery.data]);
 
   const dispatchByOrderId = useMemo(() => {
     const map = new Map<string, (typeof relatedDispatches)[number]>();
@@ -407,11 +410,15 @@ export function CustomerDetail({ customerId }: CustomerDetailProps) {
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5">
-              {canCreateOrder && customer.status !== 'ARCHIVED' && (
+              {/* Backend requires status === ACTIVE to create an order for this
+                  customer (orders.service.ts assertCustomerSelectable) — AT_RISK
+                  and INACTIVE are rejected too, not just ARCHIVED, so the button
+                  must not be offered for those either. */}
+              {canCreateOrder && customer.status === 'ACTIVE' && (
                 <Button
                   size="sm"
                   className="bg-gradient-brand text-brand-foreground hover:opacity-90"
-                  onClick={() => navigate({ to: '/app/orders', search: { create: true } })}
+                  onClick={() => navigate({ to: '/app/orders', search: { create: true, customerId } })}
                 >
                   <Plus className="mr-1.5 h-3.5 w-3.5" />
                   New Order
@@ -845,11 +852,15 @@ export function CustomerDetail({ customerId }: CustomerDetailProps) {
                       Email
                     </a>
                   )}
-                  {canCreateOrder && customer.status !== 'ARCHIVED' && (
+                  {/* Backend requires status === ACTIVE to create an order for this
+                  customer (orders.service.ts assertCustomerSelectable) — AT_RISK
+                  and INACTIVE are rejected too, not just ARCHIVED, so the button
+                  must not be offered for those either. */}
+              {canCreateOrder && customer.status === 'ACTIVE' && (
                     <button
                       type="button"
                       className={RAIL_BTN}
-                      onClick={() => navigate({ to: '/app/orders', search: { create: true } })}
+                      onClick={() => navigate({ to: '/app/orders', search: { create: true, customerId } })}
                     >
                       <Plus className="h-3.5 w-3.5" />
                       New Order

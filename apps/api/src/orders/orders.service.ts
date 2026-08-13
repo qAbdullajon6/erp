@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { Order, OrderStatus, Prisma, DispatchStatus } from "@prisma/client";
+import { Order, OrderStatus, Prisma, DispatchStatus, UsageMetricType } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { isValidEntityCode } from "../common/sequential-code.util";
@@ -15,6 +15,7 @@ import {
 } from "../order-state/transition.policy";
 import { PrismaService } from "../prisma/prisma.service";
 import { WorkflowEventService } from "../workflows/triggers/workflow-event.service";
+import { UsageMeteringService } from "../billing/usage-metering.service";
 import { AssignOrderDto } from "./dto/assign-order.dto";
 import { CheckDuplicateOrderDto } from "./dto/check-duplicate-order.dto";
 import { CancelOrderDto } from "./dto/cancel-order.dto";
@@ -71,6 +72,7 @@ export class OrdersService {
     private readonly dispatches: DispatchesService,
     private readonly assignmentPolicy: AssignmentPolicy,
     private readonly workflowEvents: WorkflowEventService,
+    private readonly usageMetering: UsageMeteringService,
   ) {}
 
   async list(organizationId: string, query: ListOrdersQueryDto) {
@@ -195,7 +197,11 @@ export class OrdersService {
       },
     };
 
-    const [rows, total] = await Promise.all([
+    // A batched $transaction (not Promise.all) so the count and the page it
+    // describes read the same snapshot — otherwise a concurrent insert/delete
+    // between the two queries can make `total`/`totalPages` briefly disagree
+    // with `items`.
+    const [rows, total] = await this.prisma.$transaction([
       this.prisma.order.findMany({
         where,
         include,
@@ -254,10 +260,18 @@ export class OrdersService {
       throw new ConflictException("Only delivered or cancelled orders can be archived");
     }
 
-    const updated = await this.prisma.order.update({
-      where: { id },
+    // Compare-and-set on archivedAt: two concurrent archive calls on the same
+    // order can both pass the check above before either commits its write —
+    // the guarded updateMany makes the loser a no-op 409 instead of a second,
+    // duplicate audit entry for one logical action.
+    const result = await this.prisma.order.updateMany({
+      where: { id, organizationId, archivedAt: null },
       data: { archivedAt: new Date() },
     });
+    if (result.count === 0) {
+      throw new ConflictException("Order is already archived");
+    }
+    const updated = await this.findOrThrow(organizationId, id);
 
     await this.auditService.log({
       organizationId,
@@ -277,10 +291,14 @@ export class OrdersService {
       throw new ConflictException("Order is not archived");
     }
 
-    const updated = await this.prisma.order.update({
-      where: { id },
+    const result = await this.prisma.order.updateMany({
+      where: { id, organizationId, archivedAt: { not: null } },
       data: { archivedAt: null },
     });
+    if (result.count === 0) {
+      throw new ConflictException("Order is not archived");
+    }
+    const updated = await this.findOrThrow(organizationId, id);
 
     await this.auditService.log({
       organizationId,
@@ -306,41 +324,63 @@ export class OrdersService {
   }
 
   async create(organizationId: string, dto: CreateOrderDto, actor: CurrentUserPayload) {
+    await this.usageMetering.enforceLimit(organizationId, UsageMetricType.ORDERS, 1);
     await this.assertCustomerSelectable(organizationId, dto.customerId);
 
     const pickupDate = new Date(dto.pickupDate);
     const deliveryDate = new Date(dto.deliveryDate);
     this.assertValidDateRange(pickupDate, deliveryDate);
 
-    const orderNumber = await this.resolveOrderNumberForCreate(organizationId, dto.orderNumber, pickupDate);
+    const isAutoNumber = !dto.orderNumber;
+    let orderNumber = await this.resolveOrderNumberForCreate(organizationId, dto.orderNumber, pickupDate);
 
-    const order = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.order.create({
-      data: {
-        organizationId,
-        orderNumber,
-        customerId: dto.customerId,
-        pickupAddress: dto.pickupAddress,
-        pickupCity: dto.pickupCity,
-        pickupDate,
-        deliveryAddress: dto.deliveryAddress,
-        deliveryCity: dto.deliveryCity,
-        deliveryDate,
-        cargoDescription: dto.cargoDescription,
-        cargoWeightKg: dto.cargoWeightKg !== undefined ? new Prisma.Decimal(dto.cargoWeightKg) : undefined,
-        cargoVolumeM3: dto.cargoVolumeM3 !== undefined ? new Prisma.Decimal(dto.cargoVolumeM3) : undefined,
-        price: new Prisma.Decimal(dto.price),
-        currency: dto.currency ?? "USD",
-        notes: dto.notes,
-        deliveryNotes: dto.deliveryNotes,
-      },
-      });
-      // The order and its opening history row are one fact (AR2). An order is
-      // BORN in DRAFT — this is a creation, not a transition, so no policy governs
-      // it; but the history row still goes through the single Order writer (AR5).
-      await this.orderWriter.recordCreated(tx, organizationId, created.id, actor);
-      return created;
-    });
+    // Auto-generated numbers are assigned by reading the current max and
+    // computing "next" in application code (order-number.util.ts) — a
+    // classic read-then-write race under concurrent creation. The DB's
+    // @@unique([organizationId, orderNumber]) constraint is the real guard
+    // and throws P2002 at commit time; without this retry, that surfaced as
+    // an uncaught 500 instead of a clean, self-healing retry.
+    let order: Order | undefined;
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        order = await this.prisma.$transaction(async (tx) => {
+          const created = await tx.order.create({
+            data: {
+              organizationId,
+              orderNumber,
+              customerId: dto.customerId,
+              pickupAddress: dto.pickupAddress,
+              pickupCity: dto.pickupCity,
+              pickupDate,
+              deliveryAddress: dto.deliveryAddress,
+              deliveryCity: dto.deliveryCity,
+              deliveryDate,
+              cargoDescription: dto.cargoDescription,
+              cargoWeightKg: dto.cargoWeightKg !== undefined ? new Prisma.Decimal(dto.cargoWeightKg) : undefined,
+              cargoVolumeM3: dto.cargoVolumeM3 !== undefined ? new Prisma.Decimal(dto.cargoVolumeM3) : undefined,
+              price: new Prisma.Decimal(dto.price),
+              currency: dto.currency ?? "USD",
+              notes: dto.notes,
+              deliveryNotes: dto.deliveryNotes,
+            },
+          });
+          // The order and its opening history row are one fact (AR2). An order is
+          // BORN in DRAFT — this is a creation, not a transition, so no policy governs
+          // it; but the history row still goes through the single Order writer (AR5).
+          await this.orderWriter.recordCreated(tx, organizationId, created.id, actor);
+          return created;
+        });
+        break;
+      } catch (err) {
+        const isOrderNumberConflict =
+          err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
+        if (!isOrderNumberConflict) throw err;
+        if (!isAutoNumber || attempt >= 2) {
+          throw new ConflictException("An order with this orderNumber already exists in this organization");
+        }
+        orderNumber = await generateUniqueOrderNumber(this.prisma, organizationId, pickupDate);
+      }
+    }
 
     await this.auditService.log({
       organizationId,
@@ -483,7 +523,7 @@ export class OrdersService {
     //
     // This is the shape Task 8.7 will lift wholesale into a wrapper; the only thing
     // left in this method is the commercial precondition and the audit line.
-    const updated = await this.dispatches.inTransaction(async (tx) => {
+    const projected = await this.dispatches.inTransaction(async (tx) => {
       // Prefer an existing non-terminal dispatch (including DRAFT). Creating a
       // second live row while a draft sits on the order hits the partial unique
       // and deadlocks the assign path until someone cancels the draft by hand.
@@ -546,6 +586,20 @@ export class OrdersService {
       metadata: { driverId: dto.driverId, vehicleId: dto.vehicleId },
     });
 
+    // Gated on the STATUS actually moving, not merely `changed` — a
+    // driver/vehicle reassignment onto an already-ASSIGNED order also reports
+    // `changed: true` (per OrderProjection.settle()), and firing
+    // order.status_changed with from === to would misrepresent a reassignment
+    // as a status transition.
+    if (projected.changed && projected.previousStatus !== projected.order.status) {
+      void this.workflowEvents.emit(organizationId, "order.status_changed", {
+        id,
+        orderNumber: projected.order.orderNumber,
+        from: projected.previousStatus,
+        to: projected.order.status,
+      });
+    }
+
     const live = await this.prisma.dispatch.findFirst({
       where: {
         organizationId,
@@ -564,7 +618,7 @@ export class OrdersService {
       }).catch(() => undefined);
     }
 
-    return this.toResponse(updated);
+    return this.toResponse(projected.order);
   }
 
   async updateStatus(organizationId: string, id: string, dto: UpdateOrderStatusDto, actor: CurrentUserPayload) {
@@ -646,7 +700,11 @@ export class OrdersService {
       );
     }
 
-    return this.orderWriter.project(tx, organizationId, order.id, actor, dto.note);
+    // The event for this path is already emitted, unconditionally and once, by
+    // applyStatusTransition after its transaction commits — do not also emit
+    // here, or a dispatch-driven order transition would fire order.status_changed
+    // twice.
+    return (await this.orderWriter.project(tx, organizationId, order.id, actor, dto.note)).order;
   }
 
   async cancel(organizationId: string, id: string, dto: CancelOrderDto, actor: CurrentUserPayload) {
@@ -689,8 +747,8 @@ export class OrdersService {
   }
 
   private assertValidDateRange(pickupDate: Date, deliveryDate: Date): void {
-    if (deliveryDate.getTime() < pickupDate.getTime()) {
-      throw new BadRequestException("deliveryDate cannot be before pickupDate");
+    if (deliveryDate.getTime() <= pickupDate.getTime()) {
+      throw new BadRequestException("deliveryDate must be after pickupDate");
     }
   }
 

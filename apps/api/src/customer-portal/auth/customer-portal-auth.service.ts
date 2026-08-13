@@ -10,7 +10,7 @@ import type { AuthConfig } from "../../config/configuration";
 import { AuditService } from "../../audit/audit.service";
 import { isRefreshTokenActive } from "../../common/refresh-token.util";
 import { PrismaService } from "../../prisma/prisma.service";
-import { PasswordService } from "../../auth/password.service";
+import { DUMMY_PASSWORD_HASH, PasswordService } from "../../auth/password.service";
 import type { CurrentCustomerPayload } from "./interfaces/current-customer.interface";
 import {
   CustomerAuthResponse,
@@ -42,29 +42,30 @@ export class CustomerPortalAuthService {
   async login(dto: CustomerPortalLoginDto): Promise<CustomerAuthResponse> {
     const email = dto.email.trim().toLowerCase();
     const account = await this.resolveAccountForLogin(email, dto.organizationSlug);
-
-    if (!account) {
-      throw new UnauthorizedException("Invalid email or password");
-    }
-
-    const passwordOk = await this.passwordService.verify(dto.password, account.passwordHash);
+    const passwordOk = await this.passwordService.verify(
+      dto.password,
+      account?.passwordHash ?? DUMMY_PASSWORD_HASH,
+    );
 
     if (
+      !account ||
       !passwordOk ||
       account.status !== CustomerPortalAccountStatus.ACTIVE ||
       account.customer.status !== CustomerStatus.ACTIVE ||
       account.organization.status !== OrganizationStatus.ACTIVE
     ) {
-      await this.audit
-        .log({
-          organizationId: account.organizationId,
-          actorUserId: null,
-          action: "CUSTOMER_PORTAL_LOGIN_FAILED",
-          entityType: "CUSTOMER_PORTAL",
-          entityId: account.customerId,
-          metadata: { email },
-        })
-        .catch(() => undefined);
+      if (account) {
+        await this.audit
+          .log({
+            organizationId: account.organizationId,
+            actorUserId: null,
+            action: "CUSTOMER_PORTAL_LOGIN_FAILED",
+            entityType: "CUSTOMER_PORTAL",
+            entityId: account.customerId,
+            metadata: { email },
+          })
+          .catch(() => undefined);
+      }
       throw new UnauthorizedException("Invalid email or password");
     }
 
@@ -137,20 +138,23 @@ export class CustomerPortalAuthService {
     const newHash = hashCustomerRefreshToken(newRefresh);
     const expiresAt = customerRefreshTokenExpiry(authConfig.refreshTokenExpiresInDays);
 
-    await this.prisma.$transaction([
-      this.prisma.customerRefreshToken.update({
-        where: { id: record.id },
+    await this.prisma.$transaction(async (tx) => {
+      const consumed = await tx.customerRefreshToken.updateMany({
+        where: { id: record.id, revokedAt: null },
         data: { revokedAt: new Date() },
-      }),
-      this.prisma.customerRefreshToken.create({
+      });
+      if (consumed.count !== 1) {
+        throw new UnauthorizedException("Invalid or expired refresh token");
+      }
+      await tx.customerRefreshToken.create({
         data: {
           accountId: record.accountId,
           organizationId: record.organizationId,
           tokenHash: newHash,
           expiresAt,
         },
-      }),
-    ]);
+      });
+    });
 
     return {
       accessToken,

@@ -1,6 +1,7 @@
 import { createReadStream, existsSync } from "fs";
 import { join } from "path";
 import { Injectable, NotFoundException, StreamableFile } from "@nestjs/common";
+import type { OrderStatus } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { OrdersService } from "../../orders/orders.service";
 import { TelematicsService } from "../../telematics/telematics.service";
@@ -13,6 +14,17 @@ import {
 } from "./customer-timeline.labels";
 
 const PROOF_UPLOAD_ROOT = join(process.cwd(), "uploads", "driver-proofs");
+
+/// DRAFT is pre-confirmation and staff-only (assertOwned rejects it too) —
+/// the default status set whenever a customer doesn't filter explicitly.
+const NON_DRAFT_ORDER_STATUSES: OrderStatus[] = [
+  "PENDING",
+  "ASSIGNED",
+  "PICKED_UP",
+  "IN_TRANSIT",
+  "DELIVERED",
+  "CANCELLED",
+];
 
 export interface CustomerDeliveryProofItem {
   id: string;
@@ -53,8 +65,27 @@ export class CustomerOrdersService {
   ) {}
 
   async list(payload: CurrentCustomerPayload, query: ListOrdersQueryDto) {
+    // DRAFT orders are pre-confirmation and staff-only (see assertOwned) —
+    // never surfaced to a customer, the same rule as DRAFT invoices.
+    const requested = query.statuses?.length
+      ? query.statuses
+      : query.status
+        ? [query.status]
+        : NON_DRAFT_ORDER_STATUSES;
+    const statuses = requested.filter((status) => status !== "DRAFT");
+
+    if (statuses.length === 0) {
+      // Every requested status was DRAFT — nothing a customer may ever see.
+      return {
+        items: [],
+        meta: { page: query.page, limit: query.limit, total: 0, totalPages: 1 },
+      };
+    }
+
     return this.orders.list(payload.organizationId, {
       ...query,
+      status: undefined,
+      statuses,
       customerId: payload.customerId,
     });
   }
@@ -242,8 +273,14 @@ export class CustomerOrdersService {
   /// belonging to other customers just by noting which response code comes
   /// back. Every cross-customer scope check in this module follows the same
   /// rule.
-  private assertOwned(order: { customerId: string }, payload: CurrentCustomerPayload): void {
-    if (order.customerId !== payload.customerId) {
+  private assertOwned(
+    order: { customerId: string; status: OrderStatus },
+    payload: CurrentCustomerPayload,
+  ): void {
+    // DRAFT is pre-confirmation and staff-only — treated identically to an
+    // order belonging to someone else: 404, not 403 (see the class comment
+    // on assertOwnedOrderId's caller below for why 404 rather than 403).
+    if (order.customerId !== payload.customerId || order.status === "DRAFT") {
       throw new NotFoundException("Order not found");
     }
   }

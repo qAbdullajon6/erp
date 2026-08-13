@@ -510,6 +510,48 @@ function auditDispatchEntry(
         },
       ];
 
+    case 'dispatch.pod_uploaded': {
+      const type = typeof meta.type === 'string' ? meta.type : null;
+      const fileName = typeof meta.fileName === 'string' ? meta.fileName : null;
+      const title = type === 'SIGNATURE' ? 'Driver submitted signature' : 'Driver uploaded delivery photo';
+      return [
+        {
+          id: entry.id,
+          at: entry.createdAt,
+          title,
+          subtitle: fileName,
+          actor,
+          kind: 'document',
+          categories: categoriesForKind('document'),
+          searchText: buildSearchText(['proof of delivery', title, fileName, actor]),
+        },
+      ];
+    }
+
+    case 'dispatch.pod_receiver_confirmed': {
+      const receiverName = typeof meta.receiverName === 'string' ? meta.receiverName : null;
+      const receiverPhone = typeof meta.receiverPhone === 'string' ? meta.receiverPhone : null;
+      return [
+        {
+          id: entry.id,
+          at: entry.createdAt,
+          title: 'Receiver confirmed delivery',
+          subtitle: receiverName,
+          actor,
+          kind: 'document',
+          categories: categoriesForKind('document'),
+          detail: receiverPhone,
+          searchText: buildSearchText([
+            'proof of delivery',
+            'receiver confirmed',
+            receiverName,
+            receiverPhone,
+            actor,
+          ]),
+        },
+      ];
+    }
+
     case 'dispatch.conflict_detected':
     case 'dispatch.conflict_ignored':
     case 'dispatch.conflict_resolved':

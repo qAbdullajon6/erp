@@ -35,11 +35,18 @@ export class NaturalKeyService {
     const prefix = definition.naturalKeyPrefix;
     if (!prefix) return [];
 
-    const highest = await this.findHighestSequence(tx, organizationId, definition, prefix);
+    // Year-scoped entities (Order) restart their sequence each calendar year,
+    // matching generateUniqueOrderNumber's "ORD-2026-0001" format — folding
+    // the year into the prefix keeps the rest of this class year-agnostic.
+    const effectivePrefix = definition.naturalKeyYearScoped
+      ? `${prefix}-${new Date().getUTCFullYear()}`
+      : prefix;
+
+    const highest = await this.findHighestSequence(tx, organizationId, definition, effectivePrefix);
 
     const codes: string[] = [];
     for (let i = 1; i <= count; i++) {
-      codes.push(`${prefix}-${String(highest + i).padStart(4, "0")}`);
+      codes.push(`${effectivePrefix}-${String(highest + i).padStart(4, "0")}`);
     }
     return codes;
   }

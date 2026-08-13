@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,6 +19,7 @@ import { useDriversList } from '@/lib/api/drivers';
 import { useVehiclesList } from '@/lib/api/vehicles';
 import { useMembersQuery } from '@/lib/api/organizations';
 import type { OrderPaymentStatus, OrderStatus } from '@/lib/api/orders';
+import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { CalendarIcon, Filter, RotateCcw, X } from 'lucide-react';
@@ -152,10 +153,16 @@ export function OrdersFiltersPanel({
   expanded = false,
   onToggleExpanded,
 }: OrdersFiltersPanelProps) {
-  const { data: customers } = useCustomersList({ limit: 200, includeArchived: true });
-  const { items: drivers } = useDriversList({ limit: 100 });
-  const { items: vehicles } = useVehiclesList({ limit: 100 });
-  const { data: members } = useMembersQuery();
+  // Reference data for the filter dropdowns only matters once the panel is
+  // actually open — fetching it while collapsed wastes a request on every
+  // Orders list load whether or not the user ever opens Filters.
+  const { data: customers } = useCustomersList(
+    { limit: 200, includeArchived: true },
+    { enabled: expanded },
+  );
+  const { items: drivers } = useDriversList({ limit: 100 }, { enabled: expanded });
+  const { items: vehicles } = useVehiclesList({ limit: 100 }, { enabled: expanded });
+  const { data: members } = useMembersQuery(expanded);
 
   const activeCount = useMemo(() => countActiveFilters(values), [values]);
   const dispatchers = useMemo(
@@ -167,6 +174,33 @@ export function OrdersFiltersPanel({
   );
 
   const set = (patch: Partial<OrdersFilterValues>) => onChange({ ...values, ...patch });
+
+  // Every other filter writes straight through `set()` on a discrete click
+  // (Select/date-picker/switch). Price is free-text, so it debounces locally
+  // first — otherwise each keystroke rebuilds the query key and fires a
+  // fresh request mid-type.
+  const [priceMinInput, setPriceMinInput] = useState(values.priceMin?.toString() ?? '');
+  const [priceMaxInput, setPriceMaxInput] = useState(values.priceMax?.toString() ?? '');
+  const debouncedPriceMin = useDebouncedValue(priceMinInput, 400);
+  const debouncedPriceMax = useDebouncedValue(priceMaxInput, 400);
+
+  useEffect(() => {
+    setPriceMinInput(values.priceMin?.toString() ?? '');
+  }, [values.priceMin]);
+  useEffect(() => {
+    setPriceMaxInput(values.priceMax?.toString() ?? '');
+  }, [values.priceMax]);
+
+  useEffect(() => {
+    const next = debouncedPriceMin ? Number(debouncedPriceMin) : undefined;
+    if (next !== values.priceMin) set({ priceMin: next });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedPriceMin]);
+  useEffect(() => {
+    const next = debouncedPriceMax ? Number(debouncedPriceMax) : undefined;
+    if (next !== values.priceMax) set({ priceMax: next });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedPriceMax]);
 
   return (
     <div className="sticky top-0 z-20 border-b border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
@@ -336,24 +370,16 @@ export function OrdersFiltersPanel({
                 min={0}
                 placeholder="Min"
                 className="h-8 text-xs"
-                value={values.priceMin ?? ''}
-                onChange={(e) =>
-                  set({
-                    priceMin: e.target.value ? Number(e.target.value) : undefined,
-                  })
-                }
+                value={priceMinInput}
+                onChange={(e) => setPriceMinInput(e.target.value)}
               />
               <Input
                 type="number"
                 min={0}
                 placeholder="Max"
                 className="h-8 text-xs"
-                value={values.priceMax ?? ''}
-                onChange={(e) =>
-                  set({
-                    priceMax: e.target.value ? Number(e.target.value) : undefined,
-                  })
-                }
+                value={priceMaxInput}
+                onChange={(e) => setPriceMaxInput(e.target.value)}
               />
             </div>
           </div>

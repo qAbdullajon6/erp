@@ -1,6 +1,7 @@
 import {
   IsBoolean,
   IsDateString,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
@@ -11,6 +12,7 @@ import {
   MinLength,
 } from "class-validator";
 import { Transform } from "class-transformer";
+import { ACTIVE_ISO_4217_CODES } from "../currency-codes.util";
 
 export class CreateOrderDto {
   /// Omit to auto-generate the next sequential ORD-<year>-0001-style number
@@ -74,7 +76,7 @@ export class CreateOrderDto {
 
   @IsOptional()
   @IsString()
-  @Matches(/^[A-Z]{3}$/, { message: "currency must be a 3-letter ISO 4217 code, e.g. USD" })
+  @IsIn([...ACTIVE_ISO_4217_CODES], { message: "currency must be a valid ISO 4217 code, e.g. USD" })
   currency?: string;
 
   @IsOptional()

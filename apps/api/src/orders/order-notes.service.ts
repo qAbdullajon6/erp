@@ -4,6 +4,7 @@ import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateOrderNoteDto } from "./dto/create-order-note.dto";
 import { UpdateOrderNoteDto } from "./dto/update-order-note.dto";
+import { assertOrderExists } from "./order-exists.util";
 
 @Injectable()
 export class OrderNotesService {
@@ -13,7 +14,7 @@ export class OrderNotesService {
   ) {}
 
   async list(organizationId: string, orderId: string) {
-    await this.assertOrderExists(organizationId, orderId);
+    await assertOrderExists(this.prisma, organizationId, orderId);
     const rows = await this.prisma.orderNote.findMany({
       where: { organizationId, orderId },
       orderBy: { createdAt: "desc" },
@@ -30,7 +31,7 @@ export class OrderNotesService {
     dto: CreateOrderNoteDto,
     actor: CurrentUserPayload,
   ) {
-    await this.assertOrderExists(organizationId, orderId);
+    await assertOrderExists(this.prisma, organizationId, orderId);
     const note = await this.prisma.orderNote.create({
       data: {
         organizationId,
@@ -107,12 +108,5 @@ export class OrderNotesService {
       entityId: orderId,
       metadata: { noteId },
     });
-  }
-
-  private async assertOrderExists(organizationId: string, orderId: string) {
-    const order = await this.prisma.order.findFirst({ where: { id: orderId, organizationId } });
-    if (!order) {
-      throw new NotFoundException("Order not found");
-    }
   }
 }

@@ -95,6 +95,7 @@ export function DispatchStatusSheet({
                   <button
                     key={s}
                     type="button"
+                    aria-pressed={selected}
                     onClick={() => setStatus(s)}
                     className={cn(
                       'flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3.5 text-left transition-colors',

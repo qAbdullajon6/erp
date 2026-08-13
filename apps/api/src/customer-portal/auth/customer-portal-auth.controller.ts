@@ -27,6 +27,7 @@ export class CustomerPortalAuthController {
   }
 
   @Post("refresh")
+  @Throttle(AUTH_THROTTLE)
   @HttpCode(200)
   refresh(@Body() dto: CustomerPortalRefreshDto) {
     return this.authService.refresh(dto);
@@ -50,6 +51,7 @@ export class CustomerPortalAuthController {
 
   @UseGuards(CustomerJwtAuthGuard)
   @Post("change-password")
+  @Throttle(AUTH_THROTTLE)
   @HttpCode(200)
   changePassword(
     @CurrentCustomer() customer: CurrentCustomerPayload,

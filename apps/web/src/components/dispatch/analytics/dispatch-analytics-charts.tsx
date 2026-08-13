@@ -7,8 +7,6 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
-  Line,
-  LineChart,
   Pie,
   PieChart,
   XAxis,
@@ -23,11 +21,11 @@ import {
   type ChartConfig,
 } from '@/components/ui/chart';
 import { chartAxisTickStyle, dispatchAnalyticsChartConfig } from '@/lib/chart-theme';
-import type { DispatchAnalyticsSnapshot } from '@/lib/dispatch/dispatch-analytics.types';
+import type { DispatchAnalyticsResponse } from '@/lib/api/dispatch-analytics';
 import { cn } from '@/lib/utils';
 
 interface DispatchAnalyticsChartsProps {
-  snapshot: DispatchAnalyticsSnapshot | null;
+  snapshot: DispatchAnalyticsResponse | null;
   loading: boolean;
 }
 
@@ -51,19 +49,11 @@ const STATUS_LABELS: Record<string, string> = {
   CANCELLED: 'Cancelled',
 };
 
-function shortDay(iso: string): string {
+function formatBucketLabel(key: string, granularity: 'day' | 'month'): string {
   try {
-    return format(parseISO(iso), 'MMM d');
+    return granularity === 'day' ? format(parseISO(key), 'MMM d') : format(parseISO(`${key}-01`), 'MMM yyyy');
   } catch {
-    return iso;
-  }
-}
-
-function shortWeek(iso: string): string {
-  try {
-    return format(parseISO(iso), 'MMM d');
-  } catch {
-    return iso;
+    return key;
   }
 }
 
@@ -103,7 +93,7 @@ export function DispatchAnalyticsCharts({ snapshot, loading }: DispatchAnalytics
   if (loading) {
     return (
       <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-2">
-        {Array.from({ length: 6 }).map((_, i) => (
+        {Array.from({ length: 5 }).map((_, i) => (
           <Skeleton key={i} className="h-[300px] rounded-xl" />
         ))}
       </div>
@@ -112,18 +102,14 @@ export function DispatchAnalyticsCharts({ snapshot, loading }: DispatchAnalytics
 
   if (!snapshot) return null;
 
-  const byDay = snapshot.dispatchesByDay.map((p) => ({
+  const byDay = snapshot.dispatchesByDay.points.map((p) => ({
     ...p,
-    label: shortDay(p.label),
+    label: formatBucketLabel(p.label, snapshot.dispatchesByDay.granularity),
   }));
   const byStatus = snapshot.dispatchesByStatus.map((p) => ({
     ...p,
     name: STATUS_LABELS[p.status] ?? p.status,
     fill: STATUS_COLORS[p.status] ?? 'var(--color-brand)',
-  }));
-  const weekly = snapshot.weeklyVolume.map((p) => ({
-    ...p,
-    label: shortWeek(p.label),
   }));
 
   const hasByDay = byDay.some((p) => p.value > 0);
@@ -131,7 +117,6 @@ export function DispatchAnalyticsCharts({ snapshot, loading }: DispatchAnalytics
   const hasDriver = snapshot.driverWorkload.length > 0;
   const hasVehicle = snapshot.vehicleUtilization.length > 0;
   const hasDelays = snapshot.delayReasons.length > 0;
-  const hasWeekly = weekly.some((p) => p.value > 0);
 
   const pieConfig: ChartConfig = byStatus.reduce(
     (acc, row) => {
@@ -141,9 +126,12 @@ export function DispatchAnalyticsCharts({ snapshot, loading }: DispatchAnalytics
     { ...dispatchAnalyticsChartConfig } as ChartConfig,
   );
 
+  const byDaySubtitle =
+    snapshot.dispatchesByDay.granularity === 'day' ? 'Scheduled pickups, by day' : 'Scheduled pickups, by month';
+
   return (
     <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-2" data-testid="dispatch-analytics-charts">
-      <ChartPanel title="Dispatches by Day" subtitle="Scheduled pickups — last 14 days">
+      <ChartPanel title="Dispatch Volume Over Time" subtitle={byDaySubtitle}>
         {hasByDay ? (
           <ChartContainer config={dispatchAnalyticsChartConfig} className="h-[220px] w-full">
             <BarChart data={byDay} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
@@ -155,11 +143,11 @@ export function DispatchAnalyticsCharts({ snapshot, loading }: DispatchAnalytics
             </BarChart>
           </ChartContainer>
         ) : (
-          <EmptyChart message="No scheduled dispatches in this window" />
+          <EmptyChart message="No scheduled dispatches in this range" />
         )}
       </ChartPanel>
 
-      <ChartPanel title="Dispatches by Status" subtitle="Current snapshot">
+      <ChartPanel title="Dispatches by Status" subtitle="Created in the selected range">
         {hasStatus ? (
           <ChartContainer config={pieConfig} className="mx-auto h-[220px] w-full max-w-[320px]">
             <PieChart>
@@ -183,11 +171,11 @@ export function DispatchAnalyticsCharts({ snapshot, loading }: DispatchAnalytics
             </PieChart>
           </ChartContainer>
         ) : (
-          <EmptyChart message="No dispatch status data" />
+          <EmptyChart message="No dispatches created in this range" />
         )}
       </ChartPanel>
 
-      <ChartPanel title="Driver Workload" subtitle="Active dispatches per driver">
+      <ChartPanel title="Driver Workload" subtitle="Dispatches per driver in this range">
         {hasDriver ? (
           <ChartContainer config={dispatchAnalyticsChartConfig} className="h-[220px] w-full">
             <BarChart
@@ -206,15 +194,15 @@ export function DispatchAnalyticsCharts({ snapshot, loading }: DispatchAnalytics
                 tick={chartAxisTickStyle}
               />
               <ChartTooltip content={<ChartTooltipContent />} />
-              <Bar dataKey="count" fill="var(--color-series-revenue)" radius={[0, 4, 4, 0]} name="Active" />
+              <Bar dataKey="count" fill="var(--color-series-revenue)" radius={[0, 4, 4, 0]} name="Dispatches" />
             </BarChart>
           </ChartContainer>
         ) : (
-          <EmptyChart message="No active driver assignments" />
+          <EmptyChart message="No dispatches in this range" />
         )}
       </ChartPanel>
 
-      <ChartPanel title="Vehicle Utilization" subtitle="Active dispatches per vehicle">
+      <ChartPanel title="Vehicle Utilization" subtitle="Dispatches per vehicle in this range">
         {hasVehicle ? (
           <ChartContainer config={dispatchAnalyticsChartConfig} className="h-[220px] w-full">
             <BarChart
@@ -233,15 +221,15 @@ export function DispatchAnalyticsCharts({ snapshot, loading }: DispatchAnalytics
                 tick={chartAxisTickStyle}
               />
               <ChartTooltip content={<ChartTooltipContent />} />
-              <Bar dataKey="count" fill="var(--color-chart-4)" radius={[0, 4, 4, 0]} name="Active" />
+              <Bar dataKey="count" fill="var(--color-chart-4)" radius={[0, 4, 4, 0]} name="Dispatches" />
             </BarChart>
           </ChartContainer>
         ) : (
-          <EmptyChart message="No active vehicle assignments" />
+          <EmptyChart message="No dispatches in this range" />
         )}
       </ChartPanel>
 
-      <ChartPanel title="Delay Reasons" subtitle="Active delayed dispatches">
+      <ChartPanel title="Delay Reasons" subtitle="Currently delayed dispatches (live, not range-bound)">
         {hasDelays ? (
           <ChartContainer config={dispatchAnalyticsChartConfig} className="h-[220px] w-full">
             <BarChart data={snapshot.delayReasons} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
@@ -254,30 +242,6 @@ export function DispatchAnalyticsCharts({ snapshot, loading }: DispatchAnalytics
           </ChartContainer>
         ) : (
           <EmptyChart message="No delayed dispatches" />
-        )}
-      </ChartPanel>
-
-      <ChartPanel title="Weekly Dispatch Volume" subtitle="Created dispatches by week">
-        {hasWeekly ? (
-          <ChartContainer config={dispatchAnalyticsChartConfig} className="h-[220px] w-full">
-            <LineChart data={weekly} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" opacity={0.35} />
-              <XAxis dataKey="label" tickLine={false} axisLine={false} minTickGap={32} tick={chartAxisTickStyle} />
-              <YAxis tickLine={false} axisLine={false} width={32} tick={chartAxisTickStyle} allowDecimals={false} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Line
-                type="monotone"
-                dataKey="value"
-                stroke="var(--color-series-revenue)"
-                strokeWidth={2}
-                dot={{ r: 3, fill: 'var(--color-series-revenue)', strokeWidth: 0 }}
-                activeDot={{ r: 5, fill: 'var(--color-series-revenue)' }}
-                name="Dispatches"
-              />
-            </LineChart>
-          </ChartContainer>
-        ) : (
-          <EmptyChart message="No dispatch volume in this window" />
         )}
       </ChartPanel>
     </div>

@@ -30,19 +30,34 @@ const policy = new AssignmentPolicy(prisma, queries);
 const writer = new OrderWriter();
 const auditLog = jest.fn().mockResolvedValue(undefined);
 const audit = { log: auditLog } as unknown as AuditService;
-const wfEvents = { emit: () => {} } as any;
-const dispatches = new DispatchesService(prisma, audit, policy, writer, wfEvents, { endSessionsForDispatch: async () => 0, endSessionsOnVehicleReassign: async () => 0, endSessionsForUser: async () => 0 } as any);
-const orders = new OrdersService(prisma, audit, writer, dispatches, policy, wfEvents);
-const events = { record: jest.fn().mockResolvedValue(undefined) } as unknown as DriverActionEventsService;
+const wfEvents = {
+  emit: jest.fn(),
+} as unknown as ConstructorParameters<typeof DispatchesService>[4];
+const usageMetering = {
+  enforceLimit: jest.fn().mockResolvedValue(undefined),
+} as unknown as ConstructorParameters<typeof OrdersService>[6];
+const tracking = {
+  endSessionsForDispatch: jest.fn().mockResolvedValue(0),
+  endSessionsOnVehicleReassign: jest.fn().mockResolvedValue(0),
+  endSessionsForUser: jest.fn().mockResolvedValue(0),
+} as unknown as ConstructorParameters<typeof DispatchesService>[5];
+const dispatches = new DispatchesService(prisma, audit, policy, writer, wfEvents, tracking);
+const orders = new OrdersService(prisma, audit, writer, dispatches, policy, wfEvents, usageMetering);
+const recordDriverAction = jest.fn().mockResolvedValue(undefined);
+const events = { record: recordDriverAction } as unknown as DriverActionEventsService;
 const workspace = new DriverWorkspaceService(prisma, events, audit);
+const driverTracking = {
+  endSessionsForDispatch: jest.fn().mockResolvedValue(0),
+} as unknown as ConstructorParameters<typeof DriverDispatchService>[4];
 const driverApp = new DriverDispatchService(
   prisma,
   dispatches,
   writer,
   audit,
-  { endSessionsForDispatch: async () => 0 } as any,
+  driverTracking,
   events,
   workspace,
+  wfEvents,
 );
 
 const PICKUP = new Date("2041-05-01T08:00:00.000Z");
@@ -510,7 +525,7 @@ describe("P3.3.4A — accept / reject gate", () => {
     expect(accepted.driverAcceptanceStatus).toBe("ACCEPTED");
     expect(accepted.allowedTransitions).toEqual(["EN_ROUTE_TO_PICKUP"]);
 
-    expect(events.record).toHaveBeenCalledWith(
+    expect(recordDriverAction).toHaveBeenCalledWith(
       organizationId,
       driverA,
       "DRIVER_ACCEPTED",
@@ -617,7 +632,7 @@ describe("P3.3.4A — POD checklist gate + breaks", () => {
       driverActor.userId,
       dispatch.id,
       "SIGNATURE",
-      { ...fakeFile, originalname: "sig.png" } as Express.Multer.File,
+      { ...fakeFile, originalname: "sig.png" },
     );
     await workspace.updatePodMeta(organizationId, driverActor.userId, dispatch.id, {
       receiverName: "Alex Receiver",
@@ -674,7 +689,7 @@ describe("P3.3.4B — receipt, inspection history, assignment notify", () => {
       organizationId,
       driverActor.userId,
       created.id,
-      { ...file, originalname: "toll2.pdf", buffer: Buffer.from("%PDF-1.4 b") } as Express.Multer.File,
+      { ...file, originalname: "toll2.pdf", buffer: Buffer.from("%PDF-1.4 b") },
     );
     expect(replaced.hasReceipt).toBe(true);
 

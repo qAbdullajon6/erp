@@ -18,6 +18,19 @@ import { planCommercialTransition } from "./transition.policy";
 /// class outside a transaction, which is the point.
 ///
 /// Implements R3, R4, R6, R7, R8.
+
+/// What OrderWriter.project() actually did — the order it left behind, plus
+/// enough of the before/after to let a caller decide whether to emit
+/// `order.status_changed` for it. OrderWriter itself never emits (see class
+/// comment: it is the persistence arm, not an observer) — every caller that
+/// wants the event reads `changed`/`previousStatus` after its transaction
+/// commits, the same way dispatch.* events are already emitted post-commit.
+export interface OrderProjectionResult {
+  order: Order;
+  previousStatus: OrderStatus;
+  changed: boolean;
+}
+
 @Injectable()
 export class OrderWriter {
   /// Re-derives the order from its dispatches and persists the result (R3).
@@ -32,7 +45,7 @@ export class OrderWriter {
     orderId: string,
     actor: CurrentUserPayload,
     note?: string,
-  ): Promise<Order> {
+  ): Promise<OrderProjectionResult> {
     const order = await tx.order.findFirst({ where: { id: orderId, organizationId } });
     if (!order) {
       throw new NotFoundException("Order not found");
@@ -47,7 +60,7 @@ export class OrderWriter {
 
     const projection = projectOrderStatus(order, dispatches);
     if (!projection.changed) {
-      return order;
+      return { order, previousStatus: order.status, changed: false };
     }
 
     const updated = await tx.order.update({
@@ -62,7 +75,7 @@ export class OrderWriter {
 
     await this.appendHistory(tx, organizationId, orderId, projection.historyToAppend, actor, note);
 
-    return updated;
+    return { order: updated, previousStatus: order.status, changed: true };
   }
 
   /// Applies a commercial transition — approval or cancellation (R4).

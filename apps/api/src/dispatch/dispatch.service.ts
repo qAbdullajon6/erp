@@ -97,7 +97,7 @@ export class DispatchService {
   async board(organizationId: string) {
     const [unassignedOrders, drivers, vehicles, reservations, openBreaks] = await Promise.all([
       this.prisma.order.findMany({
-        where: { organizationId, status: "PENDING" },
+        where: { organizationId, archivedAt: null, status: "PENDING" },
         orderBy: { pickupDate: "asc" },
         select: {
           id: true,

@@ -1,6 +1,5 @@
 import { randomUUID } from "crypto";
 import { ConflictException } from "@nestjs/common";
-import { PrismaClient } from "@prisma/client";
 import { AuditService } from "../src/audit/audit.service";
 import type { CurrentUserPayload } from "../src/auth/interfaces/current-user.interface";
 import { AssignmentPolicy } from "../src/dispatch/assignment/assignment.policy";
@@ -27,9 +26,19 @@ const queries = new AssignmentQueries(prisma);
 const policy = new AssignmentPolicy(prisma, queries);
 const writer = new OrderWriter();
 const audit = { log: jest.fn().mockResolvedValue(undefined) } as unknown as AuditService;
-const wfEvents = { emit: () => {} } as any;
-const dispatches = new DispatchesService(prisma, audit, policy, writer, wfEvents, { endSessionsForDispatch: async () => 0, endSessionsOnVehicleReassign: async () => 0, endSessionsForUser: async () => 0 } as any);
-const orders = new OrdersService(prisma, audit, writer, dispatches, policy, wfEvents);
+const wfEvents = {
+  emit: jest.fn(),
+} as unknown as ConstructorParameters<typeof DispatchesService>[4];
+const usageMetering = {
+  enforceLimit: jest.fn().mockResolvedValue(undefined),
+} as unknown as ConstructorParameters<typeof OrdersService>[6];
+const tracking = {
+  endSessionsForDispatch: jest.fn().mockResolvedValue(0),
+  endSessionsOnVehicleReassign: jest.fn().mockResolvedValue(0),
+  endSessionsForUser: jest.fn().mockResolvedValue(0),
+} as unknown as ConstructorParameters<typeof DispatchesService>[5];
+const dispatches = new DispatchesService(prisma, audit, policy, writer, wfEvents, tracking);
+const orders = new OrdersService(prisma, audit, writer, dispatches, policy, wfEvents, usageMetering);
 
 const PICKUP = new Date("2034-04-01T08:00:00.000Z");
 const DELIVERY = new Date("2034-04-03T18:00:00.000Z");
@@ -467,7 +476,7 @@ describe("ADR-001 Phase 5 — backfill", () => {
   }
 
   const run = (runId: string, dryRun: boolean) =>
-    backfillDispatches(prisma as unknown as PrismaClient, { runId, dryRun, organizationId });
+    backfillDispatches(prisma, { runId, dryRun, organizationId });
 
   it("dry run reports what it would do and writes NOTHING", async () => {
     const order = await legacyOrder("IN_TRANSIT");
@@ -542,7 +551,7 @@ describe("ADR-001 Phase 5 — backfill", () => {
     const live = await makeOrder();
     await assign(live.id, driverB, vehicleB);
 
-    const { removed } = await rollbackBackfill(prisma as unknown as PrismaClient, "rb-1");
+    const { removed } = await rollbackBackfill(prisma, "rb-1");
 
     expect(removed).toBe(1);
     expect(await prisma.dispatch.count({ where: { orderId: live.id } })).toBe(1);
@@ -597,7 +606,7 @@ describe("ADR-001 Phase 5 — backfill", () => {
     await legacyOrder("ASSIGNED", driverB, vehicleB);
 
     await run("verify-1", false);
-    const result = await verifyBackfill(prisma as unknown as PrismaClient, organizationId);
+    const result = await verifyBackfill(prisma, organizationId);
 
     expect(result.orphanedOrders).toEqual([]);
     expect(result.disagreeingOrders).toEqual([]);
@@ -606,7 +615,7 @@ describe("ADR-001 Phase 5 — backfill", () => {
   it("verify() catches an orphan BEFORE the backfill runs", async () => {
     const order = await legacyOrder("IN_TRANSIT");
 
-    const result = await verifyBackfill(prisma as unknown as PrismaClient, organizationId);
+    const result = await verifyBackfill(prisma, organizationId);
 
     expect(result.orphanedOrders).toContain(order.orderNumber);
   });

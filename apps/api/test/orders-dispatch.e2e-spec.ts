@@ -706,7 +706,7 @@ describe("Orders + Dispatch (e2e)", () => {
       const freeDriver = await createDriver(admin);
       const busyDriver = await createDriver(admin);
       const freeVehicle = await createVehicle(admin);
-      const busyVehicle = await createVehicle(admin);
+      const busyVehicle = await createVehicle(admin, { plateNumber: "01A123BD" });
 
       const pendingOrder = await createOrder(admin, customer.id);
       await advanceToPending(admin, pendingOrder.id);

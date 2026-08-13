@@ -13,12 +13,14 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { SurfaceCard, SurfaceCardHeader } from '@/components/ui/surface-card';
 import { Badge } from '@/components/ui/badge';
-import type { DispatchAnalyticsSnapshot } from '@/lib/dispatch/dispatch-analytics.types';
+import type { DispatchAnalyticsRouteRow } from '@/lib/api/dispatch-analytics';
+import type { DispatchAnalyticsInsightsSnapshot } from '@/lib/dispatch/dispatch-analytics.types';
 import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 interface DispatchAnalyticsWidgetsProps {
-  snapshot: DispatchAnalyticsSnapshot | null;
+  topDelayedRoutes: DispatchAnalyticsRouteRow[] | null;
+  insights: DispatchAnalyticsInsightsSnapshot | null;
   loading: boolean;
 }
 
@@ -50,7 +52,7 @@ function EmptyRow({ message }: { message: string }) {
   return <p className="py-6 text-center text-sm text-muted-foreground">{message}</p>;
 }
 
-export function DispatchAnalyticsWidgets({ snapshot, loading }: DispatchAnalyticsWidgetsProps) {
+export function DispatchAnalyticsWidgets({ topDelayedRoutes, insights, loading }: DispatchAnalyticsWidgetsProps) {
   if (loading) {
     return (
       <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-2 min-[1280px]:grid-cols-3">
@@ -61,28 +63,23 @@ export function DispatchAnalyticsWidgets({ snapshot, loading }: DispatchAnalytic
     );
   }
 
-  if (!snapshot) return null;
+  if (!topDelayedRoutes || !insights) return null;
 
-  const { conflictSummary } = snapshot;
+  const { conflictSummary } = insights;
 
   return (
     <div
       className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-2 min-[1280px]:grid-cols-3"
       data-testid="dispatch-analytics-widgets"
     >
-      <WidgetShell title="Top Delayed Routes" subtitle="Most impacted lanes" testId="widget-delayed-routes">
-        {snapshot.topDelayedRoutes.length > 0 ? (
+      <WidgetShell title="Top Delayed Routes" subtitle="Most impacted lanes, live" testId="widget-delayed-routes">
+        {topDelayedRoutes.length > 0 ? (
           <ul className="space-y-2">
-            {snapshot.topDelayedRoutes.map((row) => (
+            {topDelayedRoutes.map((row) => (
               <li key={row.route}>
                 <Link
-                  to={
-                    row.sampleDispatchId
-                      ? '/app/dispatches/$dispatchId'
-                      : '/app/dispatches'
-                  }
-                  params={row.sampleDispatchId ? { dispatchId: row.sampleDispatchId } : undefined}
-                  search={row.sampleDispatchId ? undefined : { tab: 'action' }}
+                  to="/app/dispatches"
+                  search={{ tab: 'action' }}
                   className="group flex items-center justify-between gap-2 rounded-lg border border-border/70 px-3 py-2 transition-colors hover:border-foreground/20 hover:bg-muted/30"
                 >
                   <div className="flex min-w-0 items-center gap-2">
@@ -102,9 +99,9 @@ export function DispatchAnalyticsWidgets({ snapshot, loading }: DispatchAnalytic
       </WidgetShell>
 
       <WidgetShell title="Drivers Needing Attention" subtitle="Overload, leave, or conflicts" testId="widget-drivers">
-        {snapshot.driversNeedingAttention.length > 0 ? (
+        {insights.driversNeedingAttention.length > 0 ? (
           <ul className="space-y-2">
-            {snapshot.driversNeedingAttention.map((driver) => (
+            {insights.driversNeedingAttention.map((driver) => (
               <li
                 key={driver.id}
                 className="flex items-start justify-between gap-2 rounded-lg border border-border/70 px-3 py-2"
@@ -130,9 +127,9 @@ export function DispatchAnalyticsWidgets({ snapshot, loading }: DispatchAnalytic
       </WidgetShell>
 
       <WidgetShell title="Vehicles Needing Maintenance" subtitle="Maintenance queue & conflicts" testId="widget-vehicles">
-        {snapshot.vehiclesNeedingMaintenance.length > 0 ? (
+        {insights.vehiclesNeedingMaintenance.length > 0 ? (
           <ul className="space-y-2">
-            {snapshot.vehiclesNeedingMaintenance.map((vehicle) => (
+            {insights.vehiclesNeedingMaintenance.map((vehicle) => (
               <li
                 key={vehicle.id}
                 className="flex items-center justify-between gap-2 rounded-lg border border-border/70 px-3 py-2"
@@ -158,9 +155,9 @@ export function DispatchAnalyticsWidgets({ snapshot, loading }: DispatchAnalytic
       </WidgetShell>
 
       <WidgetShell title="Dispatches Without Assignment" subtitle="Unassigned orders awaiting dispatch" testId="widget-unassigned">
-        {snapshot.unassignedDispatches.length > 0 ? (
+        {insights.unassignedDispatches.length > 0 ? (
           <ul className="space-y-2">
-            {snapshot.unassignedDispatches.map((row) => (
+            {insights.unassignedDispatches.map((row) => (
               <li key={row.orderId}>
                 <Link
                   to="/app/dispatches"

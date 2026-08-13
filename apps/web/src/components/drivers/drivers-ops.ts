@@ -213,20 +213,20 @@ export function buildDriverTimeline(
       id: `disp-created-${d.id}`,
       at: d.createdAt,
       title: 'Dispatch assigned',
-      detail: [
-        d.dispatchNumber,
-        d.order?.orderNumber,
-        d.vehicle?.plateNumber ? `Vehicle ${d.vehicle.plateNumber}` : null,
-      ]
-        .filter(Boolean)
-        .join(' · '),
+      detail: [d.dispatchNumber, d.order?.orderNumber].filter(Boolean).join(' · '),
       kind: 'dispatch',
     });
 
     if (d.vehicle?.plateNumber) {
+      // The dispatch's vehicle can be reassigned after creation (see Assign
+      // Vehicle), and `d.vehicle` always reflects the CURRENT one — so this
+      // must not be timestamped at `d.createdAt`, or a same-day reassignment
+      // would silently rewrite the original vehicle out of the timeline under
+      // a stale "1d ago" date. `updatedAt` is the closest real timestamp we
+      // have for "this vehicle association is current as of."
       items.push({
         id: `veh-assigned-${d.id}`,
-        at: d.createdAt,
+        at: d.updatedAt,
         title: 'Vehicle assigned',
         detail: `${d.vehicle.plateNumber}${d.vehicle.type ? ` · ${d.vehicle.type}` : ''}`,
         kind: 'vehicle',

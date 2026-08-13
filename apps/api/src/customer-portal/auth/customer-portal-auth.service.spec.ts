@@ -12,6 +12,12 @@ import { CustomerPortalRefreshDto } from "./dto/refresh.dto";
 import { CustomerPortalChangePasswordDto } from "./dto/change-password.dto";
 
 function makePrisma() {
+  const customerRefreshToken = {
+    create: jest.fn(),
+    findUnique: jest.fn(),
+    updateMany: jest.fn(),
+    update: jest.fn(),
+  };
   return {
     organization: { findFirst: jest.fn() },
     customerPortalAccount: {
@@ -20,13 +26,12 @@ function makePrisma() {
       findUnique: jest.fn(),
       update: jest.fn(),
     },
-    customerRefreshToken: {
-      create: jest.fn(),
-      findUnique: jest.fn(),
-      updateMany: jest.fn(),
-      update: jest.fn(),
-    },
-    $transaction: jest.fn((queries: Promise<unknown>[]) => Promise.all(queries)),
+    customerRefreshToken,
+    $transaction: jest.fn(
+      (
+        callback: (tx: { customerRefreshToken: typeof customerRefreshToken }) => Promise<unknown>,
+      ) => callback({ customerRefreshToken }),
+    ),
   };
 }
 
@@ -172,6 +177,10 @@ describe("CustomerPortalAuthService", () => {
       prisma.customerPortalAccount.findMany.mockResolvedValue([]);
 
       await expect(svc.login(loginDto())).rejects.toThrow("Invalid email or password");
+      expect(passwordService.verify).toHaveBeenCalledWith(
+        "correct-password",
+        expect.stringContaining("$argon2id$"),
+      );
     });
   });
 
@@ -230,11 +239,12 @@ describe("CustomerPortalAuthService", () => {
         revokedAt: null,
         account: mockAccount,
       });
+      prisma.customerRefreshToken.updateMany.mockResolvedValue({ count: 1 });
 
       const result = await svc.refresh(refreshDto());
 
       expect(result.accessToken).toBe("access-token");
-      expect(prisma.customerRefreshToken.update).toHaveBeenCalled();
+      expect(prisma.customerRefreshToken.updateMany).toHaveBeenCalled();
       expect(prisma.customerRefreshToken.create).toHaveBeenCalled();
     });
 
@@ -250,6 +260,21 @@ describe("CustomerPortalAuthService", () => {
       await expect(svc.refresh(refreshDto())).rejects.toThrow(
         UnauthorizedException,
       );
+    });
+
+    it("rejects a concurrent rotation after another request consumes the token", async () => {
+      prisma.customerRefreshToken.findUnique.mockResolvedValue({
+        id: "rt-1",
+        accountId: "acc-1",
+        organizationId: "org-1",
+        expiresAt: new Date(Date.now() + 86_400_000),
+        revokedAt: null,
+        account: mockAccount,
+      });
+      prisma.customerRefreshToken.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(svc.refresh(refreshDto())).rejects.toThrow(UnauthorizedException);
+      expect(prisma.customerRefreshToken.create).not.toHaveBeenCalled();
     });
 
     it("throws when the account has since been suspended", async () => {
