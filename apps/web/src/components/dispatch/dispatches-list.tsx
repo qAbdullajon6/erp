@@ -21,6 +21,8 @@ import { DispatchesCreateSheet } from '@/components/dispatch/dispatches-create-s
 import { DispatchReassignDialog } from '@/components/dispatch/dispatch-reassign-dialog';
 import { PaginationBar } from '@/components/shared/pagination-bar';
 import { StatusBadge } from '@/components/shared/status-badge';
+import { FilterTabs } from '@/components/shared/filter-tabs';
+import { useMediaQuery } from '@/hooks/use-media-query';
 import { DISPATCH_WRITE_ROLES } from '@/lib/role-access';
 import type { MembershipRole } from '@/lib/api/organizations';
 import type { DispatchesSearch } from '@/routes/app.dispatches.index';
@@ -141,7 +143,7 @@ function UrgencyBadge({ date, label: contextLabel }: { date: string; label: stri
   );
 }
 
-function RiskBadges({ dispatch }: { dispatch: ApiDispatch }) {
+function RiskBadges({ dispatch, align = 'end' }: { dispatch: ApiDispatch; align?: 'start' | 'end' }) {
   const delivery = getTimeUrgency(dispatch.deliveryDateScheduled);
   const chips: { key: string; label: string; className: string }[] = [];
 
@@ -166,7 +168,7 @@ function RiskBadges({ dispatch }: { dispatch: ApiDispatch }) {
   if (chips.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap justify-end gap-1">
+    <div className={cn('flex flex-wrap gap-1', align === 'end' ? 'justify-end' : 'justify-start')}>
       {chips.map((c) => (
         <span
           key={c.key}
@@ -277,6 +279,7 @@ export function DispatchesList() {
   const currentTab = searchState.tab || 'action';
   const page = searchState.page || 1;
   const search = searchState.search || '';
+  const isNarrow = useMediaQuery('(max-width: 639px)');
 
   const activeTabConfig = TAB_CONFIG.find((t) => t.key === currentTab) ?? TAB_CONFIG[0];
   const tabStatuses = activeTabConfig.statuses;
@@ -453,42 +456,13 @@ export function DispatchesList() {
         }
       />
 
-      <div
-        role="tablist"
-        aria-label="Dispatch workflow"
-        className="flex items-center gap-1 overflow-x-auto border-b border-border scrollbar-thin"
-      >
-        {TAB_CONFIG.map((tab) => {
-          const isActive = currentTab === tab.key;
-          const count = tab.key === currentTab ? metaSafe.total : null;
-          return (
-            <button
-              key={tab.key}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              onClick={() => handleTabChange(tab.key)}
-              className={`relative shrink-0 px-4 py-2.5 text-sm font-medium transition-colors ${
-                isActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <span className="flex items-center gap-2">
-                {tab.label}
-                {count !== null && (
-                  <span
-                    className={`rounded-full px-1.5 py-0.5 text-xs ${
-                      isActive ? 'bg-brand/10 text-brand' : 'bg-muted text-muted-foreground'
-                    }`}
-                  >
-                    {count}
-                  </span>
-                )}
-              </span>
-              {isActive && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand" />}
-            </button>
-          );
-        })}
-      </div>
+      <FilterTabs
+        tabs={TAB_CONFIG}
+        value={currentTab}
+        onChange={handleTabChange}
+        label="Dispatch workflow"
+        activeCount={metaSafe.total}
+      />
 
       {showPriorityStrip && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-border bg-muted/20 px-4 py-2.5">
@@ -573,7 +547,9 @@ export function DispatchesList() {
                 <TableRow className="border-b border-border bg-surface/95 backdrop-blur hover:bg-surface/95">
                   <TableHead className="w-8" />
                   <TableHead className="font-medium text-xs uppercase tracking-wider">Route</TableHead>
-                  <TableHead className="font-medium text-xs uppercase tracking-wider">Timeline</TableHead>
+                  {!isNarrow && (
+                    <TableHead className="font-medium text-xs uppercase tracking-wider">Timeline</TableHead>
+                  )}
                   <TableHead className="hidden font-medium text-xs uppercase tracking-wider md:table-cell">
                     Customer
                   </TableHead>
@@ -595,6 +571,25 @@ export function DispatchesList() {
                   const waiting = isWaitingPickup(dispatch);
                   const canReassign = canWrite && !TERMINAL.includes(dispatch.status);
                   const canCall = Boolean(dispatch.driver?.phone);
+                  // Its own column with room to breathe on a desktop; folded
+                  // under the route on a phone, where a separate column left it
+                  // wrapping over three lines and pushed Status off the screen.
+                  const timeline =
+                    dispatch.status === 'DELIVERED' || dispatch.status === 'CANCELLED' ? (
+                      <span className="text-xs text-muted-foreground">
+                        {dispatch.status === 'DELIVERED' ? 'Delivered' : 'Cancelled'}{' '}
+                        {formatDate(
+                          dispatch.deliveryDateActual ||
+                            dispatch.deliveryDateScheduled ||
+                            dispatch.updatedAt,
+                        )}
+                      </span>
+                    ) : (
+                      <>
+                        <UrgencyBadge date={dispatch.pickupDateScheduled} label="Pickup" />
+                        <UrgencyBadge date={dispatch.deliveryDateScheduled} label="Deliver" />
+                      </>
+                    );
 
                   return (
                     <Fragment key={dispatch.id}>
@@ -644,28 +639,20 @@ export function DispatchesList() {
                             <p className="font-mono text-xs text-muted-foreground">
                               {dispatch.dispatchNumber}
                             </p>
-                          </div>
-                        </TableCell>
-
-                        <TableCell className="py-3">
-                          <div className="space-y-0.5">
-                            {dispatch.status === 'DELIVERED' || dispatch.status === 'CANCELLED' ? (
-                              <span className="text-xs text-muted-foreground">
-                                {dispatch.status === 'DELIVERED' ? 'Delivered' : 'Cancelled'}{' '}
-                                {formatDate(
-                                  dispatch.deliveryDateActual ||
-                                    dispatch.deliveryDateScheduled ||
-                                    dispatch.updatedAt,
-                                )}
-                              </span>
-                            ) : (
+                            {isNarrow && (
                               <>
-                                <UrgencyBadge date={dispatch.pickupDateScheduled} label="Pickup" />
-                                <UrgencyBadge date={dispatch.deliveryDateScheduled} label="Deliver" />
+                                <div className="flex flex-wrap gap-x-3">{timeline}</div>
+                                <RiskBadges dispatch={dispatch} align="start" />
                               </>
                             )}
                           </div>
                         </TableCell>
+
+                        {!isNarrow && (
+                          <TableCell className="py-3">
+                            <div className="space-y-0.5">{timeline}</div>
+                          </TableCell>
+                        )}
 
                         <TableCell className="hidden py-3 md:table-cell">
                           <span className="text-sm text-foreground">
@@ -684,10 +671,10 @@ export function DispatchesList() {
                           </div>
                         </TableCell>
 
-                        <TableCell className="py-3 text-right">
+                        <TableCell className="py-3 text-right align-top">
                           <div className="flex flex-col items-end gap-1.5">
                             <StatusBadge status={dispatch.status} />
-                            <RiskBadges dispatch={dispatch} />
+                            {!isNarrow && <RiskBadges dispatch={dispatch} />}
                           </div>
                         </TableCell>
 

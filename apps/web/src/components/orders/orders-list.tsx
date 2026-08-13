@@ -50,6 +50,9 @@ import {
 import { PaginationBar } from '@/components/shared/pagination-bar';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { SortHeader } from '@/components/shared/sort-header';
+import { FilterTabs } from '@/components/shared/filter-tabs';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
+import { useMediaQuery } from '@/hooks/use-media-query';
 import { ORDER_OPERATIONAL_ROLES, ORDER_WRITE_ROLES } from '@/lib/role-access';
 import type { MembershipRole } from '@/lib/api/organizations';
 import type { OrdersSearch } from '@/routes/app.orders.index';
@@ -332,6 +335,14 @@ export function OrdersList() {
   const [exportingAll, setExportingAll] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkRunning, setBulkRunning] = useState(false);
+  // Held rather than confirmed inline: the row menu unmounts the moment it is
+  // clicked, taking an embedded dialog trigger with it.
+  const [archiveTarget, setArchiveTarget] = useState<Order | null>(null);
+
+  // Below `sm` the row collapses to route + status, with everything else one
+  // tap away in the expanded panel. Switched here rather than with `hidden`
+  // classes so the phone and desktop values never coexist in the document.
+  const isNarrow = useMediaQuery('(max-width: 639px)');
 
   useEffect(() => {
     if (searchState.create) setCreateOpen(true);
@@ -594,6 +605,7 @@ export function OrdersList() {
     try {
       await archive(order.id);
       toast.success(`${order.orderNumber} archived`);
+      setArchiveTarget(null);
     } catch (err) {
       toast.error(describeError(err, 'Failed to archive'));
     }
@@ -804,44 +816,13 @@ export function OrdersList() {
         onToggleExpanded={() => setFiltersExpanded((v) => !v)}
       />
 
-      <div
-        role="tablist"
-        aria-label="Order workflow"
-        className="flex items-center gap-1 overflow-x-auto border-b border-border scrollbar-thin"
-      >
-        {TAB_CONFIG.map((tab) => {
-          const isActive = currentTab === tab.key;
-          const count = tab.key === currentTab ? meta.total : null;
-          return (
-            <button
-              key={tab.key}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              onClick={() => handleTabChange(tab.key)}
-              className={`relative shrink-0 px-4 py-2.5 text-sm font-medium transition-colors ${
-                isActive
-                  ? 'text-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <span className="flex items-center gap-2">
-                {tab.label}
-                {count !== null && (
-                  <span className={`rounded-full px-1.5 py-0.5 text-xs ${
-                    isActive ? 'bg-brand/10 text-brand' : 'bg-muted text-muted-foreground'
-                  }`}>
-                    {count}
-                  </span>
-                )}
-              </span>
-              {isActive && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand" />
-              )}
-            </button>
-          );
-        })}
-      </div>
+      <FilterTabs
+        tabs={TAB_CONFIG}
+        value={currentTab}
+        onChange={handleTabChange}
+        label="Order workflow"
+        activeCount={meta.total}
+      />
 
       {canOperateOrder && selectedIds.size > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border border-brand/30 bg-brand/5 px-4 py-2.5">
@@ -849,19 +830,29 @@ export function OrdersList() {
             {selectedIds.size} selected
           </span>
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={bulkRunning || bulkArchivable.length === 0}
-              onClick={handleBulkArchive}
-            >
-              {bulkRunning ? (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Archive className="mr-1.5 h-3.5 w-3.5" />
-              )}
-              Archive {bulkArchivable.length > 0 ? `(${bulkArchivable.length})` : ''}
-            </Button>
+            <ConfirmDialog
+              trigger={
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={bulkRunning || bulkArchivable.length === 0}
+                >
+                  {bulkRunning ? (
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Archive className="mr-1.5 h-3.5 w-3.5" />
+                  )}
+                  Archive {bulkArchivable.length > 0 ? `(${bulkArchivable.length})` : ''}
+                </Button>
+              }
+              title={`Archive ${bulkArchivable.length} order${bulkArchivable.length === 1 ? '' : 's'}?`}
+              description={`${bulkArchivable.length} selected order${
+                bulkArchivable.length === 1 ? '' : 's'
+              } will leave the active list. Nothing is deleted — you can restore them from the Archived filter.`}
+              confirmLabel={`Archive ${bulkArchivable.length}`}
+              onConfirm={handleBulkArchive}
+              destructive
+            />
             <Button
               size="sm"
               variant="outline"
@@ -905,7 +896,7 @@ export function OrdersList() {
             the skeleton is the shape of the table they are about to get. */}
         {loading && (
           <TableSkeleton
-            columns={visibleColumns.map((column) => (column === 'route' ? 3 : 2))}
+            columns={isNarrow ? [3, 2] : visibleColumns.map((column) => (column === 'route' ? 3 : 2))}
             label="Loading orders"
           />
         )}
@@ -952,7 +943,7 @@ export function OrdersList() {
               <TableHeader className="sticky top-0 z-10 bg-surface">
                 <TableRow className="border-b border-border bg-surface/95 backdrop-blur hover:bg-surface/95">
                   {canOperateOrder && (
-                    <TableHead className="w-8 pl-4">
+                    <TableHead className="w-8 pl-3 pr-0 sm:pl-4">
                       <Checkbox
                         aria-label="Select all orders on this page"
                         checked={pageAllSelected ? true : pageSomeSelected ? 'indeterminate' : false}
@@ -969,41 +960,60 @@ export function OrdersList() {
                     </TableHead>
                   )}
                   <TableHead className="w-8" />
-                  {visibleColumns.includes('route') && (
-                    <TableHead>Route</TableHead>
-                  )}
-                  {visibleColumns.includes('orderNumber') && (
-                    <TableHead>
-                      <SortHeader field="orderNumber" label="Order #" {...sortProps} />
-                    </TableHead>
-                  )}
-                  {visibleColumns.includes('timeline') && (
-                    <TableHead>Timeline</TableHead>
-                  )}
-                  {visibleColumns.includes('pickupDate') && (
-                    <TableHead>
-                      <SortHeader field="pickupDate" label="Pickup" {...sortProps} />
-                    </TableHead>
-                  )}
-                  {visibleColumns.includes('deliveryDate') && (
-                    <TableHead>
-                      <SortHeader field="deliveryDate" label="Delivery" {...sortProps} />
-                    </TableHead>
-                  )}
-                  {visibleColumns.includes('customer') && (
-                    <TableHead>Customer</TableHead>
-                  )}
-                  {visibleColumns.includes('value') && (
-                    <TableHead>
-                      <SortHeader field="price" label="Value" {...sortProps} />
-                    </TableHead>
-                  )}
-                  {visibleColumns.includes('status') && (
-                    <TableHead className="text-right">
-                      <div className="flex justify-end">
-                        <SortHeader field="status" label="Status" {...sortProps} />
-                      </div>
-                    </TableHead>
+                  {isNarrow ? (
+                    <>
+                      <TableHead>Order</TableHead>
+                      <TableHead className="text-right">
+                        <div className="flex justify-end">
+                          <SortHeader field="status" label="Status" {...sortProps} />
+                        </div>
+                      </TableHead>
+                    </>
+                  ) : (
+                    <>
+                      {visibleColumns.includes('route') && (
+                        <TableHead>Route</TableHead>
+                      )}
+                      {visibleColumns.includes('orderNumber') && (
+                        <TableHead>
+                          <SortHeader field="orderNumber" label="Order #" {...sortProps} />
+                        </TableHead>
+                      )}
+                      {visibleColumns.includes('timeline') && (
+                        <TableHead>Timeline</TableHead>
+                      )}
+                      {/* Secondary columns wait for `xl`, not `lg`: the sidebar
+                          rail comes back at `lg` and takes 15rem with it, so a
+                          1024px window is no roomier for the table than a
+                          768px one. Until then the row carries the route, the
+                          timeline and the status; the rest is in the expanded
+                          panel, one click away. */}
+                      {visibleColumns.includes('pickupDate') && (
+                        <TableHead className="hidden xl:table-cell">
+                          <SortHeader field="pickupDate" label="Pickup" {...sortProps} />
+                        </TableHead>
+                      )}
+                      {visibleColumns.includes('deliveryDate') && (
+                        <TableHead className="hidden xl:table-cell">
+                          <SortHeader field="deliveryDate" label="Delivery" {...sortProps} />
+                        </TableHead>
+                      )}
+                      {visibleColumns.includes('customer') && (
+                        <TableHead className="hidden xl:table-cell">Customer</TableHead>
+                      )}
+                      {visibleColumns.includes('value') && (
+                        <TableHead className="hidden xl:table-cell">
+                          <SortHeader field="price" label="Value" {...sortProps} />
+                        </TableHead>
+                      )}
+                      {visibleColumns.includes('status') && (
+                        <TableHead className="text-right">
+                          <div className="flex justify-end">
+                            <SortHeader field="status" label="Status" {...sortProps} />
+                          </div>
+                        </TableHead>
+                      )}
+                    </>
                   )}
                   <TableHead className="w-10" />
                 </TableRow>
@@ -1039,7 +1049,7 @@ export function OrdersList() {
                         }}
                       >
                         {canOperateOrder && (
-                          <TableCell className="py-3 pl-4" onClick={(e) => e.stopPropagation()}>
+                          <TableCell className="py-3 pl-3 pr-0 sm:pl-4" onClick={(e) => e.stopPropagation()}>
                             <Checkbox
                               aria-label={`Select order ${order.orderNumber}`}
                               checked={selectedIds.has(order.id)}
@@ -1047,7 +1057,7 @@ export function OrdersList() {
                             />
                           </TableCell>
                         )}
-                        <TableCell className="py-3 pl-4 pr-0">
+                        <TableCell className="py-3 pl-2 pr-0 sm:pl-4">
                           {isExpanded ? (
                             <ChevronDown className="h-4 w-4 text-muted-foreground" />
                           ) : (
@@ -1055,7 +1065,42 @@ export function OrdersList() {
                           )}
                         </TableCell>
 
-                        {visibleColumns.includes('route') && (
+                        {isNarrow && (
+                          <>
+                            <TableCell className="py-3">
+                              <div className="space-y-1">
+                                <RouteIndicator from={order.pickupCity} to={order.deliveryCity} />
+                                <p className="font-mono text-xs text-muted-foreground">{order.orderNumber}</p>
+                                {order.status !== 'DELIVERED' && order.status !== 'CANCELLED' && (
+                                  <div className="flex flex-wrap gap-x-3">
+                                    <UrgencyBadge date={order.pickupDate} label="Pickup" />
+                                    <UrgencyBadge date={order.deliveryDate} label="Deliver" />
+                                  </div>
+                                )}
+                                {(order.archivedAt || needsAssignment) && (
+                                  <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                                    {order.archivedAt && (
+                                      <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                                        Archived
+                                      </span>
+                                    )}
+                                    {needsAssignment && (
+                                      <span className="flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium text-warning">
+                                        <Timer className="h-3 w-3" />
+                                        Unassigned
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="py-3 pr-0 text-right align-top">
+                              <StatusBadge status={order.status} />
+                            </TableCell>
+                          </>
+                        )}
+
+                        {!isNarrow && visibleColumns.includes('route') && (
                           <TableCell>
                             <div className="space-y-0.5">
                               <RouteIndicator from={order.pickupCity} to={order.deliveryCity} />
@@ -1066,11 +1111,11 @@ export function OrdersList() {
                           </TableCell>
                         )}
 
-                        {visibleColumns.includes('orderNumber') && (
+                        {!isNarrow && visibleColumns.includes('orderNumber') && (
                           <TableCell className="font-mono text-sm">{order.orderNumber}</TableCell>
                         )}
 
-                        {visibleColumns.includes('timeline') && (
+                        {!isNarrow && visibleColumns.includes('timeline') && (
                           <TableCell>
                             <div className="space-y-0.5">
                               {order.status === 'DELIVERED' || order.status === 'CANCELLED' ? (
@@ -1088,29 +1133,33 @@ export function OrdersList() {
                           </TableCell>
                         )}
 
-                        {visibleColumns.includes('pickupDate') && (
-                          <TableCell className="text-sm tabular-nums">{formatDate(order.pickupDate)}</TableCell>
+                        {!isNarrow && visibleColumns.includes('pickupDate') && (
+                          <TableCell className="hidden text-sm tabular-nums xl:table-cell">
+                            {formatDate(order.pickupDate)}
+                          </TableCell>
                         )}
 
-                        {visibleColumns.includes('deliveryDate') && (
-                          <TableCell className="text-sm tabular-nums">{formatDate(order.deliveryDate)}</TableCell>
+                        {!isNarrow && visibleColumns.includes('deliveryDate') && (
+                          <TableCell className="hidden text-sm tabular-nums xl:table-cell">
+                            {formatDate(order.deliveryDate)}
+                          </TableCell>
                         )}
 
-                        {visibleColumns.includes('customer') && (
-                          <TableCell>
+                        {!isNarrow && visibleColumns.includes('customer') && (
+                          <TableCell className="hidden xl:table-cell">
                             <span className="text-sm text-foreground">{customerName}</span>
                           </TableCell>
                         )}
 
-                        {visibleColumns.includes('value') && (
-                          <TableCell>
+                        {!isNarrow && visibleColumns.includes('value') && (
+                          <TableCell className="hidden xl:table-cell">
                             <span className="font-mono text-sm font-medium text-foreground">
                               {formatMoney(order.price, order.currency)}
                             </span>
                           </TableCell>
                         )}
 
-                        {visibleColumns.includes('status') && (
+                        {!isNarrow && visibleColumns.includes('status') && (
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-2">
                               {order.archivedAt && (
@@ -1129,7 +1178,7 @@ export function OrdersList() {
                           </TableCell>
                         )}
 
-                        <TableCell className="py-3 pr-2 text-right" onClick={(e) => e.stopPropagation()}>
+                        <TableCell className="py-3 pl-0 pr-1 text-right sm:pr-2" onClick={(e) => e.stopPropagation()}>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -1147,7 +1196,7 @@ export function OrdersList() {
                               </DropdownMenuItem>
                               {canOperateOrder && !order.archivedAt &&
                                 (order.status === 'DELIVERED' || order.status === 'CANCELLED') && (
-                                  <DropdownMenuItem onClick={() => handleArchiveFromList(order)}>
+                                  <DropdownMenuItem onClick={() => setArchiveTarget(order)}>
                                     <Archive className="mr-2 h-3.5 w-3.5" />
                                     Archive
                                   </DropdownMenuItem>
@@ -1168,7 +1217,7 @@ export function OrdersList() {
                           order={order}
                           customerName={customerName}
                           canOperate={canOperateOrder}
-                          colSpan={visibleColumns.length + 2 + (canOperateOrder ? 1 : 0)}
+                          colSpan={(isNarrow ? 2 : visibleColumns.length) + 2 + (canOperateOrder ? 1 : 0)}
                         />
                       )}
                     </Fragment>
@@ -1199,6 +1248,20 @@ export function OrdersList() {
           defaultCustomerId={searchState.customerId}
         />
       )}
+
+      <ConfirmDialog
+        open={archiveTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setArchiveTarget(null);
+        }}
+        title={`Archive ${archiveTarget?.orderNumber ?? 'this order'}?`}
+        description="It leaves the active list and stops appearing in day-to-day views. Nothing is deleted — you can restore it from the Archived filter."
+        confirmLabel="Archive"
+        onConfirm={() => {
+          if (archiveTarget) void handleArchiveFromList(archiveTarget);
+        }}
+        destructive
+      />
 
       <Dialog open={saveFilterOpen} onOpenChange={setSaveFilterOpen}>
         <DialogContent className="max-w-sm">
