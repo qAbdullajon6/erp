@@ -16,13 +16,14 @@
 #   1. optional git checkout
 #   2. detect API/WEB changes (git)
 #   3. tag running api+web images as :previous
-#   4. up postgres + redis
+#   4. up postgres + redis + traccar (GPS bridge — see docs/TRACCAR_SETUP.md)
 #   5. pull/build images
 #   6. recreate api → wait /health + /health/database
 #   7. recreate web → wait web healthy
 #   8. recreate caddy
 #   9. verify (health + GIT_COMMIT_SHA in both containers)
-#  10. on failure → scripts/rollback.sh --auto
+#  10. check Traccar health (warns only — never fails the deploy, see lib.sh)
+#  11. on failure → scripts/rollback.sh --auto
 #
 # Migration ordering assumption: migrations are additive / backward-compatible
 # (the project's standing rule). Destructive migrations must be staged.
@@ -82,9 +83,13 @@ deploy_log "WEB changed .......... $WEB_CHANGED"
 tag_rollback_point api
 tag_rollback_point web
 
-# --- 4. datastores -----------------------------------------------------------
-deploy_log "Starting postgres + redis..."
-compose up -d postgres redis
+# --- 4. datastores + Traccar (GPS bridge) ------------------------------------
+# Traccar has no depends_on relationship with api/web (own H2 database, no
+# migration ordering to respect), so it starts here alongside postgres/redis
+# rather than needing its own step. See check_traccar_health() in lib.sh for
+# why it's verified but never gates the deploy.
+deploy_log "Starting postgres + redis + traccar..."
+compose up -d postgres redis traccar
 
 # --- 5. get images: pull and/or build ----------------------------------------
 API_UP_ARGS=""
@@ -157,6 +162,10 @@ if wait_healthy; then
     fi
     die "deploy failed verification; auto-rollback attempted."
   fi
+
+  # Non-blocking: never fails the deploy or triggers rollback (see lib.sh),
+  # only makes sure a broken GPS bridge is loud instead of silent.
+  check_traccar_health
 
   write_deployed_sha "$DEPLOY_SHA"
   deploy_log "Deployment complete."

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">
+<!--
+  Local Traccar config template (docker-compose.local.yml).
+
+  Copy to traccar.xml (gitignored) and set forward.url to your FlowERP
+  device ingest URL. Never commit traccar.xml — it contains the ingest secret.
+
+    copy docker\traccar\traccar.xml.example docker\traccar\traccar.xml
+
+  Bind-mounted read-only as:
+    ./docker/traccar/traccar.xml:/opt/traccar/conf/traccar.xml:ro
+
+  Navis :5019 / Navtelecom :5221 ports come from the Traccar image defaults
+  + compose port publishes — not from this file.
+-->
+<properties>
+    <entry key="database.driver">org.h2.Driver</entry>
+    <entry key="database.url">jdbc:h2:./data/database</entry>
+    <entry key="database.user">sa</entry>
+    <entry key="database.password"></entry>
+    <entry key="forward.url">http://host.docker.internal:4000/telematics/ingest/YOUR_DEVICE_UUID?secret=YOUR_INGEST_SECRET</entry>
+    <entry key="forward.type">json</entry>
+</properties>

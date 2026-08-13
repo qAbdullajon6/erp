@@ -83,7 +83,8 @@
 
 | Service | Purpose | Integrated | API key required | Configured | Environment variables | Status | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| MapLibre GL | Fleet map UI | Yes | No | — | — | **LIVE** | Web dependency. |
+| MapLibre GL | Geofences + trip replay maps | Yes | No | — | — | **LIVE** | Web dependency (OSM tiles). |
+| Mapbox GL | Live Fleet Tracking map | Yes | Public `pk.*` | `VITE_MAPBOX_ACCESS_TOKEN` | — | **LIVE** | Directions/geocode use API `MAPBOX_SECRET_TOKEN`. |
 | OpenStreetMap tiles | Map tiles | Yes | No (ToS) | Hardcoded | — | **LIVE** | `tile.openstreetmap.org` — respect usage policy; production should use a tile provider / self-host. |
 | Google Maps | Routing / ETA (claimed) | No | Yes | — | — | **MARKETING** | Registry marks `active` but **no Google Maps SDK**; ETA is straight-line. |
 | Traccar | GPS gateway | Yes | Device secrets in DB | Docker default `admin/admin` | — | **LIVE** | Change defaults in prod. See `docs/TRACCAR_SETUP.md`. |
@@ -119,8 +120,8 @@
 | Cloudflare / CDN | Edge CDN | No | — | — | — | **Missing** | No Cloudflare config found. |
 | Domain / DNS | flowerp.uz | Ops | Registrar | Ops | — | **N/A** | Must point A/AAAA at VPS (and Vercel if used). |
 | Google Fonts CDN | Manrope / Inter | Yes | No | Hardcoded | — | **LIVE** | Privacy/perf: consider self-hosting. |
-| Postgres backups | Nightly dumps | Script | Offsite creds | Ops | `OFFSITE_COMMAND`, `BACKUP_DIR`, `RETENTION_DAYS` | **PARTIAL** | Local dump works; offsite is operator-supplied (`rclone` / `aws s3 cp`). |
-| AWS S3 (backups) | Offsite storage | Documented only | Yes | — | via `OFFSITE_COMMAND` | **SCAFFOLD** | No in-app S3 SDK for product storage. |
+| Postgres backups | Nightly dumps | Script | AWS CLI provider chain | Ops | `OFFSITE_WRAPPER`, `AWS_REGION`, `S3_BUCKET`, `S3_BACKUP_PREFIX`, `BACKUP_DIR`, `RETENTION_DAYS` | **IMPLEMENTED / NOT DEPLOYED** | Parent preserves local recovery points on exhausted offsite retries; production cron and restore drill remain operator checks. |
+| AWS S3 (backups) | Offsite storage | AWS CLI v2 wrapper | Yes, outside git | Ops | non-secret S3 destination vars; standard credential chain | **IMPLEMENTED / NOT DEPLOYED** | Fake-AWS tests cover SSE-S3 and remote verification. IAM/lifecycle examples are not automatically applied. No in-app S3 SDK for product storage. |
 
 ### 1.9 Site config (marketing) — not third-party SDKs but deploy-critical
 
@@ -276,7 +277,7 @@ Copy this into your runbook. Check each box only when verified in the **producti
 | **Sentry SDK wiring** | Blind production without stack traces | Env reserved; no `Sentry.init` | Add `@sentry/node` + `@sentry/react` (or equivalent) and init from existing DSN vars |
 | **Uptime / DNS monitoring** | Outages unnoticed until users complain | Not found | External check (Better Stack, UptimeRobot, Cloudflare Health) on marketing + API health |
 | **CDN / edge** | Latency, cache, DDoS cushion | No Cloudflare (or other CDN) config | Put marketing + static behind CDN; keep API origin protected |
-| **Offsite backup verification** | Backups that are never restored are not backups | Script exists; offsite optional | Require `OFFSITE_COMMAND` + quarterly restore drill (`DISASTER_RECOVERY.md`) |
+| **Offsite backup production verification** | Backups that are never restored are not backups | S3 wrapper and static tests exist; no production AWS claim | Install AWS CLI v2 and `OFFSITE_WRAPPER`, configure private/versioned bucket + alerts, then perform a quarterly recovery download and restore drill (`DISASTER_RECOVERY.md`) |
 | **Abuse protection beyond throttle** | Public lead endpoint + auth are internet-facing | Nest throttler + Redis optional | Consider CAPTCHA on leads, WAF, fail2ban/Caddy rate limits |
 | **Email deliverability** | Leads/invites land in spam | SMTP optional | Dedicated sending domain + SPF/DKIM/DMARC |
 | **Real Google Maps / routing** | Landing claims routing; product uses OSM + straight-line ETA | MARKETING mismatch | Either integrate Maps/Directions API or change marketing copy / registry status |

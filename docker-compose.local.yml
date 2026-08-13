@@ -60,15 +60,38 @@ services:
       - "8082:8082"
       # OsmAnd/Traccar Client protocol — plain HTTP, what the phone app posts to.
       - "5055:5055"
-      # Teltonika, the most common hardware tracker protocol.
+      # Teltonika, the most common hardware tracker protocol. Reserved for the
+      # Teltonika FMB920 that will be added alongside the Navtelecom unit.
       - "5027:5027/tcp"
+      # Navtelecom (NTCB/FLEX) — the S-2423 tracker's protocol. Not in
+      # Traccar's public devices list or any bundled default.xml (removed
+      # in 6.2+); verified directly from this exact 6.4-alpine image's
+      # compiled org.traccar.config.PortConfigSuffix port table (which also
+      # correctly reproduces the documented teltonika=5027 / osmand=5055
+      # values, cross-confirming the extraction). Do not change this number
+      # without re-verifying against the installed image — it is not a
+      # published, stable spec, just what this build assigns.
+      - "5221:5221/tcp"
+      # Navis (NTCB/FLEX) — reversible S-2423 ~T decode test. Same Traccar 6.4
+      # image already supports ~T on navis:5019; publish so the SSH reverse
+      # tunnel can target host 127.0.0.1:5019 while VPS public port stays 5221.
+      # Keep 5221 published (navtelecom) for easy rollback.
+      - "5019:5019/tcp"
     volumes:
       - traccar_data:/opt/traccar/data
       - traccar_logs:/opt/traccar/logs
+      # Persist conf (forward.url) across recreate. File is gitignored — copy
+      # from docker/traccar/traccar.xml.example if missing. Do not put secrets
+      # in the image layer; this bind-mount is the Phase-0 fix for wiped ingest.
+      - ./docker/traccar/traccar.xml:/opt/traccar/conf/traccar.xml:ro
     healthcheck:
       # Traccar has no dedicated health endpoint; the server root answering is
       # the signal that it has finished booting its embedded Jetty.
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:8082/ || exit 1"]
+      # 127.0.0.1, not localhost: this Alpine image resolves "localhost" to
+      # ::1 first, where nothing is listening, so wget reports "connection
+      # refused" and Docker shows unhealthy even though the server (verified
+      # reachable on 127.0.0.1 and from the host) is fine.
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8082/ || exit 1"]
       interval: 10s
       timeout: 5s
       # Slower than Postgres: Traccar boots a JVM and initialises its own

@@ -16,9 +16,11 @@
 #   - alerting on all of the above                    (Alertmanager)
 #
 # What is deferred to the monitoring milestone (documented, not faked here):
-#   - APPLICATION metrics (request rate/latency, queue depth, cron outcomes).
+#   - APPLICATION metrics (request rate/latency, queue depth, API cron outcomes).
 #     These need a /metrics endpoint on the API (prom-client). The Prometheus
 #     scrape job for it is present but commented out — see prometheus/prometheus.yml.
+#     Database backup status is available now through node-exporter's textfile
+#     collector when NODE_EXPORTER_TEXTFILE_DIR is configured.
 #   - Grafana DASHBOARDS. Datasources are provisioned; dashboards are intentionally
 #     left empty per this milestone's stop conditions.
 #   - Sentry is SaaS (or self-hosted separately); it is wired by env var, not by
@@ -58,9 +60,11 @@ services:
     restart: unless-stopped
     command:
       - --path.rootfs=/host
+      - --collector.textfile.directory=/var/lib/node_exporter/textfile_collector
     pid: host
     volumes:
       - /:/host:ro,rslave
+      - ${NODE_EXPORTER_TEXTFILE_DIR:-/var/lib/node_exporter/textfile_collector}:/var/lib/node_exporter/textfile_collector:ro
     expose:
       - "9100"
     networks: [monitoring]

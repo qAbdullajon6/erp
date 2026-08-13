@@ -782,15 +782,29 @@ cd /opt/flowerp
 - [ ] Test database dropped at end
 - [ ] Production database untouched
 
-### Verify Offsite Backup (if configured)
+### Verify S3 Offsite Backup (production operator)
 
 ```bash
-# If OFFSITE_COMMAND is set (e.g., rclone, aws s3)
-echo $OFFSITE_COMMAND
+grep -E '^(OFFSITE_WRAPPER|AWS_REGION|S3_BUCKET|S3_BACKUP_PREFIX)=' .env.production
+test -x /usr/local/bin/flowerp-offsite-backup
+aws --version
 ```
 
-- [ ] `OFFSITE_COMMAND` is set in cron or .env
-- [ ] Latest backup exists in offsite location (check cloud console or run offsite list command)
+- [ ] AWS CLI v2 is installed as a system dependency
+- [ ] `OFFSITE_WRAPPER=/usr/local/bin/flowerp-offsite-backup`
+- [ ] `AWS_REGION`, `S3_BUCKET`, and `S3_BACKUP_PREFIX` match the reviewed destination
+- [ ] AWS credentials come from the standard provider chain outside git and cron
+- [ ] Bucket/account S3 Block Public Access and bucket versioning are enabled
+- [ ] Latest dump and checksum objects exist under the prefix with SSE-S3 (`AES256`)
+- [ ] Dump metadata `sha256` matches the local digest; both remote lengths match
+- [ ] Download both objects to an isolated recovery directory and complete the
+  non-destructive restore rehearsal in `docs/DISASTER_RECOVERY.md`
+- [ ] Do not delete backup objects during smoke testing
+
+The repository wrapper, IAM policy, lifecycle document, and fake-AWS tests are
+implementation evidence only. Do not mark production S3 or recovery verified
+until an authorized operator completes these checks against the real private
+bucket. Lifecycle application is a separate AWS administrator action.
 
 ---
 
