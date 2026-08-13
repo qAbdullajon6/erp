@@ -16,7 +16,9 @@ import { AlertTriangle, LifeBuoy, LogOut } from "lucide-react";
 export const Route = createFileRoute("/app")({
   head: () => ({
     meta: [
-      { title: "Command Center — FlowERP AI" },
+      // Only a fallback: each screen names itself. A shell-wide title of
+      // "Command Center" made every tab claim to be the dashboard.
+      { title: "FlowERP AI" },
       { name: "robots", content: "noindex" },
     ],
   }),

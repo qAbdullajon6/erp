@@ -846,15 +846,19 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                 canWrite={canWriteOrder && !order.archivedAt}
                 invoice={invoice}
                 canViewInvoices={canViewInvoices}
+                orderStatus={order.status}
               />
             </section>
 
-            {/* Proof of delivery (driver-submitted, via the order's dispatch) */}
+            {/* Named for its source: Documents above holds POD files the office
+                uploads, and this is what the driver submitted from the app. Two
+                sections headed "Proof of Delivery" on one page said nothing
+                about which was which. */}
             {canViewDispatch && (
               <section className="p-4">
                 <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                   <FileText className="h-3.5 w-3.5" />
-                  Proof of Delivery
+                  Driver&rsquo;s proof of delivery
                 </div>
                 {dispatchesLoading ? (
                   <Skeleton className="h-24 w-full rounded-xl" />

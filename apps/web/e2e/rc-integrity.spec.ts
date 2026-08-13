@@ -45,7 +45,7 @@ test('RC9a: creating an order moves the dashboard KPI without a reload', async (
   await seed(page, accessToken, refreshToken);
 
   await page.goto('/app', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByText('Command Center')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId('dashboard')).toBeVisible({ timeout: 60_000 });
   await page.waitForTimeout(4000);
 
   const before = await ordersKpi(page);

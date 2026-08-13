@@ -317,6 +317,9 @@ interface OrderDocumentsPanelProps {
   canWrite: boolean;
   invoice?: Invoice | null;
   canViewInvoices?: boolean;
+  /// Only to explain the empty invoice slot: an order can be invoiced once it
+  /// is delivered, and until then no Create Invoice button appears anywhere.
+  orderStatus?: string;
 }
 
 export function OrderDocumentsPanel({
@@ -324,6 +327,7 @@ export function OrderDocumentsPanel({
   canWrite,
   invoice,
   canViewInvoices,
+  orderStatus,
 }: OrderDocumentsPanelProps) {
   /// Printing needs the full company identity, not the session's org summary.
   const { data: organization } = useOrganizationQuery();
@@ -384,7 +388,11 @@ export function OrderDocumentsPanel({
               </Button>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">No invoice linked to this order yet.</p>
+            <p className="text-sm text-muted-foreground">
+              {orderStatus && orderStatus !== 'DELIVERED'
+                ? 'No invoice yet — an order can be invoiced once it is delivered.'
+                : 'No invoice yet — use Create Invoice in the order actions above.'}
+            </p>
           )}
         </div>
       )}

@@ -108,7 +108,7 @@ function FreshnessControl({
 }
 
 export const Route = createFileRoute("/app/")({
-  head: () => ({ meta: [{ title: "Operations — Command Center" }] }),
+  head: () => ({ meta: [{ title: "Overview — FlowERP AI" }] }),
   component: DashboardPage,
 });
 
@@ -219,7 +219,9 @@ function OperationsCommandCenter({
   const loading = summary.loading || (includeFleet && board.loading && !board.data);
 
   return (
-    <div className="space-y-8">
+    // Tests need to say "the dashboard rendered" without depending on whatever
+    // the headline copy happens to be this month.
+    <div className="space-y-8" data-testid="dashboard">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/60 pb-4">
         <OpsClock />
         <div className="flex flex-wrap items-center gap-1.5">

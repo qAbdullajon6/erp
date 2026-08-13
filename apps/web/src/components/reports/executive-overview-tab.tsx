@@ -325,7 +325,9 @@ export function ExecutiveOverviewTab({ params }: ExecutiveOverviewTabProps) {
                 <div key={c.customerId} className="flex items-center justify-between px-6 py-3">
                   <div>
                     <p className="text-sm font-medium text-foreground">{c.companyName}</p>
-                    <p className="text-xs text-muted-foreground">{c.orderCount} orders</p>
+                    <p className="text-xs text-muted-foreground">
+                      {c.orderCount} order{c.orderCount === 1 ? '' : 's'}
+                    </p>
                   </div>
                   <p className="text-sm font-semibold text-foreground">{money(c.revenue)}</p>
                 </div>
@@ -348,7 +350,9 @@ export function ExecutiveOverviewTab({ params }: ExecutiveOverviewTabProps) {
                     <p className="text-sm font-medium text-foreground">
                       {r.pickupCity} → {r.deliveryCity}
                     </p>
-                    <p className="text-xs text-muted-foreground">{r.orderCount} orders</p>
+                    <p className="text-xs text-muted-foreground">
+                      {r.orderCount} order{r.orderCount === 1 ? '' : 's'}
+                    </p>
                   </div>
                   <p className="text-sm font-semibold text-foreground">{money(r.revenue)}</p>
                 </div>

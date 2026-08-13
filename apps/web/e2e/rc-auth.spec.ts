@@ -63,8 +63,11 @@ test('RC7a: a dashboard-load fan-out spends exactly one refresh token', async ({
 
   console.log(`[RC7a] /auth/refresh calls: [${refreshCalls.join(', ')}]`);
   console.log(`[RC7a] landed on: ${page.url()}`);
-  const body = (await page.locator('body').innerText()).replace(/\s+/g, ' ');
-  console.log(`[RC7a] dashboard rendered: ${/Command Center/.test(body)}`);
+  const dashboardRendered = await page
+    .getByTestId('dashboard')
+    .isVisible()
+    .catch(() => false);
+  console.log(`[RC7a] dashboard rendered: ${dashboardRendered}`);
   console.log(`[RC7a] residual 4xx/5xx after refresh: ${apiFailures.length ? apiFailures.join(' | ') : 'none'}`);
 
   // The API rotates the presented refresh token, so a second concurrent refresh
@@ -72,7 +75,7 @@ test('RC7a: a dashboard-load fan-out spends exactly one refresh token', async ({
   const successful = refreshCalls.filter((s) => s === 200).length;
   if (successful !== 1) fail('P0', `expected exactly one successful refresh, saw ${successful} (${refreshCalls})`);
   if (/\/auth\/sign-in/.test(page.url())) fail('P0', 'an expired access token still bounces the user to sign-in');
-  if (!/Command Center/.test(body)) fail('P1', 'dashboard did not render after the refresh');
+  if (!dashboardRendered) fail('P1', 'dashboard did not render after the refresh');
   if (apiFailures.length) fail('P1', `requests still failing after refresh: ${apiFailures.join(', ')}`);
 });
 

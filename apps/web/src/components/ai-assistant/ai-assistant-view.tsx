@@ -253,9 +253,12 @@ export function AiAssistantView() {
           </Button>
 
           <div className="min-w-0 flex-1">
-            <h2 className="truncate text-sm font-medium text-foreground">
+            {/* The conversation is what this screen is, so its name is the
+                page heading — every other screen gives a screen reader an h1
+                to land on and this one gave it nothing. */}
+            <h1 className="truncate text-sm font-medium text-foreground">
               {conversation?.title ?? 'New Conversation'}
-            </h2>
+            </h1>
             {conversation && (
               <p className="truncate text-xs text-muted-foreground" title={formatDateTime(conversation.lastMessageAt)}>
                 Last active {formatRelativeTime(conversation.lastMessageAt)}
