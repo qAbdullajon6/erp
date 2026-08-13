@@ -117,6 +117,9 @@ beforeAll(async () => {
         deliveryDate: DELIVERY,
         cargoDescription: "Pallets",
         price: "1000.00",
+        // Dispatch creation reserves operational resources and therefore
+        // requires the commercial order to have left DRAFT.
+        status: "PENDING",
       },
     });
   const makeDriver = (suffix: string) =>

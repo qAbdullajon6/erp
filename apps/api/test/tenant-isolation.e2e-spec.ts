@@ -814,6 +814,7 @@ describe("Tenant isolation (e2e)", () => {
     it.each(probes.map((p) => [p.name, p] as const))("%s", async (_name, probe) => {
       const res = await send(probe, orgBToken);
       expect(res.status).toBeGreaterThanOrEqual(400);
+      expect(res.status).toBeLessThan(500);
       expect(JSON.stringify(res.body)).not.toContain("Org A Confidential Customer");
     });
   });

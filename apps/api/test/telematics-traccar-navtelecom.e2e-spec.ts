@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
+import { configureApp } from "../src/app.config";
 import { AppModule } from "../src/app.module";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { DeviceService } from "../src/telematics/devices/device.service";
@@ -9,9 +10,11 @@ import { TelematicsRealtimeService } from "../src/telematics/realtime/telematics
 import { typedResponse } from "./support/typed-response";
 
 interface IngestResponseBody {
-  accepted: number;
-  rejected: number;
-  latest: { recordedAt: string };
+  data: {
+    accepted: number;
+    rejected: number;
+    latest: { recordedAt: string };
+  };
   error?: { message: string };
   message: string;
 }
@@ -155,6 +158,7 @@ describe("Telematics: Traccar bridge (Navtelecom/Teltonika)", () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
+    configureApp(app);
     await app.init();
 
     prisma = app.get(PrismaService);
@@ -272,7 +276,7 @@ describe("Telematics: Traccar bridge (Navtelecom/Teltonika)", () => {
       .expect(201)
       .then(typedResponse<IngestResponseBody>);
 
-    expect(res.body.accepted).toBe(1);
+    expect(res.body.data.accepted).toBe(1);
 
     const position = await prisma.gpsPosition.findFirst({
       where: { organizationId: orgA.organizationId, vehicleId },
@@ -362,7 +366,7 @@ describe("Telematics: Traccar bridge (Navtelecom/Teltonika)", () => {
       .expect(201)
       .then(typedResponse<IngestResponseBody>);
 
-      expect(res.body.accepted).toBe(1);
+      expect(res.body.data.accepted).toBe(1);
     });
   });
 
@@ -380,15 +384,15 @@ describe("Telematics: Traccar bridge (Navtelecom/Teltonika)", () => {
       .send(fix)
       .expect(201)
       .then(typedResponse<IngestResponseBody>);
-    expect(first.body.accepted).toBe(1);
+    expect(first.body.data.accepted).toBe(1);
 
     const second = await request(app.getHttpServer())
       .post(`/telematics/ingest/${deviceId}?secret=${secret}`)
       .send(fix) // exact same timestamp + coordinates
       .expect(201)
       .then(typedResponse<IngestResponseBody>);
-    expect(second.body.accepted).toBe(0);
-    expect(second.body.rejected).toBe(1);
+    expect(second.body.data.accepted).toBe(0);
+    expect(second.body.data.rejected).toBe(1);
 
     const device = await prisma.telematicsDevice.findUniqueOrThrow({ where: { id: deviceId } });
     const count = await prisma.gpsPosition.count({
@@ -410,8 +414,8 @@ describe("Telematics: Traccar bridge (Navtelecom/Teltonika)", () => {
       .expect(201)
       .then(typedResponse<IngestResponseBody>);
 
-    expect(res.body.accepted).toBe(0);
-    expect(res.body.rejected).toBe(1);
+    expect(res.body.data.accepted).toBe(0);
+    expect(res.body.data.rejected).toBe(1);
   });
 
   // ---------------------------------------------------------------------
@@ -431,8 +435,8 @@ describe("Telematics: Traccar bridge (Navtelecom/Teltonika)", () => {
       .expect(201)
       .then(typedResponse<IngestResponseBody>);
 
-    expect(res.body.accepted).toBe(1);
-    const recordedAt = new Date(res.body.latest.recordedAt).getTime();
+    expect(res.body.data.accepted).toBe(1);
+    const recordedAt = new Date(res.body.data.latest.recordedAt).getTime();
     expect(recordedAt).toBeGreaterThanOrEqual(before - 1000);
     expect(recordedAt).toBeLessThanOrEqual(Date.now() + 1000);
   });

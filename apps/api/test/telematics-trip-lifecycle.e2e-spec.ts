@@ -1,6 +1,7 @@
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
+import { configureApp } from "../src/app.config";
 import { AppModule } from "../src/app.module";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { typedResponse } from "./support/typed-response";
@@ -11,18 +12,23 @@ interface TripListItemBody {
 }
 
 interface TripLifecycleResponseBody {
-  accessToken: string;
-  id: string;
-  secret: string;
-  tripId: string;
-  activeTrip?: { id: string };
-  vehicleId: string;
-  status: string;
-  distanceKm: number;
-  trips: TripListItemBody[];
+  data: {
+    id: string;
+    ingestSecret: string;
+    tripId: string;
+    activeTrip?: { id: string };
+    vehicleId: string;
+    status: string;
+    distanceKm: number;
+    items: TripListItemBody[];
+  };
 }
 
 describe("Telematics Trip Lifecycle E2E", () => {
+  let telemetryClock = Date.now() - 10 * 60_000;
+  const nextRecordedAt = (advanceMs = 60_000) =>
+    new Date((telemetryClock += advanceMs)).toISOString();
+
   let app: INestApplication;
   let prisma: PrismaService;
   let adminToken: string;
@@ -36,6 +42,7 @@ describe("Telematics Trip Lifecycle E2E", () => {
     }).compile();
 
     app = moduleRef.createNestApplication();
+    configureApp(app);
     await app.init();
     prisma = app.get(PrismaService);
 
@@ -52,7 +59,7 @@ describe("Telematics Trip Lifecycle E2E", () => {
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ vehicleCode: "TRIP-TEST-001", plateNumber: "TRIP-01", type: "VAN", capacity: 1000 })
       .then(typedResponse<TripLifecycleResponseBody>);
-    vehicleId = vehicleRes.body.id;
+    vehicleId = vehicleRes.body.data.id;
 
     // Create device
     const deviceRes = await request(app.getHttpServer())
@@ -65,8 +72,8 @@ describe("Telematics Trip Lifecycle E2E", () => {
         vehicleId,
       })
       .then(typedResponse<TripLifecycleResponseBody>);
-    deviceId = deviceRes.body.id;
-    deviceSecret = deviceRes.body.secret;
+    deviceId = deviceRes.body.data.id;
+    deviceSecret = deviceRes.body.data.ingestSecret;
   });
 
   afterAll(async () => {
@@ -84,10 +91,10 @@ describe("Telematics Trip Lifecycle E2E", () => {
         latitude: 40.0,
         longitude: -74.0,
         speedKph: 0,
-        recordedAt: new Date(Date.now() - 180000).toISOString(),
+        recordedAt: nextRecordedAt(),
         ignitionOn: false,
       })
-      .expect(200)
+      .expect(201)
       .then(typedResponse<TripLifecycleResponseBody>);
 
     // Wait for stop classification
@@ -100,16 +107,16 @@ describe("Telematics Trip Lifecycle E2E", () => {
         latitude: 40.1,
         longitude: -74.1,
         speedKph: 60,
-        recordedAt: new Date().toISOString(),
+        recordedAt: nextRecordedAt(180_000),
         ignitionOn: true,
       })
-      .expect(200)
+      .expect(201)
       .then(typedResponse<TripLifecycleResponseBody>);
 
-    expect(res.body.tripId).toBeDefined();
+    expect(res.body.data.tripId).toBeDefined();
 
     // 3. Verify trip exists
-    const trip = await prisma.trip.findUnique({ where: { id: res.body.tripId } });
+    const trip = await prisma.trip.findUnique({ where: { id: res.body.data.tripId } });
     expect(trip).toBeDefined();
     expect(trip!.status).toBe("ACTIVE");
     expect(trip!.vehicleId).toBe(vehicleId);
@@ -122,38 +129,36 @@ describe("Telematics Trip Lifecycle E2E", () => {
       .expect(200)
       .then(typedResponse<TripLifecycleResponseBody>);
 
-    const tripId = live.body.activeTrip?.id;
+    const tripId = live.body.data.activeTrip?.id;
     expect(tripId).toBeDefined();
 
     // Post multiple positions
     await request(app.getHttpServer())
       .post(`/telematics/ingest/${deviceId}?secret=${deviceSecret}`)
-      .send({
-        positions: [
+      .send([
           {
             latitude: 40.2,
             longitude: -74.2,
             speedKph: 80,
-            recordedAt: new Date(Date.now() - 20000).toISOString(),
+            recordedAt: nextRecordedAt(),
             ignitionOn: true,
           },
           {
             latitude: 40.3,
             longitude: -74.3,
             speedKph: 100,
-            recordedAt: new Date(Date.now() - 10000).toISOString(),
+            recordedAt: nextRecordedAt(),
             ignitionOn: true,
           },
           {
             latitude: 40.4,
             longitude: -74.4,
             speedKph: 90,
-            recordedAt: new Date().toISOString(),
+            recordedAt: nextRecordedAt(),
             ignitionOn: true,
           },
-        ],
-      })
-      .expect(200);
+        ])
+      .expect(201);
 
     // Check trip aggregates
     const trip = await prisma.trip.findUnique({ where: { id: tripId } });
@@ -171,7 +176,7 @@ describe("Telematics Trip Lifecycle E2E", () => {
       .expect(200)
       .then(typedResponse<TripLifecycleResponseBody>);
 
-    const tripId = live.body.activeTrip?.id;
+    const tripId = live.body.data.activeTrip?.id;
     expect(tripId).toBeDefined();
 
     // Trip should still be active
@@ -186,7 +191,7 @@ describe("Telematics Trip Lifecycle E2E", () => {
       .expect(200)
       .then(typedResponse<TripLifecycleResponseBody>);
 
-    const tripId = live.body.activeTrip?.id;
+    const tripId = live.body.data.activeTrip?.id;
 
     // Get trip detail
     const tripRes = await request(app.getHttpServer())
@@ -195,10 +200,10 @@ describe("Telematics Trip Lifecycle E2E", () => {
       .expect(200)
       .then(typedResponse<TripLifecycleResponseBody>);
 
-    expect(tripRes.body.id).toBe(tripId);
-    expect(tripRes.body.vehicleId).toBe(vehicleId);
-    expect(tripRes.body.status).toBe("ACTIVE");
-    expect(Number(tripRes.body.distanceKm)).toBeGreaterThan(0);
+    expect(tripRes.body.data.id).toBe(tripId);
+    expect(tripRes.body.data.vehicleId).toBe(vehicleId);
+    expect(tripRes.body.data.status).toBe("ACTIVE");
+    expect(Number(tripRes.body.data.distanceKm)).toBeGreaterThan(0);
 
     // List trips
     const listRes = await request(app.getHttpServer())
@@ -207,7 +212,7 @@ describe("Telematics Trip Lifecycle E2E", () => {
       .expect(200)
       .then(typedResponse<TripLifecycleResponseBody>);
 
-    const found = listRes.body.trips.find((trip) => trip.id === tripId);
+    const found = listRes.body.data.items.find((trip) => trip.id === tripId);
     expect(found).toBeDefined();
   });
 });

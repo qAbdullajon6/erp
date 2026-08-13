@@ -108,7 +108,6 @@ describe('Developer Portal (e2e)', () => {
   let prisma: PrismaService;
   let dispatcher: WebhookDispatcherService;
   const createdOrganizationIds: string[] = [];
-  const createdUserIds: string[] = [];
 
   let adminToken: string;
   let otherToken: string;
@@ -161,19 +160,9 @@ describe('Developer Portal (e2e)', () => {
   });
 
   afterAll(async () => {
-    await prisma.webhookDeliveryAttempt.deleteMany({
-      where: { delivery: { organizationId: { in: createdOrganizationIds } } },
-    });
-    await prisma.webhookDelivery.deleteMany({ where: { organizationId: { in: createdOrganizationIds } } });
-    await prisma.webhookEndpoint.deleteMany({ where: { organizationId: { in: createdOrganizationIds } } });
-    await prisma.apiUsageRecord.deleteMany({ where: { organizationId: { in: createdOrganizationIds } } });
-    await prisma.apiKey.deleteMany({ where: { organizationId: { in: createdOrganizationIds } } });
-    await prisma.auditLog.deleteMany({ where: { organizationId: { in: createdOrganizationIds } } });
-    await prisma.membership.deleteMany({ where: { organizationId: { in: createdOrganizationIds } } });
-    await prisma.organization.deleteMany({ where: { id: { in: createdOrganizationIds } } });
-    await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
-    // Guarded: if beforeAll threw partway, these may never have been created,
-    // and an error here would mask the real failure.
+    // The e2e guard guarantees a disposable database, so leave database rows
+    // for the harness to drop. Deleting deliveries here raced an in-flight
+    // dispatcher drain and produced a false-green background FK error.
     if (receiver) await new Promise<void>((resolve) => receiver.close(() => resolve()));
     if (app) await app.close();
     delete process.env.WEBHOOK_ALLOW_PRIVATE_TARGETS;
@@ -206,7 +195,6 @@ describe('Developer Portal (e2e)', () => {
       organizationName: orgName,
     });
     const body = res.body as AuthResultBody;
-    createdUserIds.push(body.data.user.id);
     createdOrganizationIds.push(body.data.organization.id);
     return body.data;
   }
@@ -242,10 +230,7 @@ describe('Developer Portal (e2e)', () => {
       .post('/auth/login')
       .send({ email: memberEmail, password: 'correct-horse-battery' })
       .expect(200);
-    // Take the id from login rather than from the accept response, whose body
-    // does not carry one — and it is needed for afterAll cleanup.
     const body = login.body as AuthResultBody;
-    createdUserIds.push(body.data.user.id);
     return body.data.accessToken;
   }
 

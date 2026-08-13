@@ -262,15 +262,13 @@ describe("Finance (e2e)", () => {
       expect(invoice.lineItems?.[0].lineTotal).toBe("150");
     });
 
-    it("rejects a client trying to smuggle its own totalAmount/balanceDue — those aren't real input fields", async () => {
+    it("ignores client-supplied totals and computes authoritative values server-side", async () => {
       const admin = await registerAdmin(`Invoice Smuggled Totals Org ${randomUUID()}`);
       const customer = await createCustomer(admin);
 
-      // The global ValidationPipe's forbidNonWhitelisted rejects any
-      // property CreateInvoiceDto doesn't declare — totalAmount/balanceDue
-      // are always server-computed and were never accepted as input at
-      // all, so this 400s rather than silently ignoring the extra fields.
-      await request(app.getHttpServer())
+      // Unknown fields are deliberately stripped by configureApp. The security
+      // invariant is that client totals never win, not that extra fields 400.
+      const res = await request(app.getHttpServer())
         .post("/invoices")
         .set("Authorization", `Bearer ${admin.accessToken}`)
         .send({
@@ -279,7 +277,11 @@ describe("Finance (e2e)", () => {
           totalAmount: 999999,
           balanceDue: 0,
         })
-        .expect(400);
+        .expect(201);
+
+      const invoice = (res.body as InvoiceResponse).data;
+      expect(invoice.totalAmount).toBe("100");
+      expect(invoice.balanceDue).toBe("100");
     });
 
     it("rejects creating an invoice with zero line items", async () => {
@@ -441,7 +443,7 @@ describe("Finance (e2e)", () => {
         .set("Authorization", `Bearer ${admin.accessToken}`)
         .send({ amount: 150, method: "CASH" })
         .expect(400);
-      expect((res.body as ErrorBody).error.message).toMatch(/exceeds/i);
+      expect((res.body as ErrorBody).error.message).toMatch(/exceed/i);
     });
 
     it("rejects a mismatched payment currency", async () => {

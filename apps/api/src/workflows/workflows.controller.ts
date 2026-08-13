@@ -193,7 +193,7 @@ export class WorkflowsController {
   async duplicate(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { name?: string },
+    @Body() body: { name?: string } = {},
   ) {
     const workflow = await this.service.duplicate(user.organizationId, user.userId, id, body.name);
     return workflow;

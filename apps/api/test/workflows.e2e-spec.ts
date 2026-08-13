@@ -231,6 +231,12 @@ describe('Workflows (e2e)', () => {
         .post(`/workflows/${workflowId}/toggle`)
         .set(authAdmin());
 
+      const before = responseData<WorkflowData>(
+        await request(app.getHttpServer())
+          .get(`/workflows/${workflowId}`)
+          .set(authAdmin())
+          .expect(200),
+      );
       const res = await request(app.getHttpServer())
         .post(`/workflows/${workflowId}/publish`)
         .set(authAdmin())
@@ -238,7 +244,7 @@ describe('Workflows (e2e)', () => {
 
       const data = responseData<WorkflowData>(res);
       expect(data.status).toBe('PUBLISHED');
-      expect(data.version).toBe(2);
+      expect(data.version).toBe(before.version + 1);
     });
 
     it('exports', async () => {

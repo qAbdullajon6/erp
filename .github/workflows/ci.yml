@@ -166,6 +166,47 @@ jobs:
       - name: Jest (unit)
         run: npm run test:api
 
+  api-e2e:
+    name: API · e2e tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: erp
+          POSTGRES_PASSWORD: erp
+          POSTGRES_DB: erp_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U erp -d erp_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://erp:erp@localhost:5432/erp_e2e?schema=public
+      NODE_ENV: test
+      JWT_ACCESS_SECRET: ci-api-e2e-jwt-secret-not-for-production-use-48chars
+      APP_SECRET: ci-api-e2e-app-secret-32bytes-minimum
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - name: Prisma generate + migrate
+        run: |
+          npm run prisma:generate
+          npx prisma migrate deploy --schema apps/api/prisma/schema.prisma
+      - name: Seed isolated e2e fixtures
+        working-directory: apps/api
+        run: npx ts-node prisma/seed-test-org.ts
+      - name: Jest (API e2e)
+        working-directory: apps/api
+        run: npx jest --config ./test/jest-e2e.json --runInBand
+
   # ── Sprint A — Enterprise regression gate (blocking) ─────────────────
   playwright-regression:
     name: Playwright · enterprise regression suite

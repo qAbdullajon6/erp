@@ -205,6 +205,13 @@ export class WebhookDispatcherService implements OnModuleInit, OnModuleDestroy {
     await this.attemptDelivery(deliveryId);
   }
 
+  /// An operator-triggered retry is an explicit recovery probe. Let it reach
+  /// the endpoint immediately instead of having the still-open circuit consume
+  /// another attempt without sending anything.
+  resetCircuitForManualRetry(endpointId: string): void {
+    this.circuitBreaker.reset(endpointId);
+  }
+
   private async attemptDelivery(deliveryId: string): Promise<void> {
     // Compare-and-set claim: only the caller whose update actually matched a
     // PENDING row proceeds. Without this, the interval tick and an enqueue's

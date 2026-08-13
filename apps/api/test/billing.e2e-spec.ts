@@ -49,6 +49,7 @@ describe("Billing (e2e)", () => {
   let adminToken: string;
   let orgAId: string;
   let dispatcherToken: string; // a non-ADMIN member of org A
+  let opsManagerToken: string;
 
   // Org B — a second org, to prove cross-org isolation.
   let otherToken: string;
@@ -56,9 +57,14 @@ describe("Billing (e2e)", () => {
 
   let customerToken: string; // customer-portal JWT for a customer in org A
 
-  // Plans seeded in the dev DB (seed-subscription-plans.ts).
+  // Plans are provisioned explicitly below so the disposable database fixture
+  // does not depend on a developer having run a separate seed script.
   let plans: PlanBody[] = [];
-  const planBySlug = (slug: string) => plans.find((p) => p.slug === slug);
+  const requirePlan = (slug: string) => {
+    const plan = plans.find((p) => p.slug === slug);
+    if (!plan) throw new Error(`Required billing plan fixture "${slug}" was not seeded`);
+    return plan;
+  };
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -70,6 +76,20 @@ describe("Billing (e2e)", () => {
     await app.init();
     prisma = app.get(PrismaService);
 
+    await Promise.all(
+      [
+        { name: "Free", slug: "free", price: 0, sortOrder: 0 },
+        { name: "Starter", slug: "starter", price: 4900, sortOrder: 1 },
+        { name: "Professional", slug: "professional", price: 14900, sortOrder: 2 },
+      ].map((plan) =>
+        prisma.subscriptionPlan.upsert({
+          where: { slug: plan.slug },
+          create: { ...plan, currency: "USD", features: {}, isActive: true },
+          update: { name: plan.name, price: plan.price, sortOrder: plan.sortOrder, isActive: true },
+        }),
+      ),
+    );
+
     const admin = await registerAdmin(`Billing Org A ${randomUUID()}`);
     adminToken = admin.accessToken;
     orgAId = admin.organization.id;
@@ -79,6 +99,7 @@ describe("Billing (e2e)", () => {
     orgBId = other.organization.id;
 
     dispatcherToken = await addMemberWithRole(admin, "DISPATCHER");
+    opsManagerToken = await addMemberWithRole(admin, "OPERATIONS_MANAGER");
 
     const plansRes = await request(app.getHttpServer()).get("/plans").expect(200);
     plans = (plansRes.body as { data: { plans: PlanBody[] } }).data.plans;
@@ -255,7 +276,7 @@ describe("Billing (e2e)", () => {
     });
 
     it("creates a subscription for the authenticated org", async () => {
-      const starter = planBySlug("starter") ?? plans[0];
+      const starter = requirePlan("starter");
       const res = await request(app.getHttpServer())
         .post("/subscriptions")
         .set("Authorization", `Bearer ${adminToken}`)
@@ -269,7 +290,7 @@ describe("Billing (e2e)", () => {
     });
 
     it("is idempotent-guarded: a second create conflicts", async () => {
-      const starter = planBySlug("starter") ?? plans[0];
+      const starter = requirePlan("starter");
       await request(app.getHttpServer())
         .post("/subscriptions")
         .set("Authorization", `Bearer ${adminToken}`)
@@ -289,8 +310,7 @@ describe("Billing (e2e)", () => {
     });
 
     it("upgrades to a higher-tier plan", async () => {
-      const pro = planBySlug("professional");
-      if (!pro) return; // plan set may vary; skip gracefully
+      const pro = requirePlan("professional");
       const res = await request(app.getHttpServer())
         .post("/subscriptions/upgrade")
         .set("Authorization", `Bearer ${adminToken}`)
@@ -302,8 +322,7 @@ describe("Billing (e2e)", () => {
     });
 
     it("rejects an upgrade to a non-higher plan", async () => {
-      const free = planBySlug("free") ?? planBySlug("starter");
-      if (!free) return;
+      const free = requirePlan("free");
       await request(app.getHttpServer())
         .post("/subscriptions/upgrade")
         .set("Authorization", `Bearer ${adminToken}`)
@@ -347,7 +366,7 @@ describe("Billing (e2e)", () => {
     });
 
     it("forbids a non-ADMIN from mutating the subscription", async () => {
-      const starter = planBySlug("starter") ?? plans[0];
+      const starter = requirePlan("starter");
       await request(app.getHttpServer())
         .post("/subscriptions/upgrade")
         .set("Authorization", `Bearer ${dispatcherToken}`)
@@ -370,11 +389,15 @@ describe("Billing (e2e)", () => {
         .expect(200);
     });
 
-    it("is reachable by a non-admin member role (DISPATCHER)", async () => {
-      // This endpoint deliberately allows all member roles to read their plan.
+    it("matches developer-portal RBAC for non-admin roles", async () => {
       await request(app.getHttpServer())
         .get("/developer/subscription")
         .set("Authorization", `Bearer ${dispatcherToken}`)
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .get("/developer/subscription")
+        .set("Authorization", `Bearer ${opsManagerToken}`)
         .expect(200);
     });
 

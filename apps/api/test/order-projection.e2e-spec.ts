@@ -327,18 +327,23 @@ describe("R4 / Z2 — the commercial lifecycle outranks the projection", () => {
     expect((await orderRow(order.id)).status).toBe("CANCELLED");
   });
 
-  it("a DRAFT order is never approved by a dispatch appearing (Z3)", async () => {
+  it("a DRAFT order cannot reserve resources by creating a dispatch (Z3)", async () => {
     const draft = await makeOrder({ status: "DRAFT" });
 
-    // A dispatcher may sketch a dispatch for an unapproved order...
-    await dispatches.create(
-      organizationId,
-      { orderId: draft.id, driverId: driverA, vehicleId: vehicleA },
-      actor,
-    );
+    // Commercial approval is the prerequisite for operational reservation;
+    // a dispatch must not become a back door from DRAFT into the projection.
+    await expect(
+      dispatches.create(
+        organizationId,
+        { orderId: draft.id, driverId: driverA, vehicleId: vehicleA },
+        actor,
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
 
-    // ...but that is not an approval. Only TransitionPolicy performs DRAFT -> PENDING.
     expect((await orderRow(draft.id)).status).toBe("DRAFT");
+    await expect(
+      prisma.dispatch.count({ where: { organizationId, orderId: draft.id } }),
+    ).resolves.toBe(0);
   });
 
   it("a DRAFT dispatch does not make a PENDING order look assigned (R1, Z3)", async () => {
