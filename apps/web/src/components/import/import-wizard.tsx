@@ -7,6 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { PageHeader } from '@/components/shared/page-header';
 import {
   useImportEntities,
@@ -37,15 +44,20 @@ import {
   Save,
 } from 'lucide-react';
 import { describeError } from '@/lib/api/describe-error';
+import { cn } from '@/lib/utils';
 
 type Step = 'upload' | 'mapping' | 'preview' | 'execute' | 'complete';
 
+/// Radix Select reserves the empty string, so "leave this column out" needs a
+/// value of its own; it is never sent to the server.
+const SKIP_COLUMN = '__skip__';
+
 const STEPS: { key: Step; label: string }[] = [
   { key: 'upload', label: 'Upload' },
-  { key: 'mapping', label: 'Map Columns' },
-  { key: 'preview', label: 'Preview' },
-  { key: 'execute', label: 'Execute' },
-  { key: 'complete', label: 'Complete' },
+  { key: 'mapping', label: 'Match columns' },
+  { key: 'preview', label: 'Review' },
+  { key: 'execute', label: 'Confirm' },
+  { key: 'complete', label: 'Done' },
 ];
 
 export function ImportWizard() {
@@ -172,7 +184,7 @@ export function ImportWizard() {
     try {
       downloadBlob(await importsAPI.downloadErrors(sessionId), `import-errors-${sessionId.slice(0, 8)}.csv`);
     } catch {
-      toast.error('Failed to download error report');
+      toast.error('Failed to Download error report');
     }
   };
 
@@ -222,58 +234,47 @@ export function ImportWizard() {
 
         {step === 'upload' && (
           <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-foreground" htmlFor="entity-type">Entity Type</label>
+            <div className="max-w-sm space-y-1.5">
+              <label className="text-sm font-medium text-foreground" htmlFor="entity-type">
+                What are you importing?
+              </label>
               {/* Built from the registry, filtered by role server-side — so this
                   never offers an entity the user would be 403'd on. */}
-              <select
-                id="entity-type"
-                value={entityType}
-                onChange={(e) => setEntityType(e.target.value)}
-                className="mt-1 h-9 w-full max-w-xs rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                <option value="">Select entity...</option>
-                {entities.map((e) => (
-                  <option key={e.entityType} value={e.entityType}>{e.label}</option>
-                ))}
-              </select>
+              <Select value={entityType} onValueChange={setEntityType}>
+                <SelectTrigger id="entity-type">
+                  <SelectValue placeholder="Choose customers, orders, vehicles…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {entities.map((e) => (
+                    <SelectItem key={e.entityType} value={e.entityType}>{e.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {entityType ? (
+                <button
+                  type="button"
+                  onClick={handleDownloadTemplate}
+                  className="inline-flex items-center gap-1.5 text-xs text-brand underline-offset-4 hover:underline"
+                >
+                  <Download className="h-3 w-3" />
+                  Download a template with the right columns
+                </button>
+              ) : null}
             </div>
 
-            <div>
-              <label className="text-sm font-medium text-foreground" htmlFor="import-file">File</label>
-              <div className="mt-1">
-                <Input
-                  id="import-file"
-                  type="file"
-                  accept=".csv,.xlsx"
-                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                  className="max-w-xs"
-                />
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Accepted formats: CSV, XLSX. Max 10 MB, up to 100,000 rows.
-                </p>
-              </div>
-            </div>
+            <FileField file={file} onSelect={setFile} />
 
-            <div className="flex flex-wrap gap-3">
-              <Button
-                onClick={handleUpload}
-                disabled={!file || !entityType || parseMutation.isPending}
-                className="bg-gradient-brand text-brand-foreground hover:opacity-90"
-              >
-                {parseMutation.isPending ? (
-                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Uploading...</>
-                ) : (
-                  <><Upload className="mr-2 h-4 w-4" />Upload &amp; Parse</>
-                )}
-              </Button>
-              {entityType && (
-                <Button variant="outline" onClick={handleDownloadTemplate} className="gap-2">
-                  <Download className="h-4 w-4" />
-                  Download Template
-                </Button>
+            <Button
+              onClick={handleUpload}
+              disabled={!file || !entityType || parseMutation.isPending}
+              className="bg-gradient-brand text-brand-foreground hover:opacity-90"
+            >
+              {parseMutation.isPending ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Reading the file…</>
+              ) : (
+                <><Upload className="mr-2 h-4 w-4" />Continue</>
               )}
-            </div>
+            </Button>
           </div>
         )}
 
@@ -281,9 +282,10 @@ export function ImportWizard() {
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h3 className="font-medium text-foreground">Map Columns</h3>
+                <h3 className="font-medium text-foreground">Match columns</h3>
                 <p className="text-sm text-muted-foreground">
-                  Map file columns to {entityType} fields. Required fields are marked *.
+                  Tell us which column in your file holds which piece of information.
+                  Fields marked * are required.
                 </p>
               </div>
               <Badge variant="brand">{parseResult.totalRows.toLocaleString()} rows detected</Badge>
@@ -291,18 +293,17 @@ export function ImportWizard() {
 
             {parseResult.savedTemplates.length > 0 && (
               <div className="flex items-center gap-2">
-                <label className="text-sm font-medium" htmlFor="saved-mapping">Saved mapping:</label>
-                <select
-                  id="saved-mapping"
-                  onChange={(e) => e.target.value && applyTemplate(e.target.value)}
-                  defaultValue=""
-                  className="h-8 rounded-md border border-input bg-background px-2 text-sm"
-                >
-                  <option value="">Select a saved mapping...</option>
-                  {parseResult.savedTemplates.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
+                <label className="text-sm font-medium" htmlFor="saved-mapping">Saved mapping</label>
+                <Select value="" onValueChange={applyTemplate}>
+                  <SelectTrigger id="saved-mapping" className="h-8 w-56">
+                    <SelectValue placeholder="Reuse a saved mapping…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {parseResult.savedTemplates.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             )}
 
@@ -310,9 +311,9 @@ export function ImportWizard() {
               <Table aria-label="Column mapping">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>File Column</TableHead>
-                    <TableHead className="hidden sm:table-cell">Sample Value</TableHead>
-                    <TableHead>Maps To</TableHead>
+                    <TableHead>Column in your file</TableHead>
+                    <TableHead className="hidden sm:table-cell">Example</TableHead>
+                    <TableHead>Imports as</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -325,26 +326,29 @@ export function ImportWizard() {
                           : '—'}
                       </TableCell>
                       <TableCell className="text-sm">
-                        <select
-                          aria-label={`Map column ${header}`}
-                          value={mapping[String(idx)] ?? ''}
-                          onChange={(e) =>
+                        <Select
+                          value={mapping[String(idx)] ?? SKIP_COLUMN}
+                          onValueChange={(value) =>
                             setMapping((prev) => {
                               const next = { ...prev };
-                              if (e.target.value) next[String(idx)] = e.target.value;
-                              else delete next[String(idx)];
+                              if (value === SKIP_COLUMN) delete next[String(idx)];
+                              else next[String(idx)] = value;
                               return next;
                             })
                           }
-                          className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm"
                         >
-                          <option value="">— Skip this column —</option>
-                          {parseResult.columnDefinitions.map((def) => (
-                            <option key={def.fieldName} value={def.fieldName}>
-                              {def.label}{def.required ? ' *' : ''}
-                            </option>
-                          ))}
-                        </select>
+                          <SelectTrigger className="h-8 w-full" aria-label={`Match column ${header}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={SKIP_COLUMN}>Don&rsquo;t import this column</SelectItem>
+                            {parseResult.columnDefinitions.map((def) => (
+                              <SelectItem key={def.fieldName} value={def.fieldName}>
+                                {def.label}{def.required ? ' *' : ''}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -386,7 +390,7 @@ export function ImportWizard() {
                 {validateMutation.isPending || saveMappingMutation.isPending ? (
                   <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Validating...</>
                 ) : (
-                  <><ArrowRight className="mr-2 h-4 w-4" />Validate Rows</>
+                  <><ArrowRight className="mr-2 h-4 w-4" />Check the rows</>
                 )}
               </Button>
               <Button variant="outline" onClick={() => setStep('upload')}>
@@ -400,7 +404,7 @@ export function ImportWizard() {
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h3 className="font-medium text-foreground">Preview Results</h3>
+                <h3 className="font-medium text-foreground">Review</h3>
                 <p className="text-sm text-muted-foreground">
                   Review what will happen before committing.
                 </p>
@@ -436,7 +440,7 @@ export function ImportWizard() {
                     {validateResult.errors.length} issue(s) found
                   </p>
                   <Button variant="outline" size="sm" onClick={handleDownloadErrors} className="gap-2">
-                    <Download className="h-3 w-3" />Download Full Report
+                    <Download className="h-3 w-3" />Download full report
                   </Button>
                 </div>
                 <div className="mt-2 max-h-48 overflow-y-auto text-xs">
@@ -485,7 +489,7 @@ export function ImportWizard() {
                 disabled={validateResult.validRows === 0}
                 className="bg-gradient-brand text-brand-foreground hover:opacity-90"
               >
-                <ArrowRight className="mr-2 h-4 w-4" />Continue to Execute
+                <ArrowRight className="mr-2 h-4 w-4" />Continue
               </Button>
               <Button variant="outline" onClick={() => setStep('mapping')}>
                 <ArrowLeft className="mr-2 h-4 w-4" />Back
@@ -497,7 +501,7 @@ export function ImportWizard() {
         {step === 'execute' && (
           <div className="space-y-4">
             <div>
-              <h3 className="font-medium text-foreground">Execute Import</h3>
+              <h3 className="font-medium text-foreground">Start import</h3>
               <p className="text-sm text-muted-foreground">
                 {validateResult?.validRows ?? 0} rows will be processed.
                 {(validateResult?.invalidRows ?? 0) > 0 &&
@@ -506,7 +510,7 @@ export function ImportWizard() {
             </div>
 
             <div>
-              <label className="text-sm font-medium text-foreground">Duplicate Handling</label>
+              <label className="text-sm font-medium text-foreground">If a record already exists</label>
               <div className="mt-2 space-y-2">
                 {([
                   { value: 'SKIP', label: 'Skip duplicates', desc: 'Leave existing records untouched' },
@@ -550,7 +554,7 @@ export function ImportWizard() {
                 {executeMutation.isPending ? (
                   <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Starting...</>
                 ) : (
-                  <><CheckCircle className="mr-2 h-4 w-4" />Execute Import</>
+                  <><CheckCircle className="mr-2 h-4 w-4" />Start import</>
                 )}
               </Button>
               <Button variant="outline" onClick={() => setStep('preview')}>
@@ -623,7 +627,7 @@ function ExecutionResult({
         </div>
         <Button variant="outline" size="sm" onClick={onCancel} disabled={cancelling || session.cancelRequested}>
           <XCircle className="mr-2 h-4 w-4" />
-          {session.cancelRequested ? 'Cancelling...' : 'Cancel Import'}
+          {session.cancelRequested ? 'Cancelling...' : 'Cancel import'}
         </Button>
       </div>
     );
@@ -645,7 +649,7 @@ function ExecutionResult({
           )}
         </div>
         <h3 className="mt-4 font-medium text-foreground">
-          {failed ? 'Import Failed' : cancelled ? 'Import Cancelled' : 'Import Complete'}
+          {failed ? 'Import failed' : cancelled ? 'Import cancelled' : 'Import complete'}
         </h3>
         {session.errorMessage && (
           <p className="mt-1 max-w-lg text-sm text-destructive">{session.errorMessage}</p>
@@ -666,14 +670,75 @@ function ExecutionResult({
       <div className="flex flex-wrap justify-center gap-3">
         {(session.failedRows > 0 || session.invalidRows > 0) && (
           <Button variant="outline" onClick={onDownloadErrors} className="gap-2">
-            <Download className="h-4 w-4" />Download Error Report
+            <Download className="h-4 w-4" />Download error report
           </Button>
         )}
         <Button onClick={onViewHistory} className="bg-gradient-brand text-brand-foreground hover:opacity-90">
-          View Import History
+          View import history
         </Button>
-        <Button variant="outline" onClick={onImportAnother}>Import Another File</Button>
+        <Button variant="outline" onClick={onImportAnother}>Import another file</Button>
       </div>
+    </div>
+  );
+}
+
+/// A file picker that looks like the rest of the product.
+///
+/// `<input type="file">` renders as OS chrome — on Windows a light-grey
+/// "Choose File / No file chosen" button that ignores the dark theme entirely.
+/// On the first screen of the import wizard that one control was enough to make
+/// the page read as an internal tool, so the real input stays but is visually
+/// hidden behind a styled drop zone.
+function FileField({ file, onSelect }: { file: File | null; onSelect: (file: File | null) => void }) {
+  const [dragging, setDragging] = useState(false);
+
+  const take = (chosen: File | null) => {
+    if (!chosen) return;
+    onSelect(chosen);
+  };
+
+  return (
+    <div className="max-w-sm space-y-1.5">
+      <span className="text-sm font-medium text-foreground">File</span>
+      <label
+        htmlFor="import-file"
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragging(false);
+          take(e.dataTransfer.files?.[0] ?? null);
+        }}
+        className={cn(
+          'flex cursor-pointer flex-col items-center gap-1 rounded-lg border border-dashed px-4 py-6 text-center transition-colors',
+          dragging ? 'border-brand bg-brand/5' : 'border-border hover:border-brand/40 hover:bg-surface-hover',
+        )}
+      >
+        <Upload className="h-5 w-5 text-muted-foreground" />
+        {file ? (
+          <>
+            <span className="text-sm font-medium text-foreground">{file.name}</span>
+            <span className="text-xs text-muted-foreground">
+              {(file.size / 1024).toFixed(0)} KB — click to choose a different file
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="text-sm text-foreground">Drop a file here, or click to browse</span>
+            <span className="text-xs text-muted-foreground">CSV or Excel, up to 10 MB and 100,000 rows</span>
+          </>
+        )}
+      </label>
+      <input
+        id="import-file"
+        type="file"
+        accept=".csv,.xlsx"
+        className="sr-only"
+        onChange={(e) => take(e.target.files?.[0] ?? null)}
+      />
     </div>
   );
 }
