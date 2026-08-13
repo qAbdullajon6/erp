@@ -36,6 +36,9 @@ export type CalendarSearch = {
 };
 
 export const Route = createFileRoute("/app/dispatches/calendar")({
+  head: () => ({
+    meta: [{ title: "Dispatch Calendar — FlowERP AI" }],
+  }),
   validateSearch: (search: Record<string, unknown>): CalendarSearch => {
     const out: CalendarSearch = {
       view: parseCalendarView(search.view),

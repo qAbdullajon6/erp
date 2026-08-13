@@ -25,6 +25,9 @@ function parsePage(value: unknown): number | undefined {
 }
 
 export const Route = createFileRoute("/app/finance")({
+  head: () => ({
+    meta: [{ title: "Finance — FlowERP AI" }],
+  }),
   validateSearch: (search: Record<string, unknown>): FinanceSearch => {
     const tab = search.tab;
     return {

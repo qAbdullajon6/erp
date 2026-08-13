@@ -25,6 +25,9 @@ export type DispatchAnalyticsSearch = {
 };
 
 export const Route = createFileRoute('/app/dispatches/analytics')({
+  head: () => ({
+    meta: [{ title: "Dispatch Analytics — FlowERP AI" }],
+  }),
   validateSearch: (search: Record<string, unknown>): DispatchAnalyticsSearch => {
     const out: DispatchAnalyticsSearch = {};
     const preset = parsePreset(search.preset);

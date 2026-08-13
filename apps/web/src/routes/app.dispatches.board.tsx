@@ -4,6 +4,9 @@ import { ProtectedApiRoute } from "@/components/layout/protected-api-route";
 import { DISPATCH_ROLES } from "@/lib/role-access";
 
 export const Route = createFileRoute("/app/dispatches/board")({
+  head: () => ({
+    meta: [{ title: "Dispatch Board — FlowERP AI" }],
+  }),
   component: DispatchBoardPage,
 });
 

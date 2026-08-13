@@ -141,7 +141,10 @@ function SettingsNav({
   onSelect: (id: SettingsTab) => void;
 }) {
   return (
-    <nav aria-label="Settings sections" className="lg:sticky lg:top-4">
+    // A grid item refuses to shrink below its content, so without min-w-0 the
+    // phone tab strip widens the whole column and the page scrolls sideways
+    // instead of the strip scrolling inside it.
+    <nav aria-label="Settings sections" className="min-w-0 lg:sticky lg:top-4">
       <div className="scroll-hint-x flex gap-2 overflow-x-auto pb-2 lg:hidden">
         {sections.map((section) => (
           <SettingsNavButton

@@ -55,6 +55,9 @@ function parseOptionalBool(value: unknown): boolean | undefined {
 }
 
 export const Route = createFileRoute("/app/orders/")({
+  head: () => ({
+    meta: [{ title: "Orders — FlowERP AI" }],
+  }),
   validateSearch: (search: Record<string, unknown>): OrdersSearch => {
     const out: OrdersSearch = {};
     if (search.page != null && search.page !== "") {

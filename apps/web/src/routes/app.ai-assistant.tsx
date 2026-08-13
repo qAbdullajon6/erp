@@ -7,6 +7,9 @@ export type AiAssistantSearch = {
 };
 
 export const Route = createFileRoute("/app/ai-assistant")({
+  head: () => ({
+    meta: [{ title: "AI Assistant — FlowERP AI" }],
+  }),
   validateSearch: (search: Record<string, unknown>): AiAssistantSearch => ({
     conversationId: asSearchString(search.conversationId),
   }),

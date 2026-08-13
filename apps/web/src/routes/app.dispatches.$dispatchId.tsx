@@ -15,6 +15,9 @@ export type DispatchDetailSearch = {
 };
 
 export const Route = createFileRoute("/app/dispatches/$dispatchId")({
+  head: () => ({
+    meta: [{ title: "Dispatch — FlowERP AI" }],
+  }),
   validateSearch: (search: Record<string, unknown>): DispatchDetailSearch => {
     const out: DispatchDetailSearch = {};
     const tlFilter = parseTimelineFilter(search.tlFilter);
