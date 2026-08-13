@@ -77,6 +77,11 @@ describe("Auth and tenant boundaries (e2e)", () => {
       where: { endedAt: null },
       data: { endedAt: new Date() },
     });
+    // API keys and devices do not cascade from Organization, so they have to go
+    // first or the cleanup fails and leaves the Nest app open.
+    const owned = { organizationId: { in: createdOrganizationIds } };
+    await prisma.apiKey.deleteMany({ where: owned });
+    await prisma.telematicsDevice.deleteMany({ where: owned });
     await prisma.organization.deleteMany({ where: { id: { in: createdOrganizationIds } } });
     await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
     await app.close();
@@ -544,6 +549,76 @@ describe("Auth and tenant boundaries (e2e)", () => {
         expect((relogin.body as AuthBody).data.organization.id).not.toBe(tenant.organization.id);
       } else {
         expect(relogin.status).toBe(401);
+      }
+    });
+  });
+
+  /// Authorization decides whether a destructive action is allowed; the audit
+  /// trail is what makes it answerable afterwards. An action that succeeds
+  /// silently is indistinguishable from one nobody performed.
+  describe("destructive actions are attributable", () => {
+    it("records who archived, revoked or rotated, against the acting organization", async () => {
+      const tenant = await registerTenant();
+      const auth = { Authorization: `Bearer ${tenant.accessToken}` };
+
+      const customer = await request(app.getHttpServer())
+        .post("/customers")
+        .set(auth)
+        .send({
+          customerCode: `WS8-AUDIT-${randomUUID().slice(0, 8)}`,
+          companyName: "Audited Customer",
+          contactName: "Audit Contact",
+        })
+        .expect(201);
+      const customerId = (customer.body as { data: { id: string } }).data.id;
+      await request(app.getHttpServer())
+        .post(`/customers/${customerId}/archive`)
+        .set(auth)
+        .expect(200);
+
+      const key = await request(app.getHttpServer())
+        .post("/admin/api-keys")
+        .set(auth)
+        .send({ name: "Audited key", scopes: ["orders:read"] })
+        .expect(201);
+      const keyId = (key.body as { data: { id: string } }).data.id;
+      await request(app.getHttpServer())
+        .post(`/admin/api-keys/${keyId}/rotate`)
+        .set(auth)
+        .expect(200);
+      await request(app.getHttpServer()).delete(`/admin/api-keys/${keyId}`).set(auth).expect(200);
+
+      const device = await request(app.getHttpServer())
+        .post("/telematics/devices")
+        .set(auth)
+        .send({
+          provider: "MANUAL",
+          externalId: `WS8-AUDIT-DEV-${randomUUID().slice(0, 8)}`,
+          name: "Audited device",
+        })
+        .expect(201);
+      const deviceId = (device.body as { data: { id: string } }).data.id;
+      await request(app.getHttpServer())
+        .post(`/telematics/devices/${deviceId}/archive`)
+        .set(auth)
+        .expect(200);
+
+      const logged = await prisma.auditLog.findMany({
+        where: { organizationId: tenant.organization.id },
+        select: { action: true, actorUserId: true, entityId: true },
+      });
+      const actions = logged.map((entry) => entry.action);
+      expect(actions).toEqual(
+        expect.arrayContaining([
+          "customer.archive",
+          "api_key.rotate",
+          "api_key.revoke",
+          "telematics.device.archive",
+        ]),
+      );
+      // Attribution, not just occurrence: an entry with no actor answers nothing.
+      for (const entry of logged.filter((e) => e.action.endsWith(".archive"))) {
+        expect(entry.actorUserId).toBe(tenant.user.id);
       }
     });
   });
