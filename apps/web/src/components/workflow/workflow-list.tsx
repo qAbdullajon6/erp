@@ -175,8 +175,9 @@ export function WorkflowList() {
                           </Button>
                         }
                         title="Delete this workflow?"
-                        description="This cannot be undone."
+                        description={`"${wf.name}" will stop running immediately and its rules and run history are removed. This cannot be undone — disable it instead if you may want it back.`}
                         confirmLabel="Delete"
+                        confirmPhrase="DELETE"
                         onConfirm={() => handleDelete(wf.id)}
                         destructive
                       />

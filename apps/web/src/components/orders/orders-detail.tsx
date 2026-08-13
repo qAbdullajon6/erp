@@ -529,7 +529,7 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                   </Button>
                 }
                 title={`Cancel ${order.orderNumber}?`}
-                description="This cannot be undone."
+                description="Every open dispatch for this order is cancelled too, releasing its driver and vehicle. The order stays on record but cannot be reopened or edited."
                 confirmLabel={cancelLoading ? 'Cancelling…' : 'Cancel order'}
                 cancelLabel="Keep"
                 onConfirm={handleCancel}

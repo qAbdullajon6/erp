@@ -281,6 +281,7 @@ export function WebhooksTab() {
                     title="Delete webhook?"
                     description={`Delete "${wh.name}"? It will stop receiving events immediately, and its delivery history will be removed. This cannot be undone.`}
                     confirmLabel="Delete"
+                    confirmPhrase="DELETE"
                     onConfirm={() => handleDelete(wh.id)}
                     destructive
                   />

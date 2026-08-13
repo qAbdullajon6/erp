@@ -288,6 +288,7 @@ export function ApiKeysTab() {
                         title="Revoke API key?"
                         description={`Revoke "${key.name}"? Any integration using this key will stop working immediately. This cannot be undone.`}
                         confirmLabel="Revoke"
+                        confirmPhrase="REVOKE"
                         onConfirm={() => handleRevoke(key.id)}
                         destructive
                       />
