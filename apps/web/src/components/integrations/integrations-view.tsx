@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { PageHeader } from '@/components/shared/page-header';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { ErrorState, EmptyState } from '@/components/shared/list-states';
@@ -200,11 +201,8 @@ export function IntegrationsView() {
   };
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="font-display text-3xl font-bold text-foreground">Integrations</h1>
-        <p className="mt-2 text-muted-foreground">Connect and manage third-party providers</p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader title="Integrations" subtitle="Connect and manage third-party providers" />
 
       {health && (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">

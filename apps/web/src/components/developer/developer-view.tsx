@@ -1,4 +1,5 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { PageHeader } from '@/components/shared/page-header';
 import { ApiKeysTab } from './api-keys-tab';
 import { WebhooksTab } from './webhooks-tab';
 import { DeliveriesTab } from './deliveries-tab';
@@ -6,11 +7,8 @@ import { UsageTab } from './usage-tab';
 
 export function DeveloperView() {
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="font-display text-3xl font-bold text-foreground">Developer</h1>
-        <p className="mt-2 text-muted-foreground">Manage API keys, webhooks, and view usage analytics</p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader title="Developer" subtitle="Manage API keys, webhooks, and view usage analytics" />
 
       <Tabs defaultValue="api-keys">
         <TabsList>

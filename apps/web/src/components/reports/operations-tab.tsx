@@ -1,7 +1,10 @@
 import { Link } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 import { formatMoney } from '@/lib/format';
+import { ReportTableCard } from './report-table-card';
 import { useOperationsReportQuery, type ReportFilterParams, type OrderExceptionRow } from '@/lib/api/reports';
 import { ExportCsvButton } from './export-csv-button';
 import { describeError } from '@/lib/api/describe-error';
@@ -12,34 +15,35 @@ interface OperationsTabProps {
 
 function ExceptionList({ title, rows, emptyLabel }: { title: string; rows: OrderExceptionRow[]; emptyLabel: string }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50">
-      <div className="flex items-center justify-between border-b border-brand/10 px-6 py-4">
-        <h3 className="font-display text-base font-bold text-foreground">{title}</h3>
+    <ReportTableCard
+      title={title}
+      isEmpty={rows.length === 0}
+      emptyLabel={emptyLabel}
+      action={
         <span className="rounded-full bg-brand/10 px-2.5 py-0.5 text-xs font-semibold text-brand">{rows.length}</span>
+      }
+    >
+      <div className="max-h-72 divide-y divide-brand/10 overflow-y-auto">
+        {rows.map((row) => (
+          <Link
+            key={row.orderId}
+            to="/app/orders/$orderId"
+            params={{ orderId: row.orderId }}
+            className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-background/40"
+          >
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-foreground">{row.orderNumber}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {row.pickupCity} → {row.deliveryCity}
+              </p>
+            </div>
+            <p className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
+              {formatMoney(row.price, row.currency)}
+            </p>
+          </Link>
+        ))}
       </div>
-      {rows.length === 0 ? (
-        <p className="px-6 py-6 text-center text-sm text-muted-foreground">{emptyLabel}</p>
-      ) : (
-        <div className="max-h-72 divide-y divide-brand/10 overflow-y-auto">
-          {rows.map((row) => (
-            <Link
-              key={row.orderId}
-              to="/app/orders/$orderId"
-              params={{ orderId: row.orderId }}
-              className="flex items-center justify-between px-6 py-3 transition-colors hover:bg-background/40"
-            >
-              <div>
-                <p className="text-sm font-medium text-foreground">{row.orderNumber}</p>
-                <p className="text-xs text-muted-foreground">
-                  {row.pickupCity} → {row.deliveryCity}
-                </p>
-              </div>
-              <p className="text-sm font-semibold text-foreground">{formatMoney(row.price, row.currency)}</p>
-            </Link>
-          ))}
-        </div>
-      )}
-    </div>
+    </ReportTableCard>
   );
 }
 
@@ -79,119 +83,113 @@ export function OperationsTab({ params }: OperationsTabProps) {
       </div>
       {isFetching && !isLoading && <p className="text-xs text-muted-foreground">Refreshing for the new date range...</p>}
 
-      <div className="overflow-hidden rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50">
-        <div className="border-b border-brand/10 px-6 py-4">
-          <h3 className="font-display text-lg font-bold text-foreground">Driver Performance</h3>
-        </div>
-        {data.driverPerformance.length === 0 ? (
-          <p className="px-6 py-8 text-center text-sm text-muted-foreground">No driver activity in this period</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-brand/10 bg-surface/50 text-left text-xs uppercase text-muted-foreground">
-                  <th className="px-6 py-3">Driver</th>
-                  <th className="px-6 py-3 text-right">Total Orders</th>
-                  <th className="px-6 py-3 text-right">Delivered</th>
-                  <th className="px-6 py-3 text-right">On-Time Rate</th>
-                  <th className="px-6 py-3 text-right">Delayed</th>
-                  <th className="px-6 py-3 text-right">Revenue</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-brand/10">
-                {data.driverPerformance.map((d) => (
-                  <tr key={d.driverId}>
-                    <td className="px-6 py-3 font-medium text-foreground">
-                      {d.name} <span className="text-xs text-muted-foreground">({d.employeeCode})</span>
-                    </td>
-                    <td className="px-6 py-3 text-right">{d.totalOrders}</td>
-                    <td className="px-6 py-3 text-right">{d.deliveredOrders}</td>
-                    <td className="px-6 py-3 text-right">{d.onTimeRate.toFixed(1)}%</td>
-                    <td className="px-6 py-3 text-right">
-                      <span className={d.delayedOrders > 0 ? 'text-destructive' : ''}>{d.delayedOrders}</span>
-                    </td>
-                    <td className="px-6 py-3 text-right font-medium">{money(d.revenue)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      <ReportTableCard
+        title="Driver Performance"
+        isEmpty={data.driverPerformance.length === 0}
+        emptyLabel="No driver activity in this period"
+      >
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Driver</TableHead>
+              <TableHead className="hidden text-right sm:table-cell">Total Orders</TableHead>
+              <TableHead className="hidden text-right md:table-cell">Delivered</TableHead>
+              <TableHead className="text-right">On-Time Rate</TableHead>
+              <TableHead className="text-right">Delayed</TableHead>
+              <TableHead className="hidden text-right lg:table-cell">Revenue</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {data.driverPerformance.map((d) => (
+              <TableRow key={d.driverId}>
+                <TableCell className="font-medium text-foreground">
+                  {d.name} <span className="text-xs text-muted-foreground">({d.employeeCode})</span>
+                </TableCell>
+                <TableCell className="hidden text-right tabular-nums sm:table-cell">{d.totalOrders}</TableCell>
+                <TableCell className="hidden text-right tabular-nums md:table-cell">{d.deliveredOrders}</TableCell>
+                <TableCell className="text-right tabular-nums">{d.onTimeRate.toFixed(1)}%</TableCell>
+                <TableCell className="text-right tabular-nums">
+                  <span className={d.delayedOrders > 0 ? 'text-destructive' : ''}>{d.delayedOrders}</span>
+                </TableCell>
+                <TableCell className="hidden text-right font-medium tabular-nums lg:table-cell">
+                  {money(d.revenue)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </ReportTableCard>
 
-      <div className="overflow-hidden rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50">
-        <div className="border-b border-brand/10 px-6 py-4">
-          <h3 className="font-display text-lg font-bold text-foreground">Vehicle Utilization</h3>
-        </div>
-        {data.vehiclePerformance.length === 0 ? (
-          <p className="px-6 py-8 text-center text-sm text-muted-foreground">No vehicle activity in this period</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-brand/10 bg-surface/50 text-left text-xs uppercase text-muted-foreground">
-                  <th className="px-6 py-3">Vehicle</th>
-                  <th className="px-6 py-3 text-right">Total Orders</th>
-                  <th className="px-6 py-3 text-right">Delivered</th>
-                  <th className="px-6 py-3 text-right">Revenue</th>
-                  <th className="px-6 py-3 text-right">Expenses</th>
-                  <th className="px-6 py-3 text-right">Est. Profit</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-brand/10">
-                {data.vehiclePerformance.map((v) => (
-                  <tr key={v.vehicleId}>
-                    <td className="px-6 py-3 font-medium text-foreground">
-                      {v.plateNumber} <span className="text-xs text-muted-foreground">({v.vehicleCode})</span>
-                    </td>
-                    <td className="px-6 py-3 text-right">{v.totalOrders}</td>
-                    <td className="px-6 py-3 text-right">{v.deliveredOrders}</td>
-                    <td className="px-6 py-3 text-right">{money(v.revenue)}</td>
-                    <td className="px-6 py-3 text-right">{money(v.approvedExpenses)}</td>
-                    <td className={`px-6 py-3 text-right font-medium ${Number(v.estimatedGrossProfit) < 0 ? 'text-destructive' : ''}`}>
-                      {money(v.estimatedGrossProfit)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      <ReportTableCard
+        title="Vehicle Utilization"
+        isEmpty={data.vehiclePerformance.length === 0}
+        emptyLabel="No vehicle activity in this period"
+      >
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Vehicle</TableHead>
+              <TableHead className="hidden text-right sm:table-cell">Total Orders</TableHead>
+              <TableHead className="hidden text-right md:table-cell">Delivered</TableHead>
+              <TableHead className="text-right">Revenue</TableHead>
+              <TableHead className="hidden text-right lg:table-cell">Expenses</TableHead>
+              <TableHead className="text-right">Est. Profit</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {data.vehiclePerformance.map((v) => (
+              <TableRow key={v.vehicleId}>
+                <TableCell className="font-medium text-foreground">
+                  {v.plateNumber} <span className="text-xs text-muted-foreground">({v.vehicleCode})</span>
+                </TableCell>
+                <TableCell className="hidden text-right tabular-nums sm:table-cell">{v.totalOrders}</TableCell>
+                <TableCell className="hidden text-right tabular-nums md:table-cell">{v.deliveredOrders}</TableCell>
+                <TableCell className="text-right tabular-nums">{money(v.revenue)}</TableCell>
+                <TableCell className="hidden text-right tabular-nums lg:table-cell">
+                  {money(v.approvedExpenses)}
+                </TableCell>
+                <TableCell
+                  className={cn(
+                    'text-right font-medium tabular-nums',
+                    Number(v.estimatedGrossProfit) < 0 && 'text-destructive',
+                  )}
+                >
+                  {money(v.estimatedGrossProfit)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </ReportTableCard>
 
-      <div className="overflow-hidden rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50">
-        <div className="border-b border-brand/10 px-6 py-4">
-          <h3 className="font-display text-lg font-bold text-foreground">Route Performance</h3>
-        </div>
-        {data.routePerformance.length === 0 ? (
-          <p className="px-6 py-8 text-center text-sm text-muted-foreground">No orders in this period</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-brand/10 bg-surface/50 text-left text-xs uppercase text-muted-foreground">
-                  <th className="px-6 py-3">Route</th>
-                  <th className="px-6 py-3 text-right">Total Orders</th>
-                  <th className="px-6 py-3 text-right">Completion Rate</th>
-                  <th className="px-6 py-3 text-right">Revenue</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-brand/10">
-                {data.routePerformance.map((r) => (
-                  <tr key={`${r.pickupCity}-${r.deliveryCity}`}>
-                    <td className="px-6 py-3 font-medium text-foreground">
-                      {r.pickupCity} → {r.deliveryCity}
-                    </td>
-                    <td className="px-6 py-3 text-right">{r.totalOrders}</td>
-                    <td className="px-6 py-3 text-right">{r.completionRate.toFixed(1)}%</td>
-                    <td className="px-6 py-3 text-right font-medium">{money(r.revenue)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      <ReportTableCard
+        title="Route Performance"
+        isEmpty={data.routePerformance.length === 0}
+        emptyLabel="No orders in this period"
+      >
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Route</TableHead>
+              <TableHead className="hidden text-right sm:table-cell">Total Orders</TableHead>
+              <TableHead className="text-right">Completion Rate</TableHead>
+              <TableHead className="text-right">Revenue</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {data.routePerformance.map((r) => (
+              <TableRow key={`${r.pickupCity}-${r.deliveryCity}`}>
+                <TableCell className="font-medium text-foreground">
+                  {r.pickupCity} → {r.deliveryCity}
+                </TableCell>
+                <TableCell className="hidden text-right tabular-nums sm:table-cell">{r.totalOrders}</TableCell>
+                <TableCell className="text-right tabular-nums">{r.completionRate.toFixed(1)}%</TableCell>
+                <TableCell className="text-right font-medium tabular-nums">{money(r.revenue)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </ReportTableCard>
 
       <div>
         <h3 className="mb-4 font-display text-lg font-bold text-foreground">Exceptions</h3>

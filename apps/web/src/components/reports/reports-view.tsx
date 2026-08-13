@@ -2,6 +2,7 @@ import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/shared/page-header';
 import { useCurrentUser } from '@/lib/api/auth';
 import type { MembershipRole } from '@/lib/api/organizations';
 import type { ComparisonPeriod, ReportFilterParams } from '@/lib/api/reports';
@@ -101,17 +102,17 @@ export function ReportsView() {
   };
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="font-display text-3xl font-bold text-foreground">Reports</h1>
-        <p className="mt-2 text-muted-foreground">Executive, operational, financial, and fleet performance</p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader title="Reports" subtitle="Executive, operational, financial, and fleet performance" />
 
-      <div className="flex flex-wrap items-end gap-4">
-        <div className="min-w-0 flex-1">
+      {/* Stacked until sm: side by side, the range chips lose so much width that
+          they wrap, and a wrapped chip group is taller than the two controls
+          stacked. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-4">
+        <div className="min-w-0 sm:flex-1">
           <DateRangeFilter value={range} onPresetChange={handlePresetChange} onCustomChange={handleCustomChange} />
         </div>
-        <div>
+        <div className="shrink-0">
           <label htmlFor="report-comparison" className="mb-1 block text-xs font-medium text-muted-foreground">
             Compare
           </label>
@@ -119,7 +120,7 @@ export function ReportsView() {
             id="report-comparison"
             value={comparisonPeriod}
             onChange={(e) => setComparisonPeriod(e.target.value as ComparisonPeriod)}
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+            className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm sm:w-auto"
           >
             {COMPARISON_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>

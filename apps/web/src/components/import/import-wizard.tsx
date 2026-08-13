@@ -5,6 +5,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/shared/page-header';
 import {
@@ -305,25 +306,25 @@ export function ImportWizard() {
               </div>
             )}
 
-            <div className="overflow-x-auto rounded-lg border border-brand/10">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-brand/10">
-                    <th className="px-4 py-2 text-left text-sm font-medium text-muted-foreground">File Column</th>
-                    <th className="px-4 py-2 text-left text-sm font-medium text-muted-foreground">Sample Value</th>
-                    <th className="px-4 py-2 text-left text-sm font-medium text-muted-foreground">Maps To</th>
-                  </tr>
-                </thead>
-                <tbody>
+            <div className="overflow-hidden rounded-lg border border-brand/10">
+              <Table aria-label="Column mapping">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>File Column</TableHead>
+                    <TableHead className="hidden sm:table-cell">Sample Value</TableHead>
+                    <TableHead>Maps To</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {parseResult.headers.map((header, idx) => (
-                    <tr key={idx} className="border-b border-brand/10">
-                      <td className="px-4 py-2 text-sm font-medium">{header}</td>
-                      <td className="px-4 py-2 text-sm text-muted-foreground">
+                    <TableRow key={idx}>
+                      <TableCell className="text-sm font-medium">{header}</TableCell>
+                      <TableCell className="hidden text-sm text-muted-foreground sm:table-cell">
                         {parseResult.preview[0]?.[header]
                           ? String(parseResult.preview[0][header]).slice(0, 50)
                           : '—'}
-                      </td>
-                      <td className="px-4 py-2 text-sm">
+                      </TableCell>
+                      <TableCell className="text-sm">
                         <select
                           aria-label={`Map column ${header}`}
                           value={mapping[String(idx)] ?? ''}
@@ -344,11 +345,11 @@ export function ImportWizard() {
                             </option>
                           ))}
                         </select>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
 
             {!allRequiredMapped && (
@@ -454,27 +455,27 @@ export function ImportWizard() {
             )}
 
             {validateResult.preview.valid.length > 0 && (
-              <div className="overflow-x-auto rounded-lg border border-brand/10">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-brand/10">
+              <div className="overflow-hidden rounded-lg border border-brand/10">
+                <Table aria-label="Rows that passed validation">
+                  <TableHeader>
+                    <TableRow>
                       {Object.keys(validateResult.preview.valid[0]).map((key) => (
-                        <th key={key} className="px-4 py-2 text-left text-sm font-medium text-muted-foreground">{key}</th>
+                        <TableHead key={key}>{key}</TableHead>
                       ))}
-                    </tr>
-                  </thead>
-                  <tbody>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {validateResult.preview.valid.map((row, i) => (
-                      <tr key={i} className="border-b border-brand/10">
+                      <TableRow key={i}>
                         {Object.values(row).map((val, j) => (
-                          <td key={j} className="px-4 py-2 text-sm">
+                          <TableCell key={j} className="text-sm">
                             {val === null || val === undefined ? '—' : String(val).slice(0, 40)}
-                          </td>
+                          </TableCell>
                         ))}
-                      </tr>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
             )}
 

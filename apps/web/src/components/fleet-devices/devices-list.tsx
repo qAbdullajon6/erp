@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/shared/page-header';
 import { ErrorState, EmptyState } from '@/components/shared/list-states';
 import { PaginationBar } from '@/components/shared/pagination-bar';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   TELEMATICS_PROVIDERS,
   useTelematicsDevicesList,
@@ -216,22 +217,22 @@ export function DevicesList() {
         />
       ) : (
         <div className="overflow-hidden rounded-lg border border-border/60 bg-surface">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-border/60 bg-muted/20 text-[11px] uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2.5 font-semibold">Device</th>
-                <th className="hidden px-3 py-2.5 font-semibold sm:table-cell">Provider</th>
-                <th className="hidden px-3 py-2.5 font-semibold md:table-cell">Vehicle</th>
-                <th className="px-3 py-2.5 font-semibold">Status</th>
-                <th className="hidden px-3 py-2.5 font-semibold lg:table-cell">Last seen</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/50">
+          <Table aria-label="GPS devices">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Device</TableHead>
+                <TableHead className="hidden sm:table-cell">Provider</TableHead>
+                <TableHead className="hidden md:table-cell">Vehicle</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="hidden lg:table-cell">Last seen</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {rows.map((device) => {
                 const status = deviceLifecycleStatus(device);
                 return (
-                  <tr key={device.id} className="hover:bg-muted/20">
-                    <td className="px-3 py-2.5">
+                  <TableRow key={device.id}>
+                    <TableCell>
                       <Link
                         to="/app/devices/$deviceId"
                         params={{ deviceId: device.id }}
@@ -242,11 +243,11 @@ export function DevicesList() {
                           {device.externalId}
                         </p>
                       </Link>
-                    </td>
-                    <td className="hidden px-3 py-2.5 sm:table-cell">
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
                       <span className="text-muted-foreground">{providerLabel(device.provider)}</span>
-                    </td>
-                    <td className="hidden px-3 py-2.5 md:table-cell">
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
                       {device.vehicleId ? (
                         <Link
                           to="/app/vehicles/$vehicleId"
@@ -259,8 +260,8 @@ export function DevicesList() {
                       ) : (
                         <span className="text-muted-foreground">Unassigned</span>
                       )}
-                    </td>
-                    <td className="px-3 py-2.5">
+                    </TableCell>
+                    <TableCell>
                       <span
                         className={cn(
                           'inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
@@ -269,15 +270,15 @@ export function DevicesList() {
                       >
                         {deviceStatusLabel(status)}
                       </span>
-                    </td>
-                    <td className="hidden px-3 py-2.5 text-muted-foreground lg:table-cell">
+                    </TableCell>
+                    <TableCell className="hidden text-muted-foreground lg:table-cell">
                       {device.lastSeenAt ? formatRelativeTime(device.lastSeenAt) : 'Never'}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 );
               })}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
 

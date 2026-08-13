@@ -1,5 +1,6 @@
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { PageHeader } from '@/components/shared/page-header';
 import { useCurrentUser } from '@/lib/api/auth';
 import type { MembershipRole } from '@/lib/api/organizations';
 import { EXPENSE_READ_ROLES, INVOICE_READ_ROLES } from '@/lib/role-access';
@@ -34,11 +35,8 @@ export function FinanceConnectedView() {
   };
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="font-display text-3xl font-bold text-foreground">Financial Management</h1>
-        <p className="mt-2 text-muted-foreground">Track invoices, payments, and expenses</p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader title="Financial Management" subtitle="Track invoices, payments, and expenses" />
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as FinanceTab)}>
         <TabsList>

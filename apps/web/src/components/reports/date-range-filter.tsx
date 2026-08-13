@@ -12,18 +12,21 @@ const PRESETS: DateRangePreset[] = ['today', 'last_7_days', 'last_30_days', 'thi
 export function DateRangeFilter({ value, onPresetChange, onCustomChange }: DateRangeFilterProps) {
   return (
     <div
-      className="flex flex-wrap items-center gap-3 rounded-lg border border-brand/10 bg-surface p-4"
+      className="flex min-w-0 flex-wrap items-center gap-3 rounded-lg border border-brand/10 bg-surface p-3 sm:p-4"
       role="group"
       aria-label="Report date range"
     >
-      <div className="flex flex-wrap gap-2">
+      {/* One scrollable row rather than a wrapping grid: on a phone these five
+          chips wrapped into a five-deep stack that pushed the report itself off
+          the first screen. */}
+      <div className="-mx-1 flex max-w-full gap-2 overflow-x-auto px-1 scrollbar-thin">
         {PRESETS.map((preset) => (
           <button
             key={preset}
             type="button"
             aria-pressed={value.preset === preset}
             onClick={() => onPresetChange(preset)}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+            className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
               value.preset === preset
                 ? 'bg-brand text-brand-foreground'
                 : 'bg-background text-muted-foreground hover:bg-brand/10 hover:text-brand'

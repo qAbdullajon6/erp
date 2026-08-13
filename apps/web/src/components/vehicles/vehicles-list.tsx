@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/shared/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   DropdownMenu,
@@ -303,36 +304,36 @@ export function VehiclesList() {
 
   return (
     <div className="space-y-4" data-testid="vehicles-page">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">Vehicles</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {loading
-              ? 'Loading…'
-              : error
-                ? 'Could not load vehicles'
-                : // Same live-dispatch-aware counts as the filter chips below —
-                  // a vehicle.status of AVAILABLE with a live dispatch still
-                  // reads as assigned (see stripCounts).
-                  `${meta?.total ?? 0} in fleet · ${stripCounts.available} available · ${stripCounts.assigned} assigned`}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="outline" onClick={handleExport} disabled={displayRows.length === 0}>
-            <Download className="mr-1.5 h-3.5 w-3.5" />
-            Export
-          </Button>
-          <Button
-            size="sm"
-            className="bg-gradient-brand text-brand-foreground hover:opacity-90"
-            onClick={() => setCreateOpen(true)}
-            data-testid="create-vehicle-button"
-          >
-            <Plus className="mr-1.5 h-3.5 w-3.5" />
-            New Vehicle
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Vehicles"
+        subtitle={
+          loading
+            ? 'Loading…'
+            : error
+              ? 'Could not load vehicles'
+              : // Same live-dispatch-aware counts as the filter chips below —
+                // a vehicle.status of AVAILABLE with a live dispatch still
+                // reads as assigned (see stripCounts).
+                `${meta?.total ?? 0} in fleet · ${stripCounts.available} available · ${stripCounts.assigned} assigned`
+        }
+        action={
+          <>
+            <Button size="sm" variant="outline" onClick={handleExport} disabled={displayRows.length === 0}>
+              <Download className="mr-1.5 h-3.5 w-3.5" />
+              Export
+            </Button>
+            <Button
+              size="sm"
+              className="bg-gradient-brand text-brand-foreground hover:opacity-90"
+              onClick={() => setCreateOpen(true)}
+              data-testid="create-vehicle-button"
+            >
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              New Vehicle
+            </Button>
+          </>
+        }
+      />
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-[16rem] flex-1">
@@ -725,14 +726,19 @@ function VehicleOpsRow({
         </div>
       </div>
 
+      {/* See drivers-list.tsx: the centre column returns at sm and the right one
+          at lg, so the badges here have to stop at sm or a tablet shows each
+          status chip twice. */}
       <div
         className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-border/40 pt-2 text-[11px] lg:hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <OpsChip badge={primary} dense />
-        {risks.slice(0, 2).map((b) => (
-          <OpsChip key={b.key} badge={b} dense />
-        ))}
+        <span className="flex flex-wrap gap-1 sm:hidden">
+          <OpsChip badge={primary} dense />
+          {risks.slice(0, 2).map((b) => (
+            <OpsChip key={b.key} badge={b} dense />
+          ))}
+        </span>
         <span className="text-muted-foreground">
           {live?.driver
             ? `${live.driver.firstName} ${live.driver.lastName}`

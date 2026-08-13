@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/shared/page-header';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -280,31 +281,28 @@ export function CustomersList() {
 
   return (
     <div className="space-y-4" data-testid="customers-page">
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">Customers</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {loading ? 'Loading…' : error ? 'Could not load accounts' : `${meta.total} accounts`}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="outline" onClick={handleExport} disabled={displayRows.length === 0}>
-            <Download className="mr-1.5 h-3.5 w-3.5" />
-            Export
-          </Button>
-          {canWrite && (
-            <Button
-              size="sm"
-              className="bg-gradient-brand text-brand-foreground hover:opacity-90"
-              onClick={() => setCreateOpen(true)}
-            >
-              <Plus className="mr-1.5 h-3.5 w-3.5" />
-              New Customer
+      <PageHeader
+        title="Customers"
+        subtitle={loading ? 'Loading…' : error ? 'Could not load accounts' : `${meta.total} accounts`}
+        action={
+          <>
+            <Button size="sm" variant="outline" onClick={handleExport} disabled={displayRows.length === 0}>
+              <Download className="mr-1.5 h-3.5 w-3.5" />
+              Export
             </Button>
-          )}
-        </div>
-      </div>
+            {canWrite && (
+              <Button
+                size="sm"
+                className="bg-gradient-brand text-brand-foreground hover:opacity-90"
+                onClick={() => setCreateOpen(true)}
+              >
+                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                New Customer
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {/* Search + quick filters */}
       <div className="flex flex-wrap items-center gap-2">

@@ -1,5 +1,6 @@
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PageHeader } from "@/components/shared/page-header";
 import type { BillingTab } from "@/routes/app.billing";
 import { BillingOverviewTab } from "./billing-overview-tab";
 import { PlansTab } from "./plans-tab";
@@ -21,27 +22,23 @@ export function BillingView() {
   };
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="font-display text-3xl font-bold text-foreground">Billing</h1>
-        <p className="mt-2 text-muted-foreground">
-          Manage this organization&apos;s subscription, plan, usage and renewal settings.
-        </p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Billing"
+        subtitle={"Manage this organization's subscription, plan, usage and renewal settings."}
+      />
 
       <Tabs value={tab} onValueChange={setTab}>
-        {/* Horizontal scroll keeps all six tabs reachable on narrow screens
-            without wrapping the tab strip into two rows. */}
-        <div className="overflow-x-auto">
-          <TabsList>
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="plans">Plans</TabsTrigger>
-            <TabsTrigger value="subscription">Subscription</TabsTrigger>
-            <TabsTrigger value="usage">Usage</TabsTrigger>
-            <TabsTrigger value="providers">Payment Providers</TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
-          </TabsList>
-        </div>
+        {/* TabsList scrolls its own overflow now, so the wrapper that used to
+            provide that here would only add a second scroll container. */}
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="plans">Plans</TabsTrigger>
+          <TabsTrigger value="subscription">Subscription</TabsTrigger>
+          <TabsTrigger value="usage">Usage</TabsTrigger>
+          <TabsTrigger value="providers">Payment Providers</TabsTrigger>
+          <TabsTrigger value="settings">Settings</TabsTrigger>
+        </TabsList>
 
         <TabsContent value="overview" className="pt-6">
           <BillingOverviewTab />

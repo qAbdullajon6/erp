@@ -13,6 +13,7 @@ import { ErrorState, EmptyState, TableSkeleton } from '@/components/shared/list-
 import { ListToolbar, FilterSelect } from '@/components/shared/list-toolbar';
 import { PaginationBar } from '@/components/shared/pagination-bar';
 import { StatusBadge } from '@/components/shared/status-badge';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { InvoiceCreateDialog } from './invoice-create-dialog';
 import { InvoiceDetailSheet } from './invoice-detail-sheet';
 
@@ -135,68 +136,60 @@ export function InvoicesList() {
         )}
 
         {!isLoading && (data?.items.length ?? 0) > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full" aria-label="Invoices">
-              <thead>
-                <tr className="border-b border-brand/10 bg-muted/30">
-                  <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Invoice #
-                  </th>
-                  <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Customer
-                  </th>
-                  <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Due date
-                  </th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Total
-                  </th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Balance
-                  </th>
-                  <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Status
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-brand/10">
-                {data!.items.map((invoice) => (
-                  <tr
-                    key={invoice.id}
-                    role="button"
-                    tabIndex={0}
-                    className="cursor-pointer transition-colors hover:bg-background/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
-                    onClick={() => openInvoice(invoice.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        openInvoice(invoice.id);
-                      }
-                    }}
-                  >
-                    <td className="whitespace-nowrap px-4 py-3 font-mono text-sm font-medium text-foreground">
-                      {invoice.invoiceNumber}
-                    </td>
-                    <td className="max-w-[16rem] truncate px-4 py-3 text-sm text-foreground">
+          <Table aria-label="Invoices">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Invoice #</TableHead>
+                {/* Columns drop out as width allows, leaving invoice / balance /
+                    status — what a phone user scans for. The customer is not lost
+                    with its column: it moves under the invoice number below sm. */}
+                <TableHead className="hidden sm:table-cell">Customer</TableHead>
+                <TableHead className="hidden md:table-cell">Due date</TableHead>
+                <TableHead className="hidden text-right lg:table-cell">Total</TableHead>
+                <TableHead className="text-right">Balance</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data!.items.map((invoice) => (
+                <TableRow
+                  key={invoice.id}
+                  role="button"
+                  tabIndex={0}
+                  className="cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
+                  onClick={() => openInvoice(invoice.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      openInvoice(invoice.id);
+                    }
+                  }}
+                >
+                  <TableCell className="font-mono text-sm font-medium text-foreground">
+                    <span className="whitespace-nowrap">{invoice.invoiceNumber}</span>
+                    <span className="block truncate font-sans text-xs text-muted-foreground sm:hidden">
                       {customerNameById.get(invoice.customerId) ?? invoice.customerId}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-sm text-muted-foreground">
-                      {invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : '—'}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right font-mono text-sm text-foreground">
-                      {formatMoney(invoice.totalAmount, invoice.currency)}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right font-mono text-sm font-semibold text-foreground">
-                      {formatMoney(invoice.balanceDue, invoice.currency)}
-                    </td>
-                    <td className="px-4 py-3 text-sm">
-                      <StatusBadge status={invoice.status} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    </span>
+                  </TableCell>
+                  <TableCell className="hidden max-w-[16rem] truncate text-sm text-foreground sm:table-cell">
+                    {customerNameById.get(invoice.customerId) ?? invoice.customerId}
+                  </TableCell>
+                  <TableCell className="hidden whitespace-nowrap text-sm text-muted-foreground md:table-cell">
+                    {invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : '—'}
+                  </TableCell>
+                  <TableCell className="hidden whitespace-nowrap text-right font-mono text-sm text-foreground lg:table-cell">
+                    {formatMoney(invoice.totalAmount, invoice.currency)}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-right font-mono text-sm font-semibold text-foreground">
+                    {formatMoney(invoice.balanceDue, invoice.currency)}
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    <StatusBadge status={invoice.status} />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
       </div>
 

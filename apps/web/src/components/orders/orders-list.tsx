@@ -965,36 +965,36 @@ export function OrdersList() {
                   )}
                   <TableHead className="w-8" />
                   {visibleColumns.includes('route') && (
-                    <TableHead className="font-medium text-xs uppercase tracking-wider">Route</TableHead>
+                    <TableHead>Route</TableHead>
                   )}
                   {visibleColumns.includes('orderNumber') && (
-                    <TableHead className="font-medium text-xs uppercase tracking-wider">
+                    <TableHead>
                       <SortHeader field="orderNumber" label="Order #" {...sortProps} />
                     </TableHead>
                   )}
                   {visibleColumns.includes('timeline') && (
-                    <TableHead className="font-medium text-xs uppercase tracking-wider">Timeline</TableHead>
+                    <TableHead>Timeline</TableHead>
                   )}
                   {visibleColumns.includes('pickupDate') && (
-                    <TableHead className="font-medium text-xs uppercase tracking-wider">
+                    <TableHead>
                       <SortHeader field="pickupDate" label="Pickup" {...sortProps} />
                     </TableHead>
                   )}
                   {visibleColumns.includes('deliveryDate') && (
-                    <TableHead className="font-medium text-xs uppercase tracking-wider">
+                    <TableHead>
                       <SortHeader field="deliveryDate" label="Delivery" {...sortProps} />
                     </TableHead>
                   )}
                   {visibleColumns.includes('customer') && (
-                    <TableHead className="font-medium text-xs uppercase tracking-wider">Customer</TableHead>
+                    <TableHead>Customer</TableHead>
                   )}
                   {visibleColumns.includes('value') && (
-                    <TableHead className="font-medium text-xs uppercase tracking-wider">
+                    <TableHead>
                       <SortHeader field="price" label="Value" {...sortProps} />
                     </TableHead>
                   )}
                   {visibleColumns.includes('status') && (
-                    <TableHead className="font-medium text-xs uppercase tracking-wider text-right">
+                    <TableHead className="text-right">
                       <div className="flex justify-end">
                         <SortHeader field="status" label="Status" {...sortProps} />
                       </div>
@@ -1051,7 +1051,7 @@ export function OrdersList() {
                         </TableCell>
 
                         {visibleColumns.includes('route') && (
-                          <TableCell className="py-3">
+                          <TableCell>
                             <div className="space-y-0.5">
                               <RouteIndicator from={order.pickupCity} to={order.deliveryCity} />
                               {!visibleColumns.includes('orderNumber') && (
@@ -1062,11 +1062,11 @@ export function OrdersList() {
                         )}
 
                         {visibleColumns.includes('orderNumber') && (
-                          <TableCell className="py-3 font-mono text-sm">{order.orderNumber}</TableCell>
+                          <TableCell className="font-mono text-sm">{order.orderNumber}</TableCell>
                         )}
 
                         {visibleColumns.includes('timeline') && (
-                          <TableCell className="py-3">
+                          <TableCell>
                             <div className="space-y-0.5">
                               {order.status === 'DELIVERED' || order.status === 'CANCELLED' ? (
                                 <span className="text-xs text-muted-foreground">
@@ -1084,21 +1084,21 @@ export function OrdersList() {
                         )}
 
                         {visibleColumns.includes('pickupDate') && (
-                          <TableCell className="py-3 text-sm tabular-nums">{formatDate(order.pickupDate)}</TableCell>
+                          <TableCell className="text-sm tabular-nums">{formatDate(order.pickupDate)}</TableCell>
                         )}
 
                         {visibleColumns.includes('deliveryDate') && (
-                          <TableCell className="py-3 text-sm tabular-nums">{formatDate(order.deliveryDate)}</TableCell>
+                          <TableCell className="text-sm tabular-nums">{formatDate(order.deliveryDate)}</TableCell>
                         )}
 
                         {visibleColumns.includes('customer') && (
-                          <TableCell className="py-3">
+                          <TableCell>
                             <span className="text-sm text-foreground">{customerName}</span>
                           </TableCell>
                         )}
 
                         {visibleColumns.includes('value') && (
-                          <TableCell className="py-3">
+                          <TableCell>
                             <span className="font-mono text-sm font-medium text-foreground">
                               {formatMoney(order.price, order.currency)}
                             </span>
@@ -1106,7 +1106,7 @@ export function OrdersList() {
                         )}
 
                         {visibleColumns.includes('status') && (
-                          <TableCell className="py-3 text-right">
+                          <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-2">
                               {order.archivedAt && (
                                 <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">

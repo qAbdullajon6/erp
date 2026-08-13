@@ -11,6 +11,7 @@ import { useInvoiceQuery, useSendInvoiceMutation, useCancelInvoiceMutation } fro
 import { customersAPI } from '@/lib/api/customers';
 import { ordersAPI } from '@/lib/api/orders';
 import type { MembershipRole } from '@/lib/api/organizations';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { formatMoney } from '@/lib/format';
 import { INVOICE_FINALIZE_ROLES } from '@/lib/role-access';
 import { ErrorState } from '@/components/shared/list-states';
@@ -117,27 +118,31 @@ export function InvoiceDetailSheet({ invoiceId, onOpenChange }: InvoiceDetailShe
               </div>
             </div>
 
-            <div className="rounded-lg border border-brand/10">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-brand/10 text-left text-xs uppercase text-muted-foreground">
-                    <th className="px-3 py-2">Description</th>
-                    <th className="px-3 py-2 text-right">Qty</th>
-                    <th className="px-3 py-2 text-right">Unit Price</th>
-                    <th className="px-3 py-2 text-right">Total</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-brand/10">
+            <div className="overflow-hidden rounded-lg border border-brand/10">
+              <Table aria-label="Invoice line items">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Description</TableHead>
+                    <TableHead className="text-right">Qty</TableHead>
+                    <TableHead className="text-right">Unit Price</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {invoice.lineItems?.map((li, idx) => (
-                    <tr key={li.id || `line-${idx}`}>
-                      <td className="px-3 py-2">{li.description}</td>
-                      <td className="px-3 py-2 text-right">{li.quantity}</td>
-                      <td className="px-3 py-2 text-right">{formatMoney(li.unitPrice, invoice.currency)}</td>
-                      <td className="px-3 py-2 text-right">{formatMoney(li.lineTotal, invoice.currency)}</td>
-                    </tr>
+                    <TableRow key={li.id || `line-${idx}`}>
+                      <TableCell>{li.description}</TableCell>
+                      <TableCell className="text-right tabular-nums">{li.quantity}</TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatMoney(li.unitPrice, invoice.currency)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatMoney(li.lineTotal, invoice.currency)}
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
 
             <div className="rounded-lg bg-background/60 p-4 text-sm">

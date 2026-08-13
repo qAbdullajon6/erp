@@ -2,6 +2,10 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { SurfaceCard } from '@/components/ui/surface-card';
+import { SectionHeader } from '@/components/ui/section-header';
+import { cn } from '@/lib/utils';
 import { formatMoney } from '@/lib/format';
 import {
   useFinancialReportQuery,
@@ -21,32 +25,37 @@ function ProfitabilityTable({ rows, currency }: { rows: ProfitabilityGroupRow[];
     return <p className="px-6 py-8 text-center text-sm text-muted-foreground">No delivered orders in this period</p>;
   }
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-brand/10 bg-surface/50 text-left text-xs uppercase text-muted-foreground">
-            <th className="px-6 py-3">Name</th>
-            <th className="px-6 py-3 text-right">Orders</th>
-            <th className="px-6 py-3 text-right">Revenue</th>
-            <th className="px-6 py-3 text-right">Expenses</th>
-            <th className="px-6 py-3 text-right">Est. Profit</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-brand/10">
-          {rows.map((row) => (
-            <tr key={row.id}>
-              <td className="px-6 py-3 font-medium text-foreground">{row.label}</td>
-              <td className="px-6 py-3 text-right">{row.orderCount}</td>
-              <td className="px-6 py-3 text-right">{formatMoney(row.revenue, currency)}</td>
-              <td className="px-6 py-3 text-right">{formatMoney(row.approvedExpenses, currency)}</td>
-              <td className={`px-6 py-3 text-right font-medium ${Number(row.estimatedGrossProfit) < 0 ? 'text-destructive' : ''}`}>
-                {formatMoney(row.estimatedGrossProfit, currency)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Name</TableHead>
+          <TableHead className="text-right">Orders</TableHead>
+          <TableHead className="text-right">Revenue</TableHead>
+          <TableHead className="hidden text-right sm:table-cell">Expenses</TableHead>
+          <TableHead className="text-right">Est. Profit</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((row) => (
+          <TableRow key={row.id}>
+            <TableCell className="font-medium text-foreground">{row.label}</TableCell>
+            <TableCell className="text-right tabular-nums">{row.orderCount}</TableCell>
+            <TableCell className="text-right tabular-nums">{formatMoney(row.revenue, currency)}</TableCell>
+            <TableCell className="hidden text-right tabular-nums sm:table-cell">
+              {formatMoney(row.approvedExpenses, currency)}
+            </TableCell>
+            <TableCell
+              className={cn(
+                'text-right font-medium tabular-nums',
+                Number(row.estimatedGrossProfit) < 0 && 'text-destructive',
+              )}
+            >
+              {formatMoney(row.estimatedGrossProfit, currency)}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
 }
 
@@ -55,30 +64,35 @@ function OrderProfitabilityTable({ rows }: { rows: ProfitabilityOrderRow[] }) {
     return <p className="px-6 py-8 text-center text-sm text-muted-foreground">No delivered orders in this period</p>;
   }
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-brand/10 bg-surface/50 text-left text-xs uppercase text-muted-foreground">
-            <th className="px-6 py-3">Order</th>
-            <th className="px-6 py-3 text-right">Revenue</th>
-            <th className="px-6 py-3 text-right">Expenses</th>
-            <th className="px-6 py-3 text-right">Est. Profit</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-brand/10">
-          {rows.map((row) => (
-            <tr key={row.orderId}>
-              <td className="px-6 py-3 font-medium text-foreground">{row.orderNumber}</td>
-              <td className="px-6 py-3 text-right">{formatMoney(row.revenue, row.currency)}</td>
-              <td className="px-6 py-3 text-right">{formatMoney(row.approvedExpenses, row.currency)}</td>
-              <td className={`px-6 py-3 text-right font-medium ${Number(row.estimatedGrossProfit) < 0 ? 'text-destructive' : ''}`}>
-                {formatMoney(row.estimatedGrossProfit, row.currency)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Order</TableHead>
+          <TableHead className="text-right">Revenue</TableHead>
+          <TableHead className="hidden text-right sm:table-cell">Expenses</TableHead>
+          <TableHead className="text-right">Est. Profit</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((row) => (
+          <TableRow key={row.orderId}>
+            <TableCell className="font-mono font-medium text-foreground">{row.orderNumber}</TableCell>
+            <TableCell className="text-right tabular-nums">{formatMoney(row.revenue, row.currency)}</TableCell>
+            <TableCell className="hidden text-right tabular-nums sm:table-cell">
+              {formatMoney(row.approvedExpenses, row.currency)}
+            </TableCell>
+            <TableCell
+              className={cn(
+                'text-right font-medium tabular-nums',
+                Number(row.estimatedGrossProfit) < 0 && 'text-destructive',
+              )}
+            >
+              {formatMoney(row.estimatedGrossProfit, row.currency)}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
 }
 
@@ -198,10 +212,14 @@ export function FinancialTab({ params }: FinancialTabProps) {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50">
-        <div className="border-b border-brand/10 px-6 py-4">
-          <h3 className="font-display text-lg font-bold text-foreground">{data.profitability.label}</h3>
-          <Tabs value={profitabilityView} onValueChange={(v) => setProfitabilityView(v as typeof profitabilityView)} className="mt-3">
+      <SurfaceCard>
+        <div className="border-b border-brand/10 px-4 py-3">
+          <SectionHeader title={data.profitability.label} />
+          <Tabs
+            value={profitabilityView}
+            onValueChange={(v) => setProfitabilityView(v as typeof profitabilityView)}
+            className="mt-3"
+          >
             <TabsList>
               <TabsTrigger value="byCustomer">By Customer</TabsTrigger>
               <TabsTrigger value="byRoute">By Route</TabsTrigger>
@@ -216,7 +234,7 @@ export function FinancialTab({ params }: FinancialTabProps) {
         ) : (
           <ProfitabilityTable rows={data.profitability[profitabilityView]} currency={currency} />
         )}
-      </div>
+      </SurfaceCard>
     </div>
   );
 }
