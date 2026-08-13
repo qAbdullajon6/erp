@@ -27,6 +27,11 @@ test.describe('regression · finance', () => {
     await dialog.getByRole('button', { name: 'Create Invoice' }).click();
 
     await expect(page.getByText('Invoice created')).toBeVisible();
-    await expect(page.getByRole('table', { name: 'Invoices' }).getByText(companyName)).toBeVisible();
+    // The table prints the customer twice — under the invoice number on a phone,
+    // in its own column from sm up — and hides whichever does not apply, so the
+    // name has to be matched on the copy actually being displayed.
+    await expect(
+      page.getByRole('table', { name: 'Invoices' }).getByText(companyName).filter({ visible: true }),
+    ).toBeVisible();
   });
 });
