@@ -17,14 +17,13 @@ import { useFinanceSummaryQuery } from "@/lib/api/finance";
 import { useLiveFleetQuery } from "@/lib/api/telematics";
 import { useDispatchBoardSummary } from "@/lib/hooks/use-dispatches";
 import { LoadingState, ErrorState } from "@/components/shared/list-states";
-import { ORDER_WRITE_ROLES, DISPATCH_WRITE_ROLES, FLEET_ROLES } from "@/lib/role-access";
+import { ORDER_WRITE_ROLES, DISPATCH_WRITE_ROLES, DISPATCH_ROLES, FLEET_ROLES } from "@/lib/role-access";
 import type { MembershipRole } from "@/lib/api/organizations";
 import { formatRelativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Plus, RefreshCw, Sparkles } from "lucide-react";
 
 const LIVE_REFRESH_MS = 30_000;
-const FLEET_VISIBLE_ROLES = new Set(["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER", "ACCOUNTANT"]);
 
 function shiftLabel(date: Date): string {
   const h = date.getHours();
@@ -96,11 +95,14 @@ function FreshnessControl({
       onClick={onRefresh}
       disabled={isFetching}
       title="Refresh now"
+      aria-label={`Dashboard data freshness: ${label}. Refresh now.`}
       className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border/80 bg-surface/50 px-2.5 text-[11px] font-medium text-muted-foreground hover:border-brand hover:text-brand disabled:opacity-70"
     >
-      <span className={cn("h-1.5 w-1.5 rounded-full", isFetching ? "animate-pulse bg-warning" : "bg-success")} />
-      <RefreshCw className={cn("h-3 w-3", isFetching && "animate-spin")} />
-      <span className="tabular-nums">{label}</span>
+      <span className={cn("h-1.5 w-1.5 rounded-full", isFetching ? "animate-pulse bg-warning" : "bg-success")} aria-hidden />
+      <RefreshCw className={cn("h-3 w-3", isFetching && "animate-spin")} aria-hidden />
+      <span className="tabular-nums" aria-live="polite">
+        {label}
+      </span>
     </button>
   );
 }
@@ -124,7 +126,7 @@ function DashboardPage() {
 
   return (
     <OperationsCommandCenter
-      includeFleet={FLEET_VISIBLE_ROLES.has(role ?? "")}
+      includeFleet={DISPATCH_ROLES.includes(role as MembershipRole)}
       includeTelematics={FLEET_ROLES.includes(role as MembershipRole)}
       role={role as MembershipRole}
     />
@@ -311,7 +313,7 @@ function OperationsCommandCenter({
 
           {/* Secondary monitoring — AI / On Road / Money */}
           <div className="flex flex-col gap-4 min-[960px]:col-span-5">
-            <AiOpsSuggestions board={boardData ?? null} canDispatch={canCreateDispatch} />
+            <AiOpsSuggestions board={boardData ?? null} canDispatch={canCreateDispatch} loading={board.loading} />
             <LiveDispatch
               board={boardData}
               loading={board.loading}

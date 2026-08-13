@@ -44,7 +44,7 @@ export function AttentionCenter({ attention, loading }: AttentionCenterProps) {
           icon={FileText}
           label="Overdue invoices"
           count={overdueInvoices}
-          href="/app/finance"
+          href="/app/finance?tab=invoices"
           emptyLabel="No overdue invoices"
         />
       </div>

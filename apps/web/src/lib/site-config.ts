@@ -29,6 +29,10 @@ function toDialable(phone: string): string {
 
 const marketingUrl = env('VITE_MARKETING_URL', 'https://flowerp.uz').replace(/\/$/, '');
 const appUrl = env('VITE_APP_URL', 'https://app.flowerp.uz').replace(/\/$/, '');
+/// Public NestJS API origin reachable from the Internet (Traccar / external gateways).
+/// Matches deploy `API_ADDRESS` / Caddy `api.flowerp.uz` and `apps/web/vercel.json`.
+/// Not the browser `/api` proxy path — ingest is mounted at the API root.
+const apiPublicUrl = env('VITE_API_PUBLIC_URL', 'https://api.flowerp.uz').replace(/\/$/, '');
 
 const email = env('VITE_CONTACT_EMAIL', 'hello@itechnology.uz');
 const phoneDisplay = env('VITE_CONTACT_PHONE', '+998 50 108 18 24');
@@ -47,6 +51,12 @@ export const siteConfig = {
   url: marketingUrl,
   /** Authenticated application origin (no trailing slash). */
   appUrl,
+  /**
+   * Canonical public API origin for external systems (GPS gateways, mobile apps).
+   * Override with `VITE_API_PUBLIC_URL` when pointing at a non-production API.
+   * Never set this to localhost / Docker-internal hosts for customer-facing URLs.
+   */
+  apiPublicUrl,
 
   /** Absolute URL to the Open Graph / social share image. */
   ogImage: `${marketingUrl}/og-image.png`,

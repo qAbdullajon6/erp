@@ -55,7 +55,14 @@ export function ConfirmDialog({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       {trigger ? <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger> : null}
       <AlertDialogContent
-        onCloseAutoFocus={(e) => e.preventDefault()}
+        // Controlled dialogs are commonly opened from something that already
+        // unmounted (a dropdown menu item) — Radix's default focus-return has
+        // no live trigger to land on there, so it's skipped. Uncontrolled
+        // dialogs (an AlertDialogTrigger wrapping a real, still-mounted
+        // button) keep the default: focus correctly returns to it on close.
+        onCloseAutoFocus={(e) => {
+          if (controlled) e.preventDefault();
+        }}
         onEscapeKeyDown={(e) => {
           if (controlled) e.stopPropagation();
         }}

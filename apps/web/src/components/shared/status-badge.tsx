@@ -64,6 +64,13 @@ const STATUS_VARIANTS: Record<string, BadgeVariant> = {
   TRIAL: 'brand',
   SUSPENDED: 'warning',
   EXPIRED: 'danger',
+
+  // Workflow executions — CANCELLED already covered above under lifecycle.
+  QUEUED: 'warning',
+  RUNNING: 'brand',
+  COMPLETED: 'success',
+  FAILED: 'danger',
+  TIMED_OUT: 'danger',
 };
 
 export function statusVariant(status: string): BadgeVariant {

@@ -20,10 +20,8 @@ import { Route as PlatformIndexRouteImport } from './routes/platform.index'
 import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as PortalProfileRouteImport } from './routes/portal.profile'
 import { Route as PortalPaymentsRouteImport } from './routes/portal.payments'
-import { Route as PortalOrdersRouteImport } from './routes/portal.orders'
 import { Route as PortalNotificationsRouteImport } from './routes/portal.notifications'
 import { Route as PortalLoginRouteImport } from './routes/portal.login'
-import { Route as PortalInvoicesRouteImport } from './routes/portal.invoices'
 import { Route as PortalDocumentsRouteImport } from './routes/portal.documents'
 import { Route as PortalAcceptInviteRouteImport } from './routes/portal.accept-invite'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
@@ -43,6 +41,8 @@ import { Route as AppDriverRouteImport } from './routes/app.driver'
 import { Route as AppDeveloperRouteImport } from './routes/app.developer'
 import { Route as AppBillingRouteImport } from './routes/app.billing'
 import { Route as AppAiAssistantRouteImport } from './routes/app.ai-assistant'
+import { Route as PortalOrdersIndexRouteImport } from './routes/portal.orders.index'
+import { Route as PortalInvoicesIndexRouteImport } from './routes/portal.invoices.index'
 import { Route as PlatformSystemIndexRouteImport } from './routes/platform.system.index'
 import { Route as PlatformSupportIndexRouteImport } from './routes/platform.support.index'
 import { Route as PlatformSubscriptionsIndexRouteImport } from './routes/platform.subscriptions.index'
@@ -145,11 +145,6 @@ const PortalPaymentsRoute = PortalPaymentsRouteImport.update({
   path: '/payments',
   getParentRoute: () => PortalRoute,
 } as any)
-const PortalOrdersRoute = PortalOrdersRouteImport.update({
-  id: '/orders',
-  path: '/orders',
-  getParentRoute: () => PortalRoute,
-} as any)
 const PortalNotificationsRoute = PortalNotificationsRouteImport.update({
   id: '/notifications',
   path: '/notifications',
@@ -158,11 +153,6 @@ const PortalNotificationsRoute = PortalNotificationsRouteImport.update({
 const PortalLoginRoute = PortalLoginRouteImport.update({
   id: '/login',
   path: '/login',
-  getParentRoute: () => PortalRoute,
-} as any)
-const PortalInvoicesRoute = PortalInvoicesRouteImport.update({
-  id: '/invoices',
-  path: '/invoices',
   getParentRoute: () => PortalRoute,
 } as any)
 const PortalDocumentsRoute = PortalDocumentsRouteImport.update({
@@ -259,6 +249,16 @@ const AppAiAssistantRoute = AppAiAssistantRouteImport.update({
   id: '/ai-assistant',
   path: '/ai-assistant',
   getParentRoute: () => AppRoute,
+} as any)
+const PortalOrdersIndexRoute = PortalOrdersIndexRouteImport.update({
+  id: '/orders/',
+  path: '/orders/',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalInvoicesIndexRoute = PortalInvoicesIndexRouteImport.update({
+  id: '/invoices/',
+  path: '/invoices/',
+  getParentRoute: () => PortalRoute,
 } as any)
 const PlatformSystemIndexRoute = PlatformSystemIndexRouteImport.update({
   id: '/system/',
@@ -363,14 +363,14 @@ const AppAuditLogsIndexRoute = AppAuditLogsIndexRouteImport.update({
   getParentRoute: () => AppRoute,
 } as any)
 const PortalOrdersOrderIdRoute = PortalOrdersOrderIdRouteImport.update({
-  id: '/$orderId',
-  path: '/$orderId',
-  getParentRoute: () => PortalOrdersRoute,
+  id: '/orders/$orderId',
+  path: '/orders/$orderId',
+  getParentRoute: () => PortalRoute,
 } as any)
 const PortalInvoicesInvoiceIdRoute = PortalInvoicesInvoiceIdRouteImport.update({
-  id: '/$invoiceId',
-  path: '/$invoiceId',
-  getParentRoute: () => PortalInvoicesRoute,
+  id: '/invoices/$invoiceId',
+  path: '/invoices/$invoiceId',
+  getParentRoute: () => PortalRoute,
 } as any)
 const PlatformSupportTicketIdRoute = PlatformSupportTicketIdRouteImport.update({
   id: '/support/$ticketId',
@@ -521,10 +521,8 @@ export interface FileRoutesByFullPath {
   '/invite/$token': typeof InviteTokenRoute
   '/portal/accept-invite': typeof PortalAcceptInviteRoute
   '/portal/documents': typeof PortalDocumentsRoute
-  '/portal/invoices': typeof PortalInvoicesRouteWithChildren
   '/portal/login': typeof PortalLoginRoute
   '/portal/notifications': typeof PortalNotificationsRoute
-  '/portal/orders': typeof PortalOrdersRouteWithChildren
   '/portal/payments': typeof PortalPaymentsRoute
   '/portal/profile': typeof PortalProfileRoute
   '/app/': typeof AppIndexRoute
@@ -575,6 +573,8 @@ export interface FileRoutesByFullPath {
   '/platform/subscriptions/': typeof PlatformSubscriptionsIndexRoute
   '/platform/support/': typeof PlatformSupportIndexRoute
   '/platform/system/': typeof PlatformSystemIndexRoute
+  '/portal/invoices/': typeof PortalInvoicesIndexRoute
+  '/portal/orders/': typeof PortalOrdersIndexRoute
   '/app/fleet-tracking/replay/$tripId': typeof AppFleetTrackingReplayTripIdRoute
 }
 export interface FileRoutesByTo {
@@ -599,10 +599,8 @@ export interface FileRoutesByTo {
   '/invite/$token': typeof InviteTokenRoute
   '/portal/accept-invite': typeof PortalAcceptInviteRoute
   '/portal/documents': typeof PortalDocumentsRoute
-  '/portal/invoices': typeof PortalInvoicesRouteWithChildren
   '/portal/login': typeof PortalLoginRoute
   '/portal/notifications': typeof PortalNotificationsRoute
-  '/portal/orders': typeof PortalOrdersRouteWithChildren
   '/portal/payments': typeof PortalPaymentsRoute
   '/portal/profile': typeof PortalProfileRoute
   '/app': typeof AppIndexRoute
@@ -653,6 +651,8 @@ export interface FileRoutesByTo {
   '/platform/subscriptions': typeof PlatformSubscriptionsIndexRoute
   '/platform/support': typeof PlatformSupportIndexRoute
   '/platform/system': typeof PlatformSystemIndexRoute
+  '/portal/invoices': typeof PortalInvoicesIndexRoute
+  '/portal/orders': typeof PortalOrdersIndexRoute
   '/app/fleet-tracking/replay/$tripId': typeof AppFleetTrackingReplayTripIdRoute
 }
 export interface FileRoutesById {
@@ -682,10 +682,8 @@ export interface FileRoutesById {
   '/invite/$token': typeof InviteTokenRoute
   '/portal/accept-invite': typeof PortalAcceptInviteRoute
   '/portal/documents': typeof PortalDocumentsRoute
-  '/portal/invoices': typeof PortalInvoicesRouteWithChildren
   '/portal/login': typeof PortalLoginRoute
   '/portal/notifications': typeof PortalNotificationsRoute
-  '/portal/orders': typeof PortalOrdersRouteWithChildren
   '/portal/payments': typeof PortalPaymentsRoute
   '/portal/profile': typeof PortalProfileRoute
   '/app/': typeof AppIndexRoute
@@ -736,6 +734,8 @@ export interface FileRoutesById {
   '/platform/subscriptions/': typeof PlatformSubscriptionsIndexRoute
   '/platform/support/': typeof PlatformSupportIndexRoute
   '/platform/system/': typeof PlatformSystemIndexRoute
+  '/portal/invoices/': typeof PortalInvoicesIndexRoute
+  '/portal/orders/': typeof PortalOrdersIndexRoute
   '/app/fleet-tracking_/replay/$tripId': typeof AppFleetTrackingReplayTripIdRoute
 }
 export interface FileRouteTypes {
@@ -766,10 +766,8 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/portal/accept-invite'
     | '/portal/documents'
-    | '/portal/invoices'
     | '/portal/login'
     | '/portal/notifications'
-    | '/portal/orders'
     | '/portal/payments'
     | '/portal/profile'
     | '/app/'
@@ -820,6 +818,8 @@ export interface FileRouteTypes {
     | '/platform/subscriptions/'
     | '/platform/support/'
     | '/platform/system/'
+    | '/portal/invoices/'
+    | '/portal/orders/'
     | '/app/fleet-tracking/replay/$tripId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -844,10 +844,8 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/portal/accept-invite'
     | '/portal/documents'
-    | '/portal/invoices'
     | '/portal/login'
     | '/portal/notifications'
-    | '/portal/orders'
     | '/portal/payments'
     | '/portal/profile'
     | '/app'
@@ -898,6 +896,8 @@ export interface FileRouteTypes {
     | '/platform/subscriptions'
     | '/platform/support'
     | '/platform/system'
+    | '/portal/invoices'
+    | '/portal/orders'
     | '/app/fleet-tracking/replay/$tripId'
   id:
     | '__root__'
@@ -926,10 +926,8 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/portal/accept-invite'
     | '/portal/documents'
-    | '/portal/invoices'
     | '/portal/login'
     | '/portal/notifications'
-    | '/portal/orders'
     | '/portal/payments'
     | '/portal/profile'
     | '/app/'
@@ -980,6 +978,8 @@ export interface FileRouteTypes {
     | '/platform/subscriptions/'
     | '/platform/support/'
     | '/platform/system/'
+    | '/portal/invoices/'
+    | '/portal/orders/'
     | '/app/fleet-tracking_/replay/$tripId'
   fileRoutesById: FileRoutesById
 }
@@ -1077,13 +1077,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalPaymentsRouteImport
       parentRoute: typeof PortalRoute
     }
-    '/portal/orders': {
-      id: '/portal/orders'
-      path: '/orders'
-      fullPath: '/portal/orders'
-      preLoaderRoute: typeof PortalOrdersRouteImport
-      parentRoute: typeof PortalRoute
-    }
     '/portal/notifications': {
       id: '/portal/notifications'
       path: '/notifications'
@@ -1096,13 +1089,6 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/portal/login'
       preLoaderRoute: typeof PortalLoginRouteImport
-      parentRoute: typeof PortalRoute
-    }
-    '/portal/invoices': {
-      id: '/portal/invoices'
-      path: '/invoices'
-      fullPath: '/portal/invoices'
-      preLoaderRoute: typeof PortalInvoicesRouteImport
       parentRoute: typeof PortalRoute
     }
     '/portal/documents': {
@@ -1237,6 +1223,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/app/ai-assistant'
       preLoaderRoute: typeof AppAiAssistantRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/portal/orders/': {
+      id: '/portal/orders/'
+      path: '/orders'
+      fullPath: '/portal/orders/'
+      preLoaderRoute: typeof PortalOrdersIndexRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/portal/invoices/': {
+      id: '/portal/invoices/'
+      path: '/invoices'
+      fullPath: '/portal/invoices/'
+      preLoaderRoute: typeof PortalInvoicesIndexRouteImport
+      parentRoute: typeof PortalRoute
     }
     '/platform/system/': {
       id: '/platform/system/'
@@ -1380,17 +1380,17 @@ declare module '@tanstack/react-router' {
     }
     '/portal/orders/$orderId': {
       id: '/portal/orders/$orderId'
-      path: '/$orderId'
+      path: '/orders/$orderId'
       fullPath: '/portal/orders/$orderId'
       preLoaderRoute: typeof PortalOrdersOrderIdRouteImport
-      parentRoute: typeof PortalOrdersRoute
+      parentRoute: typeof PortalRoute
     }
     '/portal/invoices/$invoiceId': {
       id: '/portal/invoices/$invoiceId'
-      path: '/$invoiceId'
+      path: '/invoices/$invoiceId'
       fullPath: '/portal/invoices/$invoiceId'
       preLoaderRoute: typeof PortalInvoicesInvoiceIdRouteImport
-      parentRoute: typeof PortalInvoicesRoute
+      parentRoute: typeof PortalRoute
     }
     '/platform/support/$ticketId': {
       id: '/platform/support/$ticketId'
@@ -1715,52 +1715,32 @@ const PlatformRouteWithChildren = PlatformRoute._addFileChildren(
   PlatformRouteChildren,
 )
 
-interface PortalInvoicesRouteChildren {
-  PortalInvoicesInvoiceIdRoute: typeof PortalInvoicesInvoiceIdRoute
-}
-
-const PortalInvoicesRouteChildren: PortalInvoicesRouteChildren = {
-  PortalInvoicesInvoiceIdRoute: PortalInvoicesInvoiceIdRoute,
-}
-
-const PortalInvoicesRouteWithChildren = PortalInvoicesRoute._addFileChildren(
-  PortalInvoicesRouteChildren,
-)
-
-interface PortalOrdersRouteChildren {
-  PortalOrdersOrderIdRoute: typeof PortalOrdersOrderIdRoute
-}
-
-const PortalOrdersRouteChildren: PortalOrdersRouteChildren = {
-  PortalOrdersOrderIdRoute: PortalOrdersOrderIdRoute,
-}
-
-const PortalOrdersRouteWithChildren = PortalOrdersRoute._addFileChildren(
-  PortalOrdersRouteChildren,
-)
-
 interface PortalRouteChildren {
   PortalAcceptInviteRoute: typeof PortalAcceptInviteRoute
   PortalDocumentsRoute: typeof PortalDocumentsRoute
-  PortalInvoicesRoute: typeof PortalInvoicesRouteWithChildren
   PortalLoginRoute: typeof PortalLoginRoute
   PortalNotificationsRoute: typeof PortalNotificationsRoute
-  PortalOrdersRoute: typeof PortalOrdersRouteWithChildren
   PortalPaymentsRoute: typeof PortalPaymentsRoute
   PortalProfileRoute: typeof PortalProfileRoute
   PortalIndexRoute: typeof PortalIndexRoute
+  PortalInvoicesInvoiceIdRoute: typeof PortalInvoicesInvoiceIdRoute
+  PortalOrdersOrderIdRoute: typeof PortalOrdersOrderIdRoute
+  PortalInvoicesIndexRoute: typeof PortalInvoicesIndexRoute
+  PortalOrdersIndexRoute: typeof PortalOrdersIndexRoute
 }
 
 const PortalRouteChildren: PortalRouteChildren = {
   PortalAcceptInviteRoute: PortalAcceptInviteRoute,
   PortalDocumentsRoute: PortalDocumentsRoute,
-  PortalInvoicesRoute: PortalInvoicesRouteWithChildren,
   PortalLoginRoute: PortalLoginRoute,
   PortalNotificationsRoute: PortalNotificationsRoute,
-  PortalOrdersRoute: PortalOrdersRouteWithChildren,
   PortalPaymentsRoute: PortalPaymentsRoute,
   PortalProfileRoute: PortalProfileRoute,
   PortalIndexRoute: PortalIndexRoute,
+  PortalInvoicesInvoiceIdRoute: PortalInvoicesInvoiceIdRoute,
+  PortalOrdersOrderIdRoute: PortalOrdersOrderIdRoute,
+  PortalInvoicesIndexRoute: PortalInvoicesIndexRoute,
+  PortalOrdersIndexRoute: PortalOrdersIndexRoute,
 }
 
 const PortalRouteWithChildren =

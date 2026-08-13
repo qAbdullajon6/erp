@@ -1,11 +1,13 @@
 import { Link } from "@tanstack/react-router";
 import { Sparkles, Truck, UserRound } from "lucide-react";
 import type { BoardOrderSummary, DispatchBoardSummary } from "@/lib/api/dashboard";
+import { Skeleton } from "@/components/ui/skeleton";
 import { SurfaceCard, SurfaceCardHeader } from "@/components/ui/surface-card";
 
 interface AiOpsSuggestionsProps {
   board: DispatchBoardSummary | null;
   canDispatch: boolean;
+  loading?: boolean;
 }
 
 interface Suggestion {
@@ -70,7 +72,8 @@ export function buildSuggestions(board: DispatchBoardSummary): Suggestion[] {
   return out;
 }
 
-export function AiOpsSuggestions({ board, canDispatch }: AiOpsSuggestionsProps) {
+export function AiOpsSuggestions({ board, canDispatch, loading }: AiOpsSuggestionsProps) {
+  if (loading) return <Skeleton className="h-48 rounded-xl" />;
   if (!board) return null;
   const suggestions = buildSuggestions(board);
 

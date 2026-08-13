@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,10 +11,11 @@ import { DetailField } from '@/components/shared/detail-field';
 import { FormField, FormError } from '@/components/shared/form-field';
 import { ErrorState } from '@/components/shared/list-states';
 import { statusLabel } from '@/components/shared/status-badge';
-import { useCurrentUser, useChangePassword } from '@/lib/api/auth';
+import { sessionManager, useCurrentUser, useChangePassword } from '@/lib/api/auth';
 import { Eye, EyeOff } from 'lucide-react';
 
 export function ProfileTab() {
+  const navigate = useNavigate();
   const { data: currentUser, loading, error, refetch } = useCurrentUser();
   const { changePassword, loading: changing } = useChangePassword();
 
@@ -42,10 +44,9 @@ export function ProfileTab() {
 
     try {
       await changePassword(currentPassword, newPassword);
-      toast.success('Password changed successfully');
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
+      sessionManager.clearTokens();
+      toast.success('Password changed. Sign in again with your new password.');
+      await navigate({ to: '/auth/sign-in', replace: true });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to change password');
     }
@@ -99,7 +100,7 @@ export function ProfileTab() {
       <Card className="lg:col-span-2">
         <CardHeader>
           <CardTitle>Change password</CardTitle>
-          <CardDescription>Use at least 8 characters. You'll stay signed in on this device.</CardDescription>
+          <CardDescription>Use at least 8 characters. All sessions will be signed out.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="max-w-md space-y-4">
