@@ -84,7 +84,7 @@ test('RC8b: mobile navigation drawer opens', async ({ page, request }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/app/orders', { waitUntil: 'domcontentloaded' });
 
-  const burger = page.getByRole('button', { name: /open navigation/i });
+  const burger = page.getByRole('button', { name: /open navigation|toggle sidebar/i });
   await expect(burger).toBeVisible({ timeout: 60_000 });
 
   // Server-rendered markup arrives before hydration; retry until it opens.
