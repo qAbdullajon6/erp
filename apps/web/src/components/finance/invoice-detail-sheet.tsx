@@ -10,7 +10,7 @@ import { useCurrentUser } from '@/lib/api/auth';
 import { useInvoiceQuery, useSendInvoiceMutation, useCancelInvoiceMutation } from '@/lib/api/invoices';
 import { customersAPI } from '@/lib/api/customers';
 import { ordersAPI } from '@/lib/api/orders';
-import type { MembershipRole } from '@/lib/api/organizations';
+import { useOrganizationQuery, type MembershipRole } from '@/lib/api/organizations';
 import { formatMoney } from '@/lib/format';
 import { INVOICE_FINALIZE_ROLES } from '@/lib/role-access';
 import { ErrorState } from '@/components/shared/list-states';
@@ -32,6 +32,9 @@ export function InvoiceDetailSheet({ invoiceId, onOpenChange }: InvoiceDetailShe
     currentUser && INVOICE_FINALIZE_ROLES.includes(currentUser.membership.role as MembershipRole),
   );
   const { data: invoice, isLoading, isError, error, refetch } = useInvoiceQuery(invoiceId ?? '');
+  /// The printed invoice needs the full company identity (legal name, tax ID,
+  /// address), not just the name carried in the session payload.
+  const { data: organization } = useOrganizationQuery();
 
   const { data: customer } = useQuery({
     queryKey: ['customer-for-invoice', invoice?.customerId],
@@ -201,7 +204,7 @@ export function InvoiceDetailSheet({ invoiceId, onOpenChange }: InvoiceDetailShe
                 onClick={() =>
                   printInvoiceDocument({
                     invoice,
-                    organizationName: currentUser?.organization.name,
+                    organization,
                     customerName: customer?.companyName,
                     customerAddress: customer?.address,
                     customerCity: customer?.city,

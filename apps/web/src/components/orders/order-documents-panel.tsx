@@ -24,6 +24,7 @@ import {
 import type { Invoice } from '@/lib/api/invoices';
 import { useInvoiceQuery } from '@/lib/api/invoices';
 import { useCurrentUser } from '@/lib/api/auth';
+import { useOrganizationQuery } from '@/lib/api/organizations';
 import { InvoiceDetailSheet } from '@/components/finance/invoice-detail-sheet';
 import { printInvoiceDocument } from '@/components/finance/invoice-print';
 import { downloadBlob } from '@/lib/api/imports';
@@ -325,6 +326,8 @@ export function OrderDocumentsPanel({
   canViewInvoices,
 }: OrderDocumentsPanelProps) {
   const { data: currentUser } = useCurrentUser();
+  /// Printing needs the full company identity, not the session's org summary.
+  const { data: organization } = useOrganizationQuery();
   const { data: documents, loading, error, refetch } = useOrderDocuments(orderId);
   const { upload, loading: uploading } = useUploadOrderDocument(orderId);
   const [previewDoc, setPreviewDoc] = useState<OrderDocument | null>(null);
@@ -353,10 +356,7 @@ export function OrderDocumentsPanel({
 
   const printInvoice = () => {
     if (!printableInvoice) return;
-    printInvoiceDocument({
-      invoice: printableInvoice,
-      organizationName: currentUser?.organization.name,
-    });
+    printInvoiceDocument({ invoice: printableInvoice, organization });
   };
 
   return (

@@ -11,7 +11,40 @@ export interface Organization {
   status: string;
   defaultCurrency: string;
   timezone: string;
+  /// Company identity. Null until an admin fills it in on Settings → Company;
+  /// printed documents (see components/finance/invoice-print.ts) fall back
+  /// gracefully rather than rendering empty rows.
+  legalName: string | null;
+  registrationNumber: string | null;
+  taxId: string | null;
+  email: string | null;
+  phone: string | null;
+  website: string | null;
+  address: string | null;
+  city: string | null;
+  postalCode: string | null;
+  country: string | null;
+  logoUrl: string | null;
 }
+
+/// Company-identity fields the admin form can write. `null` clears a field,
+/// `undefined` (key absent) leaves it untouched — the API distinguishes the two.
+export type CompanyIdentityInput = Partial<
+  Pick<
+    Organization,
+    | 'legalName'
+    | 'registrationNumber'
+    | 'taxId'
+    | 'email'
+    | 'phone'
+    | 'website'
+    | 'address'
+    | 'city'
+    | 'postalCode'
+    | 'country'
+    | 'logoUrl'
+  >
+>;
 
 export interface Member {
   id: string;
@@ -26,7 +59,7 @@ export interface Member {
   };
 }
 
-export interface UpdateOrganizationInput {
+export interface UpdateOrganizationInput extends CompanyIdentityInput {
   name?: string;
   defaultCurrency?: string;
   timezone?: string;

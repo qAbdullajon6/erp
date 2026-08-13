@@ -13,7 +13,7 @@ import {
   type MembershipRole,
 } from '@/lib/api/organizations';
 import { InviteMemberDialog } from './invite-member-dialog';
-import { PendingInvitations } from './pending-invitations';
+import { SettingsSection } from './settings-section';
 import { UserMinus, UserPlus } from 'lucide-react';
 
 const ROLES: MembershipRole[] = [
@@ -68,15 +68,14 @@ export function MembersTab() {
     );
   }
 
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <p className="text-sm text-muted-foreground">{members?.length ?? 0} members</p>
-        <div className="flex flex-wrap items-center gap-2">
-          <InviteMemberDialog />
-        </div>
-      </div>
+  const activeCount = members?.filter((member) => member.status === 'ACTIVE').length ?? 0;
 
+  return (
+    <SettingsSection
+      title="Members"
+      description={`${activeCount} active ${activeCount === 1 ? 'member' : 'members'} of ${members?.length ?? 0} total. A removed member keeps their history and can be reactivated.`}
+      actions={<InviteMemberDialog />}
+    >
       <div className="overflow-hidden rounded-lg border border-brand/10">
         {!members?.length ? (
           <EmptyState title="No members yet" description="Invite a teammate to get started." />
@@ -173,8 +172,6 @@ export function MembersTab() {
           </div>
         )}
       </div>
-
-      <PendingInvitations />
-    </div>
+    </SettingsSection>
   );
 }

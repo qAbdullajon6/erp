@@ -1,4 +1,5 @@
 import type { Invoice } from '@/lib/api/invoices';
+import type { Organization } from '@/lib/api/organizations';
 import { formatMoney, formatDate } from '@/lib/format';
 
 function escapeHtml(value: unknown): string {
@@ -11,13 +12,54 @@ function escapeHtml(value: unknown): string {
 
 export type InvoicePrintContext = {
   invoice: Invoice;
-  organizationName?: string | null;
+  /// The issuing company, straight from Settings → Company. Optional as a whole
+  /// because the print action must still work while the organization query is
+  /// in flight, and every field inside is optional because an admin may not
+  /// have filled the company profile in yet.
+  organization?: Organization | null;
   customerName?: string | null;
   customerAddress?: string | null;
   customerCity?: string | null;
   customerCountry?: string | null;
   orderNumber?: string | null;
 };
+
+/// A tax invoice has to name the issuing entity, so the registered legal name
+/// wins over the trading name when both exist.
+function issuerName(organization?: Organization | null): string {
+  return organization?.legalName?.trim() || organization?.name?.trim() || 'FlowERP';
+}
+
+/// Only the identity lines that are actually filled in are emitted — an empty
+/// column must not become a blank line on a customer-facing document.
+function issuerDetailLines(organization?: Organization | null): string[] {
+  if (!organization) return [];
+
+  const cityLine = [organization.city, organization.postalCode].filter(Boolean).join(' ');
+
+  return [
+    organization.address,
+    [cityLine, organization.country].filter(Boolean).join(', '),
+    organization.registrationNumber ? `Reg. no. ${organization.registrationNumber}` : null,
+    organization.taxId ? `Tax ID ${organization.taxId}` : null,
+    organization.phone,
+    organization.email,
+    organization.website,
+  ]
+    .map((line) => (typeof line === 'string' ? line.trim() : ''))
+    .filter((line) => line !== '');
+}
+
+/// An http(s) URL is required (the API validates this on save) because the
+/// document is printed from a blank iframe where a relative path resolves to
+/// nothing.
+function issuerLogo(organization: Organization | null | undefined, name: string): string {
+  const logoUrl = organization?.logoUrl?.trim();
+  if (logoUrl && /^https?:\/\//i.test(logoUrl)) {
+    return `<img class="logo-img" src="${escapeHtml(logoUrl)}" alt="${escapeHtml(name)} logo" />`;
+  }
+  return `<div class="logo" aria-hidden="true">${escapeHtml(name.slice(0, 2).toUpperCase())}</div>`;
+}
 
 function billingLines(ctx: InvoicePrintContext): string {
   const parts = [
@@ -31,8 +73,11 @@ function billingLines(ctx: InvoicePrintContext): string {
 /// Printable invoice via a hidden iframe — avoids window.open(..., 'noopener')
 /// which browsers resolve to `null` while still leaving a blank tab.
 export function printInvoiceDocument(ctx: InvoicePrintContext): void {
-  const { invoice, organizationName, customerName, orderNumber } = ctx;
-  const org = organizationName?.trim() || 'FlowERP';
+  const { invoice, organization, customerName, orderNumber } = ctx;
+  const org = issuerName(organization);
+  const issuerLines = issuerDetailLines(organization)
+    .map((line) => `<p class="muted" style="margin:0.15rem 0 0">${escapeHtml(line)}</p>`)
+    .join('');
   const lines =
     invoice.lineItems
       ?.map(
@@ -60,6 +105,10 @@ export function printInvoiceDocument(ctx: InvoicePrintContext): void {
       font-weight: 700; font-size: 0.85rem; color: #333; background: #f7f7f7;
       flex-shrink: 0;
     }
+    .logo-img {
+      width: 48px; height: 48px; border-radius: 10px; border: 1px solid #ddd;
+      object-fit: contain; background: #fff; flex-shrink: 0;
+    }
     .brand { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.02em; margin: 0; }
     .muted { color: #666; font-size: 0.875rem; }
     .row { display: flex; justify-content: space-between; gap: 2rem; margin-top: 1.5rem; }
@@ -82,10 +131,11 @@ export function printInvoiceDocument(ctx: InvoicePrintContext): void {
   <div class="sheet">
     <div class="row" style="align-items:flex-start;margin-top:0">
       <div class="brand-row">
-        <div class="logo" aria-hidden="true">${escapeHtml(org.slice(0, 2).toUpperCase())}</div>
+        ${issuerLogo(organization, org)}
         <div>
           <p class="brand">${escapeHtml(org)}</p>
           <p class="muted" style="margin:0.25rem 0 0">Tax invoice</p>
+          ${issuerLines}
         </div>
       </div>
       <div style="text-align:right">
