@@ -70,9 +70,11 @@ function billingLines(ctx: InvoicePrintContext): string {
   return parts.map((p) => `<p class="muted" style="margin:0.2rem 0 0">${escapeHtml(p)}</p>`).join('');
 }
 
-/// Printable invoice via a hidden iframe — avoids window.open(..., 'noopener')
-/// which browsers resolve to `null` while still leaving a blank tab.
-export function printInvoiceDocument(ctx: InvoicePrintContext): void {
+/// Split out from printInvoiceDocument so the document itself — which company
+/// identity reaches the customer, and which optional lines are omitted — can be
+/// asserted without a DOM. The printing half below is the only part that needs
+/// a browser.
+export function buildInvoiceDocumentHtml(ctx: InvoicePrintContext): string {
   const { invoice, organization, customerName, orderNumber } = ctx;
   const org = issuerName(organization);
   const issuerLines = issuerDetailLines(organization)
@@ -192,6 +194,15 @@ export function printInvoiceDocument(ctx: InvoicePrintContext): void {
   </div>
 </body>
 </html>`;
+
+  return html;
+}
+
+/// Printable invoice via a hidden iframe — avoids window.open(..., 'noopener')
+/// which browsers resolve to `null` while still leaving a blank tab.
+export function printInvoiceDocument(ctx: InvoicePrintContext): void {
+  const { invoice } = ctx;
+  const html = buildInvoiceDocumentHtml(ctx);
 
   const iframe = document.createElement('iframe');
   iframe.setAttribute('title', `Print invoice ${invoice.invoiceNumber}`);
