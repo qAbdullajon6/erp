@@ -49,7 +49,7 @@ export class ErpContextBuilder {
       }),
       this.prisma.customer.count({ where: { organizationId, archivedAt: null } }),
       this.prisma.order.count({
-        where: { organizationId, status: { notIn: ["DELIVERED", "CANCELLED"] } },
+        where: { organizationId, archivedAt: null, status: { notIn: ["DELIVERED", "CANCELLED"] } },
       }),
       this.prisma.driver.count({ where: { organizationId, archivedAt: null } }),
       this.prisma.vehicle.count({ where: { organizationId, archivedAt: null } }),

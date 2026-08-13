@@ -160,7 +160,7 @@ export class ConversationService {
       orderBy: { createdAt: "desc" },
       take: HISTORY_TURNS,
       include: {
-        toolCalls: { select: { id: true, toolName: true, arguments: true, result: true } },
+        toolCalls: { select: { id: true, toolName: true, arguments: true, result: true, status: true } },
       },
     });
 
@@ -179,6 +179,14 @@ export class ConversationService {
       }
 
       if (message.role === "ASSISTANT" && message.toolCalls.length > 0) {
+        // A turn still waiting on the user to confirm it has no matching
+        // TOOL result yet — replaying it would hand the provider an
+        // assistant message with tool_calls and no reply, which every
+        // OpenAI-compatible API rejects as structurally invalid. It is
+        // resolved (executed or denied) before the next turn, at which
+        // point it has real TOOL messages and is replayed normally.
+        if (message.toolCalls.every((t) => t.status === "AWAITING_CONFIRMATION")) continue;
+
         out.push({
           role: "assistant",
           content: message.content,

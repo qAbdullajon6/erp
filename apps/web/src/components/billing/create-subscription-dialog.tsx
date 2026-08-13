@@ -73,7 +73,7 @@ export function CreateSubscriptionDialog({ plans, trigger }: { plans: Plan[]; tr
           <DialogTitle>Start a subscription</DialogTitle>
           <DialogDescription>Choose a plan for this organization. You can change it later.</DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} noValidate className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="plan">Plan</Label>
             <Select value={planId} onValueChange={setPlanId}>

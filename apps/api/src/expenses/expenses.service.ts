@@ -103,7 +103,7 @@ export class ExpensesService {
       metadata: { expenseNumber, amount: expense.amount.toString() },
     });
 
-    void this.workflowEvents.emit(organizationId, "expense.created", { id: expense.id, expenseNumber, amount: expense.amount.toString() });
+    void this.workflowEvents.emit(organizationId, "expense.created", { id: expense.id, expenseNumber, amount: expense.amount.toString(), orderId: expense.orderId, vehicleId: expense.vehicleId, driverId: expense.driverId });
 
     return this.toResponse(expense);
   }
@@ -178,6 +178,9 @@ export class ExpensesService {
       id,
       expenseNumber: expense.expenseNumber,
       amount: expense.amount.toString(),
+      orderId: expense.orderId,
+      vehicleId: expense.vehicleId,
+      driverId: expense.driverId,
     });
 
     return this.toResponse(expense);

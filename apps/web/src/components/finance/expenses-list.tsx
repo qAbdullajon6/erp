@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +14,7 @@ import {
 import type { MembershipRole } from '@/lib/api/organizations';
 import { formatMoney } from '@/lib/format';
 import { EXPENSE_APPROVE_ROLES, EXPENSE_WRITE_ROLES } from '@/lib/role-access';
+import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-states';
 import { PaginationBar } from '@/components/shared/pagination-bar';
 import { StatusBadge } from '@/components/shared/status-badge';
@@ -23,10 +25,13 @@ const STATUS_OPTIONS: ExpenseStatus[] = ['PENDING', 'APPROVED', 'REJECTED'];
 const CATEGORY_OPTIONS: ExpenseCategory[] = ['FUEL', 'TOLL', 'MAINTENANCE', 'DRIVER_ADVANCE', 'PARKING', 'INSURANCE', 'OTHER'];
 
 export function ExpensesList() {
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState<ExpenseStatus | ''>('');
-  const [category, setCategory] = useState<ExpenseCategory | ''>('');
+  const navigate = useNavigate({ from: '/app/finance' });
+  const searchState = useSearch({ from: '/app/finance' });
+  const page = searchState.expensePage || 1;
+  const search = searchState.expenseSearch || '';
+  const status = (searchState.expenseStatus || '') as ExpenseStatus | '';
+  const category = (searchState.expenseCategory || '') as ExpenseCategory | '';
+  const [localSearch, setLocalSearch] = useState(search);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const [approveId, setApproveId] = useState<string | null>(null);
@@ -34,6 +39,41 @@ export function ExpensesList() {
   const role = currentUser?.membership.role as MembershipRole | undefined;
   const canWrite = Boolean(role && EXPENSE_WRITE_ROLES.includes(role));
   const canApprove = Boolean(role && EXPENSE_APPROVE_ROLES.includes(role));
+
+  useEffect(() => {
+    setLocalSearch(search);
+  }, [search]);
+
+  const debouncedSearch = useDebouncedValue(localSearch, 300);
+  useEffect(() => {
+    if (debouncedSearch === search) return;
+    void navigate({
+      to: '/app/finance',
+      search: (prev) => ({ ...prev, expensePage: undefined, expenseSearch: debouncedSearch || undefined }),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch]);
+
+  const setStatus = (next: ExpenseStatus | '') => {
+    void navigate({
+      to: '/app/finance',
+      search: (prev) => ({ ...prev, expensePage: undefined, expenseStatus: next || undefined }),
+    });
+  };
+
+  const setCategory = (next: ExpenseCategory | '') => {
+    void navigate({
+      to: '/app/finance',
+      search: (prev) => ({ ...prev, expensePage: undefined, expenseCategory: next || undefined }),
+    });
+  };
+
+  const setPage = (next: number) => {
+    void navigate({
+      to: '/app/finance',
+      search: (prev) => ({ ...prev, expensePage: next === 1 ? undefined : next }),
+    });
+  };
 
   const { data, isLoading, isError, error, refetch } = useExpensesQuery({
     page,
@@ -85,11 +125,8 @@ export function ExpensesList() {
           <Input
             id="expense-search"
             placeholder="Expense number, description..."
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
+            value={localSearch}
+            onChange={(e) => setLocalSearch(e.target.value)}
             className="mt-1"
           />
         </div>
@@ -98,10 +135,7 @@ export function ExpensesList() {
           <select
             id="expense-status"
             value={status}
-            onChange={(e) => {
-              setStatus(e.target.value as ExpenseStatus | '');
-              setPage(1);
-            }}
+            onChange={(e) => setStatus(e.target.value as ExpenseStatus | '')}
             className={selectFocus}
           >
             <option value="">All Statuses</option>
@@ -117,10 +151,7 @@ export function ExpensesList() {
           <select
             id="expense-category"
             value={category}
-            onChange={(e) => {
-              setCategory(e.target.value as ExpenseCategory | '');
-              setPage(1);
-            }}
+            onChange={(e) => setCategory(e.target.value as ExpenseCategory | '')}
             className={selectFocus}
           >
             <option value="">All Categories</option>

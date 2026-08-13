@@ -196,8 +196,12 @@ export class ReportsService {
       totalInvoiced: invoiceAgg._sum.totalAmount ?? ZERO,
       totalCollected: invoiceAgg._sum.paidAmount ?? ZERO,
       outstandingReceivables: invoiceAgg._sum.balanceDue ?? ZERO,
-      deliveryCompletionRate: totalOrders > 0 ? (deliveredRows.length / totalOrders) * 100 : 0,
-      onTimeDeliveryRate: deliveredWithTimestamp.length > 0 ? (onTimeCount / deliveredWithTimestamp.length) * 100 : 0,
+      deliveryCompletionRate:
+        totalOrders > 0 ? Number(((deliveredRows.length / totalOrders) * 100).toFixed(2)) : 0,
+      onTimeDeliveryRate:
+        deliveredWithTimestamp.length > 0
+          ? Number(((onTimeCount / deliveredWithTimestamp.length) * 100).toFixed(2))
+          : 0,
     };
   }
 
@@ -546,7 +550,7 @@ export class ReportsService {
   /// instead of requiring every role to call /dispatch/board.
   private async computeOperationalKpis(organizationId: string) {
     const [pendingDispatches, activeVehicles, workingDrivers, invoicesWaiting] = await Promise.all([
-      this.prisma.order.count({ where: { organizationId, status: "PENDING" } }),
+      this.prisma.order.count({ where: { organizationId, archivedAt: null, status: "PENDING" } }),
       this.prisma.vehicle.count({
         where: { organizationId, archivedAt: null, status: { in: ["AVAILABLE", "IN_USE"] } },
       }),
@@ -652,7 +656,7 @@ export class ReportsService {
           name: `${driver.firstName} ${driver.lastName}`,
           totalOrders: stats.total,
           deliveredOrders: stats.delivered,
-          onTimeRate: stats.delivered > 0 ? (stats.onTime / stats.delivered) * 100 : 0,
+          onTimeRate: stats.delivered > 0 ? Number(((stats.onTime / stats.delivered) * 100).toFixed(2)) : 0,
           delayedOrders: stats.delayed,
           revenue: stats.revenue.toString(),
         };
@@ -749,7 +753,7 @@ export class ReportsService {
         deliveryCity: stats.deliveryCity,
         totalOrders: stats.total,
         deliveredOrders: stats.delivered,
-        completionRate: stats.total > 0 ? (stats.delivered / stats.total) * 100 : 0,
+        completionRate: stats.total > 0 ? Number(((stats.delivered / stats.total) * 100).toFixed(2)) : 0,
         revenue: stats.revenue.toString(),
       }))
       .sort((a, b) => Number(b.revenue) - Number(a.revenue));
@@ -984,7 +988,9 @@ export class ReportsService {
       .filter((i) => i.payments.length > 0)
       .map((i) => (i.payments[0].paymentDate.getTime() - i.issueDate.getTime()) / DAY_MS);
     const averageDaysToFullPayment =
-      daysToPay.length > 0 ? daysToPay.reduce((a, b) => a + b, 0) / daysToPay.length : null;
+      daysToPay.length > 0
+        ? Number((daysToPay.reduce((a, b) => a + b, 0) / daysToPay.length).toFixed(2))
+        : null;
 
     return {
       invoiceCount: agg._count._all,

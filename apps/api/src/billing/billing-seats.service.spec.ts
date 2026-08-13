@@ -1,6 +1,7 @@
 import { ConflictException } from "@nestjs/common";
 import { BillingSeatsService } from "./billing-seats.service";
 import { FeatureGateService } from "./feature-gate.service";
+import { UsageMeteringService } from "./usage-metering.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { asDependency } from "./test-support/billing-spec.helpers";
 
@@ -32,54 +33,79 @@ function makeFeatureGate(limits: { seats: number | null } | null) {
   };
 }
 
+/// Mocks the fallback path assertCanAddSeat delegates to whenever there's no
+/// explicit seat-purchase override (limits.seats is null, or no subscription
+/// at all) — the plan's default `users` limit, via the same pipeline every
+/// other resource type is enforced through.
+function makeUsageMetering(shouldThrow: boolean) {
+  return {
+    enforceLimit: jest.fn().mockImplementation(() => {
+      if (shouldThrow) {
+        return Promise.reject(new ConflictException("Users limit reached."));
+      }
+      return Promise.resolve();
+    }),
+  };
+}
+
 describe("BillingSeatsService", () => {
   describe("assertCanAddSeat()", () => {
-    it("allows adding seat when below limit", async () => {
+    it("allows adding seat when below the explicit seat-override limit", async () => {
       const service = new BillingSeatsService(
         asDependency<PrismaService>(makePrisma(5)),
         asDependency<FeatureGateService>(makeFeatureGate({ seats: 10 })),
+        asDependency<UsageMeteringService>(makeUsageMetering(false)),
       );
       await expect(service.assertCanAddSeat("org-1")).resolves.not.toThrow();
     });
 
-    it("throws ConflictException when at seat limit", async () => {
+    it("throws ConflictException when at the explicit seat-override limit", async () => {
       const service = new BillingSeatsService(
         asDependency<PrismaService>(makePrisma(10)),
         asDependency<FeatureGateService>(makeFeatureGate({ seats: 10 })),
+        asDependency<UsageMeteringService>(makeUsageMetering(false)),
       );
       await expect(service.assertCanAddSeat("org-1")).rejects.toThrow(ConflictException);
     });
 
-    it("throws ConflictException when over seat limit", async () => {
+    it("throws ConflictException when over the explicit seat-override limit", async () => {
       const service = new BillingSeatsService(
         asDependency<PrismaService>(makePrisma(12)),
         asDependency<FeatureGateService>(makeFeatureGate({ seats: 10 })),
+        asDependency<UsageMeteringService>(makeUsageMetering(false)),
       );
       await expect(service.assertCanAddSeat("org-1")).rejects.toThrow(ConflictException);
     });
 
-    it("allows unlimited seats (null)", async () => {
+    it("falls back to the plan's users-limit pipeline when seats is null (not unconditionally unlimited)", async () => {
+      const usageMetering = makeUsageMetering(false);
       const service = new BillingSeatsService(
         asDependency<PrismaService>(makePrisma(100)),
         asDependency<FeatureGateService>(makeFeatureGate({ seats: null })),
+        asDependency<UsageMeteringService>(usageMetering),
       );
       await expect(service.assertCanAddSeat("org-1")).resolves.not.toThrow();
+      expect(usageMetering.enforceLimit).toHaveBeenCalledWith("org-1", "USERS", 1);
     });
 
-    it("enforces default free plan limit of 5 when no subscription", async () => {
+    it("blocks via the users-limit pipeline once the plan's default is reached, even with seats null", async () => {
       const service = new BillingSeatsService(
-        asDependency<PrismaService>(makePrisma(5)),
-        asDependency<FeatureGateService>(makeFeatureGate(null)),
+        asDependency<PrismaService>(makePrisma(100)),
+        asDependency<FeatureGateService>(makeFeatureGate({ seats: null })),
+        asDependency<UsageMeteringService>(makeUsageMetering(true)),
       );
       await expect(service.assertCanAddSeat("org-1")).rejects.toThrow(ConflictException);
     });
 
-    it("allows seat on free plan when under default limit", async () => {
+    it("falls back to the users-limit pipeline when there is no subscription at all", async () => {
+      const usageMetering = makeUsageMetering(false);
       const service = new BillingSeatsService(
         asDependency<PrismaService>(makePrisma(3)),
         asDependency<FeatureGateService>(makeFeatureGate(null)),
+        asDependency<UsageMeteringService>(usageMetering),
       );
       await expect(service.assertCanAddSeat("org-1")).resolves.not.toThrow();
+      expect(usageMetering.enforceLimit).toHaveBeenCalledWith("org-1", "USERS", 1);
     });
   });
 
@@ -88,6 +114,7 @@ describe("BillingSeatsService", () => {
       const service = new BillingSeatsService(
         asDependency<PrismaService>(makePrisma(10)),
         asDependency<FeatureGateService>(makeFeatureGate({ seats: 10 })),
+        asDependency<UsageMeteringService>(makeUsageMetering(false)),
       );
       await expect(
         service.assertCanActivateMembership("org-1", "member-1", "INVITED"),
@@ -100,6 +127,7 @@ describe("BillingSeatsService", () => {
       const service = new BillingSeatsService(
         asDependency<PrismaService>(prisma),
         asDependency<FeatureGateService>(makeFeatureGate({ seats: 10 })),
+        asDependency<UsageMeteringService>(makeUsageMetering(false)),
       );
       await expect(
         service.assertCanActivateMembership("org-1", "member-1", "ACTIVE"),
@@ -110,6 +138,7 @@ describe("BillingSeatsService", () => {
       const service = new BillingSeatsService(
         asDependency<PrismaService>(makePrisma(10)),
         asDependency<FeatureGateService>(makeFeatureGate({ seats: 10 })),
+        asDependency<UsageMeteringService>(makeUsageMetering(false)),
       );
       await expect(
         service.assertCanActivateMembership("org-1", "member-1", "ACTIVE"),
@@ -120,6 +149,7 @@ describe("BillingSeatsService", () => {
       const service = new BillingSeatsService(
         asDependency<PrismaService>(makePrisma(5)),
         asDependency<FeatureGateService>(makeFeatureGate({ seats: 10 })),
+        asDependency<UsageMeteringService>(makeUsageMetering(false)),
       );
       await expect(
         service.assertCanActivateMembership("org-1", "member-1", "ACTIVE"),
@@ -133,6 +163,7 @@ describe("BillingSeatsService", () => {
       const service = new BillingSeatsService(
         asDependency<PrismaService>(prisma),
         asDependency<FeatureGateService>(makeFeatureGate({ seats: 10 })),
+        asDependency<UsageMeteringService>(makeUsageMetering(false)),
       );
       expect(await service.countActiveSeats("org-1")).toBe(7);
       expect(prisma.membership.count).toHaveBeenCalledWith({
@@ -150,6 +181,7 @@ describe("BillingSeatsService", () => {
       const service = new BillingSeatsService(
         asDependency<PrismaService>(makePrisma(5)),
         asDependency<FeatureGateService>(makeFeatureGate({ seats: 10 })),
+        asDependency<UsageMeteringService>(makeUsageMetering(false)),
       );
       const summary = await service.getSeatSummary("org-1");
 
@@ -163,6 +195,7 @@ describe("BillingSeatsService", () => {
       const service = new BillingSeatsService(
         asDependency<PrismaService>(makePrisma(50)),
         asDependency<FeatureGateService>(makeFeatureGate({ seats: null })),
+        asDependency<UsageMeteringService>(makeUsageMetering(false)),
       );
       const summary = await service.getSeatSummary("org-1");
 
@@ -176,6 +209,7 @@ describe("BillingSeatsService", () => {
       const service = new BillingSeatsService(
         asDependency<PrismaService>(makePrisma(3)),
         asDependency<FeatureGateService>(makeFeatureGate(null)),
+        asDependency<UsageMeteringService>(makeUsageMetering(false)),
       );
       const summary = await service.getSeatSummary("org-1");
 

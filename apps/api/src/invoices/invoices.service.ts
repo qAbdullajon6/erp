@@ -127,7 +127,7 @@ export class InvoicesService {
       metadata: { invoiceNumber, totalAmount: totalAmount.toString() },
     });
 
-    void this.workflowEvents.emit(organizationId, "invoice.created", { id: invoice.id, invoiceNumber, customerId: invoice.customerId, totalAmount: totalAmount.toString() });
+    void this.workflowEvents.emit(organizationId, "invoice.created", { id: invoice.id, invoiceNumber, orderId: invoice.orderId, customerId: invoice.customerId, totalAmount: totalAmount.toString() });
 
     return this.toResponse(invoice);
   }

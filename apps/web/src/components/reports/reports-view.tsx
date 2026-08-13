@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -6,6 +6,7 @@ import { useCurrentUser } from '@/lib/api/auth';
 import type { MembershipRole } from '@/lib/api/organizations';
 import type { ComparisonPeriod, ReportFilterParams } from '@/lib/api/reports';
 import { FLEET_ROLES, INVOICE_FINALIZE_ROLES } from '@/lib/role-access';
+import type { ReportTab } from '@/routes/app.reports';
 import { DateRangeFilter } from './date-range-filter';
 import { resolvePreset, type DateRangePreset, type DateRangeValue } from './report-date-range';
 import { ExecutiveOverviewTab } from './executive-overview-tab';
@@ -23,15 +24,48 @@ const COMPARISON_OPTIONS: { value: ComparisonPeriod; label: string }[] = [
 
 export function ReportsView() {
   const { data: currentUser, loading, error, refetch } = useCurrentUser();
-  const [range, setRange] = useState<DateRangeValue>(() => resolvePreset('last_30_days'));
-  const [comparisonPeriod, setComparisonPeriod] = useState<ComparisonPeriod>('previous_period');
+  const navigate = useNavigate({ from: '/app/reports' });
+  const search = useSearch({ from: '/app/reports' });
+
+  const tab: ReportTab = search.tab ?? 'executive';
+  const comparisonPeriod: ComparisonPeriod = search.comparisonPeriod ?? 'previous_period';
+  const range: DateRangeValue =
+    search.preset === 'custom' && search.dateFrom && search.dateTo
+      ? { preset: 'custom', dateFrom: search.dateFrom, dateTo: search.dateTo }
+      : resolvePreset(search.preset ?? 'last_30_days');
+
+  const setTab = (next: string) => {
+    void navigate({
+      to: '/app/reports',
+      search: (prev) => ({ ...prev, tab: next === 'executive' ? undefined : (next as ReportTab) }),
+    });
+  };
 
   const handlePresetChange = (preset: DateRangePreset) => {
-    setRange(resolvePreset(preset, preset === 'custom' ? { dateFrom: range.dateFrom, dateTo: range.dateTo } : undefined));
+    const next = resolvePreset(preset, preset === 'custom' ? { dateFrom: range.dateFrom, dateTo: range.dateTo } : undefined);
+    void navigate({
+      to: '/app/reports',
+      search: (prev) => ({
+        ...prev,
+        preset: preset === 'last_30_days' ? undefined : preset,
+        dateFrom: preset === 'custom' ? next.dateFrom : undefined,
+        dateTo: preset === 'custom' ? next.dateTo : undefined,
+      }),
+    });
   };
 
   const handleCustomChange = (dateFrom: string, dateTo: string) => {
-    setRange({ preset: 'custom', dateFrom, dateTo });
+    void navigate({
+      to: '/app/reports',
+      search: (prev) => ({ ...prev, preset: 'custom', dateFrom, dateTo }),
+    });
+  };
+
+  const setComparisonPeriod = (next: ComparisonPeriod) => {
+    void navigate({
+      to: '/app/reports',
+      search: (prev) => ({ ...prev, comparisonPeriod: next === 'previous_period' ? undefined : next }),
+    });
   };
 
   if (loading) {
@@ -96,7 +130,12 @@ export function ReportsView() {
         </div>
       </div>
 
-      <Tabs defaultValue="executive">
+      <Tabs
+        value={
+          (tab === 'financial' && !canViewFinancial) || (tab === 'fleet' && !canViewFleet) ? 'executive' : tab
+        }
+        onValueChange={setTab}
+      >
         <TabsList>
           <TabsTrigger value="executive">Executive Overview</TabsTrigger>
           <TabsTrigger value="operations">Operations</TabsTrigger>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { useCurrentUser } from '@/lib/api/auth';
@@ -7,6 +8,7 @@ import { customersAPI } from '@/lib/api/customers';
 import type { MembershipRole } from '@/lib/api/organizations';
 import { formatMoney } from '@/lib/format';
 import { INVOICE_WRITE_ROLES } from '@/lib/role-access';
+import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-states';
 import { PaginationBar } from '@/components/shared/pagination-bar';
 import { StatusBadge } from '@/components/shared/status-badge';
@@ -15,23 +17,48 @@ import { InvoiceDetailSheet } from './invoice-detail-sheet';
 
 const STATUS_OPTIONS: InvoiceStatus[] = ['DRAFT', 'SENT', 'PARTIALLY_PAID', 'PAID', 'OVERDUE', 'CANCELLED'];
 
-interface InvoicesListProps {
-  initialInvoiceId?: string;
-}
-
-export function InvoicesList({ initialInvoiceId }: InvoicesListProps) {
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState<InvoiceStatus | ''>('');
-  const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(initialInvoiceId ?? null);
+export function InvoicesList() {
+  const navigate = useNavigate({ from: '/app/finance' });
+  const searchState = useSearch({ from: '/app/finance' });
+  const page = searchState.invoicePage || 1;
+  const search = searchState.invoiceSearch || '';
+  const status = (searchState.invoiceStatus || '') as InvoiceStatus | '';
+  // The URL is the source of truth — browser back/forward on invoiceId must
+  // close/reopen the sheet, not just change the address bar underneath it.
+  const selectedInvoiceId = searchState.invoiceId ?? null;
+  const [localSearch, setLocalSearch] = useState(search);
   const { data: currentUser } = useCurrentUser();
   const canWrite = Boolean(
     currentUser && INVOICE_WRITE_ROLES.includes(currentUser.membership.role as MembershipRole),
   );
 
   useEffect(() => {
-    if (initialInvoiceId) setSelectedInvoiceId(initialInvoiceId);
-  }, [initialInvoiceId]);
+    setLocalSearch(search);
+  }, [search]);
+
+  const debouncedSearch = useDebouncedValue(localSearch, 300);
+  useEffect(() => {
+    if (debouncedSearch === search) return;
+    void navigate({
+      to: '/app/finance',
+      search: (prev) => ({ ...prev, invoicePage: undefined, invoiceSearch: debouncedSearch || undefined }),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch]);
+
+  const setStatus = (next: InvoiceStatus | '') => {
+    void navigate({
+      to: '/app/finance',
+      search: (prev) => ({ ...prev, invoicePage: undefined, invoiceStatus: next || undefined }),
+    });
+  };
+
+  const setPage = (next: number) => {
+    void navigate({
+      to: '/app/finance',
+      search: (prev) => ({ ...prev, invoicePage: next === 1 ? undefined : next }),
+    });
+  };
 
   const { data, isLoading, isError, error, refetch } = useInvoicesQuery({
     page,
@@ -46,7 +73,12 @@ export function InvoicesList({ initialInvoiceId }: InvoicesListProps) {
   });
   const customerNameById = new Map((customers?.items ?? []).map((c) => [c.id, c.companyName]));
 
-  const openInvoice = (id: string) => setSelectedInvoiceId(id);
+  const openInvoice = (id: string) => {
+    void navigate({ to: '/app/finance', search: (prev) => ({ ...prev, invoiceId: id }) });
+  };
+  const closeInvoice = () => {
+    void navigate({ to: '/app/finance', search: (prev) => ({ ...prev, invoiceId: undefined }) });
+  };
 
   return (
     <div className="space-y-6">
@@ -65,11 +97,8 @@ export function InvoicesList({ initialInvoiceId }: InvoicesListProps) {
           <Input
             id="invoice-search"
             placeholder="Invoice number..."
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
+            value={localSearch}
+            onChange={(e) => setLocalSearch(e.target.value)}
             className="mt-1"
           />
         </div>
@@ -78,10 +107,7 @@ export function InvoicesList({ initialInvoiceId }: InvoicesListProps) {
           <select
             id="invoice-status"
             value={status}
-            onChange={(e) => {
-              setStatus(e.target.value as InvoiceStatus | '');
-              setPage(1);
-            }}
+            onChange={(e) => setStatus(e.target.value as InvoiceStatus | '')}
             className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             <option value="">All Statuses</option>
@@ -169,7 +195,7 @@ export function InvoicesList({ initialInvoiceId }: InvoicesListProps) {
         />
       )}
 
-      <InvoiceDetailSheet invoiceId={selectedInvoiceId} onOpenChange={(open) => !open && setSelectedInvoiceId(null)} />
+      <InvoiceDetailSheet invoiceId={selectedInvoiceId} onOpenChange={(open) => !open && closeInvoice()} />
     </div>
   );
 }

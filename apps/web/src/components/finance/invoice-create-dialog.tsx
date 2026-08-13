@@ -132,7 +132,7 @@ export function InvoiceCreateDialog() {
           <DialogDescription>Bill a customer directly, or link this invoice to a delivered order.</DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} noValidate className="space-y-5">
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="text-sm font-medium text-foreground">Customer *</label>

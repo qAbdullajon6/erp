@@ -229,15 +229,16 @@ export class AiController {
     @Body() body: { confirmed: boolean },
   ) {
     this.ai.assertAllowed(user);
-    return { acknowledged: true, confirmed: body.confirmed };
+    const pending = this.ai.recordConfirmation(user, id, body.confirmed);
+    return { acknowledged: pending, confirmed: body.confirmed };
   }
 
   // ── Memory ──────────────────────────────────────────────────────
 
   @Get("memory")
-  listMemory(@CurrentUser() user: CurrentUserPayload) {
+  async listMemory(@CurrentUser() user: CurrentUserPayload) {
     this.ai.assertAllowed(user);
-    return { items: this.memory.list(user) };
+    return { items: await this.memory.list(user) };
   }
 
   @Post("memory")

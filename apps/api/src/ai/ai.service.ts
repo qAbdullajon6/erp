@@ -16,6 +16,8 @@ import { ToolExecutor, type ToolExecutionResult } from "./tools/tool-executor";
 import { PromptInjectionGuard } from "./security/prompt-injection.guard";
 import { OutputFilter } from "./security/output-filter";
 import { AiRateLimitService } from "./security/ai-rate-limit.service";
+import { UsageMeteringService } from "../billing/usage-metering.service";
+import { UsageMetricType } from "@prisma/client";
 
 /// Events the controller relays to the browser over SSE.
 export type ChatEvent =
@@ -50,6 +52,32 @@ export class AiService {
   /// rather than merely hiding output that is still being billed.
   private readonly running = new Map<string, AbortController>();
 
+  /// A mutating tool call the model requested but has not yet been allowed to
+  /// run. Set when `chat()` yields `confirmation_required`; resolved by
+  /// `recordConfirmation()`, which the /confirm endpoint calls. Per-process and
+  /// in-memory like `running` above — a pending confirmation does not need to
+  /// survive an API restart, and the row in `AiToolCall` (status
+  /// AWAITING_CONFIRMATION) is the durable record of what was proposed.
+  private readonly pendingConfirmations = new Map<
+    string,
+    { toolCalls: LlmToolCall[]; assistantMessageId: string; decision?: boolean }
+  >();
+
+  /// Called by the /confirm endpoint. Records the user's decision; the actual
+  /// execution (or cancellation) happens on the NEXT chat() call for this
+  /// conversation, which is what the client sends immediately after — see
+  /// ConfirmationBanner. Returns false if there is nothing pending, so the
+  /// controller can tell a stale click from a real one.
+  recordConfirmation(actor: CurrentUserPayload, conversationId: string, confirmed: boolean): boolean {
+    const pending = this.pendingConfirmations.get(conversationId);
+    if (!pending) return false;
+    pending.decision = confirmed;
+    this.logger.log(
+      `AI tool call ${confirmed ? "confirmed" : "denied"} by ${actor.userId} on conversation ${conversationId}`,
+    );
+    return true;
+  }
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
@@ -65,6 +93,7 @@ export class AiService {
     private readonly injectionGuard: PromptInjectionGuard,
     private readonly outputFilter: OutputFilter,
     private readonly rateLimit: AiRateLimitService,
+    private readonly usageMetering: UsageMeteringService,
   ) {}
 
   private get aiConfig(): AiConfig {
@@ -88,8 +117,9 @@ export class AiService {
     params: { conversationId: string; message: string },
   ): AsyncGenerator<ChatEvent> {
     this.assertAllowed(actor);
-    // Consumed BEFORE any provider call: a limiter checked afterwards has
+    // Checked BEFORE any provider call: a quota checked afterwards has
     // already spent the money it exists to protect.
+    await this.usageMetering.enforceLimit(actor.organizationId, UsageMetricType.AI_CREDITS, 1);
     this.rateLimit.consume(actor.userId);
 
     const conversation = await this.conversations.findOwned(actor, params.conversationId);
@@ -148,13 +178,54 @@ export class AiService {
     const provider = this.providers.get();
     const model = this.providers.resolveModel(conversation.model);
 
-    await this.conversations.addMessage({
-      conversationId: conversation.id,
-      organizationId: actor.organizationId,
-      role: "USER",
-      content: message,
-    });
-    await this.conversations.maybeAutoTitle(conversation.id, message);
+    // A mutating tool call from the PREVIOUS turn, still AWAITING_CONFIRMATION.
+    // Resolved BEFORE this turn's own message is persisted, and — for an
+    // approval — its TOOL result is too (see resumedToolCalls further down):
+    // an assistant message with tool_calls must be immediately followed by
+    // that call's own tool-result message with nothing in between, not even
+    // this turn's "Yes, proceed."/"No, cancel that.", or every
+    // OpenAI-compatible provider rejects the next prompt as malformed.
+    const pending = this.pendingConfirmations.get(conversation.id);
+    this.pendingConfirmations.delete(conversation.id);
+    const resumedToolCalls = pending?.decision === true ? pending.toolCalls : null;
+    const resumedAssistantMessageId = pending?.decision === true ? pending.assistantMessageId : null;
+
+    if (pending && pending.decision !== true) {
+      // Denied, or abandoned — a new message arrived without going through
+      // confirm/cancel at all — either way it never runs.
+      const declined: ToolExecutionResult[] = pending.toolCalls.map((call) => ({
+        toolCallId: call.id,
+        toolName: call.name,
+        status: "DENIED",
+        content: JSON.stringify({ error: "The user did not approve this action." }),
+        raw: null,
+        error: "The user did not approve this action.",
+        durationMs: 0,
+      }));
+      await this.updateToolCallResults(pending.toolCalls, declined);
+      for (const result of declined) {
+        await this.conversations.addMessage({
+          conversationId: conversation.id,
+          organizationId: actor.organizationId,
+          role: "TOOL",
+          content: result.content,
+          toolCallId: result.toolCallId,
+        });
+      }
+    }
+
+    // For a fresh message or a denial, the user's turn is persisted now, same
+    // as always. For an approval, it is persisted later — right after the
+    // resumed tool call's own TOOL result — for the ordering reason above.
+    if (!resumedToolCalls) {
+      await this.conversations.addMessage({
+        conversationId: conversation.id,
+        organizationId: actor.organizationId,
+        role: "USER",
+        content: message,
+      });
+      await this.conversations.maybeAutoTitle(conversation.id, message);
+    }
 
     const readOnly = conversation.readOnly;
     const system = await this.buildSystemPrompt(actor, conversation.id, message, readOnly);
@@ -183,11 +254,22 @@ export class AiService {
 
       for (let iteration = 0; iteration < this.aiConfig.maxToolIterations; iteration++) {
         trace.iterations = iteration + 1;
-        const streamFilter = this.outputFilter.createStreamFilter();
         let text = "";
         let toolCalls: LlmToolCall[] = [];
         let finishReason = "stop";
+        let assistantMessageId: string;
         const iterationStart = Date.now();
+
+        // The first step of a turn that resumes an approved confirmation: the
+        // model already told us exactly what to call, so run that instead of
+        // asking again — asking again could get a different answer the user
+        // never approved.
+        const seeded = iteration === 0 && !!resumedToolCalls && !!resumedAssistantMessageId;
+        if (seeded) {
+          toolCalls = resumedToolCalls!;
+          assistantMessageId = resumedAssistantMessageId!;
+        } else {
+        const streamFilter = this.outputFilter.createStreamFilter();
 
         for await (const event of provider.stream({
           messages,
@@ -248,6 +330,45 @@ export class AiService {
           finishReason: "tool_calls",
           filtered: streamFilter.filtered,
         });
+        assistantMessageId = assistantMessage.id;
+
+        // At least one of these changes data: stop here and ask the user,
+        // rather than let a hallucinated or injected request through. The
+        // model is not asked again on approval — see the resumedToolCalls
+        // branch above — so nothing executes that was not shown to the user
+        // verbatim.
+        const mutatingCalls = toolCalls.filter((call) => this.registry.get(call.name)?.mutating);
+        if (mutatingCalls.length > 0) {
+          const awaiting: ToolExecutionResult[] = toolCalls.map((call) => ({
+            toolCallId: call.id,
+            toolName: call.name,
+            status: "AWAITING_CONFIRMATION",
+            content: JSON.stringify({ status: "awaiting_confirmation" }),
+            raw: null,
+            durationMs: 0,
+          }));
+          await this.persistToolCalls(assistantMessageId, actor.organizationId, toolCalls, awaiting);
+          this.pendingConfirmations.set(conversation.id, { toolCalls, assistantMessageId });
+
+          trace.totalDurationMs = Date.now() - startedAt;
+          yield {
+            type: "confirmation_required",
+            action:
+              mutatingCalls.length === 1
+                ? `Run "${mutatingCalls[0].name}"`
+                : `Run ${mutatingCalls.length} actions: ${mutatingCalls.map((c) => c.name).join(", ")}`,
+            details: { calls: mutatingCalls.map((c) => ({ tool: c.name, arguments: c.arguments })) },
+          };
+          yield {
+            type: "done",
+            messageId: assistantMessageId,
+            usage: totalUsage,
+            finishReason: "tool_calls",
+            trace,
+          };
+          return;
+        }
+        }
 
         const results: ToolExecutionResult[] = [];
         for (const call of toolCalls) {
@@ -278,7 +399,11 @@ export class AiService {
           };
         }
 
-        await this.persistToolCalls(assistantMessage.id, actor.organizationId, toolCalls, results);
+        if (seeded) {
+          await this.updateToolCallResults(toolCalls, results);
+        } else {
+          await this.persistToolCalls(assistantMessageId, actor.organizationId, toolCalls, results);
+        }
         await this.auditMutations(actor, conversation.id, toolCalls, results);
 
         messages.push({
@@ -307,6 +432,20 @@ export class AiService {
         }
 
         await this.rememberTouchedEntities(actor, conversation.id, results);
+
+        // The deferred "Yes, proceed." — see the top of this method. Now that
+        // the approved call's own TOOL result is persisted immediately after
+        // its assistant message, this can safely follow.
+        if (seeded) {
+          await this.conversations.addMessage({
+            conversationId: conversation.id,
+            organizationId: actor.organizationId,
+            role: "USER",
+            content: message,
+          });
+          await this.conversations.maybeAutoTitle(conversation.id, message);
+          messages.push({ role: "user", content: message });
+        }
       }
 
       // The loop ran out. Almost always a model looping on a tool that keeps
@@ -379,6 +518,29 @@ export class AiService {
       // A provider that reuses a call id across turns must not kill the turn.
       skipDuplicates: true,
     });
+  }
+
+  /// Resolves rows `persistToolCalls` already created for a confirmation that
+  /// was AWAITING_CONFIRMATION — an update, not a second insert, because the
+  /// row (and its audit trail) must stay the same one the user was shown.
+  private async updateToolCallResults(
+    calls: LlmToolCall[],
+    results: ToolExecutionResult[],
+  ): Promise<void> {
+    await Promise.all(
+      calls.map((call, i) => {
+        const result = results[i];
+        return this.prisma.aiToolCall.update({
+          where: { id: call.id },
+          data: {
+            result: result?.raw ? (JSON.parse(JSON.stringify(result.raw)) as never) : undefined,
+            status: result?.status ?? "FAILED",
+            error: result?.error,
+            durationMs: result?.durationMs,
+          },
+        });
+      }),
+    );
   }
 
   /// Audits every tool that CHANGED something.

@@ -1,7 +1,7 @@
 import { apiFetch } from './fetch';
 import { unwrapResponse } from './error';
 
-export type WorkflowStatus = 'PENDING' | 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'SKIPPED';
+export type WorkflowStatus = 'PENDING' | 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'TIMED_OUT';
 
 export interface WorkflowTriggerDef {
   type: string;
@@ -69,8 +69,10 @@ export interface WorkflowExecution {
 export interface WorkflowExecutionLog {
   id: string;
   executionId: string;
-  step: string;
-  status: string;
+  step: string | null;
+  /// Matches the WorkflowLog.level column (INFO/WARN/ERROR) — not a step
+  /// status. Real values, not "SUCCESS"/"FAILED".
+  level: string;
   message: string | null;
   details: Record<string, unknown> | null;
   createdAt: string;
@@ -130,6 +132,14 @@ class WorkflowsAPI {
   async toggle(id: string): Promise<Workflow> {
     const response = await apiFetch(`${this.baseUrl}/${id}/toggle`, { method: 'POST' });
     return unwrapResponse<Workflow>(response, 'Failed to toggle workflow');
+  }
+
+  async execute(id: string, eventPayload?: Record<string, unknown>): Promise<WorkflowExecution> {
+    const response = await apiFetch(`${this.baseUrl}/${id}/execute`, {
+      method: 'POST',
+      body: JSON.stringify({ eventPayload }),
+    });
+    return unwrapResponse<WorkflowExecution>(response, 'Failed to run workflow');
   }
 
   async getTriggers(): Promise<WorkflowTriggerDef[]> {

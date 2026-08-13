@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useCurrentUser } from '@/lib/api/auth';
 import type { MembershipRole } from '@/lib/api/organizations';
@@ -9,34 +9,29 @@ import { ExpensesList } from './expenses-list';
 
 type FinanceTab = 'dashboard' | 'invoices' | 'expenses';
 
-interface FinanceConnectedViewProps {
-  initialTab?: FinanceTab;
-  initialInvoiceId?: string;
-}
-
-export function FinanceConnectedView({
-  initialTab,
-  initialInvoiceId,
-}: FinanceConnectedViewProps) {
+export function FinanceConnectedView() {
+  const navigate = useNavigate({ from: '/app/finance' });
+  const search = useSearch({ from: '/app/finance' });
   const { data: currentUser } = useCurrentUser();
   const role = currentUser?.membership.role as MembershipRole | undefined;
   const canReadInvoices = Boolean(role && INVOICE_READ_ROLES.includes(role));
   const canReadExpenses = Boolean(role && EXPENSE_READ_ROLES.includes(role));
 
-  const resolvedInitial: FinanceTab =
-    initialTab === 'invoices' && canReadInvoices
+  const tab: FinanceTab =
+    search.tab === 'invoices' && canReadInvoices
       ? 'invoices'
-      : initialTab === 'expenses' && canReadExpenses
+      : search.tab === 'expenses' && canReadExpenses
         ? 'expenses'
-        : initialInvoiceId && canReadInvoices
+        : search.invoiceId && canReadInvoices
           ? 'invoices'
           : 'dashboard';
 
-  const [tab, setTab] = useState<FinanceTab>(resolvedInitial);
-
-  useEffect(() => {
-    setTab(resolvedInitial);
-  }, [resolvedInitial]);
+  const setTab = (next: FinanceTab) => {
+    void navigate({
+      to: '/app/finance',
+      search: (prev) => ({ ...prev, tab: next === 'dashboard' ? undefined : next }),
+    });
+  };
 
   return (
     <div className="space-y-8">
@@ -56,7 +51,7 @@ export function FinanceConnectedView({
         </TabsContent>
         {canReadInvoices && (
           <TabsContent value="invoices" className="pt-4">
-            <InvoicesList initialInvoiceId={initialInvoiceId} />
+            <InvoicesList />
           </TabsContent>
         )}
         {canReadExpenses && (

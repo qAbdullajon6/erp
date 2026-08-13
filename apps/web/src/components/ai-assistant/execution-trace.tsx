@@ -14,7 +14,9 @@ export function ExecutionTracePanel({ trace }: { trace: ExecutionTrace }) {
     <div className="mx-4 mt-1 mb-2">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        aria-expanded={expanded}
+        aria-label={expanded ? 'Hide execution details' : 'Show execution details'}
+        className="flex items-center gap-1.5 rounded text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
       >
         {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
         <Clock className="h-3 w-3" />

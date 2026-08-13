@@ -11,10 +11,10 @@ import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-s
 import { PaginationBar } from '@/components/shared/pagination-bar';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
-import { useWorkflowList, useToggleWorkflow, useDeleteWorkflow } from '@/hooks/use-workflows';
+import { useWorkflowList, useToggleWorkflow, useDeleteWorkflow, useExecuteWorkflow } from '@/hooks/use-workflows';
 import { WorkflowEditorDialog } from './workflow-editor-dialog';
 import { WorkflowExecutionsDialog } from './workflow-executions-dialog';
-import { Zap, Plus, History } from 'lucide-react';
+import { Zap, Plus, History, Play } from 'lucide-react';
 
 export function WorkflowList() {
   const navigate = useNavigate();
@@ -25,6 +25,7 @@ export function WorkflowList() {
   const { data, meta, loading, error, refetch } = useWorkflowList({ page, limit: 20 });
   const toggleMutation = useToggleWorkflow();
   const deleteMutation = useDeleteWorkflow();
+  const executeMutation = useExecuteWorkflow();
 
   const handlePageChange = useCallback((newPage: number) => setPage(newPage), []);
 
@@ -45,6 +46,13 @@ export function WorkflowList() {
       onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to delete workflow'),
     });
   }, [deleteMutation]);
+
+  const handleExecute = useCallback((id: string) => {
+    executeMutation.mutate(id, {
+      onSuccess: () => toast.success('Workflow run started — check History for the result'),
+      onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to run workflow'),
+    });
+  }, [executeMutation]);
 
   return (
     <div className="space-y-6">
@@ -122,6 +130,23 @@ export function WorkflowList() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleExecute(wf.id)}
+                        disabled={wf.status === 'ARCHIVED' || (wf.status === 'PUBLISHED' && !wf.active) || executeMutation.isPending}
+                        className="gap-1"
+                        title={
+                          wf.status === 'ARCHIVED'
+                            ? 'Archived workflows cannot run'
+                            : wf.status === 'PUBLISHED' && !wf.active
+                              ? 'Activate the workflow to run it'
+                              : 'Run this workflow now'
+                        }
+                      >
+                        <Play className="h-4 w-4" />
+                        Run
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"

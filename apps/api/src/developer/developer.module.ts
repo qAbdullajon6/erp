@@ -12,6 +12,7 @@ import { UsageController } from "./usage/usage.controller";
 import { UsageService } from "./usage/usage.service";
 import { ApiKeyGuard } from "./guards/api-key.guard";
 import { ApiKeyRateLimitGuard } from "./guards/api-key-rate-limit.guard";
+import { ApiQuotaGuard } from "./guards/api-quota.guard";
 import { ApiUsageMiddleware } from "./usage/api-usage.middleware";
 import { SubscriptionService } from "./subscription/subscription.service";
 import { SubscriptionController } from "./subscription/subscription.controller";
@@ -43,9 +44,10 @@ import { SubscriptionController } from "./subscription/subscription.controller";
     UsageService,
     ApiKeyGuard,
     ApiKeyRateLimitGuard,
+    ApiQuotaGuard,
     SubscriptionService,
   ],
-  exports: [WebhookEventService, ApiKeyGuard, ApiKeyRateLimitGuard, UsageService],
+  exports: [WebhookEventService, ApiKeyGuard, ApiKeyRateLimitGuard, ApiQuotaGuard, UsageService],
 })
 export class DeveloperModule implements NestModule {
   /// Metering is applied to the whole /v1 surface here rather than per

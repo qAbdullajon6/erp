@@ -58,22 +58,22 @@ export class SubscriptionService {
       },
       status: subscription.status,
       features: {
-        analyticsEnabled: featureBool(features, "analyticsEnabled"),
-        apiAccessEnabled: featureBool(features, "apiAccessEnabled"),
-        customBrandingEnabled: featureBool(features, "customBrandingEnabled"),
-        prioritySupportEnabled: featureBool(features, "prioritySupportEnabled"),
-        advancedReportingEnabled: featureBool(features, "advancedReportingEnabled"),
+        analyticsEnabled: featureBool(features, "analytics_enabled"),
+        apiAccessEnabled: featureBool(features, "api_access_enabled"),
+        customBrandingEnabled: featureBool(features, "custom_branding"),
+        prioritySupportEnabled: featureBool(features, "priority_support"),
+        advancedReportingEnabled: featureBool(features, "advanced_reporting"),
       },
       limits: {
-        maxUsers: featureLimit(features, "maxUsers"),
-        maxVehicles: featureLimit(features, "maxVehicles"),
-        maxDrivers: featureLimit(features, "maxDrivers"),
-        maxCustomers: featureLimit(features, "maxCustomers"),
-        maxOrders: featureLimit(features, "maxOrders"),
-        maxStorageGB: featureLimit(features, "maxStorageGB"),
-        maxApiRequests: featureLimit(features, "maxApiRequests"),
-        maxAiCredits: featureLimit(features, "maxAiCredits"),
-        maxWebhooks: featureLimit(features, "maxWebhooks"),
+        maxUsers: featureLimit(features, "users"),
+        maxVehicles: featureLimit(features, "vehicles"),
+        maxDrivers: featureLimit(features, "drivers"),
+        maxCustomers: featureLimit(features, "customers"),
+        maxOrders: featureLimit(features, "orders_per_month"),
+        maxStorageGB: featureLimit(features, "storage_gb"),
+        maxApiRequests: featureLimit(features, "api_requests_per_day"),
+        maxAiCredits: featureLimit(features, "ai_credits_per_month"),
+        maxWebhooks: featureLimit(features, "webhooks_per_month"),
       },
     };
   }
@@ -115,15 +115,15 @@ export class SubscriptionService {
     }
 
     const metricLimits: Record<string, string> = {
-      API_REQUESTS: "maxApiRequests",
-      AI_CREDITS: "maxAiCredits",
-      STORAGE_GB: "maxStorageGB",
-      ORDERS: "maxOrders",
-      WEBHOOKS: "maxWebhooks",
-      USERS: "maxUsers",
-      VEHICLES: "maxVehicles",
-      DRIVERS: "maxDrivers",
-      CUSTOMERS: "maxCustomers",
+      API_REQUESTS: "api_requests_per_day",
+      AI_CREDITS: "ai_credits_per_month",
+      STORAGE_GB: "storage_gb",
+      ORDERS: "orders_per_month",
+      WEBHOOKS: "webhooks_per_month",
+      USERS: "users",
+      VEHICLES: "vehicles",
+      DRIVERS: "drivers",
+      CUSTOMERS: "customers",
     };
 
     const quotas = Object.entries(metricLimits).map(([metricType, limitKey]) => {
@@ -159,7 +159,7 @@ export class SubscriptionService {
     }
 
     const features = asFeatureRecord(subscription.plan.features);
-    const maxApiRequests = featureLimit(features, "maxApiRequests") ?? 10000;
+    const maxApiRequests = featureLimit(features, "api_requests_per_day") ?? 10000;
 
     // Rate limits scale with plan
     // Free: 10/min, Starter: 60/min, Professional: 300/min, Enterprise: unlimited

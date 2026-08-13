@@ -90,6 +90,16 @@ export function useToggleWorkflow() {
   });
 }
 
+export function useExecuteWorkflow() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => workflowsAPI.execute(id),
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: workflowKeys.executions(id) });
+    },
+  });
+}
+
 export function useDeleteWorkflow() {
   const queryClient = useQueryClient();
   return useMutation({

@@ -168,7 +168,7 @@ function SubscriptionActions({ subscription }: { subscription: Subscription }) {
           <DialogHeader>
             <DialogTitle>Add seats</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleAddSeats} className="space-y-4">
+          <form onSubmit={handleAddSeats} noValidate className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="seat-count">Number of seats to add</Label>
               <Input

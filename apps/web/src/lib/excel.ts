@@ -3,6 +3,7 @@
 export function toExcelXml<T extends Record<string, unknown>>(
   rows: T[],
   columns: { key: keyof T; label: string }[],
+  sheetName = "Orders",
 ): string {
   const escapeXml = (value: unknown): string => {
     const str = value === null || value === undefined ? "" : String(value);
@@ -29,7 +30,7 @@ export function toExcelXml<T extends Record<string, unknown>>(
 <?mso-application progid="Excel.Sheet"?>
 <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
- <Worksheet ss:Name="Orders">
+ <Worksheet ss:Name="${sheetName}">
   <Table>
    <Row>${headerCells}</Row>
    ${dataRows}

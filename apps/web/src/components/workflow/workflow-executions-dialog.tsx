@@ -67,14 +67,14 @@ export function WorkflowExecutionsDialog({
                       <div key={log.id} className="flex items-start gap-2 text-xs">
                         <span
                           className={
-                            log.status === 'SUCCESS'
-                              ? 'text-emerald-500'
-                              : log.status === 'FAILED' || log.status === 'ERROR'
-                                ? 'text-destructive'
+                            log.level === 'ERROR'
+                              ? 'text-destructive'
+                              : log.level === 'WARN'
+                                ? 'text-amber-500'
                                 : 'text-muted-foreground'
                           }
                         >
-                          [{log.status}]
+                          [{log.level}]
                         </span>
                         <span className="text-foreground">{log.message}</span>
                       </div>

@@ -4,6 +4,31 @@ import { AuditService } from '../audit/audit.service';
 import { WorkflowStatus, WorkflowExecutionStatus, Prisma } from '@prisma/client';
 import { WorkflowEngineService } from './engine/workflow-engine.service';
 
+export interface AffectedEntity {
+  type: string;
+  id: string;
+}
+
+/// Every ActionExecutor `execute*` method returns a different output shape
+/// (see action-executor.ts) — there is no shared "what did this touch"
+/// contract between them. Rather than add one (a larger, riskier change to a
+/// dozen call sites), this reads the id/type fields each shape already has.
+function extractAffectedEntity(output: unknown): AffectedEntity | null {
+  if (!output || typeof output !== 'object') return null;
+  const o = output as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === 'string' && v.length > 0 ? v : undefined);
+
+  const entityType = str(o.entityType);
+  const entityId = str(o.entityId);
+  if (entityType && entityId) return { type: entityType, id: entityId };
+
+  if (str(o.notificationId)) return { type: 'notification', id: str(o.notificationId)! };
+  if (str(o.invoiceId)) return { type: 'invoice', id: str(o.invoiceId)! };
+  if (str(o.dispatchId)) return { type: 'dispatch', id: str(o.dispatchId)! };
+  if (str(o.orderId)) return { type: 'order', id: str(o.orderId)! };
+  return null;
+}
+
 @Injectable()
 export class WorkflowsService {
   constructor(
@@ -347,13 +372,29 @@ export class WorkflowsService {
         orderBy: { startedAt: 'desc' },
         skip,
         take: limit,
-        include: { logs: { orderBy: { createdAt: 'asc' }, take: 50 } },
+        include: {
+          logs: { orderBy: { createdAt: 'asc' }, take: 50 },
+          // Same list-page-sized cost as `logs` above — needed so callers
+          // (including the AI's get_workflow_runs tool) can say WHICH
+          // invoice/notification/etc. a past run actually touched, not just
+          // that it succeeded. Without this the model could see a COMPLETED
+          // "create invoice" run but had no way to name the invoice it made.
+          steps: { orderBy: { stepIndex: 'asc' }, select: { output: true } },
+        },
       }),
       this.prisma.workflowExecution.count({ where }),
     ]);
 
     return {
-      items,
+      items: items.map(({ steps, ...execution }) => ({
+        ...execution,
+        durationMs: execution.completedAt
+          ? execution.completedAt.getTime() - execution.startedAt.getTime()
+          : null,
+        affectedEntities: steps
+          .map((step) => extractAffectedEntity(step.output))
+          .filter((entity): entity is AffectedEntity => entity !== null),
+      })),
       meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
     };
   }
@@ -367,7 +408,37 @@ export class WorkflowsService {
       },
     });
     if (!execution) throw new NotFoundException('Execution not found');
-    return execution;
+
+    // WorkflowExecution itself carries no actor column — manual/retry runs are
+    // attributed on the AuditLog row written alongside them (see
+    // WorkflowEngineService.triggerManual / this.retryExecution below).
+    // Event/schedule/webhook-triggered executions legitimately have none: there
+    // is no human actor for "an order was delivered", so `actor` stays null.
+    const auditEntry = await this.prisma.auditLog.findFirst({
+      where: {
+        organizationId,
+        entityType: 'WorkflowExecution',
+        entityId: execution.id,
+        action: { in: ['workflow.execution.triggered', 'workflow.execution.retried'] },
+      },
+      include: { actor: { select: { id: true, firstName: true, lastName: true, email: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return {
+      ...execution,
+      durationMs: execution.completedAt
+        ? execution.completedAt.getTime() - execution.startedAt.getTime()
+        : null,
+      actor: auditEntry?.actor ?? null,
+      // Pulled from each step's recorded output rather than re-deriving from
+      // the event payload — the output is what the action actually touched,
+      // which for e.g. assign_driver's order-vs-dispatch branching is not
+      // always the same id the trigger payload carried.
+      affectedEntities: execution.steps
+        .map((step) => extractAffectedEntity(step.output))
+        .filter((entity): entity is AffectedEntity => entity !== null),
+    };
   }
 
   async cancelExecution(organizationId: string, userId: string, executionId: string) {

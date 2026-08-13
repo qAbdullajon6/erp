@@ -1,7 +1,9 @@
 'use client';
 
 import { Archive, Check, X } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { describeError } from '@/lib/api/describe-error';
 import { useBulkMarkAsRead, useBulkArchive } from '@/lib/api/notification-center';
 
 interface NotificationActionsProps {
@@ -19,13 +21,21 @@ export function NotificationActions({
   const bulkArchive = useBulkArchive();
 
   const handleBulkMarkAsRead = async () => {
-    await bulkMarkAsRead.mutateAsync(selectedIds);
-    onClearSelection();
+    try {
+      await bulkMarkAsRead.mutateAsync(selectedIds);
+      onClearSelection();
+    } catch (err) {
+      toast.error(describeError(err, 'Failed to mark selected as read'));
+    }
   };
 
   const handleBulkArchive = async () => {
-    await bulkArchive.mutateAsync(selectedIds);
-    onClearSelection();
+    try {
+      await bulkArchive.mutateAsync(selectedIds);
+      onClearSelection();
+    } catch (err) {
+      toast.error(describeError(err, 'Failed to archive selected'));
+    }
   };
 
   return (

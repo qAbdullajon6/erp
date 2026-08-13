@@ -18,15 +18,23 @@ export class FeatureGateService {
   private readonly cacheExpiry = new Map<string, number>();
   private readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
+  /// A org with no subscription row at all (never subscribed, or the row was
+  /// deleted) is NOT the same as a org whose subscription lapsed to zero
+  /// access — it should behave exactly like the Free tier, the same way a
+  /// brand-new signup would. Without this, every quota check for such an org
+  /// would resolve to "0 allowed", which would block every create action the
+  /// instant enforcement is wired in, org-wide, with no warning.
+  private freePlanFeaturesCache: Record<string, unknown> | null = null;
+  private freePlanCacheExpiry = 0;
+
   constructor(private readonly prisma: PrismaService) {}
 
   /// Check if organization's plan includes a boolean feature.
-  /// Returns false if no subscription exists (treat as free plan with no features).
+  /// Falls back to the Free plan's features if there's no subscription row.
   async canUseFeature(organizationId: string, feature: string): Promise<boolean> {
-    const limits = await this.getPlanLimits(organizationId);
-    if (!limits) return false;
+    const features = await this.getEffectiveFeatures(organizationId);
 
-    const value = limits.features[feature];
+    const value = features[feature];
     if (typeof value === "boolean") return value;
     if (value === undefined) return false;
 
@@ -37,7 +45,6 @@ export class FeatureGateService {
   }
 
   /// Check if organization is within a numeric limit.
-  /// Throws 402 Payment Required if limit exceeded.
   /// Returns { allowed: true, remaining: N } if within limit.
   /// Returns { allowed: true, remaining: null } if unlimited.
   async checkLimit(
@@ -45,13 +52,8 @@ export class FeatureGateService {
     limitKey: string,
     currentUsage: number,
   ): Promise<{ allowed: boolean; remaining: number | null }> {
-    const limits = await this.getPlanLimits(organizationId);
-    if (!limits) {
-      // No subscription = free plan with zero limits
-      return { allowed: false, remaining: 0 };
-    }
-
-    const limit = limits.features[limitKey];
+    const features = await this.getEffectiveFeatures(organizationId);
+    const limit = features[limitKey];
 
     // Null/undefined means unlimited
     if (limit === null || limit === undefined) {
@@ -162,10 +164,9 @@ export class FeatureGateService {
   /// Returns undefined if limit doesn't exist.
   /// Returns null if unlimited.
   async getLimit(organizationId: string, limitKey: string): Promise<number | null | undefined> {
-    const limits = await this.getPlanLimits(organizationId);
-    if (!limits) return undefined;
+    const features = await this.getEffectiveFeatures(organizationId);
 
-    const value = limits.features[limitKey];
+    const value = features[limitKey];
     if (value === null || value === undefined) return value;
     if (typeof value === "number") return value;
 
@@ -173,6 +174,30 @@ export class FeatureGateService {
       `Limit ${limitKey} for org ${organizationId} is not a number/null (got ${typeof value})`,
     );
     return undefined;
+  }
+
+  /// Features to gate against for this organization: its actual subscribed
+  /// plan, or the Free plan's features when it has no subscription row at
+  /// all. Callers that need to distinguish "genuinely unsubscribed" from
+  /// "on the Free plan" should use `getPlanLimits`/`hasActiveSubscription`
+  /// instead — this helper is only for the numeric/boolean gate checks.
+  private async getEffectiveFeatures(organizationId: string): Promise<Record<string, unknown>> {
+    const limits = await this.getPlanLimits(organizationId);
+    if (limits) return limits.features;
+    return this.getFreePlanFeatures();
+  }
+
+  private async getFreePlanFeatures(): Promise<Record<string, unknown>> {
+    if (this.freePlanFeaturesCache && Date.now() < this.freePlanCacheExpiry) {
+      return this.freePlanFeaturesCache;
+    }
+
+    const freePlan = await this.prisma.subscriptionPlan.findUnique({ where: { slug: "free" } });
+    const features = (freePlan?.features as Record<string, unknown>) ?? {};
+
+    this.freePlanFeaturesCache = features;
+    this.freePlanCacheExpiry = Date.now() + this.CACHE_TTL_MS;
+    return features;
   }
 
   /// Check if organization has any active subscription.

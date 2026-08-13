@@ -1,4 +1,6 @@
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { BillingTab } from "@/routes/app.billing";
 import { BillingOverviewTab } from "./billing-overview-tab";
 import { PlansTab } from "./plans-tab";
 import { SubscriptionTab } from "./subscription-tab";
@@ -7,6 +9,17 @@ import { PaymentProvidersTab } from "./payment-providers-tab";
 import { SettingsTab } from "./settings-tab";
 
 export function BillingView() {
+  const navigate = useNavigate({ from: "/app/billing" });
+  const search = useSearch({ from: "/app/billing" });
+  const tab: BillingTab = search.tab ?? "overview";
+
+  const setTab = (next: string) => {
+    void navigate({
+      to: "/app/billing",
+      search: (prev) => ({ ...prev, tab: next === "overview" ? undefined : (next as BillingTab) }),
+    });
+  };
+
   return (
     <div className="space-y-8">
       <div>
@@ -16,7 +29,7 @@ export function BillingView() {
         </p>
       </div>
 
-      <Tabs defaultValue="overview">
+      <Tabs value={tab} onValueChange={setTab}>
         {/* Horizontal scroll keeps all six tabs reachable on narrow screens
             without wrapping the tab strip into two rows. */}
         <div className="overflow-x-auto">

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { Printer } from 'lucide-react';
@@ -24,6 +25,7 @@ interface InvoiceDetailSheetProps {
 }
 
 export function InvoiceDetailSheet({ invoiceId, onOpenChange }: InvoiceDetailSheetProps) {
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const open = !!invoiceId;
   const { data: currentUser } = useCurrentUser();
   const canFinalize = Boolean(
@@ -220,20 +222,32 @@ export function InvoiceDetailSheet({ invoiceId, onOpenChange }: InvoiceDetailShe
                 <RecordPaymentDialog invoiceId={invoice.id} balanceDue={invoice.balanceDue} currency={invoice.currency} />
               )}
               {canFinalize && invoice.status !== 'PAID' && invoice.status !== 'CANCELLED' && (
-                <ConfirmDialog
-                  trigger={
-                    <Button size="sm" variant="destructive" disabled={cancelling}>
-                      {cancelling ? 'Cancelling...' : 'Cancel Invoice'}
-                    </Button>
-                  }
-                  title="Cancel this invoice?"
-                  description="Cancelled invoices cannot be sent or receive payments. This cannot be undone from the UI."
-                  confirmLabel="Cancel invoice"
-                  destructive
-                  onConfirm={() => {
-                    void handleCancel();
-                  }}
-                />
+                <>
+                  {/* Controlled (not `trigger`): a Radix AlertDialogTrigger nested inside an
+                      already-open Sheet never opens — the outer Sheet's dismissable layer
+                      eats the click and closes itself instead. */}
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={cancelling}
+                    onClick={() => setCancelConfirmOpen(true)}
+                  >
+                    {cancelling ? 'Cancelling...' : 'Cancel Invoice'}
+                  </Button>
+                  <ConfirmDialog
+                    open={cancelConfirmOpen}
+                    onOpenChange={setCancelConfirmOpen}
+                    title="Cancel this invoice?"
+                    description="Cancelled invoices cannot be sent or receive payments. This cannot be undone from the UI."
+                    confirmLabel="Cancel invoice"
+                    destructive
+                    onConfirm={() => {
+                      setCancelConfirmOpen(false);
+                      void handleCancel();
+                    }}
+                    onCancel={() => setCancelConfirmOpen(false)}
+                  />
+                </>
               )}
             </div>
           </div>

@@ -156,21 +156,49 @@ export class OpenAiProvider implements LlmProvider {
     return {
       model: request.model,
       messages: toOpenAiMessages(request.messages, request.system),
-      max_tokens: request.maxTokens,
+      // `max_tokens` is rejected outright by newer model families (gpt-5.x);
+      // `max_completion_tokens` is OpenAI's replacement and has been accepted
+      // by every Chat Completions model since its introduction, so there is no
+      // older model this needs to special-case.
+      max_completion_tokens: request.maxTokens,
       temperature: request.temperature,
       ...(toOpenAiTools(request) ? { tools: toOpenAiTools(request) } : {}),
       ...(stream ? { stream: true, stream_options: { include_usage: true } } : {}),
     };
   }
 
-  async complete(request: LlmRequest): Promise<LlmResponse> {
+  /// POSTs the request body, and if the model rejects a specific parameter
+  /// outright (`code: "unsupported_value"`, e.g. newer reasoning-tuned models
+  /// fixing `temperature` at 1 and refusing any other value), retries once
+  /// with that parameter dropped so the model's own fixed value is used
+  /// instead of failing the turn. Not a hardcoded model list — it reacts to
+  /// whatever OpenAI's error names, so it does not go stale as they ship more
+  /// restrictive model families.
+  private async postChatCompletion(body: Record<string, unknown>, signal?: AbortSignal): Promise<Response> {
     const response = await fetch(this.url, {
       method: "POST",
       headers: this.headers(),
-      body: JSON.stringify(this.buildBody(request, false)),
-      signal: request.signal,
+      body: JSON.stringify(body),
+      signal,
     });
-    if (!response.ok) throw await toOpenAiError(response, this.name);
+    if (response.ok) return response;
+
+    const raw = await response.text().catch(() => "");
+    const retryBody = withoutRejectedParam(raw, body);
+    if (!retryBody) throw await toOpenAiError(response, this.name, raw);
+
+    const retried = await fetch(this.url, {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify(retryBody),
+      signal,
+    });
+    if (!retried.ok) throw await toOpenAiError(retried, this.name);
+    return retried;
+  }
+
+  async complete(request: LlmRequest): Promise<LlmResponse> {
+    const response = await this.postChatCompletion(this.buildBody(request, false), request.signal);
 
     const body = (await response.json()) as {
       model: string;
@@ -204,14 +232,37 @@ export class OpenAiProvider implements LlmProvider {
   }
 
   async *stream(request: LlmRequest): AsyncIterable<LlmStreamEvent> {
-    yield* streamOpenAiCompatible(
-      this.url,
-      this.headers(),
-      this.buildBody(request, true),
-      this.name,
-      request.signal,
-    );
+    let response: Response;
+    try {
+      response = await this.postChatCompletion(this.buildBody(request, true), request.signal);
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        yield { type: "done", usage: { promptTokens: 0, completionTokens: 0 }, finishReason: "cancelled" };
+        return;
+      }
+      if (err instanceof LlmProviderError) throw err;
+      throw new LlmProviderError(err instanceof Error ? err.message : String(err), this.name, undefined, true);
+    }
+    if (!response.body) throw new LlmProviderError("Empty response stream", this.name);
+    yield* parseOpenAiSseStream(response, this.name, request.signal);
   }
+}
+
+/// A newer model family (o1/o3/gpt-5.x) fixes some sampling parameters and
+/// rejects any request that names them explicitly, even at the value we'd
+/// have defaulted to. Given the exact parameter OpenAI named, drop it from a
+/// retry so the model's own fixed value is used instead of failing the turn.
+function withoutRejectedParam(raw: string, body: Record<string, unknown>): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(raw) as { error?: { code?: string; param?: string } };
+    const param = parsed.error?.param;
+    if (parsed.error?.code === "unsupported_value" && param && param in body) {
+      return Object.fromEntries(Object.entries(body).filter(([key]) => key !== param));
+    }
+  } catch {
+    /* non-JSON body */
+  }
+  return null;
 }
 
 /// The streaming loop, shared by the OpenAI and Ollama adapters.
@@ -241,12 +292,23 @@ export async function* streamOpenAiCompatible(
   if (!response.ok) throw await toOpenAiError(response, providerName);
   if (!response.body) throw new LlmProviderError("Empty response stream", providerName);
 
+  yield* parseOpenAiSseStream(response, providerName, signal);
+}
+
+/// The SSE-parsing half of the streaming loop, split out so a caller that
+/// already has a `Response` (e.g. after a retry with an adjusted body) can
+/// parse it without re-issuing the fetch.
+export async function* parseOpenAiSseStream(
+  response: Response,
+  providerName: string,
+  signal?: AbortSignal,
+): AsyncIterable<LlmStreamEvent> {
   const tools = new OpenAiToolAccumulator();
   const usage = { promptTokens: 0, completionTokens: 0 };
   let finishReason: LlmResponse["finishReason"] = "stop";
 
   try {
-    for await (const event of parseSseStream(response.body, signal)) {
+    for await (const event of parseSseStream(response.body!, signal)) {
       if (event.data === "[DONE]") break;
 
       const parsed = JSON.parse(event.data) as {
@@ -307,8 +369,12 @@ function safeParseArgs(raw: string): Record<string, unknown> {
 /// Shared by both OpenAI-compatible adapters. As with Anthropic, the vendor's
 /// body is not echoed verbatim: it can contain the request, and the request
 /// contains the organization's data.
-export async function toOpenAiError(response: Response, providerName: string): Promise<LlmProviderError> {
-  const raw = await response.text().catch(() => "");
+export async function toOpenAiError(
+  response: Response,
+  providerName: string,
+  rawOverride?: string,
+): Promise<LlmProviderError> {
+  const raw = rawOverride ?? (await response.text().catch(() => ""));
   let detail = "";
   try {
     const parsed = JSON.parse(raw) as { error?: { message?: string } };

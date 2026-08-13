@@ -1,29 +1,37 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { ConflictException, Injectable, Logger } from "@nestjs/common";
 import { Prisma, UsageMetricType } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { FeatureGateService } from "./feature-gate.service";
 import { TRACKED_USAGE_METRICS } from "./usage-metric-types";
 
+export const BYTES_PER_GB = 1024 * 1024 * 1024;
+
+/// Metrics that represent a live total (current inventory), not something
+/// that resets each billing period — a company doesn't lose its vehicles or
+/// team members when a new month starts. These are recomputed directly from
+/// the source-of-truth table on every read, so they can never drift out of
+/// sync with reality and correctly "decrement" the instant a record is
+/// archived/deleted, with no extra bookkeeping required anywhere.
+const LIVE_TOTAL_METRICS = new Set<UsageMetricType>([
+  UsageMetricType.USERS,
+  UsageMetricType.VEHICLES,
+  UsageMetricType.DRIVERS,
+  UsageMetricType.CUSTOMERS,
+  UsageMetricType.STORAGE_GB,
+]);
+
 /// Real-time usage tracking and quota enforcement.
 ///
-/// Records every metered event (API call, AI message, order creation) to
-/// UsageRecord table. Aggregates into daily/monthly snapshots for fast quota
-/// checks. All writes are fire-and-forget (metering failure never blocks user
-/// operations).
-///
-/// Metrics tracked:
-/// - API_REQUESTS: Developer Portal API calls
-/// - AI_CREDITS: AI Copilot messages (each message = 1 credit)
-/// - STORAGE_GB: Document/attachment storage
-/// - ORDERS: Orders created this billing period
-/// - WEBHOOKS: Webhook deliveries
-/// - USERS: Active user count (derived from memberships)
-/// - VEHICLES: Active vehicle count
-/// - DRIVERS: Active driver count
-/// - CUSTOMERS: Active customer count
+/// Current usage for every tracked metric is computed live from its actual
+/// source-of-truth table (never a separately-maintained counter that can
+/// drift): inventory-style metrics (Users/Vehicles/Drivers/Customers/Storage)
+/// are a live count/sum with no time window; consumption-style metrics
+/// (Orders/Webhooks/AI credits) are a live count scoped to the current
+/// billing period; API requests are scoped to the current calendar day,
+/// matching the `api_requests_per_day` plan-feature name.
 ///
 /// Usage:
-///   await usageMetering.trackUsage(orgId, 'API_REQUESTS', 1)
+///   await usageMetering.enforceLimit(orgId, 'ORDERS', 1)   // throws if over plan limit
 ///   const used = await usageMetering.getCurrentUsage(orgId, 'ORDERS')
 ///   const remaining = await usageMetering.getRemainingQuota(orgId, 'AI_CREDITS')
 @Injectable()
@@ -70,52 +78,78 @@ export class UsageMeteringService {
     }
   }
 
-  /// Get current usage for a metric in the current billing period.
-  /// Returns 0 if no usage records exist.
+  /// Get current usage for a metric, computed live from its source table.
+  /// Returns 0 if the organization has no active subscription (inventory
+  /// metrics still resolve, since they don't depend on a billing period).
   async getCurrentUsage(organizationId: string, metricType: UsageMetricType): Promise<number> {
-    const period = await this.getCurrentBillingPeriod(organizationId);
-    if (!period) return 0;
+    switch (metricType) {
+      case UsageMetricType.USERS:
+        // Mirrors BillingSeatsService.countActiveSeats exactly — platform
+        // support staff entering a tenant org are not billable seats.
+        return this.prisma.membership.count({
+          where: { organizationId, status: "ACTIVE", user: { isPlatformAdmin: false } },
+        });
 
-    // Check snapshot first (faster)
-    const snapshot = await this.prisma.usageSnapshot.findFirst({
-      where: {
-        organizationId,
-        metricType,
-        period: "monthly",
-        periodStart: period.start,
-      },
-      orderBy: { createdAt: "desc" },
-    });
+      case UsageMetricType.VEHICLES:
+        return this.prisma.vehicle.count({ where: { organizationId, archivedAt: null } });
 
-    if (snapshot) {
-      // Add usage since snapshot was created
-      const recentUsage = await this.prisma.usageRecord.aggregate({
-        where: {
-          organizationId,
-          metricType,
-          recordedAt: { gte: snapshot.createdAt },
-          periodStart: period.start,
-        },
-        _sum: { value: true },
-      });
+      case UsageMetricType.DRIVERS:
+        return this.prisma.driver.count({ where: { organizationId, archivedAt: null } });
 
-      const snapshotValue = snapshot.value.toNumber();
-      const recentValue = recentUsage._sum.value?.toNumber() ?? 0;
-      return snapshotValue + recentValue;
+      case UsageMetricType.CUSTOMERS:
+        return this.prisma.customer.count({ where: { organizationId, archivedAt: null } });
+
+      case UsageMetricType.STORAGE_GB: {
+        const result = await this.prisma.orderDocument.aggregate({
+          where: { organizationId },
+          _sum: { fileSizeBytes: true },
+        });
+        return (result._sum.fileSizeBytes ?? 0) / BYTES_PER_GB;
+      }
+
+      case UsageMetricType.ORDERS: {
+        const period = await this.getCurrentBillingPeriod(organizationId);
+        if (!period) return 0;
+        return this.prisma.order.count({
+          where: { organizationId, createdAt: { gte: period.start, lt: period.end } },
+        });
+      }
+
+      case UsageMetricType.WEBHOOKS: {
+        const period = await this.getCurrentBillingPeriod(organizationId);
+        if (!period) return 0;
+        return this.prisma.webhookDelivery.count({
+          where: { organizationId, createdAt: { gte: period.start, lt: period.end } },
+        });
+      }
+
+      case UsageMetricType.AI_CREDITS: {
+        const period = await this.getCurrentBillingPeriod(organizationId);
+        if (!period) return 0;
+        // 1 assistant turn = 1 credit — a user's prompt doesn't itself cost
+        // anything, matching the "each message = 1 credit" convention this
+        // metric was originally documented with.
+        return this.prisma.aiMessage.count({
+          where: {
+            organizationId,
+            role: "ASSISTANT",
+            createdAt: { gte: period.start, lt: period.end },
+          },
+        });
+      }
+
+      case UsageMetricType.API_REQUESTS: {
+        // Deliberately a calendar-day window, not the monthly billing
+        // period — the plan feature is literally named `api_requests_per_day`.
+        const { start, end } = this.getTodayWindow();
+        return this.prisma.apiUsageRecord.count({
+          where: { organizationId, createdAt: { gte: start, lt: end } },
+        });
+      }
+
+      default:
+        return 0;
     }
-
-    // No snapshot, sum all usage records for this period
-    const result = await this.prisma.usageRecord.aggregate({
-      where: {
-        organizationId,
-        metricType,
-        periodStart: period.start,
-        periodEnd: period.end,
-      },
-      _sum: { value: true },
-    });
-
-    return result._sum.value?.toNumber() ?? 0;
   }
 
   /// Get remaining quota for a metric.
@@ -128,7 +162,11 @@ export class UsageMeteringService {
   }
 
   /// Check if usage would exceed limit.
-  /// Throws ConflictException with user-friendly message if would exceed.
+  /// Throws ConflictException with a user-friendly message if it would —
+  /// matching the exception type every other limit-check in this codebase
+  /// uses (BillingSeatsService.assertCanAddSeat, uniqueness conflicts, etc.)
+  /// so it's caught correctly by the global exception filter and surfaced to
+  /// the frontend as a blocking toast rather than a generic 500.
   async enforceLimit(
     organizationId: string,
     metricType: UsageMetricType,
@@ -147,25 +185,25 @@ export class UsageMeteringService {
     if (wouldExceed) {
       const limit = await this.featureGate.getLimit(organizationId, limitKey);
       const metricLabel = this.getMetricLabel(metricType);
+      const period = this.getPeriodSuffix(metricType);
 
-      throw new Error(
-        `${metricLabel} limit exceeded. Your plan allows ${limit} ${this.getUnit(metricType)} per month. ` +
+      throw new ConflictException(
+        `${metricLabel} limit reached. Your plan allows ${limit} ${this.getUnit(metricType)}${period}. ` +
           `Current usage: ${currentUsage}. Upgrade your plan to increase limits.`,
       );
     }
   }
 
   /// Get usage summary for all metrics.
-  /// Used by billing dashboard and customer portal.
+  /// Used by billing dashboard and customer portal. Still returns live-total
+  /// metrics (Users/Vehicles/Drivers/Customers/Storage) for an organization
+  /// with no subscription row at all — those don't depend on a billing
+  /// period, and the Free-plan-fallback limits still apply to them.
   async getUsageSummary(organizationId: string): Promise<UsageSummary> {
     const period = await this.getCurrentBillingPeriod(organizationId);
-    if (!period) {
-      return {
-        periodStart: new Date(),
-        periodEnd: new Date(),
-        metrics: [],
-      };
-    }
+    const today = this.getTodayWindow();
+    const periodStart = period?.start ?? today.start;
+    const periodEnd = period?.end ?? today.end;
 
     const metrics: MetricUsage[] = [];
 
@@ -187,8 +225,8 @@ export class UsageMeteringService {
     }
 
     return {
-      periodStart: period.start,
-      periodEnd: period.end,
+      periodStart,
+      periodEnd,
       metrics,
     };
   }
@@ -258,6 +296,25 @@ export class UsageMeteringService {
         },
       });
     }
+  }
+
+  /// Midnight-to-midnight window for "today", in server-local time — used
+  /// for API_REQUESTS, which is a daily quota (`api_requests_per_day`), not
+  /// a monthly one, so it must not be scoped to the billing period.
+  private getTodayWindow(): { start: Date; end: Date } {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    return { start, end };
+  }
+
+  /// " per day" / " per month" / "" suffix for enforceLimit's message,
+  /// matching each metric's actual reset cadence (or none, for live totals).
+  private getPeriodSuffix(metricType: UsageMetricType): string {
+    if (LIVE_TOTAL_METRICS.has(metricType)) return "";
+    if (metricType === UsageMetricType.API_REQUESTS) return " per day";
+    return " per month";
   }
 
   /// Get current billing period for an organization.

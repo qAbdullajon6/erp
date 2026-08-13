@@ -16,6 +16,14 @@ interface MockSubscriptionOverride {
   };
 }
 
+const FREE_PLAN_FEATURES = {
+  users: 3,
+  vehicles: 5,
+  custom_branding: false,
+  sso: false,
+  storage_gb: 1,
+};
+
 function makePrisma(subscriptionOverride?: MockSubscriptionOverride | null) {
   return {
     organizationSubscription: {
@@ -43,6 +51,9 @@ function makePrisma(subscriptionOverride?: MockSubscriptionOverride | null) {
               },
             },
       ),
+    },
+    subscriptionPlan: {
+      findUnique: jest.fn().mockResolvedValue({ slug: "free", features: FREE_PLAN_FEATURES }),
     },
   };
 }
@@ -120,9 +131,16 @@ describe("FeatureGateService", () => {
       expect(result.remaining).toBeNull();
     });
 
-    it("returns allowed=false when no subscription exists", async () => {
+    it("falls back to the Free plan's limit when no subscription exists (not zero access)", async () => {
       service = new FeatureGateService(asDependency<PrismaService>(makePrisma(null)));
       const result = await service.checkLimit("org-1", "users", 0);
+      expect(result.allowed).toBe(true);
+      expect(result.remaining).toBe(FREE_PLAN_FEATURES.users);
+    });
+
+    it("still blocks once usage reaches the Free plan's fallback limit", async () => {
+      service = new FeatureGateService(asDependency<PrismaService>(makePrisma(null)));
+      const result = await service.checkLimit("org-1", "users", FREE_PLAN_FEATURES.users);
       expect(result.allowed).toBe(false);
       expect(result.remaining).toBe(0);
     });

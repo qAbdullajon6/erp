@@ -1,7 +1,8 @@
 import { ConflictException, Injectable } from "@nestjs/common";
-import type { MembershipStatus } from "@prisma/client";
+import { UsageMetricType, type MembershipStatus } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { FeatureGateService } from "./feature-gate.service";
+import { UsageMeteringService } from "./usage-metering.service";
 
 /// Seat-limit enforcement for invitations and membership reactivation.
 ///
@@ -24,38 +25,34 @@ export class BillingSeatsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly featureGate: FeatureGateService,
+    private readonly usageMetering: UsageMeteringService,
   ) {}
 
   /// Assert that organization can add one more seat.
   /// Throws ConflictException if seat limit reached.
-  /// No-op if seats are null (unlimited).
+  ///
+  /// A subscription's `seats` column is an explicit purchase override (e.g.
+  /// an Enterprise customer negotiating extra seats) and takes precedence
+  /// when set; null seats does NOT mean unlimited, it means "no override" —
+  /// falls back to the plan's default `users` limit via the same
+  /// FeatureGateService/UsageMeteringService pipeline every other resource
+  /// uses (which itself falls back to the Free plan when there's no
+  /// subscription at all, rather than blocking everything).
   async assertCanAddSeat(organizationId: string): Promise<void> {
-    const seatsUsed = await this.countActiveSeats(organizationId);
     const limits = await this.featureGate.getPlanLimits(organizationId);
 
-    if (!limits) {
-      // No subscription = free plan, check 'users' limit
-      const usersLimit = 5; // Default free plan limit
-      if (seatsUsed >= usersLimit) {
+    if (limits && limits.seats !== null) {
+      const seatsUsed = await this.countActiveSeats(organizationId);
+      if (seatsUsed >= limits.seats) {
         throw new ConflictException(
-          `Seat limit reached. Your plan allows ${usersLimit} users. Upgrade your plan to add more team members.`,
+          `Seat limit reached. Your plan allows ${limits.seats} users and all seats are currently in use. ` +
+            `Upgrade your plan or remove inactive members to add more team members.`,
         );
       }
       return;
     }
 
-    // Check subscription seats
-    if (limits.seats === null) {
-      // Unlimited seats (enterprise plan)
-      return;
-    }
-
-    if (seatsUsed >= limits.seats) {
-      throw new ConflictException(
-        `Seat limit reached. Your plan allows ${limits.seats} users and all seats are currently in use. ` +
-          `Upgrade your plan or remove inactive members to add more team members.`,
-      );
-    }
+    await this.usageMetering.enforceLimit(organizationId, UsageMetricType.USERS, 1);
   }
 
   /// Assert that activating a membership won't exceed seat limit.

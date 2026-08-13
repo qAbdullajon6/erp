@@ -28,9 +28,17 @@ const BLOCKED_IP_RANGES = [
   /^localhost$/i,
 ];
 
+// Field names here must match real Prisma columns exactly — this is a plain
+// string allowlist with no compile-time link to the schema, so a typo (or a
+// schema rename) silently produces a Prisma "Unknown argument" failure at
+// execution time instead of a build error. `customer` previously listed
+// 'notes' / 'contactEmail' / 'contactPhone', none of which are real columns
+// (they are 'internalNotes'/'deliveryNotes', 'email', 'phone') — every
+// update_entity on a customer failed for those fields, always, not just for
+// archived ones.
 const ALLOWED_UPDATE_FIELDS: Record<string, string[]> = {
   order: ['notes', 'deliveryNotes', 'cargoDescription'],
-  customer: ['notes', 'contactName', 'contactEmail', 'contactPhone'],
+  customer: ['contactName', 'email', 'phone', 'deliveryNotes', 'internalNotes'],
   dispatch: ['notes'],
 };
 
@@ -42,6 +50,20 @@ function configString(value: unknown, fallback = ''): string {
   }
   if (value instanceof Date) return value.toISOString();
   return fallback;
+}
+
+const NOTIFICATION_CATEGORIES: NotificationCategory[] = ['OPERATIONS', 'FINANCE', 'CUSTOMERS', 'FLEET', 'BILLING'];
+const NOTIFICATION_SEVERITIES: NotificationSeverity[] = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+
+/// Without this, an invalid category/severity in a notify action's config
+/// wasn't caught until the Prisma insert, surfacing a raw
+/// PrismaClientValidationError (query + stack trace) as the execution's error
+/// instead of a message a workflow author can act on.
+function validatedEnum<T extends string>(value: string, allowed: T[], field: string): T {
+  if (!allowed.includes(value as T)) {
+    throw new Error(`Invalid ${field} "${value}". Must be one of: ${allowed.join(', ')}`);
+  }
+  return value as T;
 }
 
 @Injectable()
@@ -207,8 +229,8 @@ export class ActionExecutor {
   ): Promise<Record<string, unknown>> {
     const title = this.interpolate(configString(config.title, 'Workflow Notification'), context);
     const message = this.interpolate(configString(config.message), context);
-    const category = configString(config.category, 'OPERATIONS') as NotificationCategory;
-    const severity = configString(config.severity, 'MEDIUM') as NotificationSeverity;
+    const category = validatedEnum(configString(config.category, 'OPERATIONS'), NOTIFICATION_CATEGORIES, 'category');
+    const severity = validatedEnum(configString(config.severity, 'MEDIUM'), NOTIFICATION_SEVERITIES, 'severity');
 
     const notification = await this.prisma.notification.create({
       data: {
@@ -234,8 +256,8 @@ export class ActionExecutor {
   ): Promise<Record<string, unknown>> {
     const title = this.interpolate(configString(config.title, 'Workflow Notification'), context);
     const message = this.interpolate(configString(config.message), context);
-    const category = configString(config.category, 'OPERATIONS') as NotificationCategory;
-    const severity = configString(config.severity, 'MEDIUM') as NotificationSeverity;
+    const category = validatedEnum(configString(config.category, 'OPERATIONS'), NOTIFICATION_CATEGORIES, 'category');
+    const severity = validatedEnum(configString(config.severity, 'MEDIUM'), NOTIFICATION_SEVERITIES, 'severity');
     const entityType = config.entityType ? configString(config.entityType) : undefined;
     const entityId = config.entityId ? this.interpolate(configString(config.entityId), context) : undefined;
 
@@ -385,10 +407,10 @@ export class ActionExecutor {
         }
         case 'customer': {
           const result = await this.prisma.customer.updateMany({
-            where: { id: entityId, organizationId: context.organizationId },
+            where: { id: entityId, organizationId: context.organizationId, archivedAt: null },
             data: { status: newStatus as CustomerStatus },
           });
-          if (result.count === 0) throw new Error(`Customer ${entityId} not found in this organization`);
+          if (result.count === 0) throw new Error(`Customer ${entityId} not found, or is archived, in this organization`);
           break;
         }
         default:
@@ -507,18 +529,18 @@ export class ActionExecutor {
     switch (entityType) {
       case 'order': {
         const result = await this.prisma.order.updateMany({
-          where: { id: entityId, organizationId: context.organizationId },
+          where: { id: entityId, organizationId: context.organizationId, archivedAt: null },
           data: fields,
         });
-        if (result.count === 0) throw new Error(`Order ${entityId} not found in this organization`);
+        if (result.count === 0) throw new Error(`Order ${entityId} not found, or is archived, in this organization`);
         break;
       }
       case 'customer': {
         const result = await this.prisma.customer.updateMany({
-          where: { id: entityId, organizationId: context.organizationId },
+          where: { id: entityId, organizationId: context.organizationId, archivedAt: null },
           data: fields,
         });
-        if (result.count === 0) throw new Error(`Customer ${entityId} not found in this organization`);
+        if (result.count === 0) throw new Error(`Customer ${entityId} not found, or is archived, in this organization`);
         break;
       }
       case 'dispatch': {

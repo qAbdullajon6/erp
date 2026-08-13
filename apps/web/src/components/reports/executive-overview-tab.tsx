@@ -127,7 +127,7 @@ export function ExecutiveOverviewTab({ params }: ExecutiveOverviewTabProps) {
             <div className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{kpi.label}</div>
             <div className="mt-3 font-display text-2xl font-bold text-foreground">{kpi.value}</div>
             <div className="mt-2">
-              {kpi.pair ? (
+              {kpi.pair && kpi.pair.changePercent !== null && kpi.pair.changePercent !== undefined ? (
                 <ChangeBadge pair={kpi.pair} label={comparisonLabel} />
               ) : kpi.warn ? (
                 <span className="text-xs font-medium text-destructive">needs attention</span>

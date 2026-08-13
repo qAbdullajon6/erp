@@ -81,7 +81,7 @@ export function RecordPaymentDialog({ invoiceId, balanceDue, currency }: RecordP
             <DialogTitle>Record Payment</DialogTitle>
             <DialogDescription>Balance due: {formatMoney(balanceDue, currency)}</DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} noValidate className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="text-sm font-medium text-foreground">Amount *</label>
