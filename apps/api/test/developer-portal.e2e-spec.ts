@@ -553,15 +553,17 @@ describe('Developer Portal (e2e)', () => {
       secret = created.secret!;
     });
 
-    // Each test gets a fresh endpoint; without this they accumulate, and since
-    // every one subscribes to order.created against the same receiver, a later
-    // test that creates an order sees one delivery per leftover endpoint. That
-    // is exactly what broke the domain-events test below once the dispatcher
-    // stopped dropping drain wake-ups and actually delivered them all.
     afterEach(async () => {
-      await request(app.getHttpServer())
-        .delete(`/admin/webhooks/${hookId}`)
-        .set('Authorization', `Bearer ${adminToken}`);
+      // Quiesce this fixture without deleting it under a drain pass that may
+      // already hold the delivery id. The disposable database owns cleanup.
+      await prisma.webhookEndpoint.update({
+        where: { id: hookId },
+        data: { isActive: false },
+      });
+      await prisma.webhookDelivery.updateMany({
+        where: { endpointId: hookId, status: 'PENDING' },
+        data: { status: 'FAILED', failedAt: new Date(), nextAttemptAt: null },
+      });
     });
 
     it('delivers a signed payload the receiver can verify', async () => {
