@@ -40,8 +40,19 @@ export class TelematicsAiTools {
           if (key in counts) counts[key] += 1;
         }
         return {
-          total: live.vehicles.length,
+          // Vehicles with a live GPS/telematics reading, not the fleet
+          // roster — a vehicle with no device pinging right now is absent
+          // from this count even though it is a normal, in-service vehicle.
+          // Answering "0 vehicles are active" from `reportingNow: 0` alone
+          // would conflate "no live telemetry" with "no vehicles", so the
+          // model is told explicitly not to draw that conclusion.
+          reportingNow: live.vehicles.length,
           ...counts,
+          ...(live.vehicles.length === 0
+            ? {
+                note: "No vehicles currently have live GPS/telematics data. This reflects telematics reporting only — it says nothing about fleet size or how many vehicles are in active service. Use search_vehicles for the fleet roster.",
+              }
+            : {}),
           vehicles: live.vehicles.slice(0, 10).map((v) => ({
             vehicle: v.plateNumber ?? v.vehicleCode,
             state: v.movementState,
@@ -136,7 +147,7 @@ export class TelematicsAiTools {
         const result = await this.analytics.driverBehavior(actor.organizationId, {
           from: str(args.from),
           to: str(args.to),
-        } as never);
+        });
         return {
           drivers: result.drivers.slice(0, 10).map((d) => ({
             name: d.name,

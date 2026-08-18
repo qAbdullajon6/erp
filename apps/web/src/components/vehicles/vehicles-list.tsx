@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/shared/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   DropdownMenu,
@@ -15,6 +16,8 @@ import { useVehiclesList, type Vehicle, type VehicleStatus } from '@/lib/api/veh
 import { useDispatches } from '@/lib/hooks/use-dispatches';
 import { useOrdersList } from '@/lib/api/orders';
 import { ErrorState, EmptyState } from '@/components/shared/list-states';
+import { FilterTabs } from '@/components/shared/filter-tabs';
+import { SearchInput } from '@/components/shared/search-input';
 import { PaginationBar } from '@/components/shared/pagination-bar';
 import { VehiclesCreateSheet } from '@/components/vehicles/vehicles-create-sheet';
 import { VehiclesEditSheet } from '@/components/vehicles/vehicles-edit-sheet';
@@ -40,12 +43,12 @@ import { formatRelativeTime } from '@/lib/format';
 import { toCsv, downloadCsv } from '@/lib/csv';
 import { cn } from '@/lib/utils';
 import {
+  AlertTriangle,
   Download,
   Edit2,
   ExternalLink,
   MoreHorizontal,
   Plus,
-  Search,
   Truck,
   UserRound,
 } from 'lucide-react';
@@ -110,10 +113,9 @@ export function VehiclesList() {
   });
 
   const liveDispatches = useDispatches(1, 200, { statuses: LIVE_DISPATCH });
-  const allDispatchesForCounts = useDispatches(1, 200);
   const opsIndex = useMemo(
-    () => buildVehicleOpsIndex([...(liveDispatches.data ?? []), ...(allDispatchesForCounts.data ?? [])]),
-    [liveDispatches.data, allDispatchesForCounts.data],
+    () => buildVehicleOpsIndex(liveDispatches.data ?? []),
+    [liveDispatches.data],
   );
 
   const orderIds = useMemo(() => {
@@ -139,8 +141,12 @@ export function VehiclesList() {
     return map;
   }, [ordersQuery.data]);
 
-  const availableMeta = useVehiclesList({ status: 'AVAILABLE', limit: 1 });
-  const inUseMeta = useVehiclesList({ status: 'IN_USE', limit: 1 });
+  /// liveDispatches is capped at 200 and the cargo lookup at 100 orders — an
+  /// org past either ceiling gets some understated availability/capacity
+  /// badges below rather than a silent, confidently-wrong number.
+  const dataTruncated =
+    (liveDispatches.meta?.total ?? 0) > 200 || (ordersQuery.meta?.total ?? 0) > 100;
+
   const maintenanceMeta = useVehiclesList({ status: 'MAINTENANCE', limit: 1 });
 
   const [localSearch, setLocalSearch] = useState(search);
@@ -253,6 +259,7 @@ export function VehiclesList() {
         type: v.type,
         make: v.make ?? '',
         model: v.model ?? '',
+        year: v.year ?? '',
         status: v.status,
         availability: avail.label,
         driver: live?.driver
@@ -272,6 +279,7 @@ export function VehiclesList() {
         { key: 'type', label: 'Type' },
         { key: 'make', label: 'Make' },
         { key: 'model', label: 'Model' },
+        { key: 'year', label: 'Year' },
         { key: 'status', label: 'Status' },
         { key: 'availability', label: 'Availability' },
         { key: 'driver', label: 'Driver' },
@@ -294,83 +302,59 @@ export function VehiclesList() {
   ].filter((c) => c.value > 0);
 
   const hasFilters = Boolean(search || tab !== 'available');
-  const availableCount = availableMeta.meta?.total ?? 0;
-  const assignedCount = inUseMeta.meta?.total ?? 0;
 
   return (
     <div className="space-y-4" data-testid="vehicles-page">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">Vehicles</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {loading
-              ? 'Loading…'
-              : error
-                ? 'Could not load vehicles'
-                : `${meta?.total ?? 0} in fleet · ${availableCount} available · ${assignedCount} assigned`}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="outline" onClick={handleExport} disabled={displayRows.length === 0}>
-            <Download className="mr-1.5 h-3.5 w-3.5" />
-            Export
-          </Button>
-          <Button
-            size="sm"
-            className="bg-gradient-brand text-brand-foreground hover:opacity-90"
-            onClick={() => setCreateOpen(true)}
-            data-testid="create-vehicle-button"
-          >
-            <Plus className="mr-1.5 h-3.5 w-3.5" />
-            New Vehicle
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Vehicles"
+        subtitle={
+          loading
+            ? 'Loading…'
+            : error
+              ? 'Could not load vehicles'
+              : // Same live-dispatch-aware counts as the filter chips below —
+                // a vehicle.status of AVAILABLE with a live dispatch still
+                // reads as assigned (see stripCounts).
+                `${meta?.total ?? 0} in fleet · ${stripCounts.available} available · ${stripCounts.assigned} assigned`
+        }
+        action={
+          <>
+            <Button size="sm" variant="outline" onClick={handleExport} disabled={displayRows.length === 0}>
+              <Download className="mr-1.5 h-3.5 w-3.5" />
+              Export
+            </Button>
+            <Button
+              size="sm"
+              className="bg-gradient-brand text-brand-foreground hover:opacity-90"
+              onClick={() => setCreateOpen(true)}
+              data-testid="create-vehicle-button"
+            >
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              New Vehicle
+            </Button>
+          </>
+        }
+      />
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[16rem] flex-1">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={localSearch}
-            onChange={(e) => setLocalSearch(e.target.value)}
-            placeholder="Search plate, code, make, model…"
-            data-testid="vehicles-search-input"
-            className="h-9 w-full rounded-md border border-border bg-background pl-8 pr-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
-          />
-        </div>
-        <Button
-          size="sm"
-          variant={tab === 'available' ? 'secondary' : 'outline'}
-          className="h-9"
-          onClick={() => setTab('available')}
-        >
-          Available
-        </Button>
-        <Button
-          size="sm"
-          variant={tab === 'assigned' ? 'secondary' : 'outline'}
-          className="h-9"
-          onClick={() => setTab('assigned')}
-        >
-          Assigned
-        </Button>
-        <Button
-          size="sm"
-          variant={tab === 'maintenance' ? 'secondary' : 'outline'}
-          className="h-9"
-          onClick={() => setTab('maintenance')}
-        >
-          Maintenance
-        </Button>
-        <Button
-          size="sm"
-          variant={tab === 'archived' ? 'secondary' : 'outline'}
-          className="h-9"
-          onClick={() => setTab('archived')}
-        >
-          Archived
-        </Button>
+        <SearchInput
+          className="min-w-[16rem] flex-1"
+          value={localSearch}
+          onChange={setLocalSearch}
+          placeholder="Search plate, code, make, model…"
+          label="Search vehicles"
+          testId="vehicles-search-input"
+        />
       </div>
+
+      {dataTruncated && (
+        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-foreground">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warning" />
+          Live dispatches or order cargo data exceed what this page can total — availability, capacity,
+          and dispatch badges below may be understated for some vehicles. Open a vehicle to see its own
+          current assignment.
+        </div>
+      )}
 
       {summaryChips.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
@@ -386,23 +370,7 @@ export function VehiclesList() {
         </div>
       )}
 
-      <div className="flex flex-wrap gap-1 border-b border-border/60">
-        {TAB_CONFIG.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setTab(t.key)}
-            className={cn(
-              '-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors',
-              tab === t.key
-                ? 'border-brand text-foreground'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <FilterTabs tabs={TAB_CONFIG} value={tab} onChange={setTab} label="Vehicle filters" />
 
       <div className="overflow-hidden rounded-xl border border-border/70 bg-surface">
         {loading && <VehiclesListSkeleton />}
@@ -709,14 +677,19 @@ function VehicleOpsRow({
         </div>
       </div>
 
+      {/* See drivers-list.tsx: the centre column returns at sm and the right one
+          at lg, so the badges here have to stop at sm or a tablet shows each
+          status chip twice. */}
       <div
         className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-border/40 pt-2 text-[11px] lg:hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <OpsChip badge={primary} dense />
-        {risks.slice(0, 2).map((b) => (
-          <OpsChip key={b.key} badge={b} dense />
-        ))}
+        <span className="flex flex-wrap gap-1 sm:hidden">
+          <OpsChip badge={primary} dense />
+          {risks.slice(0, 2).map((b) => (
+            <OpsChip key={b.key} badge={b} dense />
+          ))}
+        </span>
         <span className="text-muted-foreground">
           {live?.driver
             ? `${live.driver.firstName} ${live.driver.lastName}`

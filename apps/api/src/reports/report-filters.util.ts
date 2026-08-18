@@ -50,10 +50,27 @@ export function parseReportDateBound(value: string, bound: "start" | "end"): Dat
 /// always specify explicit dates.
 export function resolveReportFilter(dto: ReportFilterDto, organizationTimezone: string): ResolvedReportFilter {
   const now = new Date();
-  const to = dto.dateTo ? parseReportDateBound(dto.dateTo, "end") : now;
-  const from = dto.dateFrom
-    ? parseReportDateBound(dto.dateFrom, "start")
-    : new Date(to.getTime() - DEFAULT_RANGE_DAYS * DAY_MS);
+  const timezone = dto.timezone || organizationTimezone || "UTC";
+
+  let to: Date;
+  let from: Date;
+  if (!dto.dateFrom && !dto.dateTo) {
+    // Neither bound given (the Command Center's only call pattern) —
+    // anchor both ends to calendar-day boundaries in the org's timezone so
+    // "last 30 days" is actually 30 daily buckets, not 31. Subtracting
+    // 30*DAY_MS from a raw `now` timestamp instead produces a `from`/`to`
+    // pair that each land mid-day, and enumerateBuckets (which steps in
+    // fixed 24h increments) then touches 31 distinct calendar dates: the
+    // partial day at each end of that 720-hour window still gets its own
+    // full bucket.
+    to = resolveZonedDayRange(now, timezone).to;
+    from = resolveZonedDayRange(new Date(to.getTime() - (DEFAULT_RANGE_DAYS - 1) * DAY_MS), timezone).from;
+  } else {
+    to = dto.dateTo ? parseReportDateBound(dto.dateTo, "end") : now;
+    from = dto.dateFrom
+      ? parseReportDateBound(dto.dateFrom, "start")
+      : new Date(to.getTime() - DEFAULT_RANGE_DAYS * DAY_MS);
+  }
 
   let comparisonRange: DateRange | null = null;
   if (dto.comparisonPeriod === "previous_period") {
@@ -79,7 +96,7 @@ export function resolveReportFilter(dto: ReportFilterDto, organizationTimezone: 
     orderStatus: dto.orderStatus,
     invoiceStatus: dto.invoiceStatus,
     currency: dto.currency,
-    timezone: dto.timezone || organizationTimezone || "UTC",
+    timezone,
   };
 }
 
@@ -131,6 +148,12 @@ export function resolveZonedDayRange(now: Date, timezone: string): DateRange {
 
 /// Orders are anchored to `deliveryDate` for date-range filtering — the
 /// natural "when did this order happen" date for a logistics report.
+///
+/// Excludes archived orders (archivedAt: null), matching the Orders list's
+/// own default (OrdersService.list) — an archived order is hidden from
+/// every operational view for a reason, and a report whose revenue/delivery
+/// totals silently included orders an admin can no longer even see would
+/// never reconcile with what they see on the Orders page.
 export function buildOrderWhere(
   organizationId: string,
   filter: ResolvedReportFilter,
@@ -138,6 +161,7 @@ export function buildOrderWhere(
 ): Prisma.OrderWhereInput {
   return {
     organizationId,
+    archivedAt: null,
     deliveryDate: { gte: range.from, lte: range.to },
     ...(filter.customerId ? { customerId: filter.customerId } : {}),
     ...(filter.driverId ? { driverId: filter.driverId } : {}),
@@ -175,6 +199,7 @@ export function buildExceptionOrderWhere(
 ): Prisma.OrderWhereInput {
   return {
     organizationId,
+    archivedAt: null,
     ...(filter.customerId ? { customerId: filter.customerId } : {}),
     ...(filter.driverId ? { driverId: filter.driverId } : {}),
     ...(filter.vehicleId ? { vehicleId: filter.vehicleId } : {}),
@@ -248,8 +273,15 @@ export function enumerateBuckets(range: DateRange, granularity: BucketGranularit
       keys.push(key);
     }
   }
-  const lastKey = bucketKeyFor(range.to, granularity, timezone);
-  if (!seen.has(lastKey)) keys.push(lastKey);
+  // `range.to` is always a UTC end-of-day instant (`T23:59:59.999Z`). For any
+  // organization timezone ahead of UTC, that instant already falls on the
+  // *next* local calendar day, so formatting it directly would append a
+  // spurious extra bucket one day past what was actually requested. The loop
+  // above walks the same fixed-step range through the same timezone, so it
+  // already lands on every day the range covers; only fall back to a
+  // synthetic key if the loop produced nothing at all (e.g. a degenerate
+  // sub-day range), rather than trusting `range.to`'s own label.
+  if (keys.length === 0) keys.push(bucketKeyFor(range.from, granularity, timezone));
   return keys;
 }
 

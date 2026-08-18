@@ -1,9 +1,8 @@
 name: CI
 
 # Runs on every PR into main and on push to main (post-merge confirmation).
-# The blocking jobs are the ones verified green today; the API test-spec quality
-# debt (telematics *.e2e-spec.ts — supertest import + implicit any) runs
-# non-blocking so it stays visible without wedging every PR. See CI_CD_GUIDE.md.
+# All jobs below are blocking after Sprint B Engineering Cleanup (API lint +
+# full typecheck + unit tests no longer use continue-on-error). See CI_CD_GUIDE.md.
 on:
   pull_request:
     branches: [main]
@@ -116,13 +115,10 @@ jobs:
             VITE_MAPBOX_ACCESS_TOKEN=
 
   api-quality:
-    # Name kept stable: if this job is (mistakenly) a required status check,
-    # renaming it would orphan the requirement and block merges. It now concludes
-    # green via step-level continue-on-error. Despite the name, it also tracks
-    # src/workflows/* lint debt, not only test-spec debt — see CI_CD_GUIDE.md.
-    name: API · lint + full typecheck (non-blocking, tracks test-spec debt)
+    # Blocking gate after Sprint B Engineering Cleanup — typecheck + eslint
+    # across apps/api/src (and test/ via typecheck:api) must stay green.
+    name: API · lint + full typecheck
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -132,22 +128,15 @@ jobs:
       - run: npm ci
       - name: Prisma generate
         run: npm run prisma:generate
-      # Advisory steps: continue-on-error at the STEP level so the JOB always
-      # concludes success (green). Without this, a job-level continue-on-error
-      # still reports the job's own check as failed, which blocks a merge when
-      # the job is a required check. The debt stays visible as annotations.
-      - name: ESLint src (advisory — workflows module has type-aware lint debt)
-        continue-on-error: true
+      - name: ESLint src
         working-directory: apps/api
         run: npx eslint "src/**/*.ts"
-      - name: Full typecheck incl. test/ (advisory — telematics e2e-spec debt)
-        continue-on-error: true
+      - name: Full typecheck incl. test/
         run: npm run typecheck:api
 
   api-tests:
-    name: API · unit tests (non-blocking until stabilised)
+    name: API · unit tests
     runs-on: ubuntu-latest
-    continue-on-error: true
     services:
       postgres:
         image: postgres:16-alpine
@@ -174,7 +163,116 @@ jobs:
       - run: npm ci
       - name: Prisma generate
         run: npm run prisma:generate
-      # Step-level continue-on-error so the job concludes green (see api-quality).
       - name: Jest (unit)
-        continue-on-error: true
         run: npm run test:api
+
+  api-e2e:
+    name: API · e2e tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: erp
+          POSTGRES_PASSWORD: erp
+          POSTGRES_DB: erp_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U erp -d erp_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://erp:erp@localhost:5432/erp_e2e?schema=public
+      NODE_ENV: test
+      JWT_ACCESS_SECRET: ci-api-e2e-jwt-secret-not-for-production-use-48chars
+      APP_SECRET: ci-api-e2e-app-secret-32bytes-minimum
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - name: Prisma generate + migrate
+        run: |
+          npm run prisma:generate
+          npx prisma migrate deploy --schema apps/api/prisma/schema.prisma
+      - name: Seed isolated e2e fixtures
+        working-directory: apps/api
+        run: npx ts-node prisma/seed-test-org.ts
+      - name: Jest (API e2e)
+        working-directory: apps/api
+        run: npx jest --config ./test/jest-e2e.json --runInBand
+
+  # ── Sprint A — Enterprise regression gate (blocking) ─────────────────
+  playwright-regression:
+    name: Playwright · enterprise regression suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: erp
+          POSTGRES_PASSWORD: erp
+          POSTGRES_DB: erp_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U erp -d erp_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://erp:erp@localhost:5432/erp_e2e?schema=public
+      NODE_ENV: test
+      JWT_ACCESS_SECRET: ci-playwright-jwt-secret-not-for-production-use-48chars
+      APP_SECRET: ci-playwright-app-secret-32bytes-min!!
+      APP_PUBLIC_URL: http://localhost:3000
+      FRONTEND_URL: http://localhost:3000
+      API_URL: http://localhost:4000
+      SKIP_GLOBAL_SETUP: "1"
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - name: Prisma generate + migrate
+        run: |
+          npm run prisma:generate
+          npx prisma migrate deploy --schema apps/api/prisma/schema.prisma
+      - name: Build API
+        run: npm run build:api
+      - name: Seed test organization
+        working-directory: apps/api
+        run: npx ts-node prisma/seed-test-org.ts
+      - name: Install Playwright Chromium
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+      - name: Start API
+        working-directory: apps/api
+        run: |
+          node dist/main > /tmp/api.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:4000/health >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          echo "API failed to start"; tail -100 /tmp/api.log; exit 1
+      - name: Playwright regression
+        working-directory: apps/web
+        run: npm run test:e2e:regression
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-regression-report
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          if-no-files-found: ignore

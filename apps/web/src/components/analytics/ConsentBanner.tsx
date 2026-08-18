@@ -13,6 +13,7 @@ import {
   CONSENT_ESSENTIAL,
   applyConsent,
   initConsent,
+  setConsentBannerOnScreen,
 } from '@/lib/analytics/consent';
 import { siteConfig } from '@/lib/site-config';
 
@@ -23,6 +24,8 @@ export function ConsentBanner() {
     if (!siteConfig.features.cookieConsent) return;
     const { needsDecision } = initConsent();
     setVisible(needsDecision);
+    setConsentBannerOnScreen(needsDecision);
+    return () => setConsentBannerOnScreen(false);
   }, []);
 
   if (!visible) return null;
@@ -30,6 +33,7 @@ export function ConsentBanner() {
   const decide = (accepted: boolean) => {
     applyConsent(accepted ? CONSENT_ALL : CONSENT_ESSENTIAL);
     setVisible(false);
+    setConsentBannerOnScreen(false);
   };
 
   return (

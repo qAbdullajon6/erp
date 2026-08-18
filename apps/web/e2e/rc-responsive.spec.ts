@@ -10,6 +10,7 @@ const fail = (p: string, msg: string) => findings.push(`${p} — ${msg}`);
 
 const VIEWPORTS = [
   { name: 'desktop', width: 1440, height: 900 },
+  { name: 'tablet', width: 768, height: 1024 },
   { name: 'mobile', width: 390, height: 844 },
 ];
 
@@ -65,7 +66,15 @@ test('RC8a: admin screens on desktop and mobile', async ({ page, request }) => {
   test.setTimeout(900_000);
   const { accessToken, refreshToken } = await login(request, 'admin@flowerp.test');
   await seed(page, accessToken, refreshToken);
-  await sweep(page, 'admin', ['/app', '/app/orders', '/app/dispatches', '/app/finance', '/app/notifications']);
+  await sweep(page, 'admin', [
+    '/app',
+    '/app/orders',
+    '/app/dispatches',
+    '/app/finance',
+    '/app/fleet-tracking',
+    '/app/settings',
+    '/app/notifications',
+  ]);
 });
 
 test('RC8b: mobile navigation drawer opens', async ({ page, request }) => {
@@ -75,7 +84,7 @@ test('RC8b: mobile navigation drawer opens', async ({ page, request }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/app/orders', { waitUntil: 'domcontentloaded' });
 
-  const burger = page.getByRole('button', { name: /open navigation/i });
+  const burger = page.getByRole('button', { name: /open navigation|toggle sidebar/i });
   await expect(burger).toBeVisible({ timeout: 60_000 });
 
   // Server-rendered markup arrives before hydration; retry until it opens.
@@ -107,5 +116,5 @@ test.afterAll(() => {
   console.log('\n=========== RC8 FINDINGS ===========');
   findings.length ? findings.forEach((f) => console.log('  ' + f)) : console.log('  none');
   console.log('====================================\n');
-  expect(findings.filter((f) => f.startsWith('P0'))).toEqual([]);
+  expect(findings).toEqual([]);
 });

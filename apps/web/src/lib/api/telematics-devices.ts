@@ -65,6 +65,8 @@ export interface ListTelematicsDevicesParams {
   limit?: number;
   search?: string;
   provider?: TelematicsProviderType;
+  vehicleId?: string;
+  assignment?: 'ASSIGNED' | 'UNASSIGNED';
   includeArchived?: boolean;
 }
 
@@ -86,6 +88,8 @@ class TelematicsDevicesAPI {
     if (params.limit != null) qs.set('limit', String(params.limit));
     if (params.search) qs.set('search', params.search);
     if (params.provider) qs.set('provider', params.provider);
+    if (params.vehicleId) qs.set('vehicleId', params.vehicleId);
+    if (params.assignment) qs.set('assignment', params.assignment);
     if (params.includeArchived) qs.set('includeArchived', 'true');
     const res = await apiFetch(`${this.baseUrl}/telematics/devices?${qs}`, {
       method: 'GET',
@@ -175,11 +179,15 @@ export function useTelematicsDevicesList(
   };
 }
 
-export function useTelematicsDevice(id: string | null | undefined, opts?: { enabled?: boolean }) {
+export function useTelematicsDevice(
+  id: string | null | undefined,
+  opts?: { enabled?: boolean; refetchInterval?: number | false },
+) {
   const result = useQuery({
     queryKey: telematicsDeviceKeys.detail(id ?? ''),
     queryFn: () => telematicsDevicesAPI.getById(id!),
     enabled: (opts?.enabled ?? true) && !!id,
+    refetchInterval: opts?.refetchInterval,
   });
   return {
     ...result,

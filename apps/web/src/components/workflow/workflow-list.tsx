@@ -7,14 +7,15 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PageHeader } from '@/components/shared/page-header';
-import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-states';
+import { ErrorState, EmptyState, TableSkeleton } from '@/components/shared/list-states';
+import { describeError } from '@/lib/api/describe-error';
 import { PaginationBar } from '@/components/shared/pagination-bar';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
-import { useWorkflowList, useToggleWorkflow, useDeleteWorkflow } from '@/hooks/use-workflows';
+import { useWorkflowList, useToggleWorkflow, useDeleteWorkflow, useExecuteWorkflow } from '@/hooks/use-workflows';
 import { WorkflowEditorDialog } from './workflow-editor-dialog';
 import { WorkflowExecutionsDialog } from './workflow-executions-dialog';
-import { Zap, Plus, History } from 'lucide-react';
+import { Zap, Plus, History, Play } from 'lucide-react';
 
 export function WorkflowList() {
   const navigate = useNavigate();
@@ -25,6 +26,7 @@ export function WorkflowList() {
   const { data, meta, loading, error, refetch } = useWorkflowList({ page, limit: 20 });
   const toggleMutation = useToggleWorkflow();
   const deleteMutation = useDeleteWorkflow();
+  const executeMutation = useExecuteWorkflow();
 
   const handlePageChange = useCallback((newPage: number) => setPage(newPage), []);
 
@@ -35,22 +37,33 @@ export function WorkflowList() {
           toast.success('Workflow published and activated — it will run on matching events');
         }
       },
-      onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to toggle workflow'),
+      onError: (err) => toast.error(describeError(err, 'Failed to toggle workflow')),
     });
   }, [toggleMutation]);
 
   const handleDelete = useCallback((id: string) => {
     deleteMutation.mutate(id, {
       onSuccess: () => toast.success('Workflow deleted'),
-      onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to delete workflow'),
+      onError: (err) => toast.error(describeError(err, 'Failed to delete workflow')),
     });
   }, [deleteMutation]);
+
+  const handleExecute = useCallback((id: string) => {
+    executeMutation.mutate(id, {
+      onSuccess: () => toast.success('Workflow run started — check History for the result'),
+      onError: (err) => toast.error(describeError(err, 'Failed to run workflow')),
+    });
+  }, [executeMutation]);
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Workflows"
-        subtitle={loading ? 'Loading...' : `${meta.total} workflow(s) configured`}
+        title="Automation"
+        subtitle={
+          loading
+            ? 'Loading...'
+            : `${meta.total} workflow${meta.total === 1 ? '' : 's'} running on your operation`
+        }
         action={
           <Button
             onClick={() => setEditorOpen(true)}
@@ -63,9 +76,9 @@ export function WorkflowList() {
       />
 
       <div className="overflow-hidden rounded-lg border border-brand/10">
-        {loading && <LoadingState label="Loading workflows..." />}
+        {loading && <TableSkeleton columns={[3, 2, 2, 2]} label="Loading workflows" />}
         {error && !loading && (
-          <ErrorState message={error instanceof Error ? error.message : 'Failed to load workflows'} onRetry={() => refetch()} />
+          <ErrorState message={describeError(error, 'Failed to load workflows')} onRetry={() => refetch()} />
         )}
         {!loading && !error && data.length === 0 && (
           <EmptyState
@@ -125,6 +138,23 @@ export function WorkflowList() {
                       <Button
                         variant="ghost"
                         size="sm"
+                        onClick={() => handleExecute(wf.id)}
+                        disabled={wf.status === 'ARCHIVED' || (wf.status === 'PUBLISHED' && !wf.active) || executeMutation.isPending}
+                        className="gap-1"
+                        title={
+                          wf.status === 'ARCHIVED'
+                            ? 'Archived workflows cannot run'
+                            : wf.status === 'PUBLISHED' && !wf.active
+                              ? 'Activate the workflow to run it'
+                              : 'Run this workflow now'
+                        }
+                      >
+                        <Play className="h-4 w-4" />
+                        Run
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => setExecutionsFor(wf.id)}
                         className="gap-1"
                       >
@@ -149,8 +179,9 @@ export function WorkflowList() {
                           </Button>
                         }
                         title="Delete this workflow?"
-                        description="This cannot be undone."
+                        description={`"${wf.name}" will stop running immediately and its rules and run history are removed. This cannot be undone — disable it instead if you may want it back.`}
                         confirmLabel="Delete"
+                        confirmPhrase="DELETE"
                         onConfirm={() => handleDelete(wf.id)}
                         destructive
                       />

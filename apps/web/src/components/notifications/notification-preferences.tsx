@@ -8,6 +8,7 @@ import {
   useUpdateNotificationSettingsMutation,
   type NotificationCategory,
 } from '@/lib/api/notifications';
+import { describeError } from '@/lib/api/describe-error';
 
 const CATEGORY_OPTIONS: { value: NotificationCategory; label: string; hint: string }[] = [
   { value: 'OPERATIONS', label: 'Operations', hint: 'Delayed & unassigned orders' },
@@ -51,7 +52,7 @@ export function NotificationPreferences() {
       });
       toast.success('Notification preferences saved');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to save preferences');
+      toast.error(describeError(err, 'Failed to save preferences'));
     }
   };
 
@@ -62,7 +63,7 @@ export function NotificationPreferences() {
   if (isError || !settings) {
     return (
       <div className="rounded-lg bg-destructive/10 p-6 text-sm text-destructive">
-        {error instanceof Error ? error.message : 'Failed to load preferences'}
+        {describeError(error, 'Failed to load preferences')}
         <Button onClick={() => refetch()} variant="ghost" size="sm" className="ml-4">
           Retry
         </Button>

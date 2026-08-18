@@ -1,11 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { toast } from 'sonner';
 import type { ApiDispatch } from '@/lib/api/dispatches';
-import { describeError } from '@/lib/api/describe-error';
-import { useAvailability } from '@/lib/api/availability';
-import { useUpdateDispatch } from '@/lib/hooks/use-dispatches';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import {
@@ -18,13 +14,7 @@ import {
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { FormAlert } from '@/components/shared/form-alert';
 import { Truck, User } from 'lucide-react';
-
-function formatWindow(dispatch: ApiDispatch): string {
-  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
-  const from = new Date(dispatch.pickupDateScheduled).toLocaleDateString('en-US', opts);
-  const to = new Date(dispatch.deliveryDateScheduled).toLocaleDateString('en-US', opts);
-  return `${from} – ${to}`;
-}
+import { formatReassignWindow, useDispatchReassignForm } from './use-dispatch-reassign-form';
 
 const SELECT_CLASS =
   'h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
@@ -36,66 +26,34 @@ interface Props {
   onSuccess?: (dispatchId: string) => void;
 }
 
-/// Reassign driver / vehicle via Sheet — availability from GET /dispatch/availability.
+/// Reassign driver / vehicle via Sheet — the detail page's counterpart to
+/// DispatchReassignDialog. See use-dispatch-reassign-form.ts for the shared logic.
 export function DispatchReassignSheet({ open, onOpenChange, dispatch, onSuccess }: Props) {
-  const [driverId, setDriverId] = useState('');
-  const [vehicleId, setVehicleId] = useState('');
-  const [error, setError] = useState('');
-
-  const { data: availability, loading: availabilityLoading, error: availabilityError } =
-    useAvailability(
-      open
-        ? {
-            pickupDate: dispatch.pickupDateScheduled,
-            deliveryDate: dispatch.deliveryDateScheduled,
-          }
-        : undefined,
-    );
-
-  const { update, loading: saving } = useUpdateDispatch(dispatch.id);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const {
+    driverId,
+    vehicleId,
+    error,
+    availability,
+    availabilityLoading,
+    availabilityError,
+    saving,
+    hasChoice,
+    noneFree,
+    confirmationText,
+    selectDriver,
+    selectVehicle,
+    handleSave,
+    reset,
+  } = useDispatchReassignForm(dispatch, open, onSuccess);
 
   useEffect(() => {
-    if (!open) return;
-    setDriverId('');
-    setVehicleId('');
-    setError('');
+    if (open) reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, dispatch.id]);
 
-  const hasChoice = Boolean(driverId || vehicleId);
-  const noneFree =
-    (availability?.drivers.length ?? 0) === 0 && (availability?.vehicles.length ?? 0) === 0;
-
-  const newDriver = availability?.drivers.find((d) => d.id === driverId);
-  const newVehicle = availability?.vehicles.find((v) => v.id === vehicleId);
-
-  const confirmationText = [
-    newDriver
-      ? `${dispatch.driver?.firstName ?? 'The current driver'} ${dispatch.driver?.lastName ?? ''} is taken off this dispatch and ${newDriver.firstName} ${newDriver.lastName} takes it on.`
-      : null,
-    newVehicle
-      ? `Vehicle ${dispatch.vehicle?.plateNumber ?? '—'} is released and ${newVehicle.plateNumber} is committed.`
-      : null,
-    'The released driver and vehicle become available for other trips.',
-  ]
-    .filter(Boolean)
-    .join(' ');
-
-  const handleSave = async () => {
-    if (!hasChoice) {
-      setError('Choose a new driver or a new vehicle');
-      return;
-    }
-    try {
-      await update({
-        ...(driverId ? { driverId } : {}),
-        ...(vehicleId ? { vehicleId } : {}),
-      });
-      toast.success(`${dispatch.dispatchNumber} reassigned`);
-      onSuccess?.(dispatch.id);
-      onOpenChange(false);
-    } catch (err) {
-      setError(describeError(err, 'Failed to reassign'));
-    }
+  const onConfirm = async () => {
+    if (await handleSave()) onOpenChange(false);
   };
 
   return (
@@ -104,7 +62,7 @@ export function DispatchReassignSheet({ open, onOpenChange, dispatch, onSuccess 
         <SheetHeader className="shrink-0 border-b border-border px-6 py-4">
           <SheetTitle className="text-base">Reassign {dispatch.dispatchNumber}</SheetTitle>
           <SheetDescription className="text-xs">
-            Only drivers and vehicles free for {formatWindow(dispatch)} are listed.
+            Only drivers and vehicles free for {formatReassignWindow(dispatch)} are listed.
           </SheetDescription>
         </SheetHeader>
 
@@ -145,7 +103,7 @@ export function DispatchReassignSheet({ open, onOpenChange, dispatch, onSuccess 
 
           {!availabilityLoading && !availabilityError && noneFree ? (
             <div className="mb-4 rounded-lg border border-dashed border-border bg-muted/40 p-4 text-sm text-muted-foreground">
-              Nobody is free for {formatWindow(dispatch)}. Every other driver and vehicle is already
+              Nobody is free for {formatReassignWindow(dispatch)}. Every other driver and vehicle is already
               committed to an overlapping trip.
             </div>
           ) : null}
@@ -166,7 +124,7 @@ export function DispatchReassignSheet({ open, onOpenChange, dispatch, onSuccess 
                   id="reassign-sheet-driver"
                   className={SELECT_CLASS}
                   value={driverId}
-                  onChange={(e) => setDriverId(e.target.value)}
+                  onChange={(e) => selectDriver(e.target.value)}
                   disabled={availabilityLoading || Boolean(availabilityError)}
                 >
                   <option value="">
@@ -202,7 +160,7 @@ export function DispatchReassignSheet({ open, onOpenChange, dispatch, onSuccess 
                   id="reassign-sheet-vehicle"
                   className={SELECT_CLASS}
                   value={vehicleId}
-                  onChange={(e) => setVehicleId(e.target.value)}
+                  onChange={(e) => selectVehicle(e.target.value)}
                   disabled={availabilityLoading || Boolean(availabilityError)}
                 >
                   <option value="">
@@ -230,18 +188,26 @@ export function DispatchReassignSheet({ open, onOpenChange, dispatch, onSuccess 
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>
               Cancel
             </Button>
+            {/* Controlled (not `trigger`): a Radix AlertDialogTrigger nested inside an
+                already-open Sheet never opens — the outer Sheet's dismissable layer
+                eats the click and closes itself instead. */}
+            <Button
+              disabled={saving || availabilityLoading || Boolean(availabilityError) || !hasChoice}
+              onClick={() => setConfirmOpen(true)}
+            >
+              {saving ? 'Reassigning…' : 'Reassign'}
+            </Button>
             <ConfirmDialog
-              trigger={
-                <Button
-                  disabled={saving || availabilityLoading || Boolean(availabilityError) || !hasChoice}
-                >
-                  {saving ? 'Reassigning…' : 'Reassign'}
-                </Button>
-              }
+              open={confirmOpen}
+              onOpenChange={setConfirmOpen}
               title={`Reassign ${dispatch.dispatchNumber}?`}
               description={confirmationText}
               confirmLabel="Yes, reassign"
-              onConfirm={() => void handleSave()}
+              onConfirm={() => {
+                setConfirmOpen(false);
+                void onConfirm();
+              }}
+              onCancel={() => setConfirmOpen(false)}
             />
           </div>
         </div>

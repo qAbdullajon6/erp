@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { isScheduleLate, startOfTodayUtc, wasDeliveredOnTime } from "../common/schedule-lateness.util";
 import { toCsv, reportCsvFilename } from "./csv.util";
 import { ExportReportQueryDto } from "./dto/export-report-query.dto";
 import { ReportFilterDto } from "./dto/report-filter.dto";
@@ -177,10 +178,12 @@ export class ReportsService {
     const now = new Date();
     const deliveredRows = orderRows.filter((o) => o.status === "DELIVERED");
     const delayedOrders = orderRows.filter(
-      (o) => o.status !== "DELIVERED" && o.status !== "CANCELLED" && o.deliveryDate < now,
+      (o) => o.status !== "DELIVERED" && o.status !== "CANCELLED" && isScheduleLate(o.deliveryDate, now),
     ).length;
     const deliveredWithTimestamp = deliveredRows.filter((o) => o.deliveredAt);
-    const onTimeCount = deliveredWithTimestamp.filter((o) => o.deliveredAt! <= o.deliveryDate).length;
+    const onTimeCount = deliveredWithTimestamp.filter((o) =>
+      wasDeliveredOnTime(o.deliveredAt!, o.deliveryDate),
+    ).length;
 
     const totalRevenue = revenueAgg._sum.price ?? ZERO;
     const approvedExpenses = expenseAgg._sum.amount ?? ZERO;
@@ -196,8 +199,12 @@ export class ReportsService {
       totalInvoiced: invoiceAgg._sum.totalAmount ?? ZERO,
       totalCollected: invoiceAgg._sum.paidAmount ?? ZERO,
       outstandingReceivables: invoiceAgg._sum.balanceDue ?? ZERO,
-      deliveryCompletionRate: totalOrders > 0 ? (deliveredRows.length / totalOrders) * 100 : 0,
-      onTimeDeliveryRate: deliveredWithTimestamp.length > 0 ? (onTimeCount / deliveredWithTimestamp.length) * 100 : 0,
+      deliveryCompletionRate:
+        totalOrders > 0 ? Number(((deliveredRows.length / totalOrders) * 100).toFixed(2)) : 0,
+      onTimeDeliveryRate:
+        deliveredWithTimestamp.length > 0
+          ? Number(((onTimeCount / deliveredWithTimestamp.length) * 100).toFixed(2))
+          : 0,
     };
   }
 
@@ -246,7 +253,7 @@ export class ReportsService {
     const [orders, expenses] = await Promise.all([
       this.prisma.order.findMany({
         where: orderWhere,
-        select: { status: true, price: true, deliveryDate: true },
+        select: { status: true, price: true, deliveryDate: true, createdAt: true },
       }),
       this.prisma.expense.findMany({
         where: { ...expenseWhere, status: "APPROVED" },
@@ -258,15 +265,20 @@ export class ReportsService {
     const expensesByBucket = new Map<string, number>(bucketKeys.map((k) => [k, 0]));
     const deliveredByBucket = new Map<string, number>(bucketKeys.map((k) => [k, 0]));
     const delayedByBucket = new Map<string, number>(bucketKeys.map((k) => [k, 0]));
+    const ordersByBucket = new Map<string, number>(bucketKeys.map((k) => [k, 0]));
     const now = new Date();
 
     for (const order of orders) {
-      const key = bucketKeyFor(order.deliveryDate, granularity, filter.timezone);
+      const deliveryKey = bucketKeyFor(order.deliveryDate, granularity, filter.timezone);
+      const createdKey = bucketKeyFor(order.createdAt, granularity, filter.timezone);
+      if (ordersByBucket.has(createdKey)) {
+        ordersByBucket.set(createdKey, (ordersByBucket.get(createdKey) ?? 0) + 1);
+      }
       if (order.status === "DELIVERED") {
-        revenueByBucket.set(key, (revenueByBucket.get(key) ?? 0) + Number(order.price));
-        deliveredByBucket.set(key, (deliveredByBucket.get(key) ?? 0) + 1);
+        revenueByBucket.set(deliveryKey, (revenueByBucket.get(deliveryKey) ?? 0) + Number(order.price));
+        deliveredByBucket.set(deliveryKey, (deliveredByBucket.get(deliveryKey) ?? 0) + 1);
       } else if (order.status !== "CANCELLED" && order.deliveryDate < now) {
-        delayedByBucket.set(key, (delayedByBucket.get(key) ?? 0) + 1);
+        delayedByBucket.set(deliveryKey, (delayedByBucket.get(deliveryKey) ?? 0) + 1);
       }
     }
     for (const expense of expenses) {
@@ -279,6 +291,10 @@ export class ReportsService {
         bucket: key,
         revenue: revenueByBucket.get(key) ?? 0,
         expenses: expensesByBucket.get(key) ?? 0,
+      })),
+      orders: bucketKeys.map((key) => ({
+        bucket: key,
+        orders: ordersByBucket.get(key) ?? 0,
       })),
       deliveryPerformance: bucketKeys.map((key) => ({
         bucket: key,
@@ -356,20 +372,30 @@ export class ReportsService {
   /// of shipping every delayed order in the org on every load.
   async dashboardSummary(organizationId: string) {
     const filter = await this.resolveFilter(organizationId, { comparisonPeriod: "none" });
-    const [totals, timeSeries, ordersByStatus, delayedOrders, today] = await Promise.all([
-      this.computeCoreMetrics(organizationId, filter, filter.range),
-      this.computeTimeSeries(organizationId, filter),
-      this.computeOrdersByStatus(organizationId, filter),
-      this.computeDashboardDelayedOrders(organizationId, filter),
-      this.computeTodaySnapshot(organizationId, filter),
-    ]);
+    const [totals, timeSeries, ordersByStatus, delayedOrders, today, yesterday, operational, attention, recentActivity] =
+      await Promise.all([
+        this.computeCoreMetrics(organizationId, filter, filter.range),
+        this.computeTimeSeries(organizationId, filter),
+        this.computeOrdersByStatus(organizationId, filter),
+        this.computeDashboardDelayedOrders(organizationId, filter),
+        this.computeTodaySnapshot(organizationId, filter),
+        this.computeYesterdaySnapshot(organizationId, filter),
+        this.computeOperationalKpis(organizationId),
+        this.computeAttentionCounts(organizationId, filter),
+        this.computeRecentActivity(organizationId),
+      ]);
 
     return {
       currency: filter.currency ?? null,
       generatedAt: new Date().toISOString(),
       today,
+      yesterday,
+      operational,
+      attention,
+      recentActivity,
       totals: this.coreMetricsToResponse(totals),
       revenueVsExpensesTimeSeries: timeSeries.revenueVsExpenses,
+      ordersTimeSeries: timeSeries.orders,
       ordersByStatus,
       delayedOrders,
     };
@@ -385,7 +411,7 @@ export class ReportsService {
   private async computeTodaySnapshot(organizationId: string, filter: ResolvedReportFilter) {
     const { from, to } = resolveZonedDayRange(new Date(), filter.timezone);
     const base = buildExceptionOrderWhere(organizationId, filter);
-    const [dueToday, deliveredToday, pickupsDueToday] = await Promise.all([
+    const [dueToday, deliveredToday, pickupsDueToday, ordersCreatedToday, revenueTodayAgg] = await Promise.all([
       // Scheduled to be delivered today and not cancelled — the day's workload.
       this.prisma.order.count({
         where: { ...base, deliveryDate: { gte: from, lte: to }, status: { not: "CANCELLED" } },
@@ -402,8 +428,153 @@ export class ReportsService {
           status: { in: ["PENDING", "ASSIGNED"] as never },
         },
       }),
+      this.prisma.order.count({
+        where: { ...base, createdAt: { gte: from, lte: to } },
+      }),
+      this.prisma.order.aggregate({
+        where: { ...base, deliveredAt: { gte: from, lte: to }, status: "DELIVERED" },
+        _sum: { price: true },
+      }),
     ]);
-    return { dueToday, deliveredToday, pickupsDueToday };
+    return {
+      dueToday,
+      deliveredToday,
+      pickupsDueToday,
+      ordersCreatedToday,
+      revenueToday: (revenueTodayAgg._sum.price ?? ZERO).toString(),
+    };
+  }
+
+  /// Same anchors as computeTodaySnapshot, shifted back one org-local day so
+  /// the hero KPI row can show "Yesterday: X" with a sane % change.
+  private async computeYesterdaySnapshot(organizationId: string, filter: ResolvedReportFilter) {
+    const { from: todayFrom } = resolveZonedDayRange(new Date(), filter.timezone);
+    const from = new Date(todayFrom.getTime() - DAY_MS);
+    const to = new Date(todayFrom.getTime() - 1);
+    const base = buildExceptionOrderWhere(organizationId, filter);
+    const [ordersCreatedYesterday, revenueYesterdayAgg] = await Promise.all([
+      this.prisma.order.count({
+        where: { ...base, createdAt: { gte: from, lte: to } },
+      }),
+      this.prisma.order.aggregate({
+        where: { ...base, deliveredAt: { gte: from, lte: to }, status: "DELIVERED" },
+        _sum: { price: true },
+      }),
+    ]);
+    return {
+      ordersCreatedYesterday,
+      revenueYesterday: (revenueYesterdayAgg._sum.price ?? ZERO).toString(),
+    };
+  }
+
+  /// Lightweight attention counts for the command-center widget — reuses the
+  /// same live delayed definition as computeDashboardDelayedOrders and the
+  /// finance module's overdue-invoice status.
+  private async computeAttentionCounts(organizationId: string, filter: ResolvedReportFilter) {
+    const delayedWhere: Prisma.OrderWhereInput = {
+      ...buildExceptionOrderWhere(organizationId, filter),
+      status: { notIn: ["DELIVERED", "CANCELLED"] },
+      deliveryDate: { lt: startOfTodayUtc() },
+    };
+    const [delayedDeliveries, overdueInvoices] = await Promise.all([
+      this.prisma.order.count({ where: delayedWhere }),
+      this.prisma.invoice.count({
+        where: { organizationId, status: "OVERDUE", balanceDue: { gt: 0 } },
+      }),
+    ]);
+    return { delayedDeliveries, overdueInvoices };
+  }
+
+  /// Unified activity feed — pull a few recent rows from each source, merge
+  /// by timestamp, and cap so the dashboard doesn't fan out into N+1.
+  private async computeRecentActivity(organizationId: string, take = 12) {
+    const perSource = Math.ceil(take / 2);
+    const [orders, dispatches, invoices, payments] = await Promise.all([
+      this.prisma.order.findMany({
+        where: { organizationId },
+        orderBy: { createdAt: "desc" },
+        take: perSource,
+        select: { createdAt: true, orderNumber: true },
+      }),
+      this.prisma.dispatch.findMany({
+        where: { organizationId },
+        orderBy: { createdAt: "desc" },
+        take: perSource,
+        select: { createdAt: true, dispatchNumber: true },
+      }),
+      this.prisma.invoice.findMany({
+        where: { organizationId, status: { not: "CANCELLED" } },
+        orderBy: { createdAt: "desc" },
+        take: perSource,
+        select: { createdAt: true, invoiceNumber: true },
+      }),
+      this.prisma.payment.findMany({
+        where: { organizationId },
+        orderBy: { paymentDate: "desc" },
+        take: perSource,
+        select: {
+          paymentDate: true,
+          amount: true,
+          currency: true,
+          invoice: { select: { invoiceNumber: true } },
+        },
+      }),
+    ]);
+
+    const items: Array<{ at: string; label: string; kind: "order" | "dispatch" | "invoice" | "payment" }> = [
+      ...orders.map((o) => ({
+        at: o.createdAt.toISOString(),
+        label: `Order ${o.orderNumber} created`,
+        kind: "order" as const,
+      })),
+      ...dispatches.map((d) => ({
+        at: d.createdAt.toISOString(),
+        label: `Dispatch ${d.dispatchNumber} created`,
+        kind: "dispatch" as const,
+      })),
+      ...invoices.map((i) => ({
+        at: i.createdAt.toISOString(),
+        label: `Invoice ${i.invoiceNumber} issued`,
+        kind: "invoice" as const,
+      })),
+      ...payments.map((p) => ({
+        at: p.paymentDate.toISOString(),
+        label: `Payment ${p.amount.toString()} ${p.currency} on ${p.invoice.invoiceNumber}`,
+        kind: "payment" as const,
+      })),
+    ];
+
+    return items
+      .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+      .slice(0, take);
+  }
+
+  /// Live operational counts for the command-center KPI row — kept here
+  /// instead of requiring every role to call /dispatch/board.
+  private async computeOperationalKpis(organizationId: string) {
+    const [pendingDispatches, activeVehicles, workingDrivers, invoicesWaiting] = await Promise.all([
+      this.prisma.order.count({ where: { organizationId, archivedAt: null, status: "PENDING" } }),
+      this.prisma.vehicle.count({
+        where: { organizationId, archivedAt: null, status: { in: ["AVAILABLE", "IN_USE"] } },
+      }),
+      this.prisma.dispatchAssignment.findMany({
+        where: { organizationId, unassignedAt: null },
+        distinct: ["driverId"],
+        select: { driverId: true },
+      }),
+      this.prisma.invoice.count({
+        where: {
+          organizationId,
+          status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] },
+        },
+      }),
+    ]);
+    return {
+      pendingDispatches,
+      activeVehicles,
+      workingDrivers: workingDrivers.length,
+      invoicesWaiting,
+    };
   }
 
   /// Same "live, unscoped by date range" definition of delayed as
@@ -416,7 +587,7 @@ export class ReportsService {
     const where: Prisma.OrderWhereInput = {
       ...buildExceptionOrderWhere(organizationId, filter),
       status: { notIn: ["DELIVERED", "CANCELLED"] },
-      deliveryDate: { lt: new Date() },
+      deliveryDate: { lt: startOfTodayUtc() },
     };
     const [total, items] = await Promise.all([
       this.prisma.order.count({ where }),
@@ -488,7 +659,7 @@ export class ReportsService {
           name: `${driver.firstName} ${driver.lastName}`,
           totalOrders: stats.total,
           deliveredOrders: stats.delivered,
-          onTimeRate: stats.delivered > 0 ? (stats.onTime / stats.delivered) * 100 : 0,
+          onTimeRate: stats.delivered > 0 ? Number(((stats.onTime / stats.delivered) * 100).toFixed(2)) : 0,
           delayedOrders: stats.delayed,
           revenue: stats.revenue.toString(),
         };
@@ -585,7 +756,7 @@ export class ReportsService {
         deliveryCity: stats.deliveryCity,
         totalOrders: stats.total,
         deliveredOrders: stats.delivered,
-        completionRate: stats.total > 0 ? (stats.delivered / stats.total) * 100 : 0,
+        completionRate: stats.total > 0 ? Number(((stats.delivered / stats.total) * 100).toFixed(2)) : 0,
         revenue: stats.revenue.toString(),
       }))
       .sort((a, b) => Number(b.revenue) - Number(a.revenue));
@@ -602,7 +773,7 @@ export class ReportsService {
 
     const [delayed, unassigned, cancelled, deliveredInRange] = await Promise.all([
       this.prisma.order.findMany({
-        where: { ...exceptionWhere, status: { notIn: ["DELIVERED", "CANCELLED"] }, deliveryDate: { lt: now } },
+        where: { ...exceptionWhere, status: { notIn: ["DELIVERED", "CANCELLED"] }, deliveryDate: { lt: startOfTodayUtc(now) } },
         select: exceptionOrderSelect,
       }),
       this.prisma.order.findMany({
@@ -820,7 +991,9 @@ export class ReportsService {
       .filter((i) => i.payments.length > 0)
       .map((i) => (i.payments[0].paymentDate.getTime() - i.issueDate.getTime()) / DAY_MS);
     const averageDaysToFullPayment =
-      daysToPay.length > 0 ? daysToPay.reduce((a, b) => a + b, 0) / daysToPay.length : null;
+      daysToPay.length > 0
+        ? Number((daysToPay.reduce((a, b) => a + b, 0) / daysToPay.length).toFixed(2))
+        : null;
 
     return {
       invoiceCount: agg._count._all,

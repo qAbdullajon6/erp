@@ -298,7 +298,7 @@ function stripUnsupportedSchemaKeys(schema: Record<string, unknown>): Record<str
     if (key === "additionalProperties" || key === "$schema") continue;
 
     if (Array.isArray(value)) {
-      out[key] = value.map((item) =>
+      out[key] = value.map((item): unknown =>
         typeof item === "object" && item !== null
           ? stripUnsupportedSchemaKeys(item as Record<string, unknown>)
           : item,

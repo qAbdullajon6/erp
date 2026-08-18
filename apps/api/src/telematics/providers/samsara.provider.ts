@@ -47,8 +47,11 @@ export class SamsaraProvider implements TelematicsProvider {
 
     const mph = num(gps.speedMilesPerHour);
     return {
-      externalDeviceId:
-        typeof vehicle.id === "string" ? vehicle.id : vehicle.id != null ? String(vehicle.id) : null,
+      externalDeviceId: typeof vehicle.id === "string"
+        ? vehicle.id
+        : typeof vehicle.id === "number" || typeof vehicle.id === "boolean"
+          ? String(vehicle.id)
+          : null,
       recordedAt: parseTimestamp(gps.time ?? vehicle.time) ?? new Date(),
       latitude,
       longitude,

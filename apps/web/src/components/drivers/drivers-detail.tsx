@@ -98,15 +98,8 @@ export function DriversDetail({ driverId }: DriversDetailProps) {
     [dispatches],
   );
 
-  const orderIds = useMemo(() => [...new Set(dispatches.map((d) => d.orderId))], [dispatches]);
-  const ordersQuery = useOrdersList(
-    { limit: 20, sortBy: 'createdAt', sortOrder: 'desc' },
-    { enabled: orderIds.length > 0 },
-  );
-  const relatedOrders = useMemo(() => {
-    const idSet = new Set(orderIds);
-    return ordersQuery.data.filter((o) => idSet.has(o.id)).slice(0, 8);
-  }, [ordersQuery.data, orderIds]);
+  const ordersQuery = useOrdersList({ driverId, limit: 8, sortBy: 'createdAt', sortOrder: 'desc' });
+  const relatedOrders = ordersQuery.data;
 
   const completed = dispatches.filter((d) => d.status === 'DELIVERED').length;
   const cancelled = dispatches.filter((d) => d.status === 'CANCELLED').length;

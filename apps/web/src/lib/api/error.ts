@@ -19,12 +19,20 @@ export function isClientError(error: unknown): error is ApiError {
 
 /// Unwraps the API's `{ data }` envelope, or throws an ApiError carrying the
 /// server's own message — the API wraps failures as `{ error: { message } }`.
+/// Empty 204 / no-body responses resolve to `undefined` (DELETE endpoints).
 export async function unwrapResponse<T>(response: Response, fallback: string): Promise<T> {
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     const message = body?.error?.message ?? body?.message ?? fallback;
     throw new ApiError(Array.isArray(message) ? message[0] : message, response.status);
   }
-  const result = await response.json();
-  return (result.data ?? result) as T;
+  if (response.status === 204) {
+    return undefined as T;
+  }
+  const text = await response.text();
+  if (!text.trim()) {
+    return undefined as T;
+  }
+  const result = JSON.parse(text) as { data?: T } & T;
+  return ((result as { data?: T }).data ?? result) as T;
 }

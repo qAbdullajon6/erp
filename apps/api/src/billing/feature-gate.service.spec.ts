@@ -1,6 +1,30 @@
-import { FeatureGateService, PlanLimits } from "./feature-gate.service";
+import { FeatureGateService } from "./feature-gate.service";
+import { PrismaService } from "../prisma/prisma.service";
+import { asDependency } from "./test-support/billing-spec.helpers";
 
-function makePrisma(subscriptionOverride?: Partial<any> | null) {
+interface MockSubscriptionOverride {
+  planId?: string;
+  status?: string;
+  metadata?: unknown;
+  seats?: number;
+  trialEndsAt?: Date | null;
+  currentPeriodEnd?: Date;
+  plan?: {
+    name?: string;
+    slug?: string;
+    features?: Record<string, unknown>;
+  };
+}
+
+const FREE_PLAN_FEATURES = {
+  users: 3,
+  vehicles: 5,
+  custom_branding: false,
+  sso: false,
+  storage_gb: 1,
+};
+
+function makePrisma(subscriptionOverride?: MockSubscriptionOverride | null) {
   return {
     organizationSubscription: {
       findUnique: jest.fn().mockResolvedValue(
@@ -21,14 +45,17 @@ function makePrisma(subscriptionOverride?: Partial<any> | null) {
                   api_requests_per_day: 10000,
                   custom_branding: true,
                   sso: false,
-                  storage_gb: null, // unlimited
+                  storage_gb: null,
                 },
-                ...(subscriptionOverride as any)?.plan,
+                ...subscriptionOverride?.plan,
               },
             },
       ),
     },
-  } as any;
+    subscriptionPlan: {
+      findUnique: jest.fn().mockResolvedValue({ slug: "free", features: FREE_PLAN_FEATURES }),
+    },
+  };
 }
 
 describe("FeatureGateService", () => {
@@ -36,7 +63,9 @@ describe("FeatureGateService", () => {
 
   beforeEach(() => {
     service = new FeatureGateService(
-      makePrisma({ seats: 10, trialEndsAt: null, currentPeriodEnd: new Date("2026-08-01") }),
+      asDependency<PrismaService>(
+        makePrisma({ seats: 10, trialEndsAt: null, currentPeriodEnd: new Date("2026-08-01") }),
+      ),
     );
   });
 
@@ -62,17 +91,17 @@ describe("FeatureGateService", () => {
     });
 
     it("returns false when organization has no subscription", async () => {
-      service = new FeatureGateService(makePrisma(null));
+      service = new FeatureGateService(asDependency<PrismaService>(makePrisma(null)));
       expect(await service.canUseFeature("org-1", "custom_branding")).toBe(false);
     });
 
     it("returns false for EXPIRED subscription", async () => {
-      service = new FeatureGateService(makePrisma({ status: "EXPIRED" }));
+      service = new FeatureGateService(asDependency<PrismaService>(makePrisma({ status: "EXPIRED" })));
       expect(await service.canUseFeature("org-1", "custom_branding")).toBe(false);
     });
 
     it("returns false for CANCELLED subscription", async () => {
-      service = new FeatureGateService(makePrisma({ status: "CANCELLED" }));
+      service = new FeatureGateService(asDependency<PrismaService>(makePrisma({ status: "CANCELLED" })));
       expect(await service.canUseFeature("org-1", "custom_branding")).toBe(false);
     });
   });
@@ -81,7 +110,7 @@ describe("FeatureGateService", () => {
     it("returns allowed=true with remaining count when within limit", async () => {
       const result = await service.checkLimit("org-1", "users", 10);
       expect(result.allowed).toBe(true);
-      expect(result.remaining).toBe(15); // 25 - 10
+      expect(result.remaining).toBe(15);
     });
 
     it("returns allowed=false with remaining=0 when at limit", async () => {
@@ -102,16 +131,23 @@ describe("FeatureGateService", () => {
       expect(result.remaining).toBeNull();
     });
 
-    it("returns allowed=false when no subscription exists", async () => {
-      service = new FeatureGateService(makePrisma(null));
+    it("falls back to the Free plan's limit when no subscription exists (not zero access)", async () => {
+      service = new FeatureGateService(asDependency<PrismaService>(makePrisma(null)));
       const result = await service.checkLimit("org-1", "users", 0);
+      expect(result.allowed).toBe(true);
+      expect(result.remaining).toBe(FREE_PLAN_FEATURES.users);
+    });
+
+    it("still blocks once usage reaches the Free plan's fallback limit", async () => {
+      service = new FeatureGateService(asDependency<PrismaService>(makePrisma(null)));
+      const result = await service.checkLimit("org-1", "users", FREE_PLAN_FEATURES.users);
       expect(result.allowed).toBe(false);
       expect(result.remaining).toBe(0);
     });
 
     it("returns allowed=false for non-numeric limit value", async () => {
       service = new FeatureGateService(
-        makePrisma({ plan: { features: { users: "invalid" } } }),
+        asDependency<PrismaService>(makePrisma({ plan: { features: { users: "invalid" } } })),
       );
       const result = await service.checkLimit("org-1", "users", 0);
       expect(result.allowed).toBe(false);
@@ -122,7 +158,7 @@ describe("FeatureGateService", () => {
   describe("remainingQuota()", () => {
     it("returns remaining count for numeric limits", async () => {
       const remaining = await service.remainingQuota("org-1", "vehicles", 20);
-      expect(remaining).toBe(30); // 50 - 20
+      expect(remaining).toBe(30);
     });
 
     it("returns null for unlimited features", async () => {
@@ -157,7 +193,7 @@ describe("FeatureGateService", () => {
   describe("cache behavior", () => {
     it("caches plan limits after first lookup", async () => {
       const prisma = makePrisma({ seats: 10, trialEndsAt: null, currentPeriodEnd: new Date() });
-      service = new FeatureGateService(prisma);
+      service = new FeatureGateService(asDependency<PrismaService>(prisma));
 
       await service.canUseFeature("org-1", "custom_branding");
       await service.canUseFeature("org-1", "custom_branding");
@@ -167,7 +203,7 @@ describe("FeatureGateService", () => {
 
     it("clearCache forces fresh DB lookup", async () => {
       const prisma = makePrisma({ seats: 10, trialEndsAt: null, currentPeriodEnd: new Date() });
-      service = new FeatureGateService(prisma);
+      service = new FeatureGateService(asDependency<PrismaService>(prisma));
 
       await service.canUseFeature("org-1", "custom_branding");
       service.clearCache("org-1");
@@ -184,13 +220,15 @@ describe("FeatureGateService", () => {
 
     it("returns true when subscription is TRIAL", async () => {
       service = new FeatureGateService(
-        makePrisma({ status: "TRIAL", seats: 5, trialEndsAt: new Date(), currentPeriodEnd: new Date() }),
+        asDependency<PrismaService>(
+          makePrisma({ status: "TRIAL", seats: 5, trialEndsAt: new Date(), currentPeriodEnd: new Date() }),
+        ),
       );
       expect(await service.hasActiveSubscription("org-1")).toBe(true);
     });
 
     it("returns false when no subscription exists", async () => {
-      service = new FeatureGateService(makePrisma(null));
+      service = new FeatureGateService(asDependency<PrismaService>(makePrisma(null)));
       expect(await service.hasActiveSubscription("org-1")).toBe(false);
     });
   });
@@ -201,13 +239,15 @@ describe("FeatureGateService", () => {
     });
 
     it("returns NONE when no subscription exists", async () => {
-      service = new FeatureGateService(makePrisma(null));
+      service = new FeatureGateService(asDependency<PrismaService>(makePrisma(null)));
       expect(await service.getSubscriptionStatus("org-1")).toBe("NONE");
     });
 
     it("returns SUSPENDED for suspended subscription", async () => {
       service = new FeatureGateService(
-        makePrisma({ status: "SUSPENDED", seats: 10, trialEndsAt: null, currentPeriodEnd: new Date() }),
+        asDependency<PrismaService>(
+          makePrisma({ status: "SUSPENDED", seats: 10, trialEndsAt: null, currentPeriodEnd: new Date() }),
+        ),
       );
       expect(await service.getSubscriptionStatus("org-1")).toBe("SUSPENDED");
     });

@@ -87,8 +87,8 @@ export class SesEmailProvider extends EmailProvider {
       });
       await this.client.send(command);
       return true;
-    } catch (error: any) {
-      if (error.name === 'MessageRejected') {
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'MessageRejected') {
         return true;
       }
       return false;

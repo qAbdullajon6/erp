@@ -2,6 +2,8 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
+import { useQuery } from '@tanstack/react-query';
+import { auditLogKeys } from '@/lib/api/query-keys';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -15,24 +17,51 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
-import { LoadingState, ErrorState } from '@/components/shared/list-states';
-import { StatusBadge } from '@/components/shared/status-badge';
+import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-states';
+import { StatusBadge, statusLabel } from '@/components/shared/status-badge';
+
+/// What each order transition is called to the person doing it. "Move to
+/// PENDING" is the database's name for confirming a draft, and it was the only
+/// way to make a new order dispatchable — the Orders list called the same step
+/// "Activate draft", so the product had two names for it and neither was the
+/// one an operator would use.
+const TRANSITION_LABELS: Partial<Record<OrderStatus, string>> = {
+  PENDING: 'Confirm order',
+  ASSIGNED: 'Mark as assigned',
+  IN_TRANSIT: 'Mark in transit',
+};
 import { OrderTimeline } from '@/components/orders/order-timeline';
+import {
+  OrderActivityTimeline,
+  buildOrderActivityTimeline,
+} from '@/components/orders/order-activity-timeline';
+import { OrderDocumentsPanel } from '@/components/orders/order-documents-panel';
+import { OrderNotesPanel } from '@/components/orders/order-notes-panel';
+import { ProofOfDeliveryPanel } from '@/components/dispatch/proof-of-delivery-panel';
+import {
+  driverFromDispatch,
+  hasEffectiveAssignment,
+  resolveEffectiveAssignment,
+  vehicleFromDispatch,
+} from '@/components/orders/order-assignment.util';
 import { OrdersEditSheet } from '@/components/orders/orders-edit-sheet';
+import { InvoiceDetailSheet } from '@/components/finance/invoice-detail-sheet';
 import {
   useOrder,
   useAssignOrder,
   useUpdateOrderStatus,
   useCancelOrder,
-  type Order,
+  useArchiveOrder,
+  useRestoreOrder,
   type OrderStatus,
 } from '@/lib/api/orders';
+import { auditLogsAPI } from '@/lib/api/audit-logs';
 import { useAvailability } from '@/lib/api/availability';
 import { useDriver, type Driver } from '@/lib/api/drivers';
 import { useVehicle, type Vehicle } from '@/lib/api/vehicles';
 import { useCustomerDetail } from '@/lib/api/customers';
 import { useDispatches } from '@/lib/hooks/use-dispatches';
-import { useInvoicesQuery, useCreateInvoiceFromOrderMutation, type Invoice } from '@/lib/api/invoices';
+import { useInvoicesQuery, useCreateInvoiceFromOrderMutation } from '@/lib/api/invoices';
 import { useExpensesQuery, type Expense } from '@/lib/api/expenses';
 import { useLiveFleetQuery } from '@/lib/api/telematics';
 import { useCurrentUser } from '@/lib/api/auth';
@@ -44,11 +73,14 @@ import {
   ORDER_WRITE_ROLES,
   ORDER_OPERATIONAL_ROLES,
   EXPENSE_READ_ROLES,
+  AUDIT_ROLES,
 } from '@/lib/role-access';
 import type { MembershipRole } from '@/lib/api/organizations';
 import type { ApiDispatch } from '@/lib/api/dispatches';
 import {
   AlertTriangle,
+  Archive,
+  ArchiveRestore,
   ArrowLeft,
   ArrowRight,
   Box,
@@ -68,93 +100,18 @@ import {
   Route as RouteIcon,
   Ruler,
   Scale,
-  StickyNote,
   Truck,
   User,
   UserPlus,
-  Wallet,
-  Workflow,
   XCircle,
 } from 'lucide-react';
-import { formatMoney, formatDate, formatDateTime, formatRelativeTime } from '@/lib/format';
+import { formatMoney, formatDate, formatRelativeTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { describeError } from '@/lib/api/describe-error';
 
 interface OrderDetailProps {
   orderId: string;
-}
-
-type ActivityKind = 'status' | 'assignment' | 'invoice' | 'dispatch' | 'payment' | 'workflow' | 'note';
-
-type ActivityItem = {
-  id: string;
-  at: string;
-  title: string;
-  detail?: string | null;
-  status?: OrderStatus;
-  kind: ActivityKind;
-};
-
-const ACTIVITY_STYLE: Record<
-  ActivityKind,
-  { icon: typeof Clock; className: string }
-> = {
-  status: { icon: CheckCircle2, className: 'bg-brand/15 text-brand' },
-  assignment: { icon: UserPlus, className: 'bg-success/15 text-success' },
-  invoice: { icon: Receipt, className: 'bg-warning/15 text-warning' },
-  dispatch: { icon: RouteIcon, className: 'bg-brand/15 text-brand' },
-  payment: { icon: Wallet, className: 'bg-success/15 text-success' },
-  workflow: { icon: Workflow, className: 'bg-muted text-muted-foreground' },
-  note: { icon: StickyNote, className: 'bg-muted text-muted-foreground' },
-};
-
-function kindForStatus(status: OrderStatus): ActivityKind {
-  if (status === 'ASSIGNED') return 'assignment';
-  if (status === 'CANCELLED') return 'note';
-  return 'status';
-}
-
-function buildActivity(
-  order: Order,
-  invoice?: Invoice | null,
-  dispatch?: ApiDispatch | null,
-): ActivityItem[] {
-  const items: ActivityItem[] = (order.statusHistory ?? []).map((e) => ({
-    id: e.id,
-    at: e.createdAt,
-    title: e.status.replace(/_/g, ' '),
-    detail: e.note,
-    status: e.status,
-    kind: kindForStatus(e.status),
-  }));
-  if (invoice) {
-    items.push({
-      id: `invoice-${invoice.id}`,
-      at: invoice.createdAt,
-      title: `Invoice ${invoice.invoiceNumber}`,
-      detail: invoice.status.replace(/_/g, ' '),
-      kind: 'invoice',
-    });
-    if (Number(invoice.paidAmount) > 0) {
-      items.push({
-        id: `paid-${invoice.id}`,
-        at: invoice.updatedAt,
-        title: 'Payment recorded',
-        detail: formatMoney(invoice.paidAmount, invoice.currency),
-        kind: 'payment',
-      });
-    }
-  }
-  if (dispatch) {
-    items.push({
-      id: `dispatch-${dispatch.id}`,
-      at: dispatch.createdAt,
-      title: `Dispatch ${dispatch.dispatchNumber}`,
-      detail: dispatch.status.replace(/_/g, ' '),
-      kind: 'dispatch',
-    });
-  }
-  return items.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
 }
 
 function Avatar({
@@ -261,6 +218,8 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
   const { assign, loading: assignLoading } = useAssignOrder();
   const { updateStatus, loading: statusLoading } = useUpdateOrderStatus();
   const { cancel, loading: cancelLoading } = useCancelOrder();
+  const { archive, loading: archiveLoading } = useArchiveOrder();
+  const { restore, loading: restoreLoading } = useRestoreOrder();
 
   const { data: currentUser } = useCurrentUser();
   const role = currentUser?.membership.role as MembershipRole | undefined;
@@ -271,6 +230,19 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
   const canWriteOrder = Boolean(role && ORDER_WRITE_ROLES.includes(role));
   const canOperateOrder = Boolean(role && ORDER_OPERATIONAL_ROLES.includes(role));
   const canViewExpenses = Boolean(role && EXPENSE_READ_ROLES.includes(role));
+  const canViewAudit = Boolean(role && AUDIT_ROLES.includes(role));
+
+  const auditQuery = useQuery({
+    queryKey: auditLogKeys.list({ entityType: 'Order', entityId: orderId }),
+    queryFn: () =>
+      auditLogsAPI.list({
+        entityType: 'Order',
+        entityId: orderId,
+        limit: 100,
+        sortOrder: 'desc',
+      }),
+    enabled: canViewAudit && Boolean(orderId),
+  });
 
   const { data: dispatchesForOrder, loading: dispatchesLoading } = useDispatches(
     1,
@@ -303,16 +275,22 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
     { enabled: canOperateOrder },
   );
 
+  const plannedDriverId =
+    order?.driverId ?? (dispatch?.status === 'DRAFT' ? dispatch?.driverId ?? null : null);
+  const plannedVehicleId =
+    order?.vehicleId ?? (dispatch?.status === 'DRAFT' ? dispatch?.vehicleId ?? null : null);
+
   const liveFleet = useLiveFleetQuery({
-    enabled: canViewFleet && Boolean(order?.vehicleId),
-    refetchInterval: order?.vehicleId ? 30_000 : undefined,
+    enabled: canViewFleet && Boolean(plannedVehicleId),
+    refetchInterval: plannedVehicleId ? 30_000 : undefined,
   });
   const liveVehicle = useMemo(() => {
-    if (!order?.vehicleId || !liveFleet.data) return null;
-    return liveFleet.data.find((v) => v.vehicleId === order.vehicleId) ?? null;
-  }, [liveFleet.data, order?.vehicleId]);
+    if (!plannedVehicleId || !liveFleet.data) return null;
+    return liveFleet.data.find((v) => v.vehicleId === plannedVehicleId) ?? null;
+  }, [liveFleet.data, plannedVehicleId]);
 
   const [editOpen, setEditOpen] = useState(false);
+  const [invoiceSheetId, setInvoiceSheetId] = useState<string | null>(null);
   const [showAssign, setShowAssign] = useState(false);
   const [driverId, setDriverId] = useState('');
   const [vehicleId, setVehicleId] = useState('');
@@ -320,26 +298,61 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
   const [showCancel, setShowCancel] = useState(false);
   const [cancelNote, setCancelNote] = useState('');
   const [pendingDeliverConfirm, setPendingDeliverConfirm] = useState(false);
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const [highlightStatus, setHighlightStatus] = useState<OrderStatus | null>(null);
 
   const { data: customer, loading: customerLoading } = useCustomerDetail(order?.customerId ?? '');
-  const { data: assignedDriver } = useDriver(canViewFleet && order?.driverId ? order.driverId : '');
-  const { data: assignedVehicle } = useVehicle(canViewFleet && order?.vehicleId ? order.vehicleId : '');
+  const { data: assignedDriver } = useDriver(
+    canViewFleet && plannedDriverId ? plannedDriverId : '',
+  );
+  const { data: assignedVehicle } = useVehicle(
+    canViewFleet && plannedVehicleId ? plannedVehicleId : '',
+  );
 
   if (loading) return <LoadingState label="Loading order..." />;
   if (error) return <ErrorState message={error} onRetry={refetch} />;
-  if (!order) return <div className="py-12 text-center text-muted-foreground">Order not found</div>;
+  if (!order) {
+    return (
+      <EmptyState
+        icon={Package}
+        title="Order not found"
+        description="This order may have been deleted, or the link is incorrect."
+        action={
+          <Button onClick={() => navigate({ to: '/app/orders' })} variant="outline">
+            Back to Orders
+          </Button>
+        }
+      />
+    );
+  }
+
+  const { driverId: effectiveDriverId, vehicleId: effectiveVehicleId, isDraftPlan } =
+    resolveEffectiveAssignment(order, dispatch);
+  const displayDriver =
+    assignedDriver ?? driverFromDispatch(dispatch) ?? (effectiveDriverId && !canViewFleet ? { id: effectiveDriverId } as Driver : null);
+  const displayVehicle =
+    assignedVehicle ?? vehicleFromDispatch(dispatch) ?? (effectiveVehicleId && !canViewFleet ? { id: effectiveVehicleId } as Vehicle : null);
 
   const allowedTransitions = order.allowedTransitions.filter(
-    (status) => status !== 'ASSIGNED' || (order.driverId && order.vehicleId),
+    (status) => status !== 'ASSIGNED' || hasEffectiveAssignment(order, dispatch),
   );
-  const canEdit = canWriteOrder && order.status !== 'DELIVERED' && order.status !== 'CANCELLED';
-  const canAssign = canOperateOrder && ['PENDING', 'ASSIGNED'].includes(order.status);
-  const canCancel = canOperateOrder && order.status !== 'DELIVERED' && order.status !== 'CANCELLED';
-  const canAdvanceStatus = canOperateOrder && allowedTransitions.length > 0;
+  const canEdit = canWriteOrder && order.status !== 'DELIVERED' && order.status !== 'CANCELLED' && !order.archivedAt;
+  const canAssign = canOperateOrder && ['PENDING', 'ASSIGNED'].includes(order.status) && !order.archivedAt;
+  const canCancel = canOperateOrder && order.status !== 'DELIVERED' && order.status !== 'CANCELLED' && !order.archivedAt;
+  const canAdvanceStatus = canOperateOrder && allowedTransitions.length > 0 && !order.archivedAt;
+  const canArchive =
+    canOperateOrder &&
+    !order.archivedAt &&
+    (order.status === 'DELIVERED' || order.status === 'CANCELLED');
+  const canRestore = canOperateOrder && Boolean(order.archivedAt);
 
   const customerLabel = customerLoading ? '…' : customer?.companyName ?? '—';
-  const activity = buildActivity(order, invoice, dispatch);
+  const activityEntries = buildOrderActivityTimeline(
+    order,
+    auditQuery.data?.items ?? [],
+    invoice,
+  );
 
   const approvedExpenseTotal = expenses
     .filter((e) => e.status === 'APPROVED')
@@ -364,13 +377,13 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
     }
     try {
       await assign(orderId, { driverId, vehicleId });
-      toast.success(order.driverId ? 'Reassigned' : 'Assigned');
+      toast.success(hasEffectiveAssignment(order, dispatch) ? 'Reassigned' : 'Assigned');
       setShowAssign(false);
       setDriverId('');
       setVehicleId('');
       setAssignError('');
     } catch (err) {
-      setAssignError(err instanceof Error ? err.message : 'Failed to assign');
+      setAssignError(describeError(err, 'Failed to assign'));
     }
   };
 
@@ -379,7 +392,7 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
       await updateStatus(orderId, { status: newStatus });
       toast.success(`Moved to ${newStatus.replace(/_/g, ' ')}`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed');
+      toast.error(describeError(err, 'Failed'));
     }
   };
 
@@ -389,7 +402,27 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
       toast.success('Order cancelled');
       setShowCancel(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed');
+      toast.error(describeError(err, 'Failed'));
+    }
+  };
+
+  const handleArchive = async () => {
+    try {
+      await archive(orderId);
+      toast.success('Order archived');
+      setShowArchiveConfirm(false);
+    } catch (err) {
+      toast.error(describeError(err, 'Failed to archive'));
+    }
+  };
+
+  const handleRestore = async () => {
+    try {
+      await restore(orderId);
+      toast.success('Order restored');
+      setShowRestoreConfirm(false);
+    } catch (err) {
+      toast.error(describeError(err, 'Failed to restore'));
     }
   };
 
@@ -430,7 +463,13 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                   Delayed
                 </Badge>
               )}
-              {order.status === 'PENDING' && !order.driverId && (
+              {order.archivedAt && (
+                <Badge variant="outline" className="gap-1 text-[10px]">
+                  <Archive className="h-3 w-3" />
+                  Archived
+                </Badge>
+              )}
+              {order.status === 'PENDING' && !hasEffectiveAssignment(order, dispatch) && (
                 <Badge className="bg-warning/15 text-[10px] text-warning hover:bg-warning/15">
                   Needs assignment
                 </Badge>
@@ -459,7 +498,7 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
             {canAssign && (
               <Button size="sm" onClick={openAssign} data-testid="orders-assign-toggle">
                 <UserPlus className="mr-1.5 h-3.5 w-3.5" />
-                {order.driverId ? 'Reassign' : 'Assign'}
+                {hasEffectiveAssignment(order, dispatch) ? 'Reassign' : 'Assign'}
               </Button>
             )}
             {canEdit && (
@@ -478,7 +517,7 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                     await createInvoiceFromOrder(orderId);
                     toast.success('Invoice created');
                   } catch (err) {
-                    toast.error(err instanceof Error ? err.message : 'Failed');
+                    toast.error(describeError(err, 'Failed'));
                   }
                 }}
               >
@@ -501,7 +540,7 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                   </Button>
                 }
                 title={`Cancel ${order.orderNumber}?`}
-                description="This cannot be undone."
+                description="Every open dispatch for this order is cancelled too, releasing its driver and vehicle. The order stays on record but cannot be reopened or edited."
                 confirmLabel={cancelLoading ? 'Cancelling…' : 'Cancel order'}
                 cancelLabel="Keep"
                 onConfirm={handleCancel}
@@ -516,6 +555,38 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                 />
               </ConfirmDialog>
             )}
+            {canArchive && (
+              <ConfirmDialog
+                open={showArchiveConfirm}
+                onOpenChange={setShowArchiveConfirm}
+                trigger={
+                  <Button size="sm" variant="outline" disabled={archiveLoading}>
+                    <Archive className="mr-1.5 h-3.5 w-3.5" />
+                    Archive
+                  </Button>
+                }
+                title={`Archive ${order.orderNumber}?`}
+                description="Archived orders are hidden from the default list but can be restored later."
+                confirmLabel={archiveLoading ? 'Archiving…' : 'Archive order'}
+                onConfirm={handleArchive}
+              />
+            )}
+            {canRestore && (
+              <ConfirmDialog
+                open={showRestoreConfirm}
+                onOpenChange={setShowRestoreConfirm}
+                trigger={
+                  <Button size="sm" variant="outline" disabled={restoreLoading}>
+                    <ArchiveRestore className="mr-1.5 h-3.5 w-3.5" />
+                    Restore
+                  </Button>
+                }
+                title={`Restore ${order.orderNumber}?`}
+                description="This order will reappear in the active orders list."
+                confirmLabel={restoreLoading ? 'Restoring…' : 'Restore order'}
+                onConfirm={handleRestore}
+              />
+            )}
           </div>
         </div>
 
@@ -523,8 +594,8 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
         <div className="border-b border-border/70 px-4 py-3">
           <OrderTimeline
             order={order}
-            driver={assignedDriver}
-            vehicle={assignedVehicle}
+            driver={displayDriver}
+            vehicle={displayVehicle}
             dispatch={dispatch}
             live={liveVehicle}
             onStageClick={jumpToActivity}
@@ -535,7 +606,13 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px]">
           {/* -------- LEFT WORK SURFACE -------- */}
           <div className="divide-y divide-border/70 border-r-0 lg:border-r lg:border-border/70">
-            {/* Pickup / Delivery */}
+            {/* Route — Pickup / Delivery */}
+            <div className="p-4 pb-0">
+              <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <RouteIcon className="h-3.5 w-3.5" />
+                Route
+              </div>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2">
               <div className="space-y-2 border-b border-border/70 p-4 md:border-b-0 md:border-r md:border-border/70">
                 <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-brand">
@@ -671,7 +748,7 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                   <div className="flex flex-wrap gap-1.5">
                     {canViewFleet && order.vehicleId && (
                       <Button asChild size="sm" variant="ghost" className="h-7 px-2 text-xs">
-                        <Link to="/app/fleet-tracking">
+                        <Link to="/app/fleet-tracking" search={{ vehicleId: order.vehicleId }}>
                           <Navigation className="mr-1 h-3 w-3" />
                           Map
                         </Link>
@@ -697,12 +774,14 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                 ) : (
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     <AssignmentDriver
-                      driver={assignedDriver}
-                      fallbackAssigned={Boolean(order.driverId && !canViewFleet)}
+                      driver={displayDriver}
+                      fallbackAssigned={Boolean(effectiveDriverId && !canViewFleet)}
+                      draftPlan={isDraftPlan && !order.driverId}
                     />
                     <AssignmentVehicle
-                      vehicle={assignedVehicle}
-                      fallbackAssigned={Boolean(order.vehicleId && !canViewFleet)}
+                      vehicle={displayVehicle}
+                      fallbackAssigned={Boolean(effectiveVehicleId && !canViewFleet)}
+                      draftPlan={isDraftPlan && !order.vehicleId}
                     />
                     <AssignmentDispatch dispatch={canViewDispatch ? dispatch : null} hidden={!canViewDispatch} />
                   </div>
@@ -711,7 +790,7 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                 {showAssign && canAssign && (
                   <div className="mt-3 space-y-2 rounded-lg border border-brand/20 bg-brand/[0.04] p-3">
                     <p className="text-xs font-semibold text-foreground">
-                      {order.driverId ? 'Replace assignment' : 'Assign driver & vehicle'}
+                      {hasEffectiveAssignment(order, dispatch) ? 'Replace assignment' : 'Assign driver & vehicle'}
                     </p>
                     {availabilityError ? (
                       <div className="space-y-2">
@@ -767,55 +846,54 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
               </div>
             )}
 
-            {/* Activity */}
+            {/* Documents */}
+            <section className="p-4">
+              <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <FileText className="h-3.5 w-3.5" />
+                Documents
+              </div>
+              <OrderDocumentsPanel
+                orderId={orderId}
+                canWrite={canWriteOrder && !order.archivedAt}
+                invoice={invoice}
+                canViewInvoices={canViewInvoices}
+                orderStatus={order.status}
+              />
+            </section>
+
+            {/* Named for its source: Documents above holds POD files the office
+                uploads, and this is what the driver submitted from the app. Two
+                sections headed "Proof of Delivery" on one page said nothing
+                about which was which. */}
+            {canViewDispatch && (
+              <section className="p-4">
+                <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <FileText className="h-3.5 w-3.5" />
+                  Driver&rsquo;s proof of delivery
+                </div>
+                {dispatchesLoading ? (
+                  <Skeleton className="h-24 w-full rounded-xl" />
+                ) : (
+                  <ProofOfDeliveryPanel dispatchId={dispatch?.id} />
+                )}
+              </section>
+            )}
+
+            {/* Timeline */}
             <section ref={activityRef} className="p-4">
               <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                 <Clock className="h-3.5 w-3.5" />
-                Shipment activity
+                Timeline
               </div>
-              {activity.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No activity yet.</p>
-              ) : (
-                <div className="space-y-0">
-                  {activity.map((item, index) => {
-                    const style = ACTIVITY_STYLE[item.kind];
-                    const Icon = style.icon;
-                    const lit = item.status && item.status === highlightStatus;
-                    return (
-                      <div
-                        key={item.id}
-                        className={cn(
-                          'relative flex gap-3 rounded-md py-2 pl-1',
-                          lit && 'bg-brand/10 ring-1 ring-brand/25',
-                        )}
-                      >
-                        {index < activity.length - 1 && (
-                          <div className="absolute left-[18px] top-10 h-[calc(100%-12px)] w-px bg-border" />
-                        )}
-                        <span
-                          className={cn(
-                            'relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full',
-                            style.className,
-                          )}
-                        >
-                          <Icon className="h-3.5 w-3.5" />
-                        </span>
-                        <div className="min-w-0 flex-1 pt-0.5">
-                          <div className="flex flex-wrap items-baseline gap-x-2">
-                            <span className="text-sm font-medium text-foreground">{item.title}</span>
-                            <span className="text-[11px] tabular-nums text-muted-foreground">
-                              {formatDateTime(item.at)}
-                            </span>
-                          </div>
-                          {item.detail && (
-                            <p className="mt-0.5 text-xs text-muted-foreground">{item.detail}</p>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+              <OrderActivityTimeline
+                entries={activityEntries}
+                highlightStatus={highlightStatus}
+              />
+            </section>
+
+            {/* Internal notes */}
+            <section className="p-4">
+              <OrderNotesPanel orderId={orderId} canWrite={canWriteOrder && !order.archivedAt} />
             </section>
           </div>
 
@@ -872,7 +950,15 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                   Financial
                 </h3>
                 {canViewInvoices && (
-                  <Link to="/app/finance" className="text-[11px] font-medium text-brand hover:underline">
+                  <Link
+                    to="/app/finance"
+                    search={
+                      invoice
+                        ? { tab: 'invoices' as const, invoiceId: invoice.id }
+                        : { tab: 'invoices' as const }
+                    }
+                    className="text-[11px] font-medium text-brand hover:underline"
+                  >
                     Finance
                   </Link>
                 )}
@@ -938,7 +1024,15 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                   <h3 className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Live tracking
                   </h3>
-                  <Link to="/app/fleet-tracking" className="text-[11px] font-medium text-brand hover:underline">
+                  {/* The map route already deep-links a selection; both links
+                      from here dropped the vehicle, so "Map" landed the
+                      operator on the whole fleet and left them to find the
+                      truck they had just been reading about. */}
+                  <Link
+                    to="/app/fleet-tracking"
+                    search={{ vehicleId: order.vehicleId }}
+                    className="text-[11px] font-medium text-brand hover:underline"
+                  >
                     Map
                   </Link>
                 </div>
@@ -1035,7 +1129,7 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                           await createInvoiceFromOrder(orderId);
                           toast.success('Invoice created');
                         } catch (err) {
-                          toast.error(err instanceof Error ? err.message : 'Failed');
+                          toast.error(describeError(err, 'Failed'));
                         }
                       }}
                     >
@@ -1044,11 +1138,14 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                     </Button>
                   )}
                   {canViewInvoices && invoice && (
-                    <Button asChild size="sm" variant="outline" className="w-full justify-start">
-                      <Link to="/app/finance">
-                        <FileText className="mr-2 h-3.5 w-3.5" />
-                        Open invoice
-                      </Link>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full justify-start"
+                      onClick={() => setInvoiceSheetId(invoice.id)}
+                    >
+                      <FileText className="mr-2 h-3.5 w-3.5" />
+                      Open invoice
                     </Button>
                   )}
                   {canEdit && (
@@ -1080,12 +1177,12 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                         <Button
                           key={nextStatus}
                           size="sm"
-                          variant="outline"
+                          variant={nextStatus === 'PENDING' ? 'default' : 'outline'}
                           className="w-full justify-start"
                           onClick={() => handleStatusTransition(nextStatus)}
                           disabled={statusLoading}
                         >
-                          Move to {nextStatus.replace(/_/g, ' ')}
+                          {TRANSITION_LABELS[nextStatus] ?? `Move to ${statusLabel(nextStatus)}`}
                         </Button>
                       ),
                     )}
@@ -1108,6 +1205,14 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
       </div>
 
       {canEdit && <OrdersEditSheet open={editOpen} onOpenChange={setEditOpen} order={order} />}
+      {canViewInvoices && (
+        <InvoiceDetailSheet
+          invoiceId={invoiceSheetId}
+          onOpenChange={(open) => {
+            if (!open) setInvoiceSheetId(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -1115,9 +1220,11 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
 function AssignmentDriver({
   driver,
   fallbackAssigned,
+  draftPlan,
 }: {
   driver?: Driver | null;
   fallbackAssigned: boolean;
+  draftPlan?: boolean;
 }) {
   if (!driver && !fallbackAssigned) {
     return (
@@ -1145,8 +1252,13 @@ function AssignmentDriver({
     <div className="rounded-lg border border-border/70 bg-background/40 p-3">
       <div className="flex items-start gap-2.5">
         <Avatar initials={(driver.firstName[0] ?? '') + (driver.lastName[0] ?? '')} />
-        <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Driver</p>
+          {draftPlan ? (
+            <Badge variant="outline" className="mb-1 h-5 text-[10px] text-warning">
+              Draft plan
+            </Badge>
+          ) : null}
           <Link
             to="/app/drivers/$driverId"
             params={{ driverId: driver.id }}
@@ -1193,9 +1305,11 @@ function AssignmentDriver({
 function AssignmentVehicle({
   vehicle,
   fallbackAssigned,
+  draftPlan,
 }: {
   vehicle?: Vehicle | null;
   fallbackAssigned: boolean;
+  draftPlan?: boolean;
 }) {
   if (!vehicle && !fallbackAssigned) {
     return (
@@ -1228,6 +1342,11 @@ function AssignmentVehicle({
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Vehicle</p>
+          {draftPlan ? (
+            <Badge variant="outline" className="mb-1 h-5 text-[10px] text-warning">
+              Draft plan
+            </Badge>
+          ) : null}
           <Link
             to="/app/vehicles/$vehicleId"
             params={{ vehicleId: vehicle.id }}

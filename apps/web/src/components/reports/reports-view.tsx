@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/shared/page-header';
 import { useCurrentUser } from '@/lib/api/auth';
 import type { MembershipRole } from '@/lib/api/organizations';
 import type { ComparisonPeriod, ReportFilterParams } from '@/lib/api/reports';
 import { FLEET_ROLES, INVOICE_FINALIZE_ROLES } from '@/lib/role-access';
+import type { ReportTab } from '@/routes/app.reports';
 import { DateRangeFilter } from './date-range-filter';
 import { resolvePreset, type DateRangePreset, type DateRangeValue } from './report-date-range';
 import { ExecutiveOverviewTab } from './executive-overview-tab';
@@ -23,15 +25,48 @@ const COMPARISON_OPTIONS: { value: ComparisonPeriod; label: string }[] = [
 
 export function ReportsView() {
   const { data: currentUser, loading, error, refetch } = useCurrentUser();
-  const [range, setRange] = useState<DateRangeValue>(() => resolvePreset('last_30_days'));
-  const [comparisonPeriod, setComparisonPeriod] = useState<ComparisonPeriod>('previous_period');
+  const navigate = useNavigate({ from: '/app/reports' });
+  const search = useSearch({ from: '/app/reports' });
+
+  const tab: ReportTab = search.tab ?? 'executive';
+  const comparisonPeriod: ComparisonPeriod = search.comparisonPeriod ?? 'previous_period';
+  const range: DateRangeValue =
+    search.preset === 'custom' && search.dateFrom && search.dateTo
+      ? { preset: 'custom', dateFrom: search.dateFrom, dateTo: search.dateTo }
+      : resolvePreset(search.preset ?? 'last_30_days');
+
+  const setTab = (next: string) => {
+    void navigate({
+      to: '/app/reports',
+      search: (prev) => ({ ...prev, tab: next === 'executive' ? undefined : (next as ReportTab) }),
+    });
+  };
 
   const handlePresetChange = (preset: DateRangePreset) => {
-    setRange(resolvePreset(preset, preset === 'custom' ? { dateFrom: range.dateFrom, dateTo: range.dateTo } : undefined));
+    const next = resolvePreset(preset, preset === 'custom' ? { dateFrom: range.dateFrom, dateTo: range.dateTo } : undefined);
+    void navigate({
+      to: '/app/reports',
+      search: (prev) => ({
+        ...prev,
+        preset: preset === 'last_30_days' ? undefined : preset,
+        dateFrom: preset === 'custom' ? next.dateFrom : undefined,
+        dateTo: preset === 'custom' ? next.dateTo : undefined,
+      }),
+    });
   };
 
   const handleCustomChange = (dateFrom: string, dateTo: string) => {
-    setRange({ preset: 'custom', dateFrom, dateTo });
+    void navigate({
+      to: '/app/reports',
+      search: (prev) => ({ ...prev, preset: 'custom', dateFrom, dateTo }),
+    });
+  };
+
+  const setComparisonPeriod = (next: ComparisonPeriod) => {
+    void navigate({
+      to: '/app/reports',
+      search: (prev) => ({ ...prev, comparisonPeriod: next === 'previous_period' ? undefined : next }),
+    });
   };
 
   if (loading) {
@@ -67,17 +102,17 @@ export function ReportsView() {
   };
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="font-display text-3xl font-bold text-foreground">Reports</h1>
-        <p className="mt-2 text-muted-foreground">Executive, operational, financial, and fleet performance</p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader title="Reports" subtitle="Executive, operational, financial, and fleet performance" />
 
-      <div className="flex flex-wrap items-end gap-4">
-        <div className="min-w-0 flex-1">
+      {/* Stacked until sm: side by side, the range chips lose so much width that
+          they wrap, and a wrapped chip group is taller than the two controls
+          stacked. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-4">
+        <div className="min-w-0 sm:flex-1">
           <DateRangeFilter value={range} onPresetChange={handlePresetChange} onCustomChange={handleCustomChange} />
         </div>
-        <div>
+        <div className="shrink-0">
           <label htmlFor="report-comparison" className="mb-1 block text-xs font-medium text-muted-foreground">
             Compare
           </label>
@@ -85,7 +120,7 @@ export function ReportsView() {
             id="report-comparison"
             value={comparisonPeriod}
             onChange={(e) => setComparisonPeriod(e.target.value as ComparisonPeriod)}
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+            className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm sm:w-auto"
           >
             {COMPARISON_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -96,7 +131,12 @@ export function ReportsView() {
         </div>
       </div>
 
-      <Tabs defaultValue="executive">
+      <Tabs
+        value={
+          (tab === 'financial' && !canViewFinancial) || (tab === 'fleet' && !canViewFleet) ? 'executive' : tab
+        }
+        onValueChange={setTab}
+      >
         <TabsList>
           <TabsTrigger value="executive">Executive Overview</TabsTrigger>
           <TabsTrigger value="operations">Operations</TabsTrigger>

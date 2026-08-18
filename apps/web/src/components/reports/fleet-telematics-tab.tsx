@@ -1,6 +1,20 @@
+import {
+  Activity,
+  AlertTriangle,
+  Fuel,
+  Gauge,
+  MapPin,
+  Route,
+  type LucideIcon,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { MetricCard } from '@/components/ui/metric-card';
+import { SurfaceCard } from '@/components/ui/surface-card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useFleetTelematicsReportQuery } from '@/lib/api/reports';
+import { describeError } from '@/lib/api/describe-error';
+import { ReportTableCard, TOP_ROWS, topOfLabel } from './report-table-card';
 
 interface FleetTelematicsTabProps {
   dateFrom: string;
@@ -30,7 +44,7 @@ export function FleetTelematicsTab({ dateFrom, dateTo }: FleetTelematicsTabProps
   if (isError || !data) {
     return (
       <div className="rounded-lg bg-destructive/10 p-6 text-sm text-destructive">
-        {error instanceof Error ? error.message : 'Failed to load fleet telematics report'}
+        {describeError(error, 'Failed to load fleet telematics report')}
         <Button onClick={() => refetch()} variant="ghost" size="sm" className="ml-4">
           Retry
         </Button>
@@ -39,15 +53,23 @@ export function FleetTelematicsTab({ dateFrom, dateTo }: FleetTelematicsTabProps
   }
 
   const { overview, utilization, driverBehavior, fuel } = data;
-  const kpis = [
-    { label: 'Distance (km)', value: overview.totalDistanceKm.toLocaleString() },
-    { label: 'Trips', value: overview.totalTrips.toLocaleString() },
-    { label: 'Utilization', value: `${overview.utilizationPct.toFixed(1)}%` },
-    { label: 'Open Alerts', value: String(overview.openAlerts), warn: overview.openAlerts > 0 },
-    { label: 'Harsh Events', value: String(overview.harshEvents) },
-    { label: 'Speeding Events', value: String(overview.speedingEvents) },
-    { label: 'Est. Fuel (L)', value: fuel.totalEstimatedFuelLiters.toLocaleString() },
-    { label: 'Fleet L/100km', value: fuel.fleetLitersPer100Km.toFixed(1) },
+  /// Labels in sentence case to match the Overview tab's KPIs — this tab used
+  /// Title Case, so the same screen named its figures two different ways
+  /// depending on which tab you were on.
+  const kpis: { label: string; value: string; icon: LucideIcon; warn?: boolean }[] = [
+    { label: 'Distance (km)', value: overview.totalDistanceKm.toLocaleString(), icon: Route },
+    { label: 'Trips', value: overview.totalTrips.toLocaleString(), icon: MapPin },
+    { label: 'Utilization', value: `${overview.utilizationPct.toFixed(1)}%`, icon: Gauge },
+    {
+      label: 'Open alerts',
+      value: String(overview.openAlerts),
+      icon: AlertTriangle,
+      warn: overview.openAlerts > 0,
+    },
+    { label: 'Harsh events', value: String(overview.harshEvents), icon: Activity },
+    { label: 'Speeding events', value: String(overview.speedingEvents), icon: Gauge },
+    { label: 'Est. fuel (L)', value: fuel.totalEstimatedFuelLiters.toLocaleString(), icon: Fuel },
+    { label: 'Fleet L/100km', value: fuel.fleetLitersPer100Km.toFixed(1), icon: Fuel },
   ];
 
   return (
@@ -59,17 +81,23 @@ export function FleetTelematicsTab({ dateFrom, dateTo }: FleetTelematicsTabProps
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {kpis.map((kpi) => (
-          <div key={kpi.label} className="rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50 p-6">
-            <div className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{kpi.label}</div>
-            <div className={`mt-3 font-display text-2xl font-bold ${kpi.warn ? 'text-destructive' : 'text-foreground'}`}>
-              {kpi.value}
-            </div>
-          </div>
+          <MetricCard
+            key={kpi.label}
+            label={kpi.label}
+            value={kpi.value}
+            icon={kpi.icon}
+            variant="compact"
+            note={
+              kpi.warn
+                ? { icon: AlertTriangle, text: 'needs attention', tone: 'warning' }
+                : undefined
+            }
+          />
         ))}
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50 p-6">
+        <SurfaceCard className="p-6">
           <h3 className="font-display text-lg font-bold text-foreground">Fleet state now</h3>
           <dl className="mt-4 space-y-2 text-sm">
             {(
@@ -87,109 +115,100 @@ export function FleetTelematicsTab({ dateFrom, dateTo }: FleetTelematicsTabProps
               </div>
             ))}
           </dl>
-        </div>
+        </SurfaceCard>
 
-        <div className="overflow-hidden rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50 lg:col-span-2">
-          <div className="border-b border-brand/10 px-6 py-4">
-            <h3 className="font-display text-lg font-bold text-foreground">Vehicle utilization</h3>
-          </div>
-          {utilization.vehicles.length === 0 ? (
-            <p className="px-6 py-8 text-center text-sm text-muted-foreground">
-              No trip data in this period — connect devices or widen the date range.
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-brand/10 bg-surface/50 text-left text-xs uppercase text-muted-foreground">
-                    <th className="px-6 py-3">Vehicle</th>
-                    <th className="px-6 py-3 text-right">Trips</th>
-                    <th className="px-6 py-3 text-right">Distance km</th>
-                    <th className="px-6 py-3 text-right">Utilization</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-brand/10">
-                  {utilization.vehicles.slice(0, 15).map((v) => (
-                    <tr key={v.vehicleId}>
-                      <td className="px-6 py-3 font-medium text-foreground">{v.plateNumber ?? v.vehicleCode ?? v.vehicleId}</td>
-                      <td className="px-6 py-3 text-right">{v.trips}</td>
-                      <td className="px-6 py-3 text-right">{v.distanceKm.toLocaleString()}</td>
-                      <td className="px-6 py-3 text-right">{v.utilizationPct.toFixed(1)}%</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        <ReportTableCard
+          className="lg:col-span-2"
+          title="Vehicle utilization"
+          subtitle={topOfLabel(utilization.vehicles.length, 'vehicle')}
+          isEmpty={utilization.vehicles.length === 0}
+          emptyLabel="No trip data in this period — connect devices or widen the date range."
+        >
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Vehicle</TableHead>
+                <TableHead className="text-right">Trips</TableHead>
+                <TableHead className="text-right">Distance km</TableHead>
+                <TableHead className="text-right">Utilization</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {utilization.vehicles.slice(0, TOP_ROWS).map((v) => (
+                <TableRow key={v.vehicleId}>
+                  <TableCell className="font-medium text-foreground">
+                    {v.plateNumber ?? v.vehicleCode ?? v.vehicleId}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{v.trips}</TableCell>
+                  <TableCell className="text-right tabular-nums">{v.distanceKm.toLocaleString()}</TableCell>
+                  <TableCell className="text-right tabular-nums">{v.utilizationPct.toFixed(1)}%</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </ReportTableCard>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className="overflow-hidden rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50">
-          <div className="border-b border-brand/10 px-6 py-4">
-            <h3 className="font-display text-lg font-bold text-foreground">Driver safety scores</h3>
-          </div>
-          {driverBehavior.drivers.length === 0 ? (
-            <p className="px-6 py-8 text-center text-sm text-muted-foreground">No driver trip data in this period</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-brand/10 bg-surface/50 text-left text-xs uppercase text-muted-foreground">
-                    <th className="px-6 py-3">Driver</th>
-                    <th className="px-6 py-3 text-right">Trips</th>
-                    <th className="px-6 py-3 text-right">Speeding</th>
-                    <th className="px-6 py-3 text-right">Safety</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-brand/10">
-                  {driverBehavior.drivers.slice(0, 15).map((d) => (
-                    <tr key={d.driverId ?? d.employeeCode ?? d.name ?? 'unknown'}>
-                      <td className="px-6 py-3 font-medium text-foreground">{d.name ?? d.employeeCode ?? 'Unknown'}</td>
-                      <td className="px-6 py-3 text-right">{d.trips}</td>
-                      <td className="px-6 py-3 text-right">{d.speedingEvents}</td>
-                      <td className="px-6 py-3 text-right font-semibold">{d.safetyScore.toFixed(0)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        <ReportTableCard
+          title="Driver safety scores"
+          subtitle={topOfLabel(driverBehavior.drivers.length, 'driver')}
+          isEmpty={driverBehavior.drivers.length === 0}
+          emptyLabel="No driver trip data in this period"
+        >
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Driver</TableHead>
+                <TableHead className="text-right">Trips</TableHead>
+                <TableHead className="text-right">Speeding</TableHead>
+                <TableHead className="text-right">Safety</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {driverBehavior.drivers.slice(0, TOP_ROWS).map((d) => (
+                <TableRow key={d.driverId ?? d.employeeCode ?? d.name ?? 'unknown'}>
+                  <TableCell className="font-medium text-foreground">
+                    {d.name ?? d.employeeCode ?? 'Unknown'}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{d.trips}</TableCell>
+                  <TableCell className="text-right tabular-nums">{d.speedingEvents}</TableCell>
+                  <TableCell className="text-right font-semibold tabular-nums">{d.safetyScore.toFixed(0)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </ReportTableCard>
 
-        <div className="overflow-hidden rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50">
-          <div className="border-b border-brand/10 px-6 py-4">
-            <h3 className="font-display text-lg font-bold text-foreground">
-              Fuel estimate{fuel.estimate ? ' (model)' : ''}
-            </h3>
-          </div>
-          {fuel.vehicles.length === 0 ? (
-            <p className="px-6 py-8 text-center text-sm text-muted-foreground">No fuelable trip data in this period</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-brand/10 bg-surface/50 text-left text-xs uppercase text-muted-foreground">
-                    <th className="px-6 py-3">Vehicle</th>
-                    <th className="px-6 py-3 text-right">Distance km</th>
-                    <th className="px-6 py-3 text-right">Fuel L</th>
-                    <th className="px-6 py-3 text-right">L/100km</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-brand/10">
-                  {fuel.vehicles.slice(0, 15).map((v) => (
-                    <tr key={v.vehicleId}>
-                      <td className="px-6 py-3 font-medium text-foreground">{v.plateNumber ?? v.vehicleCode ?? v.vehicleId}</td>
-                      <td className="px-6 py-3 text-right">{v.distanceKm.toLocaleString()}</td>
-                      <td className="px-6 py-3 text-right">{v.estimatedFuelLiters.toLocaleString()}</td>
-                      <td className="px-6 py-3 text-right">{v.litersPer100Km.toFixed(1)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        <ReportTableCard
+          title={`Fuel estimate${fuel.estimate ? ' (model)' : ''}`}
+          subtitle={topOfLabel(fuel.vehicles.length, 'vehicle')}
+          isEmpty={fuel.vehicles.length === 0}
+          emptyLabel="No fuelable trip data in this period"
+        >
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Vehicle</TableHead>
+                <TableHead className="text-right">Distance km</TableHead>
+                <TableHead className="text-right">Fuel L</TableHead>
+                <TableHead className="text-right">L/100km</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {fuel.vehicles.slice(0, TOP_ROWS).map((v) => (
+                <TableRow key={v.vehicleId}>
+                  <TableCell className="font-medium text-foreground">
+                    {v.plateNumber ?? v.vehicleCode ?? v.vehicleId}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{v.distanceKm.toLocaleString()}</TableCell>
+                  <TableCell className="text-right tabular-nums">{v.estimatedFuelLiters.toLocaleString()}</TableCell>
+                  <TableCell className="text-right tabular-nums">{v.litersPer100Km.toFixed(1)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </ReportTableCard>
       </div>
     </div>
   );

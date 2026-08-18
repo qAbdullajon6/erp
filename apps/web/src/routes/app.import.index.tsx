@@ -4,6 +4,9 @@ import { ProtectedApiRoute } from "@/components/layout/protected-api-route";
 import { IMPORT_ROLES } from "@/lib/role-access";
 
 export const Route = createFileRoute("/app/import/")({
+  head: () => ({
+    meta: [{ title: "Data import — FlowERP AI" }],
+  }),
   component: ImportPage,
 });
 

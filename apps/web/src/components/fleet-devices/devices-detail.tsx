@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
@@ -11,6 +11,7 @@ import {
   useRotateDeviceSecretMutation,
   useTelematicsDevice,
 } from '@/lib/api/telematics-devices';
+import { useTrackingVehicleQuery } from '@/lib/api/tracking';
 import { useVehicle } from '@/lib/api/vehicles';
 import { describeError } from '@/lib/api/describe-error';
 import { formatDateTime, formatRelativeTime } from '@/lib/format';
@@ -23,6 +24,9 @@ import {
 } from '@/components/fleet-devices/devices-ops';
 import { DevicesEditSheet } from '@/components/fleet-devices/devices-edit-sheet';
 import { DeviceSecretDialog } from '@/components/fleet-devices/device-secret-dialog';
+import { DeviceConnectionVerifyPanel } from '@/components/fleet-devices/device-connection-verify-panel';
+import { GatewaySetupChecklist } from '@/components/fleet-devices/gateway-setup-checklist';
+import { deriveGpsConnectionStatus } from '@/components/fleet-devices/gps-connection-status';
 import { toast } from 'sonner';
 import {
   Archive,
@@ -44,6 +48,11 @@ export function DevicesDetail({ deviceId }: Props) {
   const vehicleQuery = useVehicle(device?.vehicleId ?? '', {
     enabled: !!device?.vehicleId,
   });
+  const trackingQuery = useTrackingVehicleQuery(device?.vehicleId ?? null, {
+    enabled: !!device?.vehicleId,
+  });
+  const verifyRef = useRef<HTMLElement | null>(null);
+  const gatewayRef = useRef<HTMLElement | null>(null);
 
   const archive = useArchiveTelematicsDeviceMutation();
   const restore = useRestoreTelematicsDeviceMutation();
@@ -78,6 +87,20 @@ export function DevicesDetail({ deviceId }: Props) {
 
   const status = deviceLifecycleStatus(device);
   const archived = Boolean(device.archivedAt);
+  const connection = deriveGpsConnectionStatus({
+    device,
+    tracking: trackingQuery.data ?? null,
+    trackingError: !!device.vehicleId && trackingQuery.isError,
+  });
+  const vehicleLabel = vehicleQuery.data
+    ? `${vehicleQuery.data.plateNumber}${
+        vehicleQuery.data.vehicleCode ? ` · ${vehicleQuery.data.vehicleCode}` : ''
+      }`
+    : null;
+
+  const scrollToVerify = () => {
+    verifyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   const handleArchive = async () => {
     try {
@@ -179,13 +202,13 @@ export function DevicesDetail({ deviceId }: Props) {
           <dl className="space-y-2.5 text-sm">
             <Row label="Name">{device.name}</Row>
             <Row label="Provider">{providerLabel(device.provider)}</Row>
-            <Row label="External ID" mono>
+            <Row label="IMEI" mono>
               {device.externalId}
             </Row>
             <Row label="Status">{deviceStatusLabel(status)}</Row>
             <Row label="Active">{device.active ? 'Yes' : 'No'}</Row>
-            <Row label="Ingest secret">
-              {device.hasIngestSecret ? 'Configured' : 'Not set'}
+            <Row label="Connection secret">
+              {device.hasIngestSecret ? 'Configured (not shown)' : 'Not set'}
             </Row>
             <Row label="Last seen">
               {device.lastSeenAt
@@ -235,6 +258,42 @@ export function DevicesDetail({ deviceId }: Props) {
             </p>
           )}
         </section>
+
+        <section
+          ref={gatewayRef}
+          className="rounded-lg border border-border/60 bg-surface p-4 lg:col-span-2"
+        >
+          <h2 className="mb-3 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Gateway setup
+          </h2>
+          <GatewaySetupChecklist
+            mode="detail"
+            deviceId={device.id}
+            provider={device.provider}
+            imei={device.externalId}
+            vehicleLabel={vehicleLabel}
+            connectionStatus={connection.status}
+            isSuccessfullyConnected={connection.isSuccessfullyConnected}
+            onVerify={scrollToVerify}
+            onReviewSetup={() => {
+              gatewayRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
+          />
+        </section>
+
+        <section
+          ref={verifyRef}
+          className="rounded-lg border border-border/60 bg-surface p-4 lg:col-span-2"
+          id="device-connection-verify"
+        >
+          <h2 className="mb-3 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Connection verification
+          </h2>
+          <DeviceConnectionVerifyPanel
+            deviceId={device.id}
+            poll={!archived && device.active}
+          />
+        </section>
       </div>
 
       <DevicesEditSheet device={device} open={editOpen} onOpenChange={setEditOpen} />
@@ -252,7 +311,7 @@ export function DevicesDetail({ deviceId }: Props) {
       <ConfirmDialog
         open={rotateOpen}
         onOpenChange={setRotateOpen}
-        title="Rotate ingest secret?"
+        title="Rotate connection secret?"
         description="The current secret stops working immediately. Copy the new secret after rotation — it is shown only once."
         confirmLabel={rotate.isPending ? 'Rotating…' : 'Rotate secret'}
         destructive
@@ -264,7 +323,7 @@ export function DevicesDetail({ deviceId }: Props) {
         onOpenChange={(next) => {
           if (!next) setSecretReveal(null);
         }}
-        title="New ingest secret"
+        title="New connection secret"
         description="Copy this secret now. It will not be shown again."
         ingestSecret={secretReveal?.ingestSecret ?? null}
         secretPrefix={secretReveal?.secretPrefix}

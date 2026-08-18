@@ -33,6 +33,20 @@ export interface EntityDefinition {
   /// customer migrating 5,000 rows would have to invent 5,000 codes by hand.
   /// The engine allocates them sequentially per organization.
   naturalKeyPrefix?: string;
+  /// True when the auto-generated code must embed the current calendar year
+  /// and restart its sequence each year (e.g. "ORD-2026-0001"), matching the
+  /// format that single-record creation already uses for this entity.
+  naturalKeyYearScoped?: boolean;
+  /// A second field with its own database-level uniqueness constraint,
+  /// independent of the natural key — e.g. Vehicle.plateNumber, which has its
+  /// own `@@unique` alongside vehicleCode. Unlike a natural-key collision
+  /// (the same business record being re-imported, which the user's
+  /// duplicate strategy resolves), a collision here means two DIFFERENT
+  /// records claim the same value — that is invalid data, not a duplicate
+  /// decision, so it is reported as a blocking ERROR rather than a
+  /// duplicate-strategy WARNING. Checked only among non-archived records,
+  /// matching the partial unique index this exists to pre-empt.
+  secondaryUniqueField?: string;
   fields: FieldDefinition[];
   /// Roles permitted to import this entity, on top of the module-wide guard.
   /// Fleet data is deliberately narrower than customer data.
@@ -168,6 +182,7 @@ const VEHICLE: EntityDefinition = {
   prismaModel: "vehicle",
   naturalKey: "vehicleCode",
   naturalKeyPrefix: "VEH",
+  secondaryUniqueField: "plateNumber",
   allowedRoles: ADMIN_OPS_DISPATCHER,
   fields: [
     {
@@ -231,12 +246,13 @@ const EXPENSE: EntityDefinition = {
   prismaModel: "expense",
   naturalKey: "expenseNumber",
   naturalKeyPrefix: "EXP",
+  naturalKeyYearScoped: true,
   allowedRoles: ADMIN_OPS_ACCOUNTANT,
   fields: [
     {
       fieldName: "expenseNumber", label: "Expense Number", type: "string", required: false,
       aliases: ["expense number", "number", "expense id", "reference", "receipt number", "doc number"],
-      maxLength: 50, example: "EXP-0001",
+      maxLength: 50, example: "EXP-2026-0001",
     },
     {
       fieldName: "expenseDate", label: "Expense Date", type: "date", required: true,
@@ -291,6 +307,7 @@ const ORDER: EntityDefinition = {
   prismaModel: "order",
   naturalKey: "orderNumber",
   naturalKeyPrefix: "ORD",
+  naturalKeyYearScoped: true,
   // ADR-001/AR2: an Order and its opening OrderStatusHistory row are one fact.
   // A bare order.create would produce an order with no history — invisible to
   // the projection and to the dispatch board. Imported orders are born DRAFT,

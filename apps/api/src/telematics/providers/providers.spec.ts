@@ -67,6 +67,36 @@ describe("telematics providers", () => {
     it("throws when lat/lon are missing", () => {
       expect(() => provider.normalize({ id: "x", speed: 1 })).toThrow(ProviderNormalizationError);
     });
+
+    it("parses Traccar's own nested {position, device} webhook shape, reading the IMEI from device.uniqueId", () => {
+      // Verified empirically against a live traccar/traccar:6.4 container's
+      // forward.url output — see docs/TRACCAR_SETUP.md Section 2, Step 3.
+      const [p] = provider.normalize({
+        position: {
+          id: 7,
+          deviceId: 1, // Traccar's own row id — must NOT become externalDeviceId
+          protocol: "navtelecom",
+          fixTime: "2026-08-08T10:53:17.000Z",
+          latitude: 41.3222,
+          longitude: 69.2666,
+          speed: 10, // knots
+          course: 270,
+          altitude: 470,
+          valid: true,
+        },
+        device: {
+          id: 1,
+          uniqueId: "862531043215285",
+          name: "S-2423",
+        },
+      });
+      expect(p.externalDeviceId).toBe("862531043215285");
+      expect(p.latitude).toBeCloseTo(41.3222, 5);
+      expect(p.longitude).toBeCloseTo(69.2666, 5);
+      expect(p.speedKph).toBeCloseTo(10 * KNOTS_TO_KPH, 5);
+      expect(p.heading).toBe(270);
+      expect(p.recordedAt.toISOString()).toBe("2026-08-08T10:53:17.000Z");
+    });
   });
 
   describe("SamsaraProvider", () => {

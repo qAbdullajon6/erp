@@ -9,6 +9,8 @@ export type DevicesSearch = {
   tab?: string;
   provider?: string;
   create?: boolean;
+  /// Prefill Connect GPS wizard when deep-linked from a vehicle.
+  vehicleId?: string;
 };
 
 export const Route = createFileRoute("/app/devices/")({
@@ -22,6 +24,7 @@ export const Route = createFileRoute("/app/devices/")({
     if (typeof search.tab === "string" && search.tab) out.tab = search.tab;
     if (typeof search.provider === "string" && search.provider) out.provider = search.provider;
     if (search.create === true || search.create === "true") out.create = true;
+    if (typeof search.vehicleId === "string" && search.vehicleId) out.vehicleId = search.vehicleId;
     return out;
   },
   head: () => ({

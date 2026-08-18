@@ -1,87 +1,157 @@
-import { ArrowRight, Phone, MessageCircle, Mail, Globe, type LucideIcon } from "lucide-react";
+import { ArrowRight, Phone, MessageCircle, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { openDemoModal } from "@/components/site/DemoModal";
 import { analytics } from "@/lib/analytics";
 import { useSectionVisibility } from "@/lib/analytics/hooks";
-import { Container, Eyebrow } from "./primitives";
+import { Container } from "./primitives";
 import { Reveal } from "./motion";
 import { siteConfig } from "@/lib/site-config";
 
 const { contact } = siteConfig;
-const CHANNELS: { icon: LucideIcon; label: string; value: string; href: string }[] = [
-  { icon: Phone, label: "Call", value: contact.phoneDisplay, href: contact.phoneHref },
-  ...(contact.whatsappHref
-    ? [{ icon: MessageCircle, label: "WhatsApp", value: contact.whatsappDisplay, href: contact.whatsappHref }]
-    : []),
-  { icon: Mail, label: "Email", value: contact.email, href: contact.emailHref },
-  { icon: Globe, label: "Web", value: contact.websiteDisplay, href: contact.website },
-];
 
 export function Closing() {
   const sectionRef = useSectionVisibility("final_cta");
 
-  const handleDemo = () => {
+  const handleGetStarted = () => {
     analytics.track({ name: "book_demo_click", params: { source: "final_cta" } });
     openDemoModal("final_cta");
   };
 
   return (
-    <section id="contact" ref={sectionRef} className="relative isolate border-t border-border/60 py-24 sm:py-32">
-      <Container width="wide">
-        <div className="relative isolate overflow-hidden rounded-2xl border border-border bg-surface/60 px-6 py-16 text-center sm:px-12 sm:py-20">
-          <div aria-hidden className="lv2-wash-soft pointer-events-none absolute inset-0 -z-10" />
-          <div aria-hidden className="lv2-grid lv2-mask-radial pointer-events-none absolute inset-0 -z-10 opacity-50" />
+    <section
+      id="contact"
+      ref={sectionRef}
+      className="relative isolate overflow-hidden border-t border-border/60 py-24 sm:py-32"
+    >
+      {/* Dark gradient bg for this CTA section */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-10"
+        style={{
+          background:
+            "radial-gradient(ellipse 80% 60% at 50% 100%, oklch(0.62 0.22 45 / 0.07), transparent 70%)",
+        }}
+      />
+
+      <Container>
+        <div
+          className="relative isolate overflow-hidden rounded-3xl border px-6 py-16 text-center sm:px-16 sm:py-20"
+          style={{
+            borderColor: "oklch(0.62 0.22 45 / 0.20)",
+            background:
+              "linear-gradient(135deg, oklch(0.62 0.22 45 / 0.06), oklch(0.62 0.22 45 / 0.02))",
+          }}
+        >
+          {/* Grid bg inside card */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 -z-10 opacity-40"
+            style={{
+              backgroundImage:
+                "linear-gradient(to right, oklch(0 0 0 / 0.04) 1px, transparent 1px), linear-gradient(to bottom, oklch(0 0 0 / 0.04) 1px, transparent 1px)",
+              backgroundSize: "40px 40px",
+            }}
+          />
 
           <Reveal>
-            <Eyebrow>Ready when you are</Eyebrow>
+            <span
+              className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.14em]"
+              style={{
+                borderWidth: 1,
+                borderStyle: "solid",
+                borderColor: "oklch(0.62 0.22 45 / 0.30)",
+                background: "oklch(0.62 0.22 45 / 0.10)",
+                color: "oklch(0.62 0.22 45)",
+              }}
+            >
+              Get started
+            </span>
           </Reveal>
-          <Reveal delay={60} as="h2" className="mx-auto mt-4 max-w-2xl text-balance font-display text-3xl font-semibold tracking-tight text-foreground sm:text-5xl">
-            Stop firefighting. Start orchestrating.
+
+          <Reveal delay={60}>
+            <h2 className="mx-auto mt-5 max-w-2xl text-balance font-display text-3xl font-bold tracking-tight text-foreground sm:text-[2.75rem] sm:leading-[1.1]">
+              Ready to move your operation forward?
+            </h2>
           </Reveal>
+
           <Reveal delay={120}>
             <p className="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-muted-foreground">
-              See your own operation running on FlowERP in under 20 minutes. We'll tailor the demo to
-              your fleet, your routes, and your workflow.
+              Tell us about your fleet and your routes. We'll show you exactly what your team's
+              workspace would look like.
             </p>
           </Reveal>
 
           <Reveal delay={180}>
-            <div className="mt-9 flex justify-center">
+            <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <Button
-                onClick={handleDemo}
+                onClick={handleGetStarted}
                 size="lg"
-                className="h-12 bg-brand px-8 text-base font-semibold text-brand-foreground hover:bg-brand/90"
+                className="h-12 w-full px-9 text-base font-bold sm:w-auto"
+                style={{ background: "oklch(0.62 0.22 45)", color: "white" }}
               >
-                Request a personalized demo
+                Start free trial
                 <ArrowRight className="h-5 w-5" />
               </Button>
             </div>
           </Reveal>
-          <Reveal delay={230}>
-            <p className="mt-5 text-sm text-muted-foreground">
-              14-day trial · No credit card · We reply within one business day
+
+          <Reveal delay={220}>
+            <p className="mt-4 text-sm text-muted-foreground">
+              14-day free trial · No credit card required · We reply within one business day
             </p>
           </Reveal>
 
-          <Reveal delay={280}>
-            <div className="mx-auto mt-12 grid max-w-3xl gap-3 border-t border-border/60 pt-10 sm:grid-cols-2 lg:grid-cols-4">
-              {CHANNELS.map((c) => (
+          {/* Contact channels */}
+          <Reveal delay={270}>
+            <div className="mx-auto mt-12 grid max-w-2xl gap-3 border-t border-border/50 pt-10 sm:grid-cols-3">
+              <a
+                href={contact.phoneHref}
+                className="group flex items-center justify-center gap-3 rounded-xl border border-border bg-background/50 px-4 py-3.5 transition-colors hover:border-brand/40 hover:bg-brand/5"
+              >
+                <Phone className="h-4 w-4 shrink-0 text-brand" />
+                <div className="text-left">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Call
+                  </div>
+                  <div className="text-sm font-medium text-foreground group-hover:text-brand">
+                    {contact.phoneDisplay}
+                  </div>
+                </div>
+              </a>
+
+              {contact.whatsappHref && (
                 <a
-                  key={c.label}
-                  href={c.href}
-                  className="group flex items-center gap-3 rounded-xl border border-border bg-background/40 px-4 py-3 text-left transition-colors hover:border-brand/40"
+                  href={contact.whatsappHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group flex items-center justify-center gap-3 rounded-xl border border-border bg-background/50 px-4 py-3.5 transition-colors hover:border-brand/40 hover:bg-brand/5"
                 >
-                  <c.icon className="h-4 w-4 shrink-0 text-brand" />
-                  <div className="min-w-0">
-                    <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                      {c.label}
+                  <MessageCircle className="h-4 w-4 shrink-0 text-brand" />
+                  <div className="text-left">
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      WhatsApp
                     </div>
-                    <div className="truncate text-sm font-medium text-foreground group-hover:text-brand">
-                      {c.value}
+                    <div className="text-sm font-medium text-foreground group-hover:text-brand">
+                      {contact.whatsappDisplay}
                     </div>
                   </div>
                 </a>
-              ))}
+              )}
+
+              <a
+                href={contact.emailHref}
+                className="group flex items-center justify-center gap-3 rounded-xl border border-border bg-background/50 px-4 py-3.5 transition-colors hover:border-brand/40 hover:bg-brand/5"
+              >
+                <Mail className="h-4 w-4 shrink-0 text-brand" />
+                <div className="text-left">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Email
+                  </div>
+                  <div className="text-sm font-medium text-foreground group-hover:text-brand">
+                    {contact.email}
+                  </div>
+                </div>
+              </a>
             </div>
           </Reveal>
         </div>

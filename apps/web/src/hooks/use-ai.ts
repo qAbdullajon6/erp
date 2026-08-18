@@ -96,8 +96,14 @@ export function useChatStream(conversationId: string | null) {
   const abortRef = useRef<AbortController | null>(null);
 
   const send = useCallback(
-    async (message: string) => {
-      if (!conversationId || streaming) return;
+    // `overrideId` lets a caller that just created the conversation send to it
+    // immediately, without waiting on a re-render to pick up the new
+    // `conversationId` prop — that re-render is what previously made this
+    // function a stale closure still bound to `conversationId: null`, so the
+    // very first message of a brand-new conversation was silently dropped.
+    async (message: string, overrideId?: string) => {
+      const id = overrideId ?? conversationId;
+      if (!id || streaming) return;
 
       setStreaming(true);
       setError(null);
@@ -107,7 +113,7 @@ export function useChatStream(conversationId: string | null) {
       abortRef.current = controller;
 
       try {
-        for await (const event of aiAPI.streamChat(conversationId, message, controller.signal)) {
+        for await (const event of aiAPI.streamChat(id, message, controller.signal)) {
           applyEvent(event, setTurn, setError);
           if (event.type === 'done' || event.type === 'error') break;
         }
@@ -122,9 +128,16 @@ export function useChatStream(conversationId: string | null) {
         // Refetch so the turn is replaced by the persisted messages — including
         // anything the optimistic stream did not carry (token counts, tool
         // metadata, the server's own filtering).
-        void qc.invalidateQueries({ queryKey: aiKeys.conversation(conversationId) });
+        void qc.invalidateQueries({ queryKey: aiKeys.conversation(id) });
         void qc.invalidateQueries({ queryKey: aiKeys.conversations() });
-        setTurn({ text: '', tools: [], trace: null, confirmationRequired: null });
+        // `confirmationRequired` is NOT cleared here: the stream ends (a
+        // `done` event) the moment it is set, in the same turn — clearing it
+        // unconditionally on every turn's end meant the banner was wiped
+        // before a render could ever show it, and a mutating tool call had no
+        // way to actually reach the user for approval. It is cleared by
+        // send() starting a new turn, or by the confirm/deny handlers once
+        // the user has acted on it.
+        setTurn((prev) => ({ text: '', tools: [], trace: null, confirmationRequired: prev.confirmationRequired }));
       }
     },
     [conversationId, streaming, qc],

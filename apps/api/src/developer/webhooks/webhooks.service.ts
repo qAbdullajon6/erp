@@ -411,6 +411,7 @@ export class WebhooksService {
       },
     });
 
+    this.dispatcher.resetCircuitForManualRetry(delivery.endpointId);
     await this.dispatcher.deliverNow(delivery.id);
 
     await this.audit.log({

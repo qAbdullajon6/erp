@@ -6,68 +6,52 @@ const PASSWORD = 'FlowERP-Test-2026!';
 /// A sidebar link a role cannot use is worse than no link: it 403s on click.
 /// These expectations mirror each controller's read-role list.
 ///
-/// "Leads" is not role-gated at all — it is FlowERP staff only
-/// (User.isPlatformAdmin). The seed keeps that account separate from the
-/// customer organization's ADMIN precisely so this file can prove a tenant
-/// admin cannot reach it.
+/// Two labels are asserted hidden for every tenant role:
+///   Leads         — FlowERP staff only. It belongs to the Platform Console
+///                   shell, which the case below covers separately.
+///   Integrations  — the screen calls /api/admin/integrations/*, which no
+///                   controller serves. It was removed from navigation rather
+///                   than left as a link to a page of 404s.
+///
+/// Configuration screens (Billing, Data import, Automation, Developer,
+/// Activity log) are Settings children: they render underneath Settings once
+/// you are inside that section, so they are deliberately absent from /app.
 const EXPECTED: Record<string, { email: string; visible: string[]; hidden: string[] }> = {
-  // Holds an ADMIN membership so it can carry a session, so it sees the full
-  // admin nav — plus Leads, which comes from the flag and not from that role.
-  PLATFORM_ADMIN: {
-    email: 'platform@flowerp.test',
-    visible: [
-      'Overview',
-      'Orders',
-      'Dispatches',
-      'Customers',
-      'Drivers',
-      'Vehicles',
-      'Finance',
-      'Reports',
-      'Leads',
-      'Settings',
-    ],
-    hidden: ['My Deliveries'],
-  },
   ADMIN: {
     email: 'admin@flowerp.test',
     visible: [
       'Overview',
       'Orders',
-      'Dispatches',
+      'Dispatch',
       'Customers',
+      'Fleet Tracking',
       'Drivers',
       'Vehicles',
       'Finance',
       'Reports',
       'Settings',
     ],
-    hidden: ['Leads', 'My Deliveries'],
+    hidden: ['Leads', 'My Deliveries', 'Integrations', 'Billing'],
   },
   OPERATIONS_MANAGER: {
     email: 'ops-manager@flowerp.test',
-    visible: ['Orders', 'Dispatches', 'Customers', 'Drivers', 'Vehicles', 'Finance', 'Reports'],
-    hidden: ['Leads', 'My Deliveries'],
+    visible: ['Orders', 'Dispatch', 'Customers', 'Fleet Tracking', 'Drivers', 'Vehicles', 'Finance', 'Reports'],
+    hidden: ['Leads', 'My Deliveries', 'Integrations'],
   },
   DISPATCHER: {
     email: 'dispatcher@flowerp.test',
-    visible: ['Orders', 'Dispatches', 'Customers', 'Drivers', 'Vehicles', 'Finance', 'Reports'],
-    hidden: ['Leads', 'My Deliveries'],
+    visible: ['Orders', 'Dispatch', 'Customers', 'Fleet Tracking', 'Drivers', 'Vehicles', 'Finance', 'Reports'],
+    hidden: ['Leads', 'My Deliveries', 'Integrations'],
   },
   ACCOUNTANT: {
     email: 'accountant@flowerp.test',
-    visible: ['Orders', 'Dispatches', 'Customers', 'Finance', 'Reports'],
-    hidden: ['Drivers', 'Vehicles', 'Leads', 'My Deliveries'],
+    visible: ['Orders', 'Dispatch', 'Customers', 'Finance', 'Reports'],
+    hidden: ['Drivers', 'Vehicles', 'Fleet Tracking', 'Leads', 'My Deliveries', 'Integrations'],
   },
   SALES_CRM_MANAGER: {
     email: 'sales@flowerp.test',
     visible: ['Orders', 'Customers', 'Finance', 'Reports'],
-    hidden: ['Dispatches', 'Drivers', 'Vehicles', 'Leads', 'My Deliveries'],
-  },
-  DRIVER: {
-    email: 'driver@flowerp.test',
-    visible: ['Overview', 'My Deliveries', 'Settings'],
-    hidden: ['Orders', 'Dispatches', 'Customers', 'Drivers', 'Vehicles', 'Finance', 'Reports', 'Leads'],
+    hidden: ['Dispatch', 'Drivers', 'Vehicles', 'Fleet Tracking', 'Leads', 'My Deliveries', 'Integrations'],
   },
 };
 
@@ -87,29 +71,77 @@ async function loginAs(request: APIRequestContext, email: string) {
   throw new Error(`login for ${email} kept returning 429`);
 }
 
+async function signIn(page: import('@playwright/test').Page, request: APIRequestContext, email: string) {
+  const login = await loginAs(request, email);
+  expect(login.status(), `login for ${email}`).toBe(200);
+  const { accessToken, refreshToken } = (await login.json()).data;
+
+  await page.addInitScript(
+    ([a, r]) => {
+      sessionStorage.setItem('flowerp_access_token', a);
+      sessionStorage.setItem('flowerp_refresh_token', r);
+    },
+    [accessToken, refreshToken],
+  );
+}
+
+/// FlowERP staff do not get the tenant sidebar with extra links bolted on —
+/// /app hands them over to the Platform Console, which is a separate shell.
+/// Proving the two do not bleed into each other is what this case is for.
+test('FlowERP staff land in the Platform Console, not the tenant shell', async ({ page, request }) => {
+  test.setTimeout(300_000);
+  await signIn(page, request, 'platform@flowerp.test');
+  await page.goto('/app', { waitUntil: 'domcontentloaded' });
+
+  // The console shell renders its nav outside an <aside>, unlike the tenant
+  // shell, so this one is scoped to the page.
+  await expect(page.getByRole('button', { name: 'Organizations', exact: true })).toBeVisible({
+    timeout: 60_000,
+  });
+
+  const shown = (await page.getByRole('button').allInnerTexts()).map((l) => l.trim()).filter(Boolean);
+  for (const label of ['Organizations', 'Leads', 'Subscriptions']) {
+    expect(shown, `platform staff should see "${label}"`).toContain(label);
+  }
+  for (const label of ['Orders', 'Dispatch', 'Customers', 'Fleet Tracking', 'Integrations']) {
+    expect(shown, `platform console should not carry the tenant screen "${label}"`).not.toContain(label);
+  }
+});
+
+/// A driver gets DriverAppShell — a mobile-first layout with a three-tab
+/// bottom bar, not the admin sidebar. None of the admin screens exist in it at
+/// all, which is stronger than hiding links.
+test('a driver gets the driver shell, with none of the admin screens', async ({ page, request }) => {
+  test.setTimeout(300_000);
+  await signIn(page, request, 'driver@flowerp.test');
+  await page.goto('/app', { waitUntil: 'domcontentloaded' });
+
+  const bottomNav = page.getByLabel('Driver navigation');
+  await expect(bottomNav).toBeVisible({ timeout: 60_000 });
+
+  const shown = (await bottomNav.getByRole('link').allInnerTexts()).map((l) => l.trim()).filter(Boolean);
+  expect(shown).toEqual(['Home', 'Jobs', 'Account']);
+
+  await expect(page.locator('[data-sidebar="sidebar"]')).toHaveCount(0);
+});
+
 for (const [role, spec] of Object.entries(EXPECTED)) {
   test(`sidebar for ${role} shows only screens the API will serve`, async ({ page, request }) => {
     test.setTimeout(300_000);
 
-    const login = await loginAs(request, spec.email);
-    expect(login.status(), `login for ${role}`).toBe(200);
-    const { accessToken, refreshToken } = (await login.json()).data;
-
-    await page.addInitScript(
-      ([a, r]) => {
-        sessionStorage.setItem('flowerp_access_token', a);
-        sessionStorage.setItem('flowerp_refresh_token', r);
-      },
-      [accessToken, refreshToken],
-    );
+    await signIn(page, request, spec.email);
 
     await page.goto('/app', { waitUntil: 'domcontentloaded' });
 
-    const sidebar = page.locator('aside');
+    // The shell renders the shadcn Sidebar as a div, not an <aside> — scope to
+    // its data attribute rather than a landmark that is not there.
+    const sidebar = page.locator('[data-sidebar="sidebar"]');
     await expect(sidebar.getByRole('button', { name: 'Settings', exact: true })).toBeVisible({ timeout: 60_000 });
 
     const labels = await sidebar.getByRole('button').allInnerTexts();
-    const shown = labels.map((l) => l.trim()).filter(Boolean);
+    // The active row carries an sr-only "(current page)" for screen readers,
+    // which lands in innerText.
+    const shown = labels.map((l) => l.replace(/\(current page\)/, '').trim()).filter(Boolean);
     console.log(`${role}: ${shown.join(', ')}`);
 
     for (const label of spec.visible) {

@@ -182,7 +182,7 @@ export const ProvidersDevicePanel = memo(function ProvidersDevicePanel({
       <dl className="grid gap-2 text-xs">
         <Row label="Provider" value={providerLabel(device.provider)} />
         <Row label="Status" value={deviceCommStatusLabel(status)} />
-        <Row label="Active flag" value={device.active ? 'Yes' : 'No'} />
+        <Row label="Enabled" value={device.active ? 'Yes' : 'No'} />
         <Row
           label="Linked vehicle"
           value={vehicleLabel ?? (device.vehicleId ? 'Unknown vehicle' : 'Unassigned')}
@@ -195,17 +195,14 @@ export const ProvidersDevicePanel = memo(function ProvidersDevicePanel({
               : 'Never'
           }
         />
-        <Row
-          label="Health state"
-          value="Not available — no provider health endpoint on devices"
-        />
+        {/* These rows named the reason the product could not answer rather than
+            answering: "no provider health endpoint on devices", "provider is
+            immutable after create". Last communication above is the health
+            signal, and a device that needs a different provider is registered
+            again under that provider. */}
         <Row
           label="Ingest secret"
           value={maskedSecretHint(device.hasIngestSecret)}
-        />
-        <Row
-          label="Change provider"
-          value="Not available — provider is immutable after create"
         />
         <Row label="Created" value={formatDateTime(device.createdAt)} />
         <Row label="Updated" value={formatDateTime(device.updatedAt)} />

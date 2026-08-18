@@ -26,7 +26,7 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "Redis is unreachable"
-          description: "Rate-limit counters fall back to per-process memory until Redis returns — limits loosen with instance count."
+          description: "Shared API rate limiting is unavailable until Redis returns. The readiness endpoint and deploy gate should remain unhealthy."
 
   - name: saturation
     rules:
@@ -56,12 +56,18 @@ groups:
 
   - name: backups
     rules:
-      # Requires a backup that writes a Prometheus textfile/pushgateway metric.
-      # Left here as the intended shape; wire it when the backup emits a
-      # last-success timestamp. Fires when no successful dump in ~26h.
-      # - alert: BackupStale
-      #   expr: time() - flowerp_backup_last_success_timestamp_seconds > 93600
-      #   for: 1h
-      #   labels: { severity: critical }
-      #   annotations:
-      #     summary: "No successful database backup in over 26 hours"
+      - alert: BackupStale
+        expr: (time() - flowerp_backup_last_success_timestamp_seconds > 93600) or absent(flowerp_backup_last_success_timestamp_seconds)
+        for: 1h
+        labels: { severity: critical }
+        annotations:
+          summary: "No successful database backup in over 26 hours"
+          description: "The backup success metric is stale or absent. Check the backup cron, offsite wrapper, and node-exporter textfile directory."
+
+      - alert: BackupLatestAttemptFailed
+        expr: (flowerp_backup_latest_attempt_status == 0) or absent(flowerp_backup_latest_attempt_status)
+        for: 15m
+        labels: { severity: critical }
+        annotations:
+          summary: "Latest database backup attempt failed"
+          description: "The latest backup attempt failed, or its status metric is absent. Local retention is not pruned when offsite upload fails."

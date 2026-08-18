@@ -1,10 +1,11 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { DispatchStatus, Prisma, Vehicle } from "@prisma/client";
+import { DispatchStatus, Prisma, UsageMetricType, Vehicle } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { isValidEntityCode } from "../common/sequential-code.util";
 import { PrismaService } from "../prisma/prisma.service";
 import { WorkflowEventService } from "../workflows/triggers/workflow-event.service";
+import { UsageMeteringService } from "../billing/usage-metering.service";
 import { CreateVehicleDto } from "./dto/create-vehicle.dto";
 import { ListVehiclesQueryDto } from "./dto/list-vehicles-query.dto";
 import { UpdateVehicleDto } from "./dto/update-vehicle.dto";
@@ -26,6 +27,7 @@ export class VehiclesService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly workflowEvents: WorkflowEventService,
+    private readonly usageMetering: UsageMeteringService,
   ) {}
 
   async list(organizationId: string, query: ListVehiclesQueryDto) {
@@ -46,7 +48,7 @@ export class VehiclesService {
         : {}),
     };
 
-    const [rows, total] = await Promise.all([
+    const [rows, total] = await this.prisma.$transaction([
       this.prisma.vehicle.findMany({
         where,
         orderBy: { [query.sortBy]: query.sortOrder },
@@ -73,29 +75,50 @@ export class VehiclesService {
   }
 
   async create(organizationId: string, dto: CreateVehicleDto, actor: CurrentUserPayload) {
-    const vehicleCode = await this.resolveCodeForCreate(organizationId, dto.vehicleCode);
+    // Auto-generated codes are check-then-write: two concurrent creates can
+    // both compute the same "next" VEH-000N and race the unique constraint.
+    // A user-SUPPLIED code has already been existence-checked in
+    // resolveCodeForCreate, so a collision there is a real conflict, not a
+    // race to retry — only the auto-generated path retries. A plateNumber
+    // collision is never retried either way — plates aren't auto-generated,
+    // so it's always a real duplicate.
+    await this.usageMetering.enforceLimit(organizationId, UsageMetricType.VEHICLES, 1);
+
+    const isAutoCode = !dto.vehicleCode;
+    let vehicleCode = await this.resolveCodeForCreate(organizationId, dto.vehicleCode);
     await this.assertPlateAvailable(organizationId, dto.plateNumber);
 
-    let vehicle: Vehicle;
-    try {
-      vehicle = await this.prisma.vehicle.create({
-        data: {
-          organizationId,
-          vehicleCode,
-          plateNumber: dto.plateNumber,
-          type: dto.type,
-          capacityKg: dto.capacityKg !== undefined ? new Prisma.Decimal(dto.capacityKg) : undefined,
-          capacityM3: dto.capacityM3 !== undefined ? new Prisma.Decimal(dto.capacityM3) : undefined,
-          make: dto.make,
-          model: dto.model,
-          year: dto.year,
-          insuranceExpiry: dto.insuranceExpiry ? new Date(dto.insuranceExpiry) : undefined,
-          inspectionExpiry: dto.inspectionExpiry ? new Date(dto.inspectionExpiry) : undefined,
-        },
-      });
-    } catch (err) {
-      this.rethrowUniqueConflict(err);
-      throw err;
+    let vehicle: Vehicle | undefined;
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        vehicle = await this.prisma.vehicle.create({
+          data: {
+            organizationId,
+            vehicleCode,
+            plateNumber: dto.plateNumber,
+            type: dto.type,
+            capacityKg: dto.capacityKg !== undefined ? new Prisma.Decimal(dto.capacityKg) : undefined,
+            capacityM3: dto.capacityM3 !== undefined ? new Prisma.Decimal(dto.capacityM3) : undefined,
+            make: dto.make,
+            model: dto.model,
+            year: dto.year,
+            insuranceExpiry: dto.insuranceExpiry ? new Date(dto.insuranceExpiry) : undefined,
+            inspectionExpiry: dto.inspectionExpiry ? new Date(dto.inspectionExpiry) : undefined,
+          },
+        });
+        break;
+      } catch (err) {
+        const isP2002 = err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
+        const isCodeConflict = isP2002 && !this.isPlateNumberConflict(err);
+        if (!isCodeConflict) {
+          this.rethrowUniqueConflict(err);
+          throw err;
+        }
+        if (!isAutoCode || attempt >= 2) {
+          throw new ConflictException("A vehicle with this vehicleCode already exists in this organization");
+        }
+        vehicleCode = await generateUniqueVehicleCode(this.prisma, organizationId);
+      }
     }
 
     await this.auditService.log({
@@ -107,7 +130,7 @@ export class VehiclesService {
       metadata: { vehicleCode: vehicle.vehicleCode, plateNumber: vehicle.plateNumber },
     });
 
-    this.workflowEvents.emit(organizationId, "vehicle.created", {
+    void this.workflowEvents.emit(organizationId, "vehicle.created", {
       id: vehicle.id,
       vehicleCode: vehicle.vehicleCode,
       plateNumber: vehicle.plateNumber,
@@ -266,10 +289,19 @@ export class VehiclesService {
     }
   }
 
+  private isPlateNumberConflict(err: Prisma.PrismaClientKnownRequestError): boolean {
+    const rawTarget = err.meta?.target;
+    const target = Array.isArray(rawTarget)
+      ? rawTarget.join(",")
+      : typeof rawTarget === "string" || typeof rawTarget === "number"
+        ? String(rawTarget)
+        : "";
+    return target.includes("plateNumber");
+  }
+
   private rethrowUniqueConflict(err: unknown): void {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
-      const target = Array.isArray(err.meta?.target) ? err.meta.target.join(",") : String(err.meta?.target ?? "");
-      if (target.includes("plateNumber")) {
+      if (this.isPlateNumberConflict(err)) {
         throw new ConflictException("A vehicle with this plate number already exists in this organization");
       }
       throw new ConflictException("A vehicle with this vehicleCode already exists in this organization");
@@ -277,9 +309,8 @@ export class VehiclesService {
   }
 
   /// Scoped by organizationId in the query itself, so a vehicle id from
-  /// another organization returns 404. Exported for OrdersService's
-  /// assignment validation.
-  async findOrThrow(organizationId: string, id: string): Promise<Vehicle> {
+  /// another organization returns 404.
+  private async findOrThrow(organizationId: string, id: string): Promise<Vehicle> {
     const vehicle = await this.prisma.vehicle.findFirst({ where: { id, organizationId } });
     if (!vehicle) {
       throw new NotFoundException("Vehicle not found");

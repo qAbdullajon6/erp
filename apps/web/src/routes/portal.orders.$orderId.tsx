@@ -4,12 +4,13 @@ import {
   usePortalOrderTimeline,
   usePortalOrderTracking,
 } from "@/lib/api/portal-orders";
+import { CustomerPodPanel } from "@/components/customer/customer-pod-panel";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Clock, MapPin, Navigation, RefreshCw } from "lucide-react";
+import { ArrowLeft, Clock, MapPin, Navigation, RefreshCw, Truck } from "lucide-react";
 
 export const Route = createFileRoute("/portal/orders/$orderId")({
   head: () => ({
@@ -93,6 +94,33 @@ function PortalOrderDetailPage() {
           {order.status.replace(/_/g, " ")}
         </Badge>
       </div>
+
+      {order.shipment ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Truck className="h-5 w-5" />
+              Shipment
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-2 text-sm sm:grid-cols-2">
+            <p>
+              <span className="text-muted-foreground">Dispatch:</span> {order.shipment.dispatchNumber}
+            </p>
+            <p>
+              <span className="text-muted-foreground">Status:</span>{" "}
+              {order.shipment.status.replace(/_/g, " ")}
+            </p>
+            <p>
+              <span className="text-muted-foreground">Driver:</span> {order.shipment.driverName}
+            </p>
+            <p>
+              <span className="text-muted-foreground">Vehicle:</span>{" "}
+              {order.shipment.vehiclePlate ?? order.shipment.vehicleCode ?? "—"}
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {trackingEnabled ? (
         <Card>
@@ -213,6 +241,8 @@ function PortalOrderDetailPage() {
         </CardContent>
       </Card>
 
+      <CustomerPodPanel orderId={orderId} />
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
@@ -238,9 +268,7 @@ function PortalOrderDetailPage() {
                     }`}
                   />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground">
-                      {entry.status.replace(/_/g, " ")}
-                    </p>
+                    <p className="text-sm font-medium text-foreground">{entry.label}</p>
                     <p className="text-xs text-muted-foreground">{formatDateTime(entry.createdAt)}</p>
                     {entry.note ? (
                       <p className="mt-1 text-xs text-muted-foreground">{entry.note}</p>

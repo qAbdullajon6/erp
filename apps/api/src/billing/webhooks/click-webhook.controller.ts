@@ -1,5 +1,6 @@
 import { Controller, Post, Body, Logger } from "@nestjs/common";
-import { createHmac } from "crypto";
+import { createHmac, timingSafeEqual } from "crypto";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../../audit/audit.service";
 import { SubscriptionLifecycleService } from "../subscription-lifecycle.service";
@@ -32,7 +33,7 @@ export class ClickWebhookController {
   @Post("prepare")
   async prepare(@Body() dto: ClickWebhookDto): Promise<ClickWebhookResponse> {
     // Verify signature
-    if (!this.verifySignature(dto, "prepare")) {
+    if (!this.verifySignature(dto)) {
       this.logger.warn("Click prepare webhook signature verification failed");
       return this.errorResponse(dto, -1, "Invalid signature");
     }
@@ -82,7 +83,7 @@ export class ClickWebhookController {
         provider: "click",
         externalEventId: dto.click_trans_id.toString(),
         eventType: "prepare",
-        payload: dto as any,
+        payload: dto as unknown as Prisma.InputJsonValue,
         status: "PENDING",
       },
     });
@@ -93,7 +94,7 @@ export class ClickWebhookController {
   @Post("complete")
   async complete(@Body() dto: ClickWebhookDto): Promise<ClickWebhookResponse> {
     // Verify signature
-    if (!this.verifySignature(dto, "complete")) {
+    if (!this.verifySignature(dto)) {
       this.logger.warn("Click complete webhook signature verification failed");
       return this.errorResponse(dto, -1, "Invalid signature");
     }
@@ -135,7 +136,7 @@ export class ClickWebhookController {
           provider: "click",
           externalEventId: dto.click_trans_id.toString(),
           eventType: "complete",
-          payload: dto as any,
+          payload: dto as unknown as Prisma.InputJsonValue,
           status: "DELIVERED",
           processedAt: new Date(),
         },
@@ -162,13 +163,13 @@ export class ClickWebhookController {
       this.logger.log(`Click payment completed for org ${organizationId}, trans ${dto.click_trans_id}`);
 
       return this.successResponse(dto);
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.logger.error(`Click payment processing failed:`, error);
       return this.errorResponse(dto, -9, "Internal error");
     }
   }
 
-  private verifySignature(dto: ClickWebhookDto, action: "prepare" | "complete"): boolean {
+  private verifySignature(dto: ClickWebhookDto): boolean {
     const secret = process.env.CLICK_SECRET_KEY;
     if (!secret) {
       this.logger.error("CLICK_SECRET_KEY not configured");
@@ -188,7 +189,13 @@ export class ClickWebhookController {
 
     const expectedSign = createHmac("md5", secret).update(signString).digest("hex");
 
-    return dto.sign_string === expectedSign;
+    // Constant-time compare — dto.sign_string is attacker-controlled input,
+    // and plain string equality short-circuits on the first mismatched
+    // character, leaking a timing signal about how much of the signature
+    // an attacker has guessed correctly.
+    const provided = Buffer.from(dto.sign_string ?? "", "hex");
+    const expected = Buffer.from(expectedSign, "hex");
+    return provided.length === expected.length && timingSafeEqual(provided, expected);
   }
 
   private extractOrganizationId(merchantTransId: string): string | null {

@@ -17,7 +17,12 @@ function makeConfig(perOrg: number, global: number): ConfigService {
 
 describe("TelematicsRealtimeService (SSE)", () => {
   let service: TelematicsRealtimeService;
-  let mockResponses: Array<MockResponse>;
+
+  interface SseEventPayload {
+    type: string;
+    vehicleId: string;
+    payload: Record<string, unknown>;
+  }
 
   class MockResponse {
     public writableEnded = false;
@@ -50,13 +55,12 @@ describe("TelematicsRealtimeService (SSE)", () => {
     }
   }
 
-  beforeEach(async () => {
+  beforeEach(() => {
     // High limits so the existing fan-out tests are never gated by admission.
     service = new TelematicsRealtimeService(makeConfig(20, 500));
-    mockResponses = [];
 
     // Initialize the service without Redis (single-instance mode)
-    await service.onModuleInit();
+    service.onModuleInit();
   });
 
   afterEach(async () => {
@@ -157,7 +161,7 @@ describe("TelematicsRealtimeService (SSE)", () => {
 
     const mock = res as unknown as MockResponse;
     expect(mock.written[0]).toMatch(/^data: \{.*\}\n\n$/);
-    const json = JSON.parse(mock.written[0].replace(/^data: /, "").replace(/\n\n$/, ""));
+    const json = JSON.parse(mock.written[0].replace(/^data: /, "").replace(/\n\n$/, "")) as SseEventPayload;
     expect(json.type).toBe("state");
     expect(json.vehicleId).toBe("vehicle-1");
     expect(json.payload.movementState).toBe("MOVING");
@@ -226,7 +230,7 @@ describe("TelematicsRealtimeService (SSE)", () => {
     expect(mock.written.length).toBe(5);
 
     eventTypes.forEach((evt, idx) => {
-      const json = JSON.parse(mock.written[idx].replace(/^data: /, "").replace(/\n\n$/, ""));
+      const json = JSON.parse(mock.written[idx].replace(/^data: /, "").replace(/\n\n$/, "")) as SseEventPayload;
       expect(json.type).toBe(evt.type);
     });
   });

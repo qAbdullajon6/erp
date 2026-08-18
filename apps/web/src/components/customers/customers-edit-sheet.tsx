@@ -3,9 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
 import {
   Select,
   SelectContent,
@@ -27,31 +25,19 @@ import {
   type UpdateCustomerInput,
 } from '@/lib/api/customers';
 import { describeError } from '@/lib/api/describe-error';
+import {
+  CUSTOMER_FIELD_SECTION,
+  Field,
+  SectionTitle,
+  emptySectionCounts,
+  validateCustomerField,
+} from '@/components/customers/customer-form-shared';
 import { cn } from '@/lib/utils';
 import { Building2, CreditCard, MapPin, StickyNote, User } from 'lucide-react';
 import { toast } from 'sonner';
 
 const PAYMENT_TERMS: CustomerPaymentTerms[] = ['DUE_ON_RECEIPT', 'NET_15', 'NET_30', 'NET_45'];
 const EDITABLE_STATUSES = ['ACTIVE', 'AT_RISK', 'INACTIVE'] as const;
-
-type SectionKey = 'company' | 'contact' | 'address' | 'credit' | 'notes';
-
-const FIELD_SECTION: Record<string, SectionKey> = {
-  customerCode: 'company',
-  companyName: 'company',
-  status: 'company',
-  contactName: 'contact',
-  email: 'contact',
-  phone: 'contact',
-  country: 'address',
-  city: 'address',
-  address: 'address',
-  taxId: 'credit',
-  paymentTerms: 'credit',
-  creditLimit: 'credit',
-  deliveryNotes: 'notes',
-  internalNotes: 'notes',
-};
 
 type Errors = Record<string, string>;
 type EditForm = UpdateCustomerInput & { creditLimit?: number };
@@ -75,88 +61,7 @@ function customerToForm(customer: Customer): EditForm {
   };
 }
 
-function validateField(field: string, data: EditForm): string | null {
-  switch (field) {
-    case 'companyName':
-      if (!data.companyName?.trim()) return 'Required';
-      if ((data.companyName?.length ?? 0) > 200) return 'Max 200 characters';
-      return null;
-    case 'contactName':
-      if (!data.contactName?.trim()) return 'Required';
-      if ((data.contactName?.length ?? 0) > 200) return 'Max 200 characters';
-      return null;
-    case 'customerCode':
-      if (data.customerCode && !/^[A-Za-z0-9][A-Za-z0-9-]*$/.test(data.customerCode)) {
-        return 'Letters, numbers, and hyphens only';
-      }
-      if ((data.customerCode?.length ?? 0) > 50) return 'Max 50 characters';
-      return null;
-    case 'email':
-      if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) return 'Invalid email';
-      return null;
-    case 'phone':
-      if ((data.phone?.length ?? 0) > 50) return 'Max 50 characters';
-      return null;
-    case 'country':
-    case 'city':
-      if (((data[field as 'country' | 'city'] as string | null | undefined)?.length ?? 0) > 100) {
-        return 'Max 100 characters';
-      }
-      return null;
-    case 'address':
-      if ((data.address?.length ?? 0) > 300) return 'Max 300 characters';
-      return null;
-    case 'taxId':
-      if ((data.taxId?.length ?? 0) > 100) return 'Max 100 characters';
-      return null;
-    case 'creditLimit':
-      if (data.creditLimit !== undefined && (data.creditLimit < 0 || data.creditLimit > 999999.99)) {
-        return 'Must be between 0 and 999,999.99';
-      }
-      return null;
-    case 'deliveryNotes':
-    case 'internalNotes':
-      if (((data[field as 'deliveryNotes' | 'internalNotes'] as string | null | undefined)?.length ?? 0) > 2000) {
-        return 'Max 2000 characters';
-      }
-      return null;
-    default:
-      return null;
-  }
-}
-
-const ALL_FIELDS = Object.keys(FIELD_SECTION);
-
-function Field({
-  id,
-  label,
-  required,
-  error,
-  children,
-  className,
-}: {
-  id: string;
-  label: string;
-  required?: boolean;
-  error?: string;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={cn('space-y-1', className)} data-field={id}>
-      <Label htmlFor={id} className="text-xs font-medium text-muted-foreground">
-        {label}
-        {required && <span className="ml-0.5 text-destructive">*</span>}
-      </Label>
-      {children}
-      {error && (
-        <p className="text-[11px] font-medium text-destructive" role="alert">
-          {error}
-        </p>
-      )}
-    </div>
-  );
-}
+const ALL_FIELDS = Object.keys(CUSTOMER_FIELD_SECTION);
 
 interface CustomersEditSheetProps {
   open: boolean;
@@ -183,7 +88,7 @@ export function CustomersEditSheet({ open, onOpenChange, customer }: CustomersEd
     setFormData(next);
     setErrors((prev) => {
       const out = { ...prev };
-      const err = validateField(field, next);
+      const err = validateCustomerField(field, next);
       if (err) out[field] = err;
       else delete out[field];
       return out;
@@ -191,15 +96,9 @@ export function CustomersEditSheet({ open, onOpenChange, customer }: CustomersEd
   };
 
   const errorsBySection = useMemo(() => {
-    const counts: Record<SectionKey, number> = {
-      company: 0,
-      contact: 0,
-      address: 0,
-      credit: 0,
-      notes: 0,
-    };
+    const counts = emptySectionCounts();
     for (const field of Object.keys(errors)) {
-      const section = FIELD_SECTION[field];
+      const section = CUSTOMER_FIELD_SECTION[field];
       if (section) counts[section] += 1;
     }
     return counts;
@@ -209,7 +108,7 @@ export function CustomersEditSheet({ open, onOpenChange, customer }: CustomersEd
     const all: Errors = {};
     for (const f of ALL_FIELDS) {
       if (f === 'status' && archived) continue;
-      const err = validateField(f, formData);
+      const err = validateCustomerField(f, formData);
       if (err) all[f] = err;
     }
     setErrors(all);
@@ -456,29 +355,5 @@ export function CustomersEditSheet({ open, onOpenChange, customer }: CustomersEd
         </div>
       </SheetContent>
     </Sheet>
-  );
-}
-
-function SectionTitle({
-  icon: Icon,
-  title,
-  errors,
-}: {
-  icon: typeof Building2;
-  title: string;
-  errors: number;
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="flex h-6 w-6 items-center justify-center rounded-md bg-brand/10 text-brand">
-        <Icon className="h-3.5 w-3.5" />
-      </span>
-      <h3 className="text-sm font-semibold">{title}</h3>
-      {errors > 0 && (
-        <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">
-          {errors}
-        </Badge>
-      )}
-    </div>
   );
 }

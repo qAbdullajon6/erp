@@ -211,9 +211,9 @@ export class PromptLibrary {
       case "ADMIN":
         return [
           "Summarise today's operations",
-          "How are we doing financially?",
-          "Show API usage for this month",
-          "Did my last import work?",
+          "Which invoices are overdue?",
+          "Show today's delayed deliveries",
+          "Show fleet utilization",
         ];
       case "DRIVER":
         return [];

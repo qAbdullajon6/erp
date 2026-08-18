@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useCallback, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { EmptyState } from '@/components/shared/list-states';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -21,9 +21,8 @@ import {
 } from '@/components/fleet-tracking/fleet-ops';
 import { Focus, Truck, X } from 'lucide-react';
 
-const ROW_HEIGHT = 72;
-const VIEWPORT_HEIGHT = 480;
-const OVERSCAN = 6;
+const ROW_HEIGHT = 64;
+const OVERSCAN = 8;
 
 interface Props {
   vehicles: TrackingVehicle[];
@@ -45,10 +44,25 @@ export function VehicleSidebar({
   onFitSelected,
 }: Props) {
   const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(480);
+  const listRef = useRef<HTMLDivElement>(null);
   const selectedCount = selectedIds.size;
 
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const measure = () => {
+      const next = el.clientHeight;
+      if (next > 0) setViewportHeight(next);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
-  const visibleCount = Math.ceil(VIEWPORT_HEIGHT / ROW_HEIGHT) + OVERSCAN * 2;
+  const visibleCount = Math.ceil(viewportHeight / ROW_HEIGHT) + OVERSCAN * 2;
   const endIndex = Math.min(vehicles.length, startIndex + visibleCount);
   const visible = vehicles.slice(startIndex, endIndex);
 
@@ -87,10 +101,15 @@ export function VehicleSidebar({
       )}
 
       <div
+        ref={listRef}
         className="min-h-0 flex-1 overflow-y-auto scrollbar-thin"
         role="listbox"
         aria-label="Fleet vehicles"
         aria-multiselectable="true"
+        aria-activedescendant={
+          selectedVehicleId ? `fleet-vehicle-${selectedVehicleId}` : undefined
+        }
+        tabIndex={0}
         onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
       >
         {vehicles.length === 0 ? (
@@ -140,6 +159,7 @@ const FleetVehicleCard = memo(function FleetVehicleCard({
 }) {
   const track = trackingAvailability(vehicle, { liveDispatch });
   const code = vehicleSecondaryCode(vehicle);
+  const name = vehicleDisplayName(vehicle);
 
   const handleSelect = useCallback(
     (additive: boolean) => onSelect(vehicle.vehicleId, { additive }),
@@ -148,6 +168,7 @@ const FleetVehicleCard = memo(function FleetVehicleCard({
 
   return (
     <div
+      id={`fleet-vehicle-${vehicle.vehicleId}`}
       role="option"
       aria-selected={selected || multiSelected}
       className="absolute inset-x-0"
@@ -163,22 +184,15 @@ const FleetVehicleCard = memo(function FleetVehicleCard({
               : 'border-l-transparent hover:bg-muted/25',
         )}
       >
-        <button
-          type="button"
-          className="flex shrink-0 items-start px-2 pt-3.5"
-          aria-label={multiSelected ? 'Deselect vehicle' : 'Select vehicle'}
-          onClick={(e) => {
-            e.stopPropagation();
-            handleSelect(true);
-          }}
-        >
+        <div className="flex shrink-0 items-start px-2 pt-3">
           <Checkbox
             checked={multiSelected || selected}
             onCheckedChange={() => handleSelect(true)}
-            aria-hidden
-            tabIndex={-1}
+            aria-label={
+              multiSelected ? `Deselect ${name}` : `Select ${name}`
+            }
           />
-        </button>
+        </div>
         <button
           type="button"
           onClick={(e) => handleSelect(e.shiftKey)}
@@ -188,30 +202,35 @@ const FleetVehicleCard = memo(function FleetVehicleCard({
               handleSelect(e.shiftKey);
             }
           }}
-          className="min-w-0 flex-1 px-1 py-2.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+          className="min-w-0 flex-1 px-1 py-2 text-left outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
         >
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
               <div className="flex min-w-0 items-baseline gap-1.5">
                 <span className="truncate font-mono text-sm font-semibold text-foreground">
-                  {vehicleDisplayName(vehicle)}
+                  {name}
                 </span>
                 {code && (
-                  <span className="shrink-0 font-mono text-[10px] text-muted-foreground">{code}</span>
+                  <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                    {code}
+                  </span>
                 )}
               </div>
               <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
                 {vehicle.driverName || 'No driver'}
                 {liveDispatch?.dispatchNumber ? ` · ${liveDispatch.dispatchNumber}` : ''}
               </p>
-              <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                {liveDispatch?.order?.orderNumber
-                  ? `Order ${liveDispatch.order.orderNumber}`
-                  : 'No live dispatch'}
-                {liveDispatch?.order?.pickupCity
-                  ? ` · ${liveDispatch.order.pickupCity} → ${liveDispatch.order.deliveryCity}`
-                  : ''}
-              </p>
+              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground">
+                {vehicle.speedKph != null && (
+                  <span className="tabular-nums">{Math.round(vehicle.speedKph)} km/h</span>
+                )}
+                {!hasCoordinates(vehicle) && <span>No GPS</span>}
+                {vehicle.lastReceivedAt && (
+                  <span title={vehicle.lastReceivedAt}>
+                    {formatRelativeTime(vehicle.lastReceivedAt)}
+                  </span>
+                )}
+              </div>
             </div>
             <div className="flex shrink-0 flex-col items-end gap-1">
               <span
@@ -231,14 +250,6 @@ const FleetVehicleCard = memo(function FleetVehicleCard({
                 {trackingAvailabilityLabel(track)}
               </span>
             </div>
-          </div>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground">
-            {!hasCoordinates(vehicle) && <span>Map pin unavailable</span>}
-            {vehicle.lastReceivedAt && (
-              <span title={vehicle.lastReceivedAt}>
-                Updated {formatRelativeTime(vehicle.lastReceivedAt)}
-              </span>
-            )}
           </div>
         </button>
       </div>

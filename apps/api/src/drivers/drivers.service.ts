@@ -1,10 +1,11 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { DispatchStatus, Driver, Prisma } from "@prisma/client";
+import { DispatchStatus, Driver, Prisma, UsageMetricType } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { isValidEntityCode } from "../common/sequential-code.util";
 import { PrismaService } from "../prisma/prisma.service";
 import { WorkflowEventService } from "../workflows/triggers/workflow-event.service";
+import { UsageMeteringService } from "../billing/usage-metering.service";
 import { generateUniqueDriverCode } from "./driver-code.util";
 import { CreateDriverDto } from "./dto/create-driver.dto";
 import { ListDriversQueryDto } from "./dto/list-drivers-query.dto";
@@ -27,6 +28,7 @@ export class DriversService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly workflowEvents: WorkflowEventService,
+    private readonly usageMetering: UsageMeteringService,
   ) {}
 
   async list(organizationId: string, query: ListDriversQueryDto) {
@@ -47,7 +49,7 @@ export class DriversService {
         : {}),
     };
 
-    const [rows, total] = await Promise.all([
+    const [rows, total] = await this.prisma.$transaction([
       this.prisma.driver.findMany({
         where,
         orderBy: { [query.sortBy]: query.sortOrder },
@@ -93,25 +95,40 @@ export class DriversService {
   }
 
   async create(organizationId: string, dto: CreateDriverDto, actor: CurrentUserPayload) {
-    const employeeCode = await this.resolveCodeForCreate(organizationId, dto.employeeCode);
+    // Auto-generated codes are check-then-write: two concurrent creates can
+    // both compute the same "next" EMP-000N and race the unique constraint.
+    // A user-SUPPLIED code has already been existence-checked in
+    // resolveCodeForCreate, so a collision there is a real conflict, not a
+    // race to retry — only the auto-generated path retries.
+    await this.usageMetering.enforceLimit(organizationId, UsageMetricType.DRIVERS, 1);
 
-    let driver: Driver;
-    try {
-      driver = await this.prisma.driver.create({
-        data: {
-          organizationId,
-          employeeCode,
-          firstName: dto.firstName,
-          lastName: dto.lastName,
-          phone: dto.phone,
-          email: dto.email,
-          licenseNumber: dto.licenseNumber,
-          licenseExpiry: dto.licenseExpiry ? new Date(dto.licenseExpiry) : undefined,
-        },
-      });
-    } catch (err) {
-      this.rethrowCodeConflict(err);
-      throw err;
+    const isAutoCode = !dto.employeeCode;
+    let employeeCode = await this.resolveCodeForCreate(organizationId, dto.employeeCode);
+
+    let driver: Driver | undefined;
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        driver = await this.prisma.driver.create({
+          data: {
+            organizationId,
+            employeeCode,
+            firstName: dto.firstName,
+            lastName: dto.lastName,
+            phone: dto.phone,
+            email: dto.email,
+            licenseNumber: dto.licenseNumber,
+            licenseExpiry: dto.licenseExpiry ? new Date(dto.licenseExpiry) : undefined,
+          },
+        });
+        break;
+      } catch (err) {
+        const isCodeConflict = err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
+        if (!isCodeConflict) throw err;
+        if (!isAutoCode || attempt >= 2) {
+          throw new ConflictException("A driver with this employeeCode already exists in this organization");
+        }
+        employeeCode = await generateUniqueDriverCode(this.prisma, organizationId);
+      }
     }
 
     await this.auditService.log({
@@ -123,7 +140,7 @@ export class DriversService {
       metadata: { employeeCode: driver.employeeCode },
     });
 
-    this.workflowEvents.emit(organizationId, "driver.created", { id: driver.id, employeeCode: driver.employeeCode, firstName: driver.firstName, lastName: driver.lastName });
+    void this.workflowEvents.emit(organizationId, "driver.created", { id: driver.id, employeeCode: driver.employeeCode, firstName: driver.firstName, lastName: driver.lastName });
 
     return this.toResponse(driver);
   }
@@ -342,8 +359,8 @@ export class DriversService {
 
   /// Scoped by organizationId in the query itself, so a driver id from
   /// another organization returns 404 — never leaking whether it exists
-  /// elsewhere. Exported for OrdersService's assignment validation.
-  async findOrThrow(organizationId: string, id: string): Promise<Driver> {
+  /// elsewhere.
+  private async findOrThrow(organizationId: string, id: string): Promise<Driver> {
     const driver = await this.prisma.driver.findFirst({ where: { id, organizationId } });
     if (!driver) {
       throw new NotFoundException("Driver not found");

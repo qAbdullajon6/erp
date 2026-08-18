@@ -151,16 +151,22 @@ export class PaymentsService {
       },
     });
 
-    this.workflowEvents.emit(organizationId, "payment.received", {
+    void this.workflowEvents.emit(organizationId, "payment.received", {
       id: result.payment.id,
       invoiceId,
+      invoiceNumber: result.updatedInvoice.invoiceNumber,
+      orderId: result.updatedInvoice.orderId,
+      customerId: result.updatedInvoice.customerId,
       amount: result.payment.amount.toString(),
       resultingInvoiceStatus: result.newStatus,
     });
     if (result.newStatus === "PAID") {
-      this.workflowEvents.emit(organizationId, "invoice.paid", {
+      void this.workflowEvents.emit(organizationId, "invoice.paid", {
         id: invoiceId,
         invoiceNumber: result.updatedInvoice.invoiceNumber,
+        orderId: result.updatedInvoice.orderId,
+        customerId: result.updatedInvoice.customerId,
+        totalAmount: result.updatedInvoice.totalAmount.toString(),
       });
     }
 

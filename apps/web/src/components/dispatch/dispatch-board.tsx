@@ -14,9 +14,6 @@ import {
 } from '@dnd-kit/core';
 import { useNavigate } from '@tanstack/react-router';
 import {
-  List,
-  LayoutGrid,
-  Loader2,
   Plus,
   RefreshCw,
   AlertTriangle,
@@ -34,11 +31,15 @@ import { dispatchesAPI } from '@/lib/api/dispatches';
 import { useInvalidateOperationalState } from '@/lib/api/invalidate';
 import { DISPATCH_WRITE_ROLES } from '@/lib/role-access';
 import { useDispatches, useDispatchBoardSummary } from '@/lib/hooks/use-dispatches';
+import { useDispatchConflictsBatch, type DispatchConflictSummary } from '@/lib/api/dispatch-conflicts';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState, ErrorState } from '@/components/shared/list-states';
+import { LiveIndicator } from '@/components/shared/live-indicator';
+import { WorkspaceHeader } from '@/components/shared/page-header';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { DispatchesCreateSheet } from '@/components/dispatch/dispatches-create-sheet';
+import { DispatchViewToggle } from '@/components/dispatch/dispatch-view-toggle';
 import { BOARD_COLUMNS, canDropInto, groupByStatus, isCancelDrop } from './board-columns';
 import { DispatchCard } from './dispatch-card';
 import { DispatchReassignDialog } from './dispatch-reassign-dialog';
@@ -119,6 +120,10 @@ export function DispatchBoard() {
   );
 
   const allDispatches = data ?? [];
+  const conflictBatch = useDispatchConflictsBatch(
+    allDispatches.map((d) => d.id),
+    allDispatches.length > 0,
+  );
   const counts = useMemo(
     () => computeBoardOpsCounts(allDispatches, boardSummary),
     [allDispatches, boardSummary],
@@ -281,13 +286,37 @@ export function DispatchBoard() {
     try {
       if (isCancelDrop(target)) {
         await dispatchesAPI.cancel(dispatch.id);
+        await invalidate();
+        const label = target.replace(/_/g, ' ').toLowerCase();
+        toast.success(`${dispatch.dispatchNumber} moved to ${label}`);
+        setAnnouncement(`${dispatch.dispatchNumber} moved to ${label}`);
       } else {
+        const previousStatus = dispatch.status;
         await dispatchesAPI.updateStatus(dispatch.id, { status: target });
+        await invalidate();
+        const label = target.replace(/_/g, ' ').toLowerCase();
+        toast.success(`${dispatch.dispatchNumber} moved to ${label}`, {
+          duration: 8000,
+          action: {
+            label: 'Undo',
+            onClick: () => {
+              void (async () => {
+                try {
+                  await dispatchesAPI.undoStatus(dispatch.id);
+                  await invalidate();
+                  const back = previousStatus.replace(/_/g, ' ').toLowerCase();
+                  toast.success(`${dispatch.dispatchNumber} restored to ${back}`);
+                  setAnnouncement(`${dispatch.dispatchNumber} restored to ${back}`);
+                  markResolving(dispatch.id);
+                } catch (undoErr) {
+                  toast.error(describeError(undoErr, 'Undo failed'));
+                }
+              })();
+            },
+          },
+        });
+        setAnnouncement(`${dispatch.dispatchNumber} moved to ${label}`);
       }
-      await invalidate();
-      const label = target.replace(/_/g, ' ').toLowerCase();
-      toast.success(`${dispatch.dispatchNumber} moved to ${label}`);
-      setAnnouncement(`${dispatch.dispatchNumber} moved to ${label}`);
       markResolving(dispatch.id);
     } catch (err) {
       const message = describeError(err, 'Move rejected');
@@ -489,41 +518,22 @@ export function DispatchBoard() {
   return (
     <div className="flex min-h-0 min-w-0 flex-col gap-2">
       {/* Sticky chrome — survives page scroll on 1366×768 */}
-      <div className="sticky top-0 z-20 -mx-1 space-y-2 border-b border-border/80 bg-background/95 px-1 pb-2 pt-0.5 backdrop-blur supports-[backdrop-filter]:bg-background/85">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <h1 className="font-display text-xl font-bold tracking-tight text-foreground sm:text-2xl">
-              Dispatch Board
-            </h1>
-            <p className="truncate text-xs text-muted-foreground sm:text-sm">
-              {meta?.total ?? allDispatches.length} dispatches
-              {counts.overdue > 0 ? (
-                <span className="text-destructive"> · {counts.overdue} overdue</span>
-              ) : null}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+      <WorkspaceHeader
+        className="sticky top-0 z-20 -mx-1 border-border/80 bg-background/95 px-1 pb-2 pt-0.5 backdrop-blur supports-[backdrop-filter]:bg-background/85 sm:px-1"
+        title="Dispatch Board"
+        subtitle={
+          <>
+            {meta?.total ?? allDispatches.length} dispatches
+            {counts.overdue > 0 ? (
+              <span className="text-destructive"> · {counts.overdue} overdue</span>
+            ) : null}
+          </>
+        }
+        action={
+          <>
             {!isEmpty && <DispatchSearch dispatches={allDispatches} onSelect={handleSearchSelect} />}
 
-            <span
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-medium',
-                isRefreshing
-                  ? 'border-border text-muted-foreground'
-                  : 'border-success/40 bg-success/10 text-success',
-              )}
-              title="Refreshes every 30s while this tab is open"
-            >
-              {isRefreshing ? (
-                <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-              ) : (
-                <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-50" />
-                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-success" />
-                </span>
-              )}
-              {isRefreshing ? 'Updating' : ageSec < 5 ? 'Live' : `Live · ${ageSec}s`}
-            </span>
+            <LiveIndicator refreshing={isRefreshing} ageSeconds={ageSec} />
 
             <Button
               variant="outline"
@@ -535,30 +545,7 @@ export function DispatchBoard() {
               <RefreshCw className={cn('h-3.5 w-3.5', isRefreshing && 'animate-spin')} />
             </Button>
 
-            <div
-              className="inline-flex rounded-md border border-border p-0.5"
-              role="group"
-              aria-label="Dispatch view"
-            >
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 gap-1 px-2 text-xs text-muted-foreground"
-                onClick={() => void navigate({ to: '/app/dispatches' })}
-              >
-                <List className="h-3.5 w-3.5" />
-                List
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="h-7 gap-1 px-2 text-xs"
-                aria-current="page"
-              >
-                <LayoutGrid className="h-3.5 w-3.5" />
-                Board
-              </Button>
-            </div>
+            <DispatchViewToggle current="board" />
 
             {canWrite && (
               <Button
@@ -571,9 +558,9 @@ export function DispatchBoard() {
                 New
               </Button>
             )}
-          </div>
-        </div>
-
+          </>
+        }
+      >
         {/* Single strip: filters + unique ops (no duplicate overdue/waiting chips) */}
         <div className="flex flex-wrap items-center gap-1.5">
           <div className="flex flex-wrap items-center gap-1" role="toolbar" aria-label="Board filters">
@@ -624,7 +611,7 @@ export function DispatchBoard() {
             </>
           )}
         </div>
-      </div>
+      </WorkspaceHeader>
 
       <div role="status" aria-live="polite" className="sr-only">
         {announcement}
@@ -762,6 +749,7 @@ export function DispatchBoard() {
               onCancel={setCancelling}
               onViewOrder={handleViewOrder}
               onCall={callDriver}
+              conflictsByDispatchId={conflictBatch.data}
             />
           ))}
         </div>
@@ -832,6 +820,7 @@ interface BoardColumnProps {
   onCancel: (dispatch: ApiDispatch) => void;
   onViewOrder: (orderId: string) => void;
   onCall: (dispatch: ApiDispatch) => void;
+  conflictsByDispatchId?: Record<string, { summary: DispatchConflictSummary }>;
 }
 
 function BoardColumn({
@@ -849,6 +838,7 @@ function BoardColumn({
   onCancel,
   onViewOrder,
   onCall,
+  conflictsByDispatchId,
 }: BoardColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: status, disabled: !canWrite });
   const isLegalTarget = canWrite && draggingDispatch ? canDropInto(draggingDispatch, status) : true;
@@ -915,6 +905,7 @@ function BoardColumn({
                 onCancel={onCancel}
                 onViewOrder={onViewOrder}
                 onCall={onCall}
+                conflictSummary={conflictsByDispatchId?.[dispatch.id]?.summary}
               />
             ))}
           </>

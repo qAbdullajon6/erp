@@ -22,6 +22,21 @@ perpetually red for reasons unrelated to it.
 
 | Job | What it proves |
 | --- | --- |
+| `Web · typecheck · lint · unit · build` | The frontend typechecks, lints clean, unit tests pass, and the production `vite build` succeeds. |
+| `API · build` | `nest build` compiles `src` via `tsconfig.build.json` (excludes `test/`). |
+| `API · lint + full typecheck` | `eslint "src/**/*.ts"` and full `tsc --noEmit` incl. `test/` (Sprint B gate). |
+| `API · unit tests` | Jest unit suite against ephemeral Postgres (Sprint B gate). |
+| `Migrations · apply … + status` | All migrations apply cleanly via `prisma migrate deploy`, and `migrate status` shows no drift. |
+| `Docker · build API + WEB images` | Production API and WEB images build (multi-stage, non-root, tini, HEALTHCHECK). |
+| `Playwright · enterprise regression suite` | Seeded test org + Chromium regression project (Sprint A gate). |
+
+**Non-blocking:** none. Sprint B removed `continue-on-error` from API lint/typecheck
+and API unit tests after those suites reached zero errors.
+
+Remaining lint note (does **not** fail CI): one `@typescript-eslint/no-unsafe-argument`
+warning in `subscription-renewal.worker.ts` where the cron path passes `null as any`
+as actor — widening `cancelSubscription` to accept `null` would change null-safe
+audit writes and is deferred.
 | `Web · typecheck · lint · unit · build` | The frontend typechecks, lints clean, unit tests pass (30), and the production `vite build` succeeds. |
 | `API · build` | `nest build` compiles `src` — this **is** the API `src` typecheck (it uses `tsconfig.build.json`, which excludes `test/`). |
 | `Migrations · apply … + status` | All migrations apply cleanly to a fresh Postgres via the exact `prisma migrate deploy` the API runs on boot, and `migrate status` shows no drift. |
@@ -73,20 +88,20 @@ cd apps/api && npx prisma migrate deploy && npx prisma migrate status
 docker build -f apps/api/Dockerfile -t flowerp-api:local .
 docker build -f apps/web/Dockerfile -t flowerp-web:local .
 
-# Non-blocking signal
-cd apps/api && npx eslint "src/**/*.ts"   # green
-npm run typecheck:api                      # red on the test-spec debt
+# API quality + unit tests (blocking after Sprint B)
+cd apps/api && npx eslint "src/**/*.ts"
+npm run typecheck:api
+npm run test:api
 ```
 
 ## Reading a failure
 
-- **A blocking web/api-build/docker job is red** → a real regression in this PR.
-  Reproduce with the matching command above.
+- **A blocking web/api-build/docker/api-quality/api-tests job is red** → a real
+  regression in this PR. Reproduce with the matching command above.
 - **`Migrations` is red** → a migration doesn't apply cleanly or drifts from the
   schema. Check the new migration SQL (database-migrations discipline).
-- **Only `API · lint + full typecheck` / `API · unit tests` are red** → almost
-  certainly the pre-existing debt, not your change. Confirm by checking whether
-  the failing files are the telematics `*.e2e-spec.ts` set.
+- **`Playwright · enterprise regression` is red** → seed, API boot, or an e2e
+  assertion failed; check the uploaded Playwright report artifact.
 - **`Deploy`/`Rollback` red** → see ROLLBACK_GUIDE.md; deploy.sh auto-rolls-back
   on a failed health check **or failed post-deploy verification** (including
   API/WEB `GIT_COMMIT_SHA` mismatch), so the VPS is not left with a stale UI.

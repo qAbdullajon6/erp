@@ -10,11 +10,15 @@ export interface TriggerDefinition {
 /// never fire. Use conditions on status_changed / completed events instead.
 export const TRIGGER_DEFINITIONS: TriggerDefinition[] = [
   { type: 'manual', displayName: 'Manual Trigger', description: 'Triggered manually by a user' },
-  { type: 'webhook', displayName: 'Incoming Webhook', description: 'Triggered by an external HTTP request' },
-  { type: 'schedule', displayName: 'Schedule (Cron)', description: 'Triggered on a recurring schedule' },
+  // 'webhook' and 'schedule' were removed: nothing in the product (UI or API)
+  // can create a WorkflowWebhook or WorkflowSchedule row, so a workflow built
+  // on either trigger could never fire — the exact case the comment above
+  // this array warns about. The receiving/firing infrastructure for both
+  // (WorkflowsWebhookController, WorkflowSchedulerService) is still intact for
+  // when a provisioning UI/API is built; only the dead menu entries are gone.
   { type: 'order.created', displayName: 'Order Created', description: 'When a new order is placed' },
   { type: 'order.updated', displayName: 'Order Updated', description: 'When an order is modified' },
-  { type: 'order.status_changed', displayName: 'Order Status Changed', description: 'When an order status changes (filter on payload.to for delivered, etc.)' },
+  { type: 'order.status_changed', displayName: 'Order Status Changed', description: 'When staff change an order\'s status directly via the Orders screen (filter on payload.to). Does NOT fire for the normal Dispatch Board flow (assign/pickup/deliver) — use dispatch.status_changed / dispatch.completed for that.' },
   { type: 'order.cancelled', displayName: 'Order Cancelled', description: 'When an order is cancelled' },
   { type: 'dispatch.created', displayName: 'Dispatch Created', description: 'When a dispatch is created (includes initial driver/vehicle assignment)' },
   { type: 'dispatch.status_changed', displayName: 'Dispatch Status Changed', description: 'When a dispatch status changes' },

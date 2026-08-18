@@ -1,4 +1,4 @@
-import { Controller, Get, HttpCode, Param, Post, UseGuards } from "@nestjs/common";
+import { Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, UseGuards } from "@nestjs/common";
 import type { MembershipRole } from "@prisma/client";
 import { CurrentUser } from "../../auth/decorators/current-user.decorator";
 import { Roles } from "../../auth/decorators/roles.decorator";
@@ -39,7 +39,7 @@ export class CustomerPortalProvisioningController {
   @Roles(...WRITE_ROLES)
   @Get()
   getStatus(
-    @Param("customerId") customerId: string,
+    @Param("customerId", ParseUUIDPipe) customerId: string,
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<CustomerPortalAccessStatus> {
     return this.provisioning.getAccessStatus(user.organizationId, customerId);
@@ -52,7 +52,7 @@ export class CustomerPortalProvisioningController {
   @Roles(...WRITE_ROLES)
   @Post("invitations")
   async invite(
-    @Param("customerId") customerId: string,
+    @Param("customerId", ParseUUIDPipe) customerId: string,
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<CustomerPortalInvitationSummary> {
     const [organization, inviter] = await Promise.all([
@@ -75,8 +75,8 @@ export class CustomerPortalProvisioningController {
   @Post("invitations/:invitationId/resend")
   @HttpCode(200)
   resend(
-    @Param("customerId") customerId: string,
-    @Param("invitationId") invitationId: string,
+    @Param("customerId", ParseUUIDPipe) customerId: string,
+    @Param("invitationId", ParseUUIDPipe) invitationId: string,
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<CustomerPortalInvitationSummary> {
     return this.provisioning.resendInvitation(user.organizationId, customerId, invitationId);
@@ -87,8 +87,8 @@ export class CustomerPortalProvisioningController {
   @Post("invitations/:invitationId/revoke")
   @HttpCode(200)
   revoke(
-    @Param("customerId") customerId: string,
-    @Param("invitationId") invitationId: string,
+    @Param("customerId", ParseUUIDPipe) customerId: string,
+    @Param("invitationId", ParseUUIDPipe) invitationId: string,
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<CustomerPortalInvitationSummary> {
     return this.provisioning.revokeInvitation(user.organizationId, customerId, invitationId, user.userId);
@@ -99,7 +99,7 @@ export class CustomerPortalProvisioningController {
   @Post("suspend")
   @HttpCode(200)
   async suspend(
-    @Param("customerId") customerId: string,
+    @Param("customerId", ParseUUIDPipe) customerId: string,
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<{ suspended: true }> {
     await this.provisioning.suspendAccess(user.organizationId, customerId, user.userId);
@@ -111,7 +111,7 @@ export class CustomerPortalProvisioningController {
   @Post("reactivate")
   @HttpCode(200)
   async reactivate(
-    @Param("customerId") customerId: string,
+    @Param("customerId", ParseUUIDPipe) customerId: string,
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<{ reactivated: true }> {
     await this.provisioning.reactivateAccess(user.organizationId, customerId, user.userId);

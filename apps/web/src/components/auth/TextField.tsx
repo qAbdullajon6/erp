@@ -5,16 +5,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 
-/// Shared input treatment for every auth field (text, password, OTP-adjacent).
-/// One focus ring, one border, one radius — so Sign In, invitations, and
-/// password screens all read as the same product instead of five templates.
+/// Auth fields are the only inputs a person meets before they are a user, so
+/// they get a taller touch target and a little more breathing room than the
+/// dense in-app default. Focus and invalid states come from the shared `Input`
+/// primitive — this only adjusts size and surface, so the two can't drift.
 export const AUTH_INPUT_CLASSES =
-  'h-11 rounded-xl border-border/60 bg-background/40 px-3.5 text-[15px] shadow-none ' +
-  'transition-all duration-200 ease-out ' +
-  'placeholder:text-muted-foreground/50 ' +
-  'hover:border-border ' +
-  'focus-visible:border-brand/60 focus-visible:bg-background/70 focus-visible:ring-4 focus-visible:ring-brand/15 ' +
-  'aria-[invalid=true]:border-destructive/50 aria-[invalid=true]:focus-visible:ring-destructive/15';
+  'h-11 rounded-lg border-border/70 bg-background/40 px-3.5 text-[15px] shadow-none ' +
+  'transition-colors duration-150 ' +
+  'placeholder:text-muted-foreground/60 ' +
+  'hover:border-border';
 
 type TextFieldProps = Omit<React.ComponentProps<typeof Input>, 'className'> & {
   label: string;

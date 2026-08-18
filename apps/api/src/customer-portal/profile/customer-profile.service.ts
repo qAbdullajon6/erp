@@ -3,6 +3,7 @@ import { AuditService } from "../../audit/audit.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import type { CurrentCustomerPayload } from "../auth/interfaces/current-customer.interface";
 import { UpdateCustomerProfileDto } from "./dto/update-profile.dto";
+import { resolveNotificationPreferences } from "../notifications/notification-preferences";
 
 @Injectable()
 export class CustomerProfileService {
@@ -12,9 +13,23 @@ export class CustomerProfileService {
   ) {}
 
   async getProfile(payload: CurrentCustomerPayload) {
-    const customer = await this.prisma.customer.findUnique({
-      where: { id: payload.customerId },
-    });
+    const [customer, account] = await Promise.all([
+      this.prisma.customer.findUnique({
+        // organizationId is redundant given payload.customerId is always
+        // DB-verified server-side (never client-supplied), but every
+        // sibling service in this module scopes by both — matching that
+        // convention here for defense-in-depth.
+        where: { id: payload.customerId, organizationId: payload.organizationId },
+      }),
+      this.prisma.customerPortalAccount.findUnique({
+        where: { id: payload.accountId },
+        select: {
+          notificationPreferences: true,
+          language: true,
+          timezone: true,
+        },
+      }),
+    ]);
     if (!customer) {
       return null;
     }
@@ -38,12 +53,15 @@ export class CustomerProfileService {
       // which this fixes.
       creditLimit: customer.creditLimit.toString(),
       deliveryNotes: customer.deliveryNotes,
+      language: account?.language ?? "en",
+      timezone: account?.timezone ?? "UTC",
+      notificationPreferences: resolveNotificationPreferences(account?.notificationPreferences),
     };
   }
 
   async updateProfile(payload: CurrentCustomerPayload, dto: UpdateCustomerProfileDto) {
     const customer = await this.prisma.customer.update({
-      where: { id: payload.customerId },
+      where: { id: payload.customerId, organizationId: payload.organizationId },
       data: {
         ...(dto.contactName !== undefined ? { contactName: dto.contactName } : {}),
         ...(dto.phone !== undefined ? { phone: dto.phone } : {}),
@@ -52,6 +70,47 @@ export class CustomerProfileService {
         ...(dto.country !== undefined ? { country: dto.country } : {}),
       },
     });
+
+    let accountPrefs = null as ReturnType<typeof resolveNotificationPreferences> | null;
+    let language = "en";
+    let timezone = "UTC";
+
+    if (
+      dto.language !== undefined ||
+      dto.timezone !== undefined ||
+      dto.notificationPreferences !== undefined
+    ) {
+      const current = await this.prisma.customerPortalAccount.findUnique({
+        where: { id: payload.accountId },
+        select: { notificationPreferences: true, language: true, timezone: true },
+      });
+      const nextPrefs = {
+        ...resolveNotificationPreferences(current?.notificationPreferences),
+        ...(dto.notificationPreferences ?? {}),
+      };
+      const updated = await this.prisma.customerPortalAccount.update({
+        where: { id: payload.accountId },
+        data: {
+          ...(dto.language !== undefined ? { language: dto.language } : {}),
+          ...(dto.timezone !== undefined ? { timezone: dto.timezone } : {}),
+          ...(dto.notificationPreferences !== undefined
+            ? { notificationPreferences: nextPrefs }
+            : {}),
+        },
+        select: { notificationPreferences: true, language: true, timezone: true },
+      });
+      accountPrefs = resolveNotificationPreferences(updated.notificationPreferences);
+      language = updated.language ?? "en";
+      timezone = updated.timezone ?? "UTC";
+    } else {
+      const account = await this.prisma.customerPortalAccount.findUnique({
+        where: { id: payload.accountId },
+        select: { notificationPreferences: true, language: true, timezone: true },
+      });
+      accountPrefs = resolveNotificationPreferences(account?.notificationPreferences);
+      language = account?.language ?? "en";
+      timezone = account?.timezone ?? "UTC";
+    }
 
     await this.audit
       .log({
@@ -70,6 +129,9 @@ export class CustomerProfileService {
       address: customer.address,
       city: customer.city,
       country: customer.country,
+      language,
+      timezone,
+      notificationPreferences: accountPrefs,
     };
   }
 }

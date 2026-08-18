@@ -1,6 +1,6 @@
 import { TelematicsProviderType } from "@prisma/client";
 import { Transform, Type } from "class-transformer";
-import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
+import { IsBoolean, IsEnum, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from "class-validator";
 
 function parseBool({ value }: { value: unknown }): boolean {
   return value === "true" || value === true;
@@ -28,6 +28,14 @@ export class ListDevicesQueryDto {
   @IsOptional()
   @IsEnum(TelematicsProviderType)
   provider?: TelematicsProviderType;
+
+  @IsOptional()
+  @IsUUID()
+  vehicleId?: string;
+
+  @IsOptional()
+  @IsIn(["ASSIGNED", "UNASSIGNED"])
+  assignment?: "ASSIGNED" | "UNASSIGNED";
 
   @IsOptional()
   @Transform(parseBool)

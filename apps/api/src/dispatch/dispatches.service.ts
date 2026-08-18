@@ -1,5 +1,13 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  StreamableFile,
+} from "@nestjs/common";
 import { Dispatch, DispatchStatus, Prisma } from "@prisma/client";
+import { createReadStream } from "fs";
+import { join } from "path";
 import { AuditService } from "../audit/audit.service";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { OrderWriter } from "../order-state/order-writer";
@@ -12,10 +20,16 @@ import { ACTIVE_DISPATCH_STATUSES } from "./assignment/assignment.queries";
 import { translateDispatchWriteError } from "./dispatch-constraints";
 import { ALLOWED_TRANSITIONS, allowedDispatchTransitions } from "./dispatch-transitions";
 import { generateUniqueDispatchNumber } from "./dispatch-number.util";
+import { notifyDriverOfAssignment } from "./driver/driver-assignment-notify";
 import { CreateDispatchDto } from "./dto/create-dispatch.dto";
 import { ListDispatchesQueryDto } from "./dto/list-dispatches-query.dto";
 import { UpdateDispatchDto } from "./dto/update-dispatch.dto";
 import { UpdateDispatchStatusDto } from "./dto/update-dispatch-status.dto";
+import { RescheduleDispatchDto } from "./dto/reschedule-dispatch.dto";
+
+/// Same physical layout the driver app writes to (driver-workspace.service.ts)
+/// — this service only ever reads it, org/dispatch-scoped, never writes.
+const PROOF_UPLOAD_ROOT = join(process.cwd(), "uploads", "driver-proofs");
 
 /// The relations every dispatch response carries. Defined once so the write
 /// paths cannot drift from the read paths (the detail endpoint additionally
@@ -26,6 +40,16 @@ const DISPATCH_INCLUDE = {
   vehicle: true,
   createdByUser: true,
 } satisfies Prisma.DispatchInclude;
+
+const DISPATCH_DETAIL_INCLUDE = {
+  ...DISPATCH_INCLUDE,
+  statusHistory: { orderBy: { createdAt: "asc" as const } },
+} satisfies Prisma.DispatchInclude;
+
+type DispatchDetail = Prisma.DispatchGetPayload<{ include: typeof DISPATCH_DETAIL_INCLUDE }>;
+type DispatchWithRelations = Prisma.DispatchGetPayload<{ include: typeof DISPATCH_INCLUDE }> & {
+  statusHistory?: DispatchDetail["statusHistory"];
+};
 
 @Injectable()
 export class DispatchesService {
@@ -38,6 +62,33 @@ export class DispatchesService {
     private readonly workflowEvents: WorkflowEventService,
     private readonly tracking: TrackingService,
   ) {}
+
+  /// Fires order.status_changed for a projection this write just caused, the
+  /// same event orders.service.ts's own direct /orders/:id/status path already
+  /// emits — so a workflow author gets one trigger that means "the order's
+  /// status moved" regardless of whether the Dispatch Board, the driver app, or
+  /// staff calling the order endpoint directly is what moved it.
+  ///
+  /// Gated on the STATUS actually differing, not OrderWriter.project()'s
+  /// `changed` flag alone: a driver/vehicle reassignment with no status move
+  /// also reports `changed: true` (see OrderProjection.settle()), and firing
+  /// this with from === to would misrepresent a reassignment as a transition.
+  /// Not private: DriverDispatchService (the driver-app status path) already
+  /// injects this service and projects the order through the same
+  /// OrderWriter — reusing this keeps both callers' order.status_changed
+  /// semantics identical instead of maintaining two copies of the gate.
+  emitOrderStatusChangedIfMoved(
+    organizationId: string,
+    projected: { order: { id: string; orderNumber: string; status: string }; previousStatus: string; changed: boolean },
+  ): void {
+    if (!projected.changed || projected.previousStatus === projected.order.status) return;
+    void this.workflowEvents.emit(organizationId, "order.status_changed", {
+      id: projected.order.id,
+      orderNumber: projected.order.orderNumber,
+      from: projected.previousStatus,
+      to: projected.order.status,
+    });
+  }
 
   async list(organizationId: string, query: ListDispatchesQueryDto) {
     const page = query.page ?? 1;
@@ -55,6 +106,7 @@ export class DispatchesService {
       ...(query.orderId ? { orderId: query.orderId } : {}),
       ...(query.driverId ? { driverId: query.driverId } : {}),
       ...(query.vehicleId ? { vehicleId: query.vehicleId } : {}),
+      ...(query.customerId ? { order: { customerId: query.customerId } } : {}),
       ...(query.search
         ? {
             OR: [
@@ -79,14 +131,17 @@ export class DispatchesService {
         : {}),
     };
 
-    const orderByMap: Record<string, any> = {
+    const orderByMap: Record<string, Prisma.DispatchOrderByWithRelationInput> = {
       createdAt: { createdAt: sortOrder },
       pickupDateScheduled: { pickupDateScheduled: sortOrder },
       deliveryDateScheduled: { deliveryDateScheduled: sortOrder },
       status: { status: sortOrder },
     };
 
-    const [rows, total] = await Promise.all([
+    // $transaction, not Promise.all: the count and the page must agree on the same
+    // snapshot, or a concurrent write between the two reads can show a total that
+    // does not match the rows actually returned.
+    const [rows, total] = await this.prisma.$transaction([
       this.prisma.dispatch.findMany({
         where,
         include: DISPATCH_INCLUDE,
@@ -109,12 +164,119 @@ export class DispatchesService {
   }
 
   async getById(organizationId: string, id: string) {
-    const dispatch = await this.findOrThrow(organizationId, id);
+    await this.findOrThrow(organizationId, id);
     const fullDispatch = await this.prisma.dispatch.findUnique({
       where: { id },
-      include: { ...DISPATCH_INCLUDE, statusHistory: { orderBy: { createdAt: "asc" } } },
+      include: DISPATCH_DETAIL_INCLUDE,
     });
     return this.toResponse(fullDispatch!);
+  }
+
+  /// Admin-facing read of driver-submitted Proof of Delivery. Deliberately a
+  /// separate path from DriverWorkspaceService's driver-owned equivalents
+  /// (listProofs/assertDeliveredChecklist) — those are scoped to "my own
+  /// dispatch", this is scoped to "any dispatch in my org" (ROLES_READ), and
+  /// the two must never be allowed to converge into one ownership check.
+  async getProofOfDelivery(organizationId: string, id: string) {
+    const dispatch = await this.prisma.dispatch.findFirst({
+      where: { id, organizationId },
+      include: { driver: true },
+    });
+    if (!dispatch) {
+      throw new NotFoundException("Dispatch not found");
+    }
+
+    const proofs = await this.prisma.dispatchDeliveryProof.findMany({
+      where: { organizationId, dispatchId: id },
+      include: { driver: true },
+      orderBy: { createdAt: "asc" },
+    });
+
+    const isMetaOnly = (p: (typeof proofs)[number]) =>
+      Boolean((p.metadata as { metaOnly?: boolean } | null)?.metaOnly);
+    const photos = proofs.filter((p) => p.type === "PHOTO" && !isMetaOnly(p));
+    const signatures = proofs.filter((p) => p.type === "SIGNATURE" && !isMetaOnly(p));
+
+    // Receiver info can land on any row (driver-workspace's updatePodMeta always
+    // patches the *latest* proof row at the time it was called, which is not
+    // necessarily the last row by createdAt now) — so scan all rows, not just
+    // the newest, mirroring DriverWorkspaceService.assertDeliveredChecklist.
+    const withReceiverName = proofs.find((p) => p.receiverName);
+    const withReceiverPhone = proofs.find((p) => p.receiverPhone);
+    const withNotes = proofs.find((p) => p.notes);
+    const withOdometer = proofs.find((p) => p.odometerKm != null);
+    const proofDriver = proofs.find((p) => p.driver)?.driver ?? null;
+    const driver = dispatch.driver ?? proofDriver;
+
+    const toFileMeta = (p: (typeof proofs)[number]) => ({
+      id: p.id,
+      fileName: p.fileName,
+      mimeType: p.mimeType,
+      fileSize: p.fileSizeBytes ?? 0,
+      uploadedAt: p.createdAt.toISOString(),
+      uploadedByUserId: p.uploadedByUserId,
+    });
+
+    return {
+      dispatchId: dispatch.id,
+      orderId: dispatch.orderId,
+      status: dispatch.status,
+      deliveryDateScheduled: dispatch.deliveryDateScheduled,
+      deliveryDateActual: dispatch.deliveryDateActual,
+      driver: driver
+        ? {
+            id: driver.id,
+            employeeCode: driver.employeeCode,
+            firstName: driver.firstName,
+            lastName: driver.lastName,
+            phone: driver.phone,
+          }
+        : null,
+      receiverName: withReceiverName?.receiverName ?? null,
+      receiverPhone: withReceiverPhone?.receiverPhone ?? null,
+      notes: withNotes?.notes ?? null,
+      odometerKm: withOdometer?.odometerKm?.toString() ?? null,
+      // The only GPS this flow captures — written on the AT_PICKUP transition,
+      // not a delivery-point reading. Labeled explicitly so the UI never implies
+      // it is the drop-off location.
+      arrivalLocation:
+        dispatch.arrivalLat != null && dispatch.arrivalLng != null
+          ? {
+              label: "Arrival (pickup) location",
+              lat: dispatch.arrivalLat.toString(),
+              lng: dispatch.arrivalLng.toString(),
+            }
+          : null,
+      photos: photos.map(toFileMeta),
+      signatures: signatures.map(toFileMeta),
+    };
+  }
+
+  /// Streams a single proof file by id, scoped to this org + this dispatch —
+  /// never a bare storage path, so a caller cannot walk to another org's file
+  /// by guessing an id. Meta-only marker rows (zero-byte pod-meta.json) are
+  /// excluded from getProofOfDelivery's lists, so they are never reachable here
+  /// through the UI, but the type/org/dispatch scoping holds regardless.
+  async getProofFile(
+    organizationId: string,
+    id: string,
+    proofId: string,
+  ): Promise<{ file: StreamableFile; mimeType: string; fileName: string }> {
+    const dispatch = await this.prisma.dispatch.findFirst({ where: { id, organizationId } });
+    if (!dispatch) {
+      throw new NotFoundException("Dispatch not found");
+    }
+    const proof = await this.prisma.dispatchDeliveryProof.findFirst({
+      where: { id: proofId, organizationId, dispatchId: id },
+    });
+    if (!proof) {
+      throw new NotFoundException("Proof not found");
+    }
+    return {
+      file: new StreamableFile(createReadStream(join(PROOF_UPLOAD_ROOT, proof.storagePath))),
+      mimeType: proof.mimeType,
+      fileName: proof.fileName,
+    };
   }
 
   async create(organizationId: string, dto: CreateDispatchDto, actor: CurrentUserPayload) {
@@ -122,13 +284,13 @@ export class DispatchesService {
     // A dispatch with no history, or an order that disagrees with the dispatch
     // that governs it, are both corrupt states. They commit together or not at
     // all (AR2).
-    const dispatch = await this.runInTransaction(async (tx) => {
+    const { dispatch, projected } = await this.runInTransaction(async (tx) => {
       const created = await this.createInTx(tx, organizationId, dto, actor);
       // R3 — the order is a projection. A DRAFT dispatch projects nothing, so in
       // practice this is a no-op here; it runs anyway because "every dispatch
       // write re-derives its order" is the invariant, not a special case.
-      await this.orderWriter.project(tx, organizationId, created.orderId, actor);
-      return this.loadForResponse(tx, created.id);
+      const projected = await this.orderWriter.project(tx, organizationId, created.orderId, actor);
+      return { dispatch: await this.loadForResponse(tx, created.id), projected };
     });
 
     // Audit is deliberately OUTSIDE the transaction: it is an observation of
@@ -148,7 +310,8 @@ export class DispatchesService {
       },
     });
 
-    this.workflowEvents.emit(organizationId, "dispatch.created", { id: dispatch.id, dispatchNumber: dispatch.dispatchNumber, orderId: dto.orderId, driverId: dto.driverId, vehicleId: dto.vehicleId });
+    void this.workflowEvents.emit(organizationId, "dispatch.created", { id: dispatch.id, dispatchNumber: dispatch.dispatchNumber, orderId: dto.orderId, driverId: dto.driverId, vehicleId: dto.vehicleId });
+    this.emitOrderStatusChangedIfMoved(organizationId, projected);
 
     return this.toResponse(dispatch);
   }
@@ -163,6 +326,7 @@ export class DispatchesService {
     const previousVehicleId = dispatch.vehicleId;
     const previousDriverId = dispatch.driverId;
 
+    let projected: Awaited<ReturnType<OrderWriter["project"]>> | null = null;
     const reassigned = await this.runInTransaction(async (tx) => {
       // Reassignment (Task 8.7). Returns null when the driver and vehicle are
       // unchanged, so a notes-only PATCH does exactly what it always did.
@@ -182,11 +346,17 @@ export class DispatchesService {
       if (change) {
         // R3 — the order's driverId/vehicleId are projections of the dispatch's,
         // so they must be re-derived in this same transaction (AR2, AR5).
-        await this.orderWriter.project(tx, organizationId, dispatch.orderId, actor);
+        projected = await this.orderWriter.project(tx, organizationId, dispatch.orderId, actor);
       }
 
       return change;
     });
+
+    // In practice this never fires a real status transition — a driver/vehicle
+    // swap alone never moves the dispatch's own status, so the order's
+    // projected status cannot move either — but wiring it keeps this call site
+    // consistent with every other path that projects the order.
+    if (projected) this.emitOrderStatusChangedIfMoved(organizationId, projected);
 
     if (reassigned && previousVehicleId !== reassigned.vehicleId) {
       await this.tracking
@@ -196,6 +366,16 @@ export class DispatchesService {
           driverId: previousDriverId,
         })
         .catch(() => undefined);
+    }
+
+    if (reassigned && previousDriverId !== reassigned.driverId) {
+      await notifyDriverOfAssignment(this.prisma, {
+        organizationId,
+        driverId: reassigned.driverId,
+        dispatchId: reassigned.id,
+        dispatchNumber: reassigned.dispatchNumber,
+        reason: "reassigned",
+      }).catch(() => undefined);
     }
 
     await this.auditService.log({
@@ -225,12 +405,12 @@ export class DispatchesService {
   async updateStatus(organizationId: string, id: string, dto: UpdateDispatchStatusDto, actor: CurrentUserPayload) {
     const dispatch = await this.findOrThrow(organizationId, id);
 
-    const updated = await this.runInTransaction(async (tx) => {
+    const { updated, projected } = await this.runInTransaction(async (tx) => {
       await this.transitionInTx(tx, organizationId, dispatch, dto.status, actor, dto.note);
       // R3 — the dispatch moved, so the order it executes must be re-derived, in
       // this same transaction. This is the line that makes Order a projection.
-      await this.orderWriter.project(tx, organizationId, dispatch.orderId, actor, dto.note);
-      return this.loadForResponse(tx, id);
+      const projected = await this.orderWriter.project(tx, organizationId, dispatch.orderId, actor, dto.note);
+      return { updated: await this.loadForResponse(tx, id), projected };
     });
 
     await this.auditService.log({
@@ -242,13 +422,241 @@ export class DispatchesService {
       metadata: { from: dispatch.status, to: dto.status, note: dto.note },
     });
 
-    this.workflowEvents.emit(organizationId, "dispatch.status_changed", { id, dispatchNumber: dispatch.dispatchNumber, from: dispatch.status, to: dto.status });
+    if (dto.status === "ASSIGNED" && dispatch.status === "DRAFT") {
+      await notifyDriverOfAssignment(this.prisma, {
+        organizationId,
+        driverId: updated.driverId,
+        dispatchId: id,
+        dispatchNumber: updated.dispatchNumber,
+        reason: "assigned",
+      }).catch(() => undefined);
+    }
+
+    void this.workflowEvents.emit(organizationId, "dispatch.status_changed", { id, dispatchNumber: dispatch.dispatchNumber, orderId: dispatch.orderId, from: dispatch.status, to: dto.status });
     if (dto.status === "DELIVERED") {
-      this.workflowEvents.emit(organizationId, "dispatch.completed", { id, dispatchNumber: dispatch.dispatchNumber });
+      void this.workflowEvents.emit(organizationId, "dispatch.completed", { id, dispatchNumber: dispatch.dispatchNumber, orderId: dispatch.orderId });
     }
     if (dto.status === "DELIVERED" || dto.status === "CANCELLED") {
       await this.tracking.endSessionsForDispatch(organizationId, id).catch(() => undefined);
     }
+    this.emitOrderStatusChangedIfMoved(organizationId, projected);
+
+    return this.toResponse(updated);
+  }
+
+  /// Calendar drag / resize — moves the scheduled pickup (and delivery) window.
+  ///
+  /// Terminal trips are frozen. Overlap is re-checked through AssignmentPolicy
+  /// (and the GiST exclusion constraints) so a drag onto a busy driver/vehicle
+  /// surfaces the same 409 the reassign path already uses.
+  async reschedule(
+    organizationId: string,
+    id: string,
+    dto: RescheduleDispatchDto,
+    actor: CurrentUserPayload,
+  ) {
+    const dispatch = await this.findOrThrow(organizationId, id);
+
+    if (dispatch.status === "DELIVERED" || dispatch.status === "CANCELLED") {
+      throw new ConflictException(
+        `Cannot reschedule a dispatch with status ${dispatch.status}`,
+      );
+    }
+
+    const nextPickup = new Date(dto.pickupDateScheduled);
+    if (Number.isNaN(nextPickup.getTime())) {
+      throw new BadRequestException("Invalid pickupDateScheduled");
+    }
+
+    const previousDurationMs = Math.max(
+      30 * 60 * 1000,
+      dispatch.deliveryDateScheduled.getTime() - dispatch.pickupDateScheduled.getTime(),
+    );
+
+    let nextDelivery: Date;
+    if (dto.deliveryDateScheduled) {
+      nextDelivery = new Date(dto.deliveryDateScheduled);
+      if (Number.isNaN(nextDelivery.getTime())) {
+        throw new BadRequestException("Invalid deliveryDateScheduled");
+      }
+    } else {
+      nextDelivery = new Date(nextPickup.getTime() + previousDurationMs);
+    }
+
+    // Same rule as OrdersService.assertValidDateRange: a same-day dispatch is
+    // ordinary work, so rescheduling one must not be refused for keeping it
+    // same-day. Delivering before pickup remains nonsense.
+    if (nextDelivery.getTime() < nextPickup.getTime()) {
+      throw new BadRequestException("Delivery cannot be before pickup");
+    }
+
+    const from = {
+      pickupDateScheduled: dispatch.pickupDateScheduled.toISOString(),
+      deliveryDateScheduled: dispatch.deliveryDateScheduled.toISOString(),
+    };
+    const to = {
+      pickupDateScheduled: nextPickup.toISOString(),
+      deliveryDateScheduled: nextDelivery.toISOString(),
+    };
+
+    if (
+      from.pickupDateScheduled === to.pickupDateScheduled &&
+      from.deliveryDateScheduled === to.deliveryDateScheduled
+    ) {
+      return this.toResponse(
+        await this.prisma.dispatch.findUniqueOrThrow({
+          where: { id },
+          include: DISPATCH_INCLUDE,
+        }),
+      );
+    }
+
+    const order = await this.prisma.order.findFirstOrThrow({
+      where: { id: dispatch.orderId, organizationId },
+    });
+
+    await this.assignmentPolicy.assertAssignable({
+      organizationId,
+      driverId: dispatch.driverId,
+      vehicleId: dispatch.vehicleId,
+      window: { pickupDate: nextPickup, deliveryDate: nextDelivery },
+      cargoWeightKg: order.cargoWeightKg,
+      cargoVolumeM3: order.cargoVolumeM3,
+      exclude: { orderId: dispatch.orderId, dispatchId: dispatch.id },
+    });
+
+    const updated = await this.runInTransaction(async (tx) => {
+      const result = await tx.dispatch.updateMany({
+        where: {
+          id,
+          organizationId,
+          status: { notIn: ["DELIVERED", "CANCELLED"] },
+          pickupDateScheduled: dispatch.pickupDateScheduled,
+          deliveryDateScheduled: dispatch.deliveryDateScheduled,
+        },
+        data: {
+          pickupDateScheduled: nextPickup,
+          deliveryDateScheduled: nextDelivery,
+        },
+      });
+      if (result.count !== 1) {
+        throw new ConflictException("Dispatch schedule changed again — refresh and retry");
+      }
+
+      // Keep the order's commercial dates in lockstep with the ops window so
+      // list/detail screens do not show a stale plan after a calendar drag.
+      await tx.order.update({
+        where: { id: dispatch.orderId },
+        data: {
+          pickupDate: nextPickup,
+          deliveryDate: nextDelivery,
+        },
+      });
+
+      return this.loadForResponse(tx, id);
+    });
+
+    await this.auditService.log({
+      organizationId,
+      actorUserId: actor.userId,
+      action: "dispatch.schedule_changed",
+      entityType: "Dispatch",
+      entityId: id,
+      metadata: { from, to },
+    });
+
+    return this.toResponse(updated);
+  }
+
+  /// Reverts the most recent status history step (board Undo toast).
+  ///
+  /// R13 is forward-only, so this is a dedicated door — not a status target.
+  /// Cancelled trips are not undone here: closing the assignment ledger is not
+  /// symmetric with a one-click toast, and reopening it needs an explicit reassign.
+  async undoStatus(organizationId: string, id: string, actor: CurrentUserPayload) {
+    const dispatch = await this.findOrThrow(organizationId, id);
+
+    if (dispatch.status === "CANCELLED") {
+      throw new ConflictException("Cancelled dispatches cannot be undone from the board — reassign or recreate instead");
+    }
+
+    const history = await this.prisma.dispatchStatusHistory.findMany({
+      where: { organizationId, dispatchId: id },
+      orderBy: { createdAt: "desc" },
+      take: 2,
+    });
+
+    if (history.length < 2) {
+      throw new ConflictException("Nothing to undo — no prior status on this dispatch");
+    }
+
+    const [latest, prior] = history;
+    if (latest.status !== dispatch.status) {
+      throw new ConflictException("Dispatch status changed again — refresh and retry");
+    }
+    // One board Undo per forward step — do not chain Undo of Undo into a redo.
+    if (latest.note?.startsWith("Undo:")) {
+      throw new ConflictException("Nothing to undo — last change was already an undo");
+    }
+
+    const ageMs = Date.now() - latest.createdAt.getTime();
+    /// Client toast is ~8s; server allows a short grace so a slow click still works.
+    if (ageMs > 120_000) {
+      throw new ConflictException("Undo window expired");
+    }
+
+    const from = dispatch.status;
+    const to = prior.status;
+
+    const { updated, projected } = await this.runInTransaction(async (tx) => {
+      const data: Prisma.DispatchUpdateManyMutationInput = { status: to };
+      // Actual timestamps were stamped on forward entry — clear them when stepping back.
+      if (from === "IN_TRANSIT" || from === "DELIVERED") {
+        if (to !== "IN_TRANSIT" && to !== "DELIVERED") {
+          data.pickupDateActual = null;
+        }
+      }
+      if (from === "DELIVERED") {
+        data.deliveryDateActual = null;
+      }
+
+      const result = await tx.dispatch.updateMany({
+        where: { id, organizationId, status: from },
+        data,
+      });
+      if (result.count !== 1) {
+        throw new ConflictException("Dispatch status changed again — refresh and retry");
+      }
+
+      await this.recordStatusChange(
+        tx,
+        organizationId,
+        id,
+        to,
+        actor,
+        `Undo: reverted from ${from} to ${to}`,
+      );
+      const projected = await this.orderWriter.project(tx, organizationId, dispatch.orderId, actor, `Undo status to ${to}`);
+      return { updated: await this.loadForResponse(tx, id), projected };
+    });
+
+    await this.auditService.log({
+      organizationId,
+      actorUserId: actor.userId,
+      action: "dispatch.status_undo",
+      entityType: "Dispatch",
+      entityId: id,
+      metadata: { from, to },
+    });
+
+    void this.workflowEvents.emit(organizationId, "dispatch.status_changed", {
+      id,
+      dispatchNumber: dispatch.dispatchNumber,
+      orderId: dispatch.orderId,
+      from,
+      to,
+    });
+    this.emitOrderStatusChangedIfMoved(organizationId, projected);
 
     return this.toResponse(updated);
   }
@@ -260,13 +668,13 @@ export class DispatchesService {
       throw new ConflictException(`Cannot cancel a dispatch with status ${dispatch.status}`);
     }
 
-    const cancelled = await this.runInTransaction(async (tx) => {
+    const { cancelled, projected } = await this.runInTransaction(async (tx) => {
       await this.cancelInTx(tx, organizationId, id, actor, "Dispatch cancelled");
       // R8 — the driver and vehicle are released and the order falls back into
       // the unassigned pool. Unless the order was cancelled commercially, in
       // which case the projection leaves it alone (Amendment B, Z2).
-      await this.orderWriter.project(tx, organizationId, dispatch.orderId, actor, "Dispatch cancelled");
-      return this.loadForResponse(tx, id);
+      const projected = await this.orderWriter.project(tx, organizationId, dispatch.orderId, actor, "Dispatch cancelled");
+      return { cancelled: await this.loadForResponse(tx, id), projected };
     });
 
     await this.auditService.log({
@@ -279,6 +687,7 @@ export class DispatchesService {
     });
 
     await this.tracking.endSessionsForDispatch(organizationId, id).catch(() => undefined);
+    this.emitOrderStatusChangedIfMoved(organizationId, projected);
 
     return this.toResponse(cancelled);
   }
@@ -319,11 +728,20 @@ export class DispatchesService {
     // Driver/vehicle eligibility, cargo capacity and double-booking are all one
     // question — "may these two take this trip?" — and AssignmentPolicy is the
     // only thing allowed to answer it (AR1, AR4).
+    //
+    // The order's own dates are the plan, not the commitment: assigning an
+    // overdue order today reserves the driver/vehicle starting today, not on
+    // whatever date it was originally due. Checking the conflict against the
+    // stale, already-past window would miss a driver who is demonstrably busy
+    // right now on a trip whose own plan happens not to overlap that old date.
+    const now = new Date();
+    const assignmentWindowStart = order.pickupDate > now ? order.pickupDate : now;
+    const assignmentWindowEnd = order.deliveryDate > assignmentWindowStart ? order.deliveryDate : assignmentWindowStart;
     await this.assignmentPolicy.assertAssignable({
       organizationId,
       driverId: dto.driverId,
       vehicleId: dto.vehicleId,
-      window: { pickupDate: order.pickupDate, deliveryDate: order.deliveryDate },
+      window: { pickupDate: assignmentWindowStart, deliveryDate: assignmentWindowEnd },
       cargoWeightKg: order.cargoWeightKg,
       cargoVolumeM3: order.cargoVolumeM3,
       // This order's own commitment is not a competing one.
@@ -424,7 +842,18 @@ export class DispatchesService {
       exclude: { orderId: dispatch.orderId, dispatchId: dispatch.id },
     });
 
-    await tx.dispatch.update({ where: { id: dispatch.id }, data: { driverId, vehicleId } });
+    await tx.dispatch.update({
+      where: { id: dispatch.id },
+      data: {
+        driverId,
+        vehicleId,
+        driverAcceptanceStatus: "PENDING",
+        driverAcceptedAt: null,
+        driverRejectedAt: null,
+        driverRejectReason: null,
+        driverRejectNote: null,
+      },
+    });
 
     await this.closeOpenAssignment(tx, dispatch.id, actor, reason);
     await this.openAssignment(tx, organizationId, dispatch.id, driverId, vehicleId, actor, reason);
@@ -673,7 +1102,7 @@ export class DispatchesService {
     });
   }
 
-  private toResponse(dispatch: any) {
+  private toResponse(dispatch: DispatchWithRelations) {
     return {
       id: dispatch.id,
       organizationId: dispatch.organizationId,
@@ -740,7 +1169,7 @@ export class DispatchesService {
       /// CANCELLED appears here for every non-terminal dispatch. The client may
       /// reach it through either POST /:id/status or POST /:id/cancel; both end in
       /// the same transition.
-      allowedTransitions: allowedDispatchTransitions(dispatch.status as DispatchStatus),
+      allowedTransitions: allowedDispatchTransitions(dispatch.status),
       pickupDateScheduled: dispatch.pickupDateScheduled,
       pickupDateActual: dispatch.pickupDateActual,
       deliveryDateScheduled: dispatch.deliveryDateScheduled,

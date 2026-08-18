@@ -3,6 +3,9 @@ import { ProtectedApiRoute } from "@/components/layout/protected-api-route";
 import { FLEET_ROLES } from "@/lib/role-access";
 
 export const Route = createFileRoute("/app/vehicles/create")({
+  head: () => ({
+    meta: [{ title: "New Vehicle — FlowERP AI" }],
+  }),
   beforeLoad: () => {
     throw redirect({ to: "/app/vehicles", search: { create: true } as const });
   },

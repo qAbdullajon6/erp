@@ -35,6 +35,9 @@ export class CustomerJwtStrategy extends PassportStrategy(Strategy, "customer-jw
   }
 
   async validate(payload: CustomerJwtPayload): Promise<CurrentCustomerPayload> {
+    if (payload.typ !== "customer") {
+      throw new UnauthorizedException("Customer session is no longer valid");
+    }
     const account = await this.prisma.customerPortalAccount.findUnique({
       where: { id: payload.sub },
       include: { customer: true, organization: true },
@@ -49,7 +52,14 @@ export class CustomerJwtStrategy extends PassportStrategy(Strategy, "customer-jw
     if (account.customer.status !== CustomerStatus.ACTIVE) {
       throw new UnauthorizedException("Customer account is not active");
     }
-    if (account.organization.status !== OrganizationStatus.ACTIVE) {
+    // Soft-delete is a separate axis from status: an archived organization can
+    // still carry status ACTIVE, and the staff JwtStrategy already refuses it.
+    // Without the same check here a customer portal session would outlive the
+    // tenant it belongs to.
+    if (
+      account.organization.status !== OrganizationStatus.ACTIVE ||
+      account.organization.deletedAt
+    ) {
       throw new UnauthorizedException("Organization is not available");
     }
 

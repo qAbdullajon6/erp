@@ -30,7 +30,7 @@ export const Route = createFileRoute("/app/providers/$provider")({
     return out;
   },
   head: ({ params }) => ({
-    meta: [{ title: `${params.provider} — GPS Providers — FlowERP` }],
+    meta: [{ title: `${params.provider} — GPS Providers — FlowERP AI` }],
   }),
   component: ProviderDetailPage,
 });

@@ -1,4 +1,29 @@
-import { parseReportDateBound, resolveReportFilter, resolveZonedDayRange } from "./report-filters.util";
+import {
+  buildExceptionOrderWhere,
+  buildOrderWhere,
+  enumerateBuckets,
+  parseReportDateBound,
+  resolveBucketGranularity,
+  resolveReportFilter,
+  resolveZonedDayRange,
+} from "./report-filters.util";
+
+describe("buildOrderWhere / buildExceptionOrderWhere", () => {
+  it("excludes archived orders, matching OrdersService.list's own default", () => {
+    const filter = resolveReportFilter(
+      { dateFrom: "2026-07-01", dateTo: "2026-07-31", comparisonPeriod: "none" },
+      "UTC",
+    );
+    const where = buildOrderWhere("org-1", filter, filter.range);
+    expect(where.archivedAt).toBeNull();
+  });
+
+  it("excludes archived orders from the live-exception queries too", () => {
+    const filter = resolveReportFilter({ comparisonPeriod: "none" }, "UTC");
+    const where = buildExceptionOrderWhere("org-1", filter);
+    expect(where.archivedAt).toBeNull();
+  });
+});
 
 describe("parseReportDateBound", () => {
   it("expands date-only strings to inclusive UTC day bounds", () => {
@@ -34,6 +59,17 @@ describe("resolveReportFilter", () => {
     expect(resolved.currency).toBeUndefined();
     expect(resolved.timezone).toBe("Asia/Tashkent");
   });
+
+  it("defaults to exactly 30 daily buckets when neither date bound is given (Command Center's call pattern)", () => {
+    // Regression: anchoring `to` at a raw `now` timestamp instead of a
+    // calendar-day boundary made a 30-day default span 31 distinct
+    // calendar-day buckets once re-bucketed by day, contradicting the
+    // "Last 30 days" label the Command Center's Trends chart shows.
+    const resolved = resolveReportFilter({ comparisonPeriod: "none" }, "UTC");
+    const granularity = resolveBucketGranularity(resolved.range);
+    const buckets = enumerateBuckets(resolved.range, granularity, resolved.timezone);
+    expect(buckets.length).toBe(30);
+  });
 });
 
 describe("resolveZonedDayRange", () => {
@@ -66,5 +102,33 @@ describe("resolveZonedDayRange", () => {
     const { from, to } = resolveZonedDayRange(now, "Not/AZone");
     expect(from.toISOString()).toBe("2026-07-26T00:00:00.000Z");
     expect(to.toISOString()).toBe("2026-07-26T23:59:59.999Z");
+  });
+});
+
+describe("enumerateBuckets", () => {
+  it("does not append a day past dateTo for a timezone ahead of UTC", () => {
+    // range.to is 2026-07-31T23:59:59.999Z — already 2026-08-01 04:59:59.999
+    // in Asia/Tashkent (+05:00). A time-series chart for "last month" must
+    // not grow an extra August point just because the org is east of UTC.
+    const range = {
+      from: parseReportDateBound("2026-07-01", "start"),
+      to: parseReportDateBound("2026-07-31", "end"),
+    };
+    const keys = enumerateBuckets(range, "day", "Asia/Tashkent");
+    expect(keys[0]).toBe("2026-07-01");
+    expect(keys[keys.length - 1]).toBe("2026-07-31");
+    expect(keys).toHaveLength(31);
+    expect(keys).not.toContain("2026-08-01");
+  });
+
+  it("still covers the full range for UTC", () => {
+    const range = {
+      from: parseReportDateBound("2026-07-01", "start"),
+      to: parseReportDateBound("2026-07-31", "end"),
+    };
+    const keys = enumerateBuckets(range, "day", "UTC");
+    expect(keys).toHaveLength(31);
+    expect(keys[0]).toBe("2026-07-01");
+    expect(keys[keys.length - 1]).toBe("2026-07-31");
   });
 });

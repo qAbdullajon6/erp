@@ -1,5 +1,6 @@
 import { InvoiceStatus } from "@prisma/client";
-import { Type } from "class-transformer";
+import { Transform, Type } from "class-transformer";
+import { emptyToUndefined } from "../../common/query-transform.util";
 import { IsDateString, IsEnum, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from "class-validator";
 
 export const INVOICE_SORT_FIELDS = [
@@ -37,10 +38,12 @@ export class ListInvoicesQueryDto {
   status?: InvoiceStatus;
 
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsUUID()
   customerId?: string;
 
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsUUID()
   orderId?: string;
 

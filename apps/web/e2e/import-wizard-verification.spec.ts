@@ -72,7 +72,7 @@ test.describe('Import page', () => {
     });
 
     await gotoWizard();
-    await expect(page.getByRole('heading', { name: 'Bulk Import' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Data import' })).toBeVisible();
     // A failed fetch or a React warning both land here; a clean console is the
     // cheapest proof the page is really wired up.
     expect(errors.filter((e) => !e.includes('favicon'))).toEqual([]);

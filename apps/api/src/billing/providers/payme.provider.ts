@@ -1,5 +1,4 @@
 import { Logger } from "@nestjs/common";
-import { createHmac } from "crypto";
 import {
   PaymentProvider,
   type ChargeRequest,
@@ -9,6 +8,12 @@ import {
   type CreateCustomerRequest,
   type CreateCustomerResponse,
 } from "./payment-provider.interface";
+import type {
+  PaymeCancelTransactionResult,
+  PaymeCreateTransactionResult,
+  PaymePerformTransactionResult,
+  PaymeRpcResponse,
+} from "../types/payme-api.types";
 
 /// Payme payment provider (Uzbekistan payment gateway).
 ///
@@ -37,7 +42,7 @@ export class PaymePaymentProvider extends PaymentProvider {
     try {
       // Payme uses two-phase commit: CreateTransaction -> PerformTransaction
       // Step 1: Create transaction
-      const createResponse = await this.callPaymeAPI("CreateTransaction", {
+      const createResponse = await this.callPaymeAPI<PaymeCreateTransactionResult>("CreateTransaction", {
         id: request.idempotencyKey ?? `txn_${Date.now()}`,
         time: Date.now(),
         amount: request.amount * 100, // Payme expects tiyin (1 UZS = 100 tiyin)
@@ -54,16 +59,22 @@ export class PaymePaymentProvider extends PaymentProvider {
         };
       }
 
-      const transactionId = createResponse.result.transaction;
+      const transactionId = createResponse.result?.transaction;
+      if (!transactionId) {
+        return {
+          success: false,
+          error: "Payme CreateTransaction returned no transaction id",
+        };
+      }
 
       // Step 2: Perform transaction (capture)
-      const performResponse = await this.callPaymeAPI("PerformTransaction", {
+      const performResponse = await this.callPaymeAPI<PaymePerformTransactionResult>("PerformTransaction", {
         id: transactionId,
       });
 
       if (performResponse.error) {
         // Cancel transaction on error
-        await this.callPaymeAPI("CancelTransaction", {
+        await this.callPaymeAPI<PaymeCancelTransactionResult>("CancelTransaction", {
           id: transactionId,
           reason: 5, // Error code 5 = generic error
         });
@@ -78,9 +89,9 @@ export class PaymePaymentProvider extends PaymentProvider {
       return {
         success: true,
         chargeId: transactionId,
-        createdAt: new Date(performResponse.result.perform_time),
+        createdAt: new Date(performResponse.result?.perform_time ?? Date.now()),
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.logger.error(`Payme charge failed:`, error);
       throw error;
     }
@@ -89,7 +100,7 @@ export class PaymePaymentProvider extends PaymentProvider {
   async refund(request: RefundRequest): Promise<RefundResponse> {
     try {
       // Payme refund via CancelTransaction
-      const response = await this.callPaymeAPI("CancelTransaction", {
+      const response = await this.callPaymeAPI<PaymeCancelTransactionResult>("CancelTransaction", {
         id: request.chargeId,
         reason: 5, // Reason code 5 = refund requested by merchant
       });
@@ -104,31 +115,32 @@ export class PaymePaymentProvider extends PaymentProvider {
 
       return {
         success: true,
-        refundId: response.result.transaction,
+        refundId: response.result?.transaction,
         refundedAmount: request.amount,
-        createdAt: new Date(response.result.cancel_time),
+        createdAt: new Date(response.result?.cancel_time ?? Date.now()),
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.logger.error(`Payme refund failed:`, error);
       throw error;
     }
   }
 
-  async createCustomer(_request: CreateCustomerRequest): Promise<CreateCustomerResponse> {
+  createCustomer(_request: CreateCustomerRequest): Promise<CreateCustomerResponse> {
     // Payme does not have customer management API
     // Return organization ID as "customer ID" for transaction tagging
-    return {
+    return Promise.resolve({
       success: true,
       customerId: _request.organizationId,
-    };
+    });
   }
 
-  verifyWebhookSignature(payload: string, _signature: string, webhookSecret: string): boolean {
+  verifyWebhookSignature(payload: string, signature: string, webhookSecret: string): boolean {
+    void payload;
+    void signature;
+    void webhookSecret;
     try {
       // Payme uses HTTP Basic Auth for webhook authentication
       // Authorization header contains: Basic base64(merchant_id:secret_key)
-      const expectedAuth = Buffer.from(`${this.merchantId}:${webhookSecret}`).toString("base64");
-
       // In actual webhook handler, compare Authorization header with expectedAuth
       // Here we just validate structure
       return true; // Placeholder - actual verification happens in webhook controller
@@ -138,13 +150,18 @@ export class PaymePaymentProvider extends PaymentProvider {
     }
   }
 
-  async getCustomerPortalUrl(_customerId: string, _returnUrl?: string): Promise<string | null> {
+  getCustomerPortalUrl(customerId: string, returnUrl?: string): Promise<string | null> {
+    void customerId;
+    void returnUrl;
     // Payme does not have customer portal
-    return null;
+    return Promise.resolve(null);
   }
 
   /// Call Payme JSON-RPC API.
-  private async callPaymeAPI(method: string, params: Record<string, unknown>): Promise<any> {
+  private async callPaymeAPI<T>(
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<PaymeRpcResponse<T>> {
     const authHeader = `Basic ${Buffer.from(`${this.merchantId}:${this.secretKey}`).toString("base64")}`;
 
     const response = await fetch(this.apiBaseUrl, {
@@ -161,6 +178,6 @@ export class PaymePaymentProvider extends PaymentProvider {
       }),
     });
 
-    return response.json();
+    return (await response.json()) as PaymeRpcResponse<T>;
   }
 }

@@ -11,6 +11,7 @@ import { VehiclesEditSheet } from '@/components/vehicles/vehicles-edit-sheet';
 import { VehiclesStatusSheet } from '@/components/vehicles/vehicles-status-sheet';
 import { VehiclesAssignDispatchSheet } from '@/components/vehicles/vehicles-assign-dispatch-sheet';
 import { VehiclesAssignDriverSheet } from '@/components/vehicles/vehicles-assign-driver-sheet';
+import { VehicleGpsBindingPanel } from '@/components/vehicles/vehicle-gps-binding-panel';
 import {
   LIVE_DISPATCH,
   assignedDaysCount,
@@ -28,16 +29,15 @@ import {
   type VehicleOpsBadge,
   type VehicleTimelineItem,
 } from '@/components/vehicles/vehicles-ops';
-import {
-  useVehicle,
-  useArchiveVehicle,
-  useRestoreVehicle,
-} from '@/lib/api/vehicles';
+import { useVehicle, useArchiveVehicle, useRestoreVehicle } from '@/lib/api/vehicles';
+import { useCurrentUser } from '@/lib/api/auth';
 import { useDispatches } from '@/lib/hooks/use-dispatches';
-import { useOrdersList } from '@/lib/api/orders';
+import { useOrder, useOrdersList } from '@/lib/api/orders';
 import { describeError } from '@/lib/api/describe-error';
 import { formatDate, formatDateTime, formatRelativeTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { ADMIN_OPS_ROLES } from '@/lib/role-access';
+import type { MembershipRole } from '@/lib/api/organizations';
 import { toast } from 'sonner';
 import {
   Archive,
@@ -49,6 +49,7 @@ import {
   Clock,
   Edit2,
   Package,
+  Radio,
   RotateCcw,
   Truck,
   User,
@@ -77,6 +78,10 @@ const TIMELINE_STYLE: Record<
 
 export function VehiclesDetail({ vehicleId }: VehiclesDetailProps) {
   const navigate = useNavigate();
+  const { data: currentUser } = useCurrentUser();
+  const canConnectGps =
+    !!currentUser &&
+    ADMIN_OPS_ROLES.includes(currentUser.membership.role as MembershipRole);
   const { data: vehicle, loading, error, refetch } = useVehicle(vehicleId);
   const { mutate: archiveVehicle, loading: archiving } = useArchiveVehicle(vehicleId);
   const { mutate: restoreVehicle, loading: restoring } = useRestoreVehicle(vehicleId);
@@ -89,20 +94,15 @@ export function VehiclesDetail({ vehicleId }: VehiclesDetailProps) {
     [dispatches],
   );
 
-  const orderIds = useMemo(() => [...new Set(dispatches.map((d) => d.orderId))], [dispatches]);
-  const ordersQuery = useOrdersList(
-    { limit: 20, sortBy: 'createdAt', sortOrder: 'desc' },
-    { enabled: orderIds.length > 0 },
-  );
-  const relatedOrders = useMemo(() => {
-    const idSet = new Set(orderIds);
-    return ordersQuery.data.filter((o) => idSet.has(o.id)).slice(0, 8);
-  }, [ordersQuery.data, orderIds]);
+  const ordersQuery = useOrdersList({ vehicleId, limit: 8, sortBy: 'createdAt', sortOrder: 'desc' });
+  const relatedOrders = ordersQuery.data;
 
-  const liveOrder = useMemo(
-    () => (liveDispatch ? relatedOrders.find((o) => o.id === liveDispatch.orderId) ?? null : null),
-    [liveDispatch, relatedOrders],
-  );
+  /// Fetched directly rather than derived from relatedOrders — the live
+  /// dispatch's order won't be in the 8 most recent for this vehicle if it's
+  /// a long-running trip on an older order, and cargo-vs-capacity accuracy
+  /// matters more here than avoiding one extra request.
+  const liveOrderQuery = useOrder(liveDispatch?.orderId ?? '');
+  const liveOrder = liveOrderQuery.data;
 
   const completed = dispatches.filter((d) => d.status === 'DELIVERED').length;
   const active = dispatches.filter((d) => LIVE_DISPATCH.includes(d.status)).length;
@@ -263,6 +263,21 @@ export function VehiclesDetail({ vehicleId }: VehiclesDetailProps) {
                   Assign Driver
                 </Button>
               )}
+              {canConnectGps && !vehicle.archivedAt ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    void navigate({
+                      to: '/app/devices',
+                      search: { create: true, vehicleId: vehicle.id },
+                    })
+                  }
+                >
+                  <Radio className="mr-1.5 h-3.5 w-3.5" />
+                  Connect GPS
+                </Button>
+              ) : null}
               {!vehicle.archivedAt && (
                 <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
                   <Edit2 className="mr-1.5 h-3.5 w-3.5" />
@@ -471,6 +486,15 @@ export function VehiclesDetail({ vehicleId }: VehiclesDetailProps) {
                 <InfoTile label="Last updated" value={formatRelativeTime(vehicle.updatedAt)} />
               </div>
             </section>
+
+            {canConnectGps ? (
+              <section className="p-4 sm:p-5">
+                <SectionHeader icon={Radio} title="Telematics / GPS" />
+                <div className="mt-3">
+                  <VehicleGpsBindingPanel vehicle={vehicle} />
+                </div>
+              </section>
+            ) : null}
 
             <section className="p-4 sm:p-5">
               <SectionHeader icon={Clock} title="Timeline" />

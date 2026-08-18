@@ -5,6 +5,7 @@ import {
   type DemoConfirmationEmailMessage,
   type InvitationEmailMessage,
   type LeadNotificationEmailMessage,
+  type PasswordResetEmailMessage,
   type RawEmailMessage,
 } from "../mail.service";
 import { redactEmail } from "../mail.util";
@@ -29,6 +30,13 @@ export class UnavailableMailService extends MailService {
   sendCustomerPortalInvitationEmail(message: CustomerPortalInvitationEmailMessage): Promise<void> {
     this.logger.error(
       `Customer portal invitation email not sent: no mail transport is configured (recipient ${redactEmail(message.to)})`,
+    );
+    return Promise.reject(new Error("Email delivery is not configured"));
+  }
+
+  sendPasswordResetEmail(message: PasswordResetEmailMessage): Promise<void> {
+    this.logger.error(
+      `Password reset email not sent: no mail transport is configured (recipient ${redactEmail(message.to)})`,
     );
     return Promise.reject(new Error("Email delivery is not configured"));
   }

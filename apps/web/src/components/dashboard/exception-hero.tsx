@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 interface ExceptionHeroProps {
@@ -25,7 +26,7 @@ export function ExceptionHero({
   loading,
 }: ExceptionHeroProps) {
   if (loading) {
-    return <div className="h-16 animate-pulse rounded-xl bg-muted/40" />;
+    return <Skeleton className="h-16 rounded-xl" />;
   }
 
   const tiles = [

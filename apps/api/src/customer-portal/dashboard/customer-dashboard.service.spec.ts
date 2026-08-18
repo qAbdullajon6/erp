@@ -4,13 +4,35 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { OrdersService } from "../../orders/orders.service";
 import { InvoicesService } from "../../invoices/invoices.service";
 import { CustomerNotificationsService } from "../notifications/customer-notifications.service";
+import { asDependency } from "../test-support/portal-spec.helpers";
 import { CustomerDashboardService } from "./customer-dashboard.service";
+
+function makePrisma() {
+  return {
+    order: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]) },
+    invoice: {
+      aggregate: jest.fn(),
+      count: jest.fn().mockResolvedValue(0),
+    },
+    payment: {
+      aggregate: jest.fn().mockResolvedValue({ _sum: { amount: null } }),
+    },
+  };
+}
+
+function makeOrdersService() {
+  return { list: jest.fn().mockResolvedValue({ items: [] }) };
+}
+
+function makeNotificationsService() {
+  return { unreadCount: jest.fn().mockResolvedValue({ unreadCount: 0 }) };
+}
 
 describe("CustomerDashboardService", () => {
   let svc: CustomerDashboardService;
-  let prisma: any;
-  let orders: any;
-  let notifications: any;
+  let prisma: ReturnType<typeof makePrisma>;
+  let orders: ReturnType<typeof makeOrdersService>;
+  let notifications: ReturnType<typeof makeNotificationsService>;
 
   const payload = {
     accountId: "acc-1",
@@ -21,23 +43,17 @@ describe("CustomerDashboardService", () => {
   };
 
   beforeEach(async () => {
-    prisma = {
-      order: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]) },
-      invoice: {
-        aggregate: jest.fn(),
-        count: jest.fn().mockResolvedValue(0),
-      },
-    };
-    orders = { list: jest.fn().mockResolvedValue({ items: [] }) };
-    notifications = { unreadCount: jest.fn().mockResolvedValue({ unreadCount: 0 }) };
+    prisma = makePrisma();
+    orders = makeOrdersService();
+    notifications = makeNotificationsService();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CustomerDashboardService,
-        { provide: PrismaService, useValue: prisma },
-        { provide: OrdersService, useValue: orders },
-        { provide: InvoicesService, useValue: {} },
-        { provide: CustomerNotificationsService, useValue: notifications },
+        { provide: PrismaService, useValue: asDependency<PrismaService>(prisma) },
+        { provide: OrdersService, useValue: asDependency<OrdersService>(orders) },
+        { provide: InvoicesService, useValue: asDependency<InvoicesService>({}) },
+        { provide: CustomerNotificationsService, useValue: asDependency<CustomerNotificationsService>(notifications) },
       ],
     }).compile();
 
@@ -62,6 +78,7 @@ describe("CustomerDashboardService", () => {
     expect(result.outstandingBalance).toBe("1234.56");
     expect(typeof result.outstandingBalance).toBe("string");
     expect(result.outstandingInvoiceCount).toBe(3);
+    expect(result.paymentsThisMonth).toBe("0");
   });
 
   it("returns a zero balance string when there are no outstanding invoices", async () => {

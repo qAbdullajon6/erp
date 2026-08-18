@@ -52,7 +52,7 @@ async function seedDevelopmentCompany() {
     );
 
     // Create admin membership
-    const adminMembership = await prisma.membership.create({
+    await prisma.membership.create({
       data: {
         organizationId: org.id,
         userId: adminUser.id,
@@ -96,7 +96,7 @@ async function seedDevelopmentCompany() {
     console.log(`✓ Created 2 sample customers`);
 
     // Create sample drivers
-    const driver1 = await prisma.driver.create({
+    await prisma.driver.create({
       data: {
         organizationId: org.id,
         employeeCode: 'DRV001',
@@ -109,7 +109,7 @@ async function seedDevelopmentCompany() {
       },
     });
 
-    const driver2 = await prisma.driver.create({
+    await prisma.driver.create({
       data: {
         organizationId: org.id,
         employeeCode: 'DRV002',
@@ -125,7 +125,7 @@ async function seedDevelopmentCompany() {
     console.log(`✓ Created 2 sample drivers`);
 
     // Create sample vehicles
-    const vehicle1 = await prisma.vehicle.create({
+    await prisma.vehicle.create({
       data: {
         organizationId: org.id,
         vehicleCode: 'VEH001',
@@ -142,7 +142,7 @@ async function seedDevelopmentCompany() {
       },
     });
 
-    const vehicle2 = await prisma.vehicle.create({
+    await prisma.vehicle.create({
       data: {
         organizationId: org.id,
         vehicleCode: 'VEH002',
@@ -162,7 +162,7 @@ async function seedDevelopmentCompany() {
     console.log(`✓ Created 2 sample vehicles`);
 
     // Create sample orders
-    const order1 = await prisma.order.create({
+    await prisma.order.create({
       data: {
         organizationId: org.id,
         orderNumber: 'ORD-' + Date.now() + '-001',
@@ -180,7 +180,7 @@ async function seedDevelopmentCompany() {
       },
     });
 
-    const order2 = await prisma.order.create({
+    await prisma.order.create({
       data: {
         organizationId: org.id,
         orderNumber: 'ORD-' + Date.now() + '-002',

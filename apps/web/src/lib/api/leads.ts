@@ -8,6 +8,24 @@ export type LeadStatus = 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'CLOSED';
 /// a closed deal reopens, a lead contacted by mistake goes back to NEW.
 export const LEAD_STATUSES: LeadStatus[] = ['NEW', 'CONTACTED', 'QUALIFIED', 'CLOSED'];
 
+export const LEAD_STATUS_DESCRIPTIONS: Record<LeadStatus, string> = {
+  NEW: 'Customer just submitted a demo request.',
+  CONTACTED: 'Sales contacted the customer.',
+  QUALIFIED: 'Ready for conversion to an organization.',
+  CLOSED: 'Won (converted) or lost — pipeline complete.',
+};
+
+export interface LeadTimelineEvent {
+  id: string;
+  leadId: string;
+  type: string;
+  title: string;
+  body: string | null;
+  metadata?: Record<string, unknown> | null;
+  actorUserId: string | null;
+  createdAt: string;
+}
+
 export interface Lead {
   id: string;
   name: string;
@@ -17,8 +35,17 @@ export interface Lead {
   message: string | null;
   source: string;
   status: LeadStatus;
+  convertedOrganizationId?: string | null;
+  convertedInvitationId?: string | null;
   createdAt: string;
   updatedAt: string;
+  timelineEvents?: LeadTimelineEvent[];
+  convertedOrganization?: {
+    id: string;
+    name: string;
+    slug: string;
+    status: string;
+  } | null;
 }
 
 export interface ListLeadsResponse {
@@ -54,6 +81,11 @@ class LeadsAPI {
     return unwrap<ListLeadsResponse>(response, 'Failed to load leads');
   }
 
+  async getById(id: string): Promise<Lead> {
+    const response = await apiFetch(`${this.baseUrl}/${id}`, { method: 'GET' });
+    return unwrap<Lead>(response, 'Failed to load lead');
+  }
+
   async stats(): Promise<LeadStatusCounts> {
     const response = await apiFetch(`${this.baseUrl}/stats`, { method: 'GET' });
     return unwrap<LeadStatusCounts>(response, 'Failed to load lead stats');
@@ -73,6 +105,7 @@ export const leadsAPI = new LeadsAPI();
 export const leadKeys = {
   all: ['leads'] as const,
   list: (params: ListLeadsParams) => [...leadKeys.all, 'list', params] as const,
+  detail: (id: string) => [...leadKeys.all, 'detail', id] as const,
   stats: () => [...leadKeys.all, 'stats'] as const,
 };
 
@@ -83,6 +116,14 @@ export function useLeadsQuery(params: ListLeadsParams = {}, enabled = true) {
     queryKey: leadKeys.list(params),
     queryFn: () => leadsAPI.list(params),
     enabled,
+  });
+}
+
+export function useLeadQuery(id: string | null, enabled = true) {
+  return useQuery({
+    queryKey: leadKeys.detail(id ?? ''),
+    queryFn: () => leadsAPI.getById(id!),
+    enabled: enabled && Boolean(id),
   });
 }
 

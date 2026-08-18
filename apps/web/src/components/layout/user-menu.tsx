@@ -34,19 +34,27 @@ export function UserMenu({ currentUser, onSignOut }: { currentUser: CurrentUser 
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-brand/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
-          <Avatar className="h-8 w-8">
+        {/* Name and organisation appear from lg up, not sm. Between 640px and
+            1024px the rail is already taking 16rem, and this block had no width
+            limit — "FlowERP Test Logistics" wrapped onto four lines and stretched
+            the 4rem topbar to nearly double height. Both strings are in the
+            dropdown, so a tablet loses nothing by showing only the avatar. */}
+        <DropdownMenuTrigger
+          aria-label="Account menu"
+          className="flex shrink-0 items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-brand/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+          <Avatar className="h-8 w-8 shrink-0">
             <AvatarFallback className="bg-gradient-brand text-xs font-semibold text-brand-foreground">
               {initials(user?.firstName, user?.lastName)}
             </AvatarFallback>
           </Avatar>
-          <span className="hidden text-left sm:block">
-            <span className="block text-sm font-medium leading-tight text-foreground">{name}</span>
-            <span className="block text-xs leading-tight text-muted-foreground">
+          <span className="hidden max-w-[14rem] text-left lg:block">
+            <span className="block truncate text-sm font-medium leading-tight text-foreground">{name}</span>
+            <span className="block truncate text-xs leading-tight text-muted-foreground">
               {currentUser?.organization.name ?? ''}
             </span>
           </span>
-          <ChevronDown className="hidden h-4 w-4 text-muted-foreground sm:block" />
+          <ChevronDown className="hidden h-4 w-4 shrink-0 text-muted-foreground lg:block" />
         </DropdownMenuTrigger>
 
         <DropdownMenuContent align="end" className="w-64">
@@ -62,11 +70,19 @@ export function UserMenu({ currentUser, onSignOut }: { currentUser: CurrentUser 
 
           <DropdownMenuSeparator />
 
-          <DropdownMenuItem onClick={() => navigate({ to: '/app/settings' })} className="gap-2">
+          {/* Both entries used to open the same screen at the same section.
+              They now land where their label says. */}
+          <DropdownMenuItem
+            onClick={() => navigate({ to: '/app/settings', search: { tab: 'profile' } })}
+            className="gap-2"
+          >
             <User className="h-4 w-4" />
-            Profile
+            Your profile
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => navigate({ to: '/app/settings' })} className="gap-2">
+          <DropdownMenuItem
+            onClick={() => navigate({ to: '/app/settings', search: {} })}
+            className="gap-2"
+          >
             <Settings className="h-4 w-4" />
             Settings
           </DropdownMenuItem>

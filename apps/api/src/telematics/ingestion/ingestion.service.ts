@@ -109,7 +109,11 @@ export class IngestionService {
     const started = Date.now();
     const settings = await this.settings.getOrCreate(target.organizationId);
     const vehicle = await this.prisma.vehicle.findFirst({
-      where: { id: target.vehicleId, organizationId: target.organizationId },
+      where: {
+        id: target.vehicleId,
+        organizationId: target.organizationId,
+        archivedAt: null,
+      },
       select: { id: true, vehicleCode: true, plateNumber: true },
     });
     if (!vehicle) {
@@ -402,6 +406,16 @@ export class IngestionService {
     );
 
     // Open a trip the moment the vehicle starts moving with none active.
+    //
+    // The trip's own startLat/startLng/startedAt are THIS fix — so the
+    // segment from `prev` (wherever the vehicle was before it started moving)
+    // to `curr` happened entirely before the trip existed. tripJustOpened
+    // stops that pre-trip approach distance from being credited to the new
+    // trip's aggregate below, which would otherwise silently inflate
+    // distanceKm (and everything derived from it: avgSpeedKph, the fuel
+    // estimate, every Fleet Telematics rollup) by however far the vehicle
+    // was from its last known position when it started moving.
+    let tripJustOpened = false;
     if (movement.movementState === "MOVING" && !running.tripId) {
       try {
         const trip = await this.trips.open({
@@ -415,6 +429,7 @@ export class IngestionService {
         });
         running.tripId = trip.id;
         running.agg = this.seedAggregate(trip);
+        tripJustOpened = true;
       } catch (err) {
         this.logger.error(`Failed to open trip: ${err instanceof Error ? err.message : err}`);
       }
@@ -460,10 +475,10 @@ export class IngestionService {
 
       const speeding = isSpeeding(speedKph, settings.speedLimitKph, settings.speedingToleranceKph);
 
-      running.agg.distanceKm += prev ? haversineKm(prev, curr) : 0;
-      running.agg.durationSec += segmentSeconds;
-      running.agg.movingSec += movement.movementState === "MOVING" ? segmentSeconds : 0;
-      running.agg.idleSec += movement.movementState === "IDLING" ? segmentSeconds : 0;
+      running.agg.distanceKm += prev && !tripJustOpened ? haversineKm(prev, curr) : 0;
+      running.agg.durationSec += tripJustOpened ? 0 : segmentSeconds;
+      running.agg.movingSec += !tripJustOpened && movement.movementState === "MOVING" ? segmentSeconds : 0;
+      running.agg.idleSec += !tripJustOpened && movement.movementState === "IDLING" ? segmentSeconds : 0;
       running.agg.stopCount += movement.crossedStopThreshold ? 1 : 0;
       running.agg.maxSpeedKph = Math.max(running.agg.maxSpeedKph, speedKph);
       running.agg.harshAccelCount += harsh.isHarshAccel ? 1 : 0;

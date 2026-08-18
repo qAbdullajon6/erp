@@ -42,6 +42,8 @@ interface OrderBody {
   organizationId: string;
   orderNumber: string;
   status: string;
+  pickupDate: string;
+  deliveryDate: string;
   driverId: string | null;
   vehicleId: string | null;
   isDelayed: boolean;
@@ -261,6 +263,22 @@ describe("Orders + Dispatch (e2e)", () => {
           price: 500,
         })
         .expect(400);
+    });
+
+    it("accepts a same-day order, and lets it be edited to another same day", async () => {
+      const admin = await registerAdmin(`Order Same Day Org ${randomUUID()}`);
+      const customer = await createCustomer(admin);
+      const order = await createOrder(admin, customer.id, {
+        pickupDate: FUTURE_PICKUP,
+        deliveryDate: FUTURE_PICKUP,
+      });
+      expect(order.pickupDate.slice(0, 10)).toBe(order.deliveryDate.slice(0, 10));
+
+      await request(app.getHttpServer())
+        .patch(`/orders/${order.id}`)
+        .set("Authorization", `Bearer ${admin.accessToken}`)
+        .send({ pickupDate: FUTURE_DELIVERY, deliveryDate: FUTURE_DELIVERY })
+        .expect(200);
     });
 
     it("there is no permanent delete route", async () => {
@@ -706,7 +724,7 @@ describe("Orders + Dispatch (e2e)", () => {
       const freeDriver = await createDriver(admin);
       const busyDriver = await createDriver(admin);
       const freeVehicle = await createVehicle(admin);
-      const busyVehicle = await createVehicle(admin);
+      const busyVehicle = await createVehicle(admin, { plateNumber: "01A123BD" });
 
       const pendingOrder = await createOrder(admin, customer.id);
       await advanceToPending(admin, pendingOrder.id);

@@ -51,11 +51,24 @@ fi
 # Fail fast on a truncated/corrupt dump before it touches any database.
 echo "==> checking dump integrity"
 gzip -t "$DUMP"
+CHECKSUM="$DUMP.sha256"
+if [[ -f "$CHECKSUM" ]]; then
+  echo "==> checking SHA-256 checksum"
+  (cd "$(dirname "$DUMP")" && sha256sum -c "$(basename "$CHECKSUM")")
+else
+  echo "warning: checksum sidecar not found: $CHECKSUM (legacy dump; gzip integrity only)" >&2
+fi
 
 # shellcheck disable=SC1090
 set -a; source "$ENV_FILE"; set +a
 : "${POSTGRES_USER:?POSTGRES_USER missing from $ENV_FILE}"
 : "${POSTGRES_DB:=erp_prod}"
+
+if [[ ! "$POSTGRES_USER" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] ||
+   [[ ! "$POSTGRES_DB" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+  echo "error: POSTGRES_USER and POSTGRES_DB must be plain PostgreSQL identifiers" >&2
+  exit 2
+fi
 
 psql_db() {
   # -v ON_ERROR_STOP=1 so a mid-restore failure is a non-zero exit, not a
@@ -104,4 +117,7 @@ psql_db -d "$SCRATCH" -t -A -c \
    UNION ALL SELECT 'orders=' || count(*) FROM orders;" \
   || echo "   (a counted table was absent — inspect the dump if this is unexpected)"
 
+STATUS_DIR="$(dirname "$DUMP")"
+date +%s > "$STATUS_DIR/.last-restore-drill"
+echo "==> restore-drill success marker updated: $STATUS_DIR/.last-restore-drill"
 echo "==> rehearsal passed. Scratch database dropped on exit; '$POSTGRES_DB' was never touched."

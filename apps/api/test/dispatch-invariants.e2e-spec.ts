@@ -24,7 +24,7 @@ const DELIVERY = new Date("2031-03-03T18:00:00.000Z");
 
 interface Fixture {
   organizationId: string;
-  orderId: string;
+  customerId: string;
   driverA: string;
   driverB: string;
   vehicleA: string;
@@ -43,22 +43,6 @@ async function seedOrganization(name: string): Promise<Fixture> {
       customerCode: `CUS-${randomUUID().slice(0, 8)}`,
       companyName: "Invariant Co",
       contactName: "Ivan Invariant",
-    },
-  });
-
-  const order = await prisma.order.create({
-    data: {
-      organizationId,
-      orderNumber: `ORD-${randomUUID().slice(0, 8)}`,
-      customerId: customer.id,
-      pickupAddress: "1 Depot Rd",
-      pickupCity: "Tashkent",
-      pickupDate: PICKUP,
-      deliveryAddress: "9 Dock St",
-      deliveryCity: "Samarkand",
-      deliveryDate: DELIVERY,
-      cargoDescription: "Pallets",
-      price: "1000.00",
     },
   });
 
@@ -91,7 +75,7 @@ async function seedOrganization(name: string): Promise<Fixture> {
 
   return {
     organizationId,
-    orderId: order.id,
+    customerId: customer.id,
     driverA: driverA.id,
     driverB: driverB.id,
     vehicleA: vehicleA.id,
@@ -100,7 +84,7 @@ async function seedOrganization(name: string): Promise<Fixture> {
 }
 
 /// Writes straight through Prisma — no service, no policy, no validation.
-function createDispatch(
+async function createDispatch(
   fixture: Fixture,
   overrides: {
     driverId?: string;
@@ -110,11 +94,30 @@ function createDispatch(
     delivery?: Date;
   } = {},
 ) {
+  // ADR-001 permits only one live dispatch per order. Every scenario here is
+  // about resource overlap, so give each candidate its own commercial order.
+  const order = await prisma.order.create({
+    data: {
+      organizationId: fixture.organizationId,
+      orderNumber: `ORD-${randomUUID().slice(0, 8)}`,
+      customerId: fixture.customerId,
+      pickupAddress: "1 Depot Rd",
+      pickupCity: "Tashkent",
+      pickupDate: overrides.pickup ?? PICKUP,
+      deliveryAddress: "9 Dock St",
+      deliveryCity: "Samarkand",
+      deliveryDate: overrides.delivery ?? DELIVERY,
+      cargoDescription: "Pallets",
+      price: "1000.00",
+      status: "PENDING",
+    },
+  });
+
   return prisma.dispatch.create({
     data: {
       organizationId: fixture.organizationId,
       dispatchNumber: `DSP-${randomUUID().slice(0, 8)}`,
-      orderId: fixture.orderId,
+      orderId: order.id,
       driverId: overrides.driverId ?? fixture.driverA,
       vehicleId: overrides.vehicleId ?? fixture.vehicleA,
       status: overrides.status ?? "ASSIGNED",

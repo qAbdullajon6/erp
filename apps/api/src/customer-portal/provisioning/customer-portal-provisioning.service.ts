@@ -15,7 +15,10 @@ import { PasswordService } from "../../auth/password.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import {
   CustomerPortalAccountAlreadyExistsError,
+  CustomerPortalAccountNotFoundError,
+  CustomerPortalCustomerEmailMissingError,
   CustomerPortalCustomerInactiveError,
+  CustomerPortalCustomerNotFoundError,
   CustomerPortalInvitationAlreadyAcceptedError,
   CustomerPortalInvitationAlreadyExistsError,
   CustomerPortalInvitationExpiredError,
@@ -130,7 +133,7 @@ export class CustomerPortalProvisioningService {
       select: { email: true, companyName: true, status: true, portalAccount: { select: { id: true } } },
     });
     if (!customer) {
-      throw new CustomerPortalInvitationNotFoundError();
+      throw new CustomerPortalCustomerNotFoundError();
     }
     if (customer.portalAccount) {
       throw new CustomerPortalAccountAlreadyExistsError();
@@ -139,7 +142,7 @@ export class CustomerPortalProvisioningService {
       throw new CustomerPortalCustomerInactiveError();
     }
     if (!customer.email) {
-      throw new CustomerPortalInvitationNotFoundError();
+      throw new CustomerPortalCustomerEmailMissingError();
     }
     await this.assertOrganizationActive(this.prisma, input.organizationId);
 
@@ -321,7 +324,7 @@ export class CustomerPortalProvisioningService {
       data: { status: CustomerPortalAccountStatus.SUSPENDED },
     });
     if (result.count === 0) {
-      throw new CustomerPortalInvitationNotFoundError();
+      throw new CustomerPortalAccountNotFoundError();
     }
     await this.audit
       .log({
@@ -342,7 +345,7 @@ export class CustomerPortalProvisioningService {
       data: { status: CustomerPortalAccountStatus.ACTIVE },
     });
     if (result.count === 0) {
-      throw new CustomerPortalInvitationNotFoundError();
+      throw new CustomerPortalAccountNotFoundError();
     }
     await this.audit
       .log({

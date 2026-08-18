@@ -9,8 +9,9 @@ import { InvoicesService } from "../../invoices/invoices.service";
 import { DispatchesService } from "../../dispatch/dispatches.service";
 import { NotificationsService } from "../../notifications/notifications.service";
 import { ImportService } from "../../import/import.service";
-import type { CurrentUserPayload } from "../../auth/interfaces/current-user.interface";
+import { WorkflowsService } from "../../workflows/workflows.service";
 import type { AiTool } from "./tool.interface";
+import { ToolExecutionError } from "./tool.interface";
 
 /// Role sets, mirroring the equivalent HTTP controllers. The Copilot must not
 /// be a way around the API's own authorization, so these are copied from the
@@ -21,6 +22,11 @@ const ALL_STAFF: readonly MembershipRole[] = [
 const OPS: readonly MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER"];
 const FINANCE: readonly MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER", "ACCOUNTANT"];
 const ADMIN_OPS: readonly MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER"];
+/// Mirrors DispatchesController.ROLES_READ exactly — the Copilot must see the
+/// same Proof of Delivery data an admin/ops/dispatcher/accountant could pull
+/// from the dispatch detail screen, and nothing a DRIVER or SALES_CRM_MANAGER
+/// couldn't already see there.
+const POD_READ: readonly MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER", "ACCOUNTANT"];
 
 /// A tiny result is the point.
 ///
@@ -43,6 +49,7 @@ export class ReadTools {
     private readonly dispatches: DispatchesService,
     private readonly notifications: NotificationsService,
     private readonly imports: ImportService,
+    private readonly workflows: WorkflowsService,
   ) {}
 
   /// Resolves customer ids to names for a page of results.
@@ -76,9 +83,12 @@ export class ReadTools {
       this.searchDrivers(),
       this.searchVehicles(),
       this.searchDispatches(),
+      this.getProofOfDelivery(),
       this.searchInvoices(),
       this.listNotifications(),
       this.importStatus(),
+      this.listWorkflows(),
+      this.getWorkflowRuns(),
     ];
   }
 
@@ -286,7 +296,7 @@ export class ReadTools {
           driverId: str(args.driverId),
           page: 1,
           limit: limitOf(args),
-        } as never);
+        });
         return {
           total: result.meta.total,
           items: result.items.map((d) => ({
@@ -296,6 +306,81 @@ export class ReadTools {
             driver: d.driver ? `${d.driver.firstName} ${d.driver.lastName}` : null,
             vehicle: d.vehicle?.plateNumber ?? null,
           })),
+        };
+      },
+    };
+  }
+
+  private getProofOfDelivery(): AiTool {
+    return {
+      name: "get_proof_of_delivery",
+      description:
+        "Get the driver-submitted Proof of Delivery for an order or dispatch: receiver name and phone, delivery " +
+        "notes, odometer, whether a signature and/or photos were captured, and arrival GPS if recorded. " +
+        "Use this to answer 'show delivery proof for order X', 'who signed for this shipment', 'show POD photos', " +
+        "or 'show receiver information'. Provide either an order number or a dispatch UUID from search_dispatches — " +
+        "if you only have an order number, this resolves it to that order's dispatch automatically.",
+      allowedRoles: POD_READ,
+      mutating: false,
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          orderNumber: { type: "string", description: "Order number, e.g. ORD-2024-00123." },
+          dispatchId: { type: "string", description: "Dispatch UUID, from search_dispatches." },
+        },
+      },
+      handler: async (args, actor) => {
+        let dispatchId = str(args.dispatchId);
+
+        if (!dispatchId) {
+          const orderNumber = str(args.orderNumber);
+          if (!orderNumber) {
+            throw new ToolExecutionError("Provide either an orderNumber or a dispatchId.");
+          }
+          const orders = await this.orders.list(actor.organizationId, {
+            search: orderNumber,
+            page: 1,
+            limit: 1,
+          } as never);
+          const order = orders.items[0];
+          if (!order) {
+            throw new ToolExecutionError(`No order found matching "${orderNumber}".`);
+          }
+          const dispatchResult = await this.dispatches.list(actor.organizationId, {
+            orderId: order.id,
+            page: 1,
+            limit: 1,
+            sortBy: "createdAt",
+            sortOrder: "desc",
+          });
+          const dispatch = dispatchResult.items[0];
+          if (!dispatch) {
+            throw new ToolExecutionError(
+              `Order "${orderNumber}" has no dispatch yet, so there is no proof of delivery.`,
+            );
+          }
+          dispatchId = dispatch.id;
+        }
+
+        const pod = await this.dispatches.getProofOfDelivery(actor.organizationId, dispatchId);
+        const hasProof = pod.photos.length > 0 || pod.signatures.length > 0 || Boolean(pod.receiverName);
+
+        return {
+          dispatchStatus: pod.status,
+          driver: pod.driver ? `${pod.driver.firstName} ${pod.driver.lastName}` : null,
+          deliveryDateActual: pod.deliveryDateActual,
+          receiverName: pod.receiverName,
+          receiverPhone: pod.receiverPhone,
+          deliveryNotes: pod.notes,
+          odometerKm: pod.odometerKm,
+          arrivalLocation: pod.arrivalLocation,
+          photoCount: pod.photos.length,
+          signatureCaptured: pod.signatures.length > 0,
+          photos: pod.photos.map((p) => ({ fileName: p.fileName, uploadedAt: p.uploadedAt })),
+          ...(hasProof
+            ? {}
+            : { note: "No proof of delivery has been submitted for this dispatch yet." }),
         };
       },
     };
@@ -432,6 +517,92 @@ export class ReadTools {
             failed: s.failedRows,
             skipped: s.skippedRows,
             createdAt: s.createdAt,
+          })),
+        };
+      },
+    };
+  }
+
+  /// Without this the Copilot can create workflows (write.tools.ts) but has no
+  /// way to answer "what automations do we have" or "is X active" — it would
+  /// have to guess or claim ignorance. Same read-role set as the workflows API.
+  private listWorkflows(): AiTool {
+    return {
+      name: "list_workflows",
+      description:
+        "List configured automation workflows: name, status (DRAFT/PUBLISHED/ARCHIVED), whether active, " +
+        "and the trigger event. Use search to find one by name.",
+      allowedRoles: ALL_STAFF,
+      mutating: false,
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          search: { type: "string" },
+          limit: { type: "integer", minimum: 1, maximum: 25 },
+        },
+      },
+      handler: async (args, actor) => {
+        const result = await this.workflows.list(actor.organizationId, {
+          search: str(args.search),
+          page: 1,
+          limit: limitOf(args),
+        });
+        return {
+          total: result.meta.total,
+          items: result.items.map((w) => ({
+            id: w.id,
+            name: w.name,
+            status: w.status,
+            active: w.active,
+            triggerEvent: (w.config as { trigger?: { event?: string } })?.trigger?.event ?? null,
+            updatedAt: w.updatedAt,
+          })),
+        };
+      },
+    };
+  }
+
+  /// The "did it actually run" half of workflow visibility — pairs with
+  /// list_workflows. Returns the SAME execution rows the Execution History
+  /// dialog in the UI shows, so the model's answer matches what a human
+  /// reviewing that screen would see.
+  private getWorkflowRuns(): AiTool {
+    return {
+      name: "get_workflow_runs",
+      description:
+        "Get recent execution history for one workflow — status (COMPLETED/FAILED/RUNNING/...), when it " +
+        "ran, and the error if it failed. Look up the workflow id with list_workflows first.",
+      allowedRoles: ALL_STAFF,
+      mutating: false,
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        required: ["workflowId"],
+        properties: {
+          workflowId: { type: "string" },
+          limit: { type: "integer", minimum: 1, maximum: 25 },
+        },
+      },
+      handler: async (args, actor) => {
+        const workflowId = str(args.workflowId);
+        if (!workflowId) throw new ToolExecutionError("workflowId is required");
+        const result = await this.workflows.getExecutions(actor.organizationId, workflowId, {
+          page: 1,
+          limit: limitOf(args),
+        });
+        return {
+          total: result.meta.total,
+          items: result.items.map((e) => ({
+            id: e.id,
+            status: e.status,
+            trigger: e.trigger,
+            startedAt: e.startedAt,
+            completedAt: e.completedAt,
+            durationMs: e.durationMs,
+            retryCount: e.retryCount,
+            error: e.error,
+            affectedEntities: e.affectedEntities,
           })),
         };
       },

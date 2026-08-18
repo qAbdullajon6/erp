@@ -1,15 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { format } from 'date-fns';
+import { useBlocker } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Select,
   SelectContent,
@@ -24,18 +21,27 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import {
   useUpdateOrder,
   type Order,
   type UpdateOrderInput,
 } from '@/lib/api/orders';
 import { cn } from '@/lib/utils';
-import { CalendarIcon, MapPin, Package, StickyNote, Wallet } from 'lucide-react';
+import {
+  CURRENCIES,
+  Field,
+  DateField,
+  validateOrderField,
+  validateOrderFields,
+  type OrderSectionKey,
+} from '@/components/orders/order-form-shared';
+import { MapPin, Package, StickyNote, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
+import { describeError } from '@/lib/api/describe-error';
 
-const CURRENCIES = ['USD', 'EUR', 'UZS', 'RUB', 'KZT', 'GBP', 'CNY'] as const;
-
-type SectionKey = 'pickup' | 'delivery' | 'cargo' | 'pricing' | 'notes';
+// Edit never changes the customer, so its section set is the shared one minus 'customer'.
+type SectionKey = Exclude<OrderSectionKey, 'customer'>;
 
 const FIELD_SECTION: Record<string, SectionKey> = {
   pickupAddress: 'pickup',
@@ -55,60 +61,11 @@ const FIELD_SECTION: Record<string, SectionKey> = {
 
 type Errors = Record<string, string>;
 
-function validateField(field: string, data: UpdateOrderInput): string | null {
-  switch (field) {
-    case 'pickupAddress':
-      if (!data.pickupAddress?.trim()) return 'Required';
-      if ((data.pickupAddress?.length ?? 0) > 300) return 'Max 300 characters';
-      return null;
-    case 'pickupCity':
-      if (!data.pickupCity?.trim()) return 'Required';
-      if ((data.pickupCity?.length ?? 0) > 100) return 'Max 100 characters';
-      return null;
-    case 'pickupDate':
-      return data.pickupDate ? null : 'Required';
-    case 'deliveryAddress':
-      if (!data.deliveryAddress?.trim()) return 'Required';
-      if ((data.deliveryAddress?.length ?? 0) > 300) return 'Max 300 characters';
-      return null;
-    case 'deliveryCity':
-      if (!data.deliveryCity?.trim()) return 'Required';
-      if ((data.deliveryCity?.length ?? 0) > 100) return 'Max 100 characters';
-      return null;
-    case 'deliveryDate':
-      if (!data.deliveryDate) return 'Required';
-      if (data.pickupDate && new Date(data.deliveryDate) < new Date(data.pickupDate)) {
-        return 'Cannot be before pickup';
-      }
-      return null;
-    case 'cargoDescription':
-      if (!data.cargoDescription?.trim()) return 'Required';
-      if ((data.cargoDescription?.length ?? 0) > 2000) return 'Max 2000 characters';
-      return null;
-    case 'cargoWeightKg':
-      if (data.cargoWeightKg !== undefined && data.cargoWeightKg < 0) return 'Must be ≥ 0';
-      return null;
-    case 'cargoVolumeM3':
-      if (data.cargoVolumeM3 !== undefined && data.cargoVolumeM3 < 0) return 'Must be ≥ 0';
-      return null;
-    case 'price':
-      if (data.price === undefined || Number.isNaN(data.price) || data.price < 0) return 'Must be ≥ 0';
-      return null;
-    case 'currency':
-      if (data.currency && !/^[A-Z]{3}$/.test(data.currency)) return '3-letter ISO code';
-      return null;
-    case 'notes':
-      if (data.notes && data.notes.length > 2000) return 'Max 2000 characters';
-      return null;
-    case 'deliveryNotes':
-      if (data.deliveryNotes && data.deliveryNotes.length > 2000) return 'Max 2000 characters';
-      return null;
-    default:
-      return null;
-  }
-}
-
 const ALL_FIELDS = Object.keys(FIELD_SECTION);
+
+function validateAll(data: UpdateOrderInput): Errors {
+  return validateOrderFields(ALL_FIELDS, data);
+}
 
 function orderToForm(order: Order): UpdateOrderInput {
   return {
@@ -128,93 +85,6 @@ function orderToForm(order: Order): UpdateOrderInput {
   };
 }
 
-function Field({
-  id,
-  label,
-  required,
-  error,
-  children,
-  className,
-}: {
-  id: string;
-  label: string;
-  required?: boolean;
-  error?: string;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={cn('space-y-1', className)} data-field={id}>
-      <Label htmlFor={id} className="text-xs font-medium text-muted-foreground">
-        {label}
-        {required && <span className="ml-0.5 text-destructive">*</span>}
-      </Label>
-      {children}
-      {error && (
-        <p className="text-[11px] font-medium text-destructive" role="alert">
-          {error}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function DateField({
-  id,
-  label,
-  required,
-  error,
-  value,
-  onChange,
-  disabledBefore,
-}: {
-  id: string;
-  label: string;
-  required?: boolean;
-  error?: string;
-  value: string;
-  onChange: (iso: string) => void;
-  disabledBefore?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const date = value ? new Date(`${value}T00:00:00`) : undefined;
-
-  return (
-    <Field id={id} label={label} required={required} error={error}>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            id={id}
-            type="button"
-            variant="outline"
-            aria-invalid={Boolean(error)}
-            className={cn(
-              'h-9 w-full justify-start px-3 text-left text-sm font-normal',
-              !value && 'text-muted-foreground',
-              error && 'border-destructive',
-            )}
-          >
-            <CalendarIcon className="mr-2 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            {date ? format(date, 'EEE, MMM d, yyyy') : 'Pick a date'}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
-          <Calendar
-            mode="single"
-            selected={date}
-            defaultMonth={date}
-            disabled={disabledBefore ? { before: new Date(`${disabledBefore}T00:00:00`) } : undefined}
-            onSelect={(d) => {
-              if (d) onChange(format(d, 'yyyy-MM-dd'));
-              setOpen(false);
-            }}
-          />
-        </PopoverContent>
-      </Popover>
-    </Field>
-  );
-}
-
 interface OrdersEditSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -227,15 +97,67 @@ export function OrdersEditSheet({ open, onOpenChange, order }: OrdersEditSheetPr
   const [formData, setFormData] = useState<UpdateOrderInput>(() => orderToForm(order));
   const [errors, setErrors] = useState<Errors>({});
   const [touched, setTouched] = useState<Set<string>>(new Set());
+  const [discardOpen, setDiscardOpen] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const baselineRef = useRef(JSON.stringify(orderToForm(order)));
+  const leaveConfirmedRef = useRef(false);
 
   useEffect(() => {
     if (open) {
-      setFormData(orderToForm(order));
+      const next = orderToForm(order);
+      setFormData(next);
+      baselineRef.current = JSON.stringify(next);
       setErrors({});
       setTouched(new Set());
+      setDiscardOpen(false);
+      leaveConfirmedRef.current = false;
     }
   }, [open, order]);
+
+  const isDirty = open && JSON.stringify(formData) !== baselineRef.current;
+
+  const blocker = useBlocker({
+    shouldBlockFn: () => isDirty && !leaveConfirmedRef.current,
+    withResolver: true,
+    enableBeforeUnload: isDirty,
+    disabled: !isDirty,
+  });
+
+  useEffect(() => {
+    if (blocker.status === 'blocked') {
+      setDiscardOpen(true);
+    }
+  }, [blocker.status]);
+
+  const stayEditing = () => {
+    // Leave already confirmed — ignore the dialog's follow-up onOpenChange(false).
+    if (leaveConfirmedRef.current) {
+      setDiscardOpen(false);
+      return;
+    }
+    setDiscardOpen(false);
+    if (blocker.status === 'blocked') {
+      blocker.reset?.();
+    }
+  };
+
+  const discardAndLeave = () => {
+    leaveConfirmedRef.current = true;
+    setDiscardOpen(false);
+    onOpenChange(false);
+    if (blocker.status === 'blocked') {
+      blocker.proceed?.();
+    }
+  };
+
+  const requestClose = () => {
+    if (loading) return;
+    if (isDirty) {
+      setDiscardOpen(true);
+      return;
+    }
+    onOpenChange(false);
+  };
 
   const setField = (field: keyof UpdateOrderInput, value: string | number | undefined) => {
     const next = { ...formData, [field]: value };
@@ -244,7 +166,7 @@ export function OrdersEditSheet({ open, onOpenChange, order }: OrdersEditSheetPr
     setErrors((prev) => {
       const out = { ...prev };
       for (const f of [field, 'deliveryDate'] as string[]) {
-        const err = validateField(f, next);
+        const err = validateOrderField(f, next);
         if (err && (touched.has(f) || f === field)) out[f] = err;
         else delete out[f];
       }
@@ -268,11 +190,7 @@ export function OrdersEditSheet({ open, onOpenChange, order }: OrdersEditSheetPr
   }, [errors]);
 
   const handleSave = async () => {
-    const all: Errors = {};
-    for (const f of ALL_FIELDS) {
-      const err = validateField(f, formData);
-      if (err) all[f] = err;
-    }
+    const all = validateAll(formData);
     setErrors(all);
     setTouched(new Set(ALL_FIELDS));
     if (Object.keys(all).length > 0) {
@@ -288,20 +206,69 @@ export function OrdersEditSheet({ open, onOpenChange, order }: OrdersEditSheetPr
 
     try {
       await update(order.id, formData);
+      baselineRef.current = JSON.stringify(formData);
       toast.success('Order updated');
       onOpenChange(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update');
+      toast.error(describeError(err, 'Failed to update'));
     }
   };
 
+  const handleSaveRef = useRef(handleSave);
+  handleSaveRef.current = handleSave;
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        if (!loading) void handleSaveRef.current();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [open, loading]);
+
   return (
-    <Sheet open={open} onOpenChange={(next) => !loading && onOpenChange(next)}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-[780px]">
+    <>
+    <Sheet
+      open={open}
+      onOpenChange={(next) => {
+        if (next) {
+          onOpenChange(true);
+          return;
+        }
+        // Keep the sheet mounted while dirty — only requestClose may close it.
+        requestClose();
+      }}
+    >
+      <SheetContent
+        side="right"
+        className="flex w-full flex-col gap-0 p-0 sm:max-w-[780px]"
+        onInteractOutside={(e) => {
+          if (isDirty || discardOpen) {
+            e.preventDefault();
+            if (isDirty) setDiscardOpen(true);
+          }
+        }}
+        onEscapeKeyDown={(e) => {
+          if (isDirty || discardOpen) {
+            e.preventDefault();
+            if (isDirty && !discardOpen) setDiscardOpen(true);
+          }
+        }}
+        onPointerDownOutside={(e) => {
+          if (isDirty || discardOpen) {
+            e.preventDefault();
+            if (isDirty) setDiscardOpen(true);
+          }
+        }}
+      >
         <SheetHeader className="shrink-0 border-b border-border px-6 py-4">
           <SheetTitle className="text-base">Edit {order.orderNumber}</SheetTitle>
           <SheetDescription className="text-xs">
             Status, driver and vehicle are managed by dispatch — not here.
+            {isDirty ? ' · Unsaved changes' : ''}
           </SheetDescription>
         </SheetHeader>
 
@@ -381,7 +348,7 @@ export function OrdersEditSheet({ open, onOpenChange, order }: OrdersEditSheetPr
                   error={errors.deliveryDate}
                   value={formData.deliveryDate ?? ''}
                   onChange={(iso) => setField('deliveryDate', iso)}
-                  disabledBefore={formData.pickupDate}
+                  disabledBefore={formData.pickupDate || undefined}
                 />
               </section>
             </div>
@@ -506,7 +473,7 @@ export function OrdersEditSheet({ open, onOpenChange, order }: OrdersEditSheetPr
 
         <div className="shrink-0 border-t border-border bg-surface/95 px-6 py-3 backdrop-blur">
           <div className="flex items-center justify-between gap-3">
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={loading}>
+            <Button type="button" variant="ghost" onClick={requestClose} disabled={loading}>
               Cancel
             </Button>
             <Button type="button" onClick={handleSave} disabled={loading}>
@@ -516,5 +483,24 @@ export function OrdersEditSheet({ open, onOpenChange, order }: OrdersEditSheetPr
         </div>
       </SheetContent>
     </Sheet>
+    <ConfirmDialog
+      open={discardOpen}
+      onOpenChange={(next) => {
+        if (next) {
+          setDiscardOpen(true);
+          return;
+        }
+        // Escape / overlay dismiss on the dialog = Stay
+        stayEditing();
+      }}
+      title="You have unsaved changes"
+      description="Leave anyway? Your edits to this order will be lost."
+      confirmLabel="Leave"
+      cancelLabel="Stay"
+      destructive
+      onCancel={stayEditing}
+      onConfirm={discardAndLeave}
+    />
+    </>
   );
 }

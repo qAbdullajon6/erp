@@ -41,7 +41,7 @@ function invoiceOutstanding(inv: Invoice): number {
 }
 
 /// Aggregates real Orders + Invoices into per-customer stats for CRM list/detail.
-/// Caps at API max (200) — honest about incomplete totals when orgs exceed that.
+/// Caps at the orders/invoices API max (100) — totals are incomplete above that.
 export function useCustomerRelationshipIndex(options: {
   enabled?: boolean;
   canViewInvoices?: boolean;
@@ -50,10 +50,10 @@ export function useCustomerRelationshipIndex(options: {
   const canViewInvoices = options.canViewInvoices ?? false;
 
   const ordersQuery = useOrdersList(
-    { limit: 200, statuses: OPEN_ORDER_STATUSES },
+    { limit: 100, statuses: OPEN_ORDER_STATUSES },
     { enabled },
   );
-  const invoicesQuery = useInvoicesQuery({ limit: 200 }, enabled && canViewInvoices);
+  const invoicesQuery = useInvoicesQuery({ limit: 100 }, enabled && canViewInvoices);
 
   const byCustomer = useMemo(() => {
     const map = new Map<string, CustomerRelationshipStats>();
@@ -86,14 +86,6 @@ export function useCustomerRelationshipIndex(options: {
       if (OPEN_INVOICE_STATUSES.has(inv.status) || invoiceOutstanding(inv) > 0) {
         row.outstanding += invoiceOutstanding(inv);
       }
-      const total = Number(inv.totalAmount);
-      if (Number.isFinite(total) && row.revenue === 0) {
-        // Prefer order revenue when present; otherwise use invoice totals as revenue signal.
-      }
-      if (Number.isFinite(total)) {
-        // Keep invoice total as supplemental revenue only when no open-order revenue yet —
-        // actually always add invoice totals for financial strip on detail when scoped.
-      }
     }
 
     return map;
@@ -120,6 +112,14 @@ export function useCustomerRelationshipIndex(options: {
     return outstandingCustomerIds.size;
   }, [outstandingCustomerIds]);
 
+  /// Both source lists are capped at their API's page-size ceiling (100 — see
+  /// list-orders-query.dto.ts / list-invoices-query.dto.ts). For an
+  /// organization with more open orders or invoices than that, per-customer
+  /// stats below are a partial view, not a lie by omission — callers should
+  /// surface `truncated` rather than present these numbers as complete.
+  const truncated =
+    ordersQuery.meta.total > 100 || (canViewInvoices && (invoicesQuery.data?.meta.total ?? 0) > 100);
+
   return {
     byCustomer,
     outstandingCustomerIds,
@@ -127,6 +127,7 @@ export function useCustomerRelationshipIndex(options: {
     highUtilizationCustomerCount: highUtilizationCount,
     ordersLoading: ordersQuery.loading,
     invoicesLoading: invoicesQuery.isPending,
+    truncated,
     getStats: (customerId: string): CustomerRelationshipStats =>
       byCustomer.get(customerId) ?? emptyStats(),
   };

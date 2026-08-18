@@ -67,7 +67,8 @@ async function bootstrap() {
   const signals: NodeJS.Signals[] = ["SIGTERM", "SIGINT"];
 
   signals.forEach((signal) => {
-    process.on(signal, async () => {
+    process.on(signal, () => {
+      void (async () => {
       logger.log(`${signal} received, starting graceful shutdown (timeout: ${appConfig.shutdownTimeoutMs}ms)`);
 
       shutdownTimer = setTimeout(() => {
@@ -88,10 +89,12 @@ async function bootstrap() {
         logger.error("Error during graceful shutdown", error instanceof Error ? error.stack : error);
         process.exit(1);
       }
+      })();
     });
   });
 
-  await app.listen(appConfig.port);
+  await app.listen(appConfig.port, "0.0.0.0");
+  logger.log(`API listening on http://0.0.0.0:${appConfig.port}`);
 }
 
 // Wrap bootstrap in error handler to ensure startup failures are never silent.

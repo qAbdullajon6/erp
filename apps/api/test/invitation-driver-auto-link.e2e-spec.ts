@@ -8,6 +8,22 @@ import { configureApp } from "../src/app.config";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { generateInvitationToken, hashInvitationToken } from "../src/invitations/invitation-token.util";
 
+interface RegisterBody {
+  data: {
+    organization: { id: string };
+    user: { id: string };
+    accessToken: string;
+  };
+}
+
+interface AcceptInviteBody {
+  data: {
+    userId: string;
+    organizationId: string;
+    role: string;
+  };
+}
+
 /**
  * Integration: DRIVER invitation accept auto-links Driver.userId when exactly
  * one unlinked Driver in the org shares the invite email.
@@ -45,6 +61,9 @@ describe("Invitation DRIVER auto-link (e2e)", () => {
       organizationName,
     });
     expect(res.status).toBe(201);
+    const body = res.body as RegisterBody;
+    const organizationId = body.data.organization.id;
+    const userId = body.data.user.id;
     const organizationId = res.body.data.organization.id as string;
     const userId = res.body.data.user.id as string;
     createdOrganizationIds.push(organizationId);
@@ -52,6 +71,7 @@ describe("Invitation DRIVER auto-link (e2e)", () => {
     return {
       organizationId,
       adminUserId: userId,
+      accessToken: body.data.accessToken,
       accessToken: res.body.data.accessToken as string,
     };
   }
@@ -103,6 +123,12 @@ describe("Invitation DRIVER auto-link (e2e)", () => {
       password: "correct-horse-battery",
     });
     expect(res.status).toBe(200);
+    const body = res.body as AcceptInviteBody;
+    expect(body.data.role).toBe("DRIVER");
+    createdUserIds.push(body.data.userId);
+    // Sanity: login works with invite email
+    void emailHint;
+    return body.data;
     expect(res.body.data.role).toBe("DRIVER");
     createdUserIds.push(res.body.data.userId);
     // Sanity: login works with invite email

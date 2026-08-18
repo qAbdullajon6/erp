@@ -2,12 +2,31 @@ import { NotFoundException } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { InvoicesService } from "../../invoices/invoices.service";
 import { PrismaService } from "../../prisma/prisma.service";
+import { ListInvoicesQueryDto } from "../../invoices/dto/list-invoices-query.dto";
+import { asDependency, firstMockArg } from "../test-support/portal-spec.helpers";
 import { CustomerInvoicesService } from "./customer-invoices.service";
+
+function makeInvoicesService() {
+  return {
+    getById: jest.fn(),
+    refreshOverdueInvoices: jest.fn().mockResolvedValue(undefined),
+    toResponse: jest.fn(<T>(row: T) => row),
+  };
+}
+
+function makePrisma() {
+  return {
+    invoice: {
+      findMany: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
+    },
+  };
+}
 
 describe("CustomerInvoicesService", () => {
   let svc: CustomerInvoicesService;
-  let invoices: { getById: jest.Mock; refreshOverdueInvoices: jest.Mock; toResponse: jest.Mock };
-  let prisma: { invoice: { findMany: jest.Mock; count: jest.Mock } };
+  let invoices: ReturnType<typeof makeInvoicesService>;
+  let prisma: ReturnType<typeof makePrisma>;
 
   const payload = {
     accountId: "acc-1",
@@ -18,23 +37,14 @@ describe("CustomerInvoicesService", () => {
   };
 
   beforeEach(async () => {
-    invoices = {
-      getById: jest.fn(),
-      refreshOverdueInvoices: jest.fn().mockResolvedValue(undefined),
-      toResponse: jest.fn((row) => row),
-    };
-    prisma = {
-      invoice: {
-        findMany: jest.fn().mockResolvedValue([]),
-        count: jest.fn().mockResolvedValue(0),
-      },
-    };
+    invoices = makeInvoicesService();
+    prisma = makePrisma();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CustomerInvoicesService,
-        { provide: InvoicesService, useValue: invoices },
-        { provide: PrismaService, useValue: prisma },
+        { provide: InvoicesService, useValue: asDependency<InvoicesService>(invoices) },
+        { provide: PrismaService, useValue: asDependency<PrismaService>(prisma) },
       ],
     }).compile();
 
@@ -64,18 +74,21 @@ describe("CustomerInvoicesService", () => {
 
   describe("list", () => {
     it("scopes to the portal customer and excludes draft/cancelled by default", async () => {
-      await svc.list(payload, { customerId: "hacker" } as any);
+      const query = new ListInvoicesQueryDto();
+      query.customerId = "hacker";
+
+      await svc.list(payload, query);
 
       expect(invoices.refreshOverdueInvoices).toHaveBeenCalledWith("org-1");
-      expect(prisma.invoice.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            organizationId: "org-1",
-            customerId: "cust-1",
-            status: { in: ["SENT", "PARTIALLY_PAID", "PAID", "OVERDUE"] },
-          }),
-        }),
-      );
+      expect(prisma.invoice.findMany).toHaveBeenCalled();
+      const findManyArgs = firstMockArg<{
+        where: { organizationId: string; customerId: string; status: { in: string[] } };
+      }>(prisma.invoice.findMany);
+      expect(findManyArgs.where).toMatchObject({
+        organizationId: "org-1",
+        customerId: "cust-1",
+        status: { in: ["SENT", "PARTIALLY_PAID", "PAID", "OVERDUE"] },
+      });
     });
   });
 });

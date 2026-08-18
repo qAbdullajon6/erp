@@ -4,6 +4,9 @@ import { ProtectedApiRoute } from "@/components/layout/protected-api-route";
 import { ALL_STAFF_ROLES } from "@/lib/role-access";
 
 export const Route = createFileRoute("/app/orders/$orderId")({
+  head: () => ({
+    meta: [{ title: "Order — FlowERP AI" }],
+  }),
   component: OrdersDetailPage,
 });
 

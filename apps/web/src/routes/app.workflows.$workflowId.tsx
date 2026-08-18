@@ -4,6 +4,9 @@ import { ProtectedApiRoute } from "@/components/layout/protected-api-route";
 import { ADMIN_OPS_ROLES } from "@/lib/role-access";
 
 export const Route = createFileRoute("/app/workflows/$workflowId")({
+  head: () => ({
+    meta: [{ title: "Workflow — FlowERP AI" }],
+  }),
   component: WorkflowDetailPage,
 });
 

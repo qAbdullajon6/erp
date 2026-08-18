@@ -1,6 +1,8 @@
+import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PaginationBar } from "@/components/shared/pagination-bar";
 import { NotificationItem } from "./notification-item";
+import { describeError } from "@/lib/api/describe-error";
 import {
   useMarkAsRead,
   useMarkAsUnread,
@@ -54,9 +56,21 @@ export function NotificationList({
             <div className="min-w-0 flex-1">
               <NotificationItem
                 notification={notification}
-                onMarkRead={(id) => markRead.mutate(id)}
-                onMarkUnread={(id) => markUnread.mutate(id)}
-                onArchive={(id) => archive.mutate(id)}
+                onMarkRead={(id) =>
+                  markRead.mutate(id, {
+                    onError: (err) => toast.error(describeError(err, "Failed to mark as read")),
+                  })
+                }
+                onMarkUnread={(id) =>
+                  markUnread.mutate(id, {
+                    onError: (err) => toast.error(describeError(err, "Failed to mark as unread")),
+                  })
+                }
+                onArchive={(id) =>
+                  archive.mutate(id, {
+                    onError: (err) => toast.error(describeError(err, "Failed to archive notification")),
+                  })
+                }
                 busy={busy}
               />
             </div>

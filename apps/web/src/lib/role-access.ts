@@ -28,7 +28,12 @@ export const DISPATCH_WRITE_ROLES: MembershipRole[] = ["ADMIN", "OPERATIONS_MANA
 export const FLEET_ROLES: MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER"];
 
 /// AuditController.ROLES_READ.
-export const AUDIT_ROLES: MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER", "ACCOUNTANT"];
+export const AUDIT_ROLES: MembershipRole[] = [
+  "ADMIN",
+  "OPERATIONS_MANAGER",
+  "DISPATCHER",
+  "ACCOUNTANT",
+];
 
 /// ImportController's role set.
 export const IMPORT_ROLES: MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER"];

@@ -183,7 +183,12 @@
 | `HEALTH_INTERVAL` | lib.sh | O | `2` | Keep | No | No |
 | `BACKUP_DIR` | backup-postgres.sh | O | `./backups` | Writable path | No | No |
 | `RETENTION_DAYS` | backup-postgres.sh | O | `14` | Policy | No | No |
-| `OFFSITE_COMMAND` | backup-postgres.sh | O | unset | e.g. `aws s3 cp` / rclone | No (warn only) | May embed secrets |
+| `REQUIRE_OFFSITE_BACKUP` | backup-postgres.sh | O | `false` | `true` in production | Run fails if wrapper is absent/fails | No |
+| `OFFSITE_WRAPPER` | backup-postgres.sh | C | unset | `/usr/local/bin/flowerp-offsite-backup` | Yes when required | No |
+| `OFFSITE_MAX_ATTEMPTS` / `OFFSITE_RETRY_BACKOFF_SECONDS` | backup-postgres.sh | O | `3` / `30` | Bounded retry policy | Invalid values fail | No |
+| `AWS_REGION` | S3 wrapper | **M** (S3 backup) | _(none)_ | `eu-north-1` | Wrapper fails | No |
+| `S3_BUCKET` | S3 wrapper | **M** (S3 backup) | _(none)_ | `flowerp-812063706887-eu-north-1-an` | Wrapper fails | No |
+| `S3_BACKUP_PREFIX` | S3 wrapper | **M** (S3 backup) | _(none)_ | `backups/` | Wrapper fails | No |
 | `CONFIRM` | rollback.sh, restore-postgres.sh | **M** (destructive) | _(none)_ | Must be set for manual ops | **Yes for those scripts** | No |
 
 ### 1.12 Test-only (not production runtime)
@@ -245,7 +250,7 @@
 
 | Expected name | Status in FlowERP |
 | --- | --- |
-| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `S3_BUCKET` | **Not used as env.** SES credentials are DB-encrypted; S3 only via optional `OFFSITE_COMMAND` shell. |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | **Deliberately absent from tracked env files.** The S3 wrapper uses the standard AWS CLI provider chain; prefer a VPS instance role or operator-managed credential source outside git. |
 | `PAYME_KEY` | Use **`PAYME_SECRET_KEY`** (+ `PAYME_MERCHANT_ID`) |
 | `VITE_GA_MEASUREMENT_ID` / `VITE_GTM_ID` | Wrong names — use GA4/GTM names in §1.10 |
 | Twilio / WhatsApp / Telegram API tokens | **No env** — features not implemented |
@@ -302,7 +307,7 @@ Copy into the release ticket. Check only when verified in the **target** environ
 - [ ] Invite email delivers (or known UnavailableMail)  
 - [ ] Demo lead → DB (+ notify email)  
 - [ ] Analytics events in GTM Preview / GA4 DebugView after consent  
-- [ ] Backup script + offsite command once  
+- [ ] AWS CLI v2 + absolute `OFFSITE_WRAPPER` installed; S3 backup and recovery download rehearsed once
 
 ---
 
@@ -320,7 +325,7 @@ Scored against **environment configuration readiness** (docs + known traps), not
 | Deploy workflow env propagation | 15 | **5** | Production-only workflow |
 | Unused / obsolete vars cleaned | 5 | **2** | `NEXT_PUBLIC_*` + inert scaffolds remain |
 | Monitoring env actionable | 5 | **2** | Sentry reserved but unwired |
-| Storage (S3/AWS) clarity | 5 | **5** | Correctly absent as env (DB / `OFFSITE_COMMAND`) |
+| Storage (S3/AWS) clarity | 5 | **5** | Non-secret S3 destination config is explicit; AWS credentials remain outside git |
 | Vercel / API host configuration | 10 | **4** | API host in vercel.json must match production |
 
 ### **Overall: 61 / 100**

@@ -180,11 +180,11 @@ export async function acceptInvitation(
 
 // --- Members settings page --------------------------------------------------
 
-/// Opens Settings → Members as the seeded admin.
+/// Opens Settings → Members as the seeded admin. The section is addressable, so
+/// this is a URL rather than a click through the settings nav.
 export async function openMembersTab(page: Page): Promise<void> {
   await signInAsAdmin(page);
-  await page.goto(`${FRONTEND}/app/settings`);
-  await page.getByRole('tab', { name: 'Members' }).click();
+  await page.goto(`${FRONTEND}/app/settings?tab=members`);
   await expect(page.getByRole('button', { name: 'Invite Member' })).toBeVisible();
 }
 

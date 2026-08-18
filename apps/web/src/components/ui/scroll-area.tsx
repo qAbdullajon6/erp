@@ -5,14 +5,24 @@ import { cn } from "@/lib/utils";
 
 const ScrollArea = React.forwardRef<
   React.ElementRef<typeof ScrollAreaPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root>
->(({ className, children, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root> & {
+    /// Ref to the actual scrollable viewport — the Root element Radix hands
+    /// back via `ref` never scrolls itself, so callers that need scroll
+    /// position (e.g. "is the user near the bottom?") need this instead.
+    viewportRef?: React.Ref<HTMLDivElement>;
+    onViewportScroll?: React.UIEventHandler<HTMLDivElement>;
+  }
+>(({ className, children, viewportRef, onViewportScroll, ...props }, ref) => (
   <ScrollAreaPrimitive.Root
     ref={ref}
     className={cn("relative overflow-hidden", className)}
     {...props}
   >
-    <ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit]">
+    <ScrollAreaPrimitive.Viewport
+      ref={viewportRef}
+      onScroll={onViewportScroll}
+      className="h-full w-full rounded-[inherit]"
+    >
       {children}
     </ScrollAreaPrimitive.Viewport>
     <ScrollBar />

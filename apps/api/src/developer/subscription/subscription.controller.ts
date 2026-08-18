@@ -14,11 +14,16 @@ import { SubscriptionService } from "./subscription.service";
 /// - GET /developer/subscription/quotas - usage and remaining quotas
 /// - GET /developer/subscription/rate-limits - API rate limit info
 ///
-/// All endpoints require organization member authentication.
-/// Useful for third-party integrations checking their own subscription.
+/// Gated to the same roles as the rest of the Developer Portal
+/// (ApiKeysController, WebhooksController, UsageController). The list used to
+/// read ADMIN/ACCOUNTANT/DISPATCHER/DRIVER, which let a DRIVER read the
+/// organization's plan, entitlements, quotas and rate limits while omitting the
+/// OPERATIONS_MANAGER who administers every other developer-portal surface —
+/// and no screen in the web app offers any of it below ADMIN. That combination
+/// is an accident, not a product decision.
 @Controller("developer/subscription")
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles("ADMIN", "ACCOUNTANT", "DISPATCHER", "DRIVER")
+@Roles("ADMIN", "OPERATIONS_MANAGER")
 export class SubscriptionController {
   constructor(private readonly subscriptionService: SubscriptionService) {}
 

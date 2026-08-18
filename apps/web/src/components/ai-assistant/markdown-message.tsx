@@ -32,29 +32,45 @@ export const MarkdownMessage = memo(function MarkdownMessage({ content }: { cont
         'prose-headings:text-foreground prose-headings:font-semibold prose-headings:mt-4 prose-headings:mb-2',
         'prose-strong:text-foreground prose-li:text-foreground prose-li:my-0.5',
         'prose-a:text-brand prose-a:underline hover:prose-a:opacity-80',
-        'prose-ul:my-2 prose-ol:my-2',
+        'prose-ul:my-2 prose-ol:my-2 prose-li:leading-relaxed',
+        // Typography's default blockquote is italic with a plain grey rule —
+        // reads as "the model is quoting something" when really it's just
+        // emphasis. Non-italic + the brand rule reads as a callout instead.
+        'prose-blockquote:border-l-brand/40 prose-blockquote:not-italic',
+        'prose-blockquote:text-muted-foreground prose-blockquote:font-normal',
+        'prose-hr:border-border prose-code:before:content-none prose-code:after:content-none',
       )}
     >
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
           code: CodeBlock,
+          // react-markdown wraps block code in its own <pre>, and the
+          // typography plugin styles bare `pre` with its own dark background
+          // and padding. CodeBlock already renders a fully-styled <pre> of
+          // its own, so left alone this nested a heavily-padded, differently
+          // coloured box around the real one. Stripping the outer wrapper to
+          // a plain fragment leaves exactly one pre — CodeBlock's.
+          pre: ({ children }) => <>{children}</>,
           table: ({ children }) => (
             // Tables are the model's answer to "compare these" and routinely
             // exceed the bubble; without its own scroller the page itself
-            // scrolls sideways.
-            <div className="my-3 overflow-x-auto rounded-lg border border-border">
+            // scrolls sideways. max-h + sticky thead keeps a long table's
+            // header in view while scrolling through its rows.
+            <div className="not-prose my-3 max-h-96 max-w-full overflow-auto rounded-lg border border-border">
               <table className="w-full text-sm">{children}</table>
             </div>
           ),
-          thead: ({ children }) => <thead className="bg-surface">{children}</thead>,
+          thead: ({ children }) => (
+            <thead className="sticky top-0 z-10 bg-surface">{children}</thead>
+          ),
           th: ({ children }) => (
-            <th className="border-b border-border px-3 py-2 text-left text-xs font-medium text-muted-foreground">
+            <th className="border-b border-border px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">
               {children}
             </th>
           ),
           td: ({ children }) => (
-            <td className="border-b border-border/50 px-3 py-2 text-foreground">{children}</td>
+            <td className="border-b border-border/50 px-3 py-2.5 text-foreground">{children}</td>
           ),
           a: ({ href, children }) => (
             <a
@@ -102,9 +118,11 @@ function CodeBlock({ inline, className, children }: CodeProps) {
   };
 
   return (
-    <div className="group relative my-3">
-      <div className="flex items-center justify-between rounded-t-lg border border-b-0 border-border bg-surface px-3 py-1.5">
-        <span className="font-mono text-xs text-muted-foreground">{language ?? 'text'}</span>
+    <div className="not-prose group relative my-3 overflow-hidden rounded-lg border border-border shadow-sm">
+      <div className="flex items-center justify-between border-b border-border bg-surface px-3.5 py-2">
+        <span className="font-mono text-xs uppercase tracking-wide text-muted-foreground">
+          {language ?? 'text'}
+        </span>
         <button
           onClick={copy}
           className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -114,7 +132,7 @@ function CodeBlock({ inline, className, children }: CodeProps) {
           {copied ? 'Copied' : 'Copy'}
         </button>
       </div>
-      <pre className="overflow-x-auto rounded-b-lg border border-border bg-muted/50 p-3">
+      <pre className="overflow-x-auto bg-muted/50 p-3.5 leading-relaxed">
         <code className="font-mono text-xs text-foreground">{text}</code>
       </pre>
     </div>

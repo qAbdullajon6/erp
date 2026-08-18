@@ -1,12 +1,16 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { AiOpsSuggestions } from "@/components/dashboard/ai-ops-suggestions";
+import { AttentionCenter } from "@/components/dashboard/attention-center";
 import { ExceptionHero, SecondaryPulse } from "@/components/dashboard/exception-hero";
 import { FinancialWarnings } from "@/components/dashboard/financial-warnings";
 import { FleetReady } from "@/components/dashboard/fleet-ready";
 import { DelayedDeliveries } from "@/components/dashboard/delayed-deliveries";
-import { DriverDashboardSummary } from "@/components/dashboard/driver-dashboard-summary";
+import { DashboardCharts } from "@/components/dashboard/dashboard-charts";
+import { KpiCards } from "@/components/dashboard/kpi-cards";
 import { LiveDispatch } from "@/components/dashboard/live-dispatch";
+import { RecentActivity } from "@/components/dashboard/recent-activity";
+import { SetupChecklist } from "@/components/dashboard/setup-checklist";
 import { UnassignedQueue } from "@/components/dashboard/unassigned-queue";
 import { useCurrentUser } from "@/lib/api/auth";
 import { useDashboardSummary } from "@/lib/api/dashboard";
@@ -14,14 +18,15 @@ import { useFinanceSummaryQuery } from "@/lib/api/finance";
 import { useLiveFleetQuery } from "@/lib/api/telematics";
 import { useDispatchBoardSummary } from "@/lib/hooks/use-dispatches";
 import { LoadingState, ErrorState } from "@/components/shared/list-states";
-import { ORDER_WRITE_ROLES, DISPATCH_WRITE_ROLES, FLEET_ROLES } from "@/lib/role-access";
+import { PageHeader } from "@/components/shared/page-header";
+import { Button } from "@/components/ui/button";
+import { ADMIN_OPS_ROLES, ORDER_WRITE_ROLES, DISPATCH_WRITE_ROLES, DISPATCH_ROLES, FLEET_ROLES } from "@/lib/role-access";
 import type { MembershipRole } from "@/lib/api/organizations";
 import { formatRelativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Plus, RefreshCw, Sparkles } from "lucide-react";
 
 const LIVE_REFRESH_MS = 30_000;
-const FLEET_VISIBLE_ROLES = new Set(["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER", "ACCOUNTANT"]);
 
 function shiftLabel(date: Date): string {
   const h = date.getHours();
@@ -47,25 +52,19 @@ function OpsClock() {
   const day = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" }).format(now);
 
   return (
-    <div className="min-w-0">
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <h1 className="text-lg font-semibold tracking-tight text-foreground">Today</h1>
-        <span className="text-lg font-semibold tabular-nums text-foreground">{time}</span>
-      </div>
-      <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[12px] text-muted-foreground">
-        <span>
-          {day} · {weekday}
-        </span>
-        <span className="text-border" aria-hidden>
-          ·
-        </span>
-        <span>Shift: {shiftLabel(now)}</span>
-        <span className="text-border" aria-hidden>
-          ·
-        </span>
-        <span className="font-medium text-foreground">Operations Center</span>
-      </p>
-    </div>
+    <span className="flex flex-wrap items-center gap-x-2">
+      <span className="font-medium tabular-nums text-foreground">{time}</span>
+      <span className="text-border" aria-hidden>
+        ·
+      </span>
+      <span>
+        {day} · {weekday}
+      </span>
+      <span className="text-border" aria-hidden>
+        ·
+      </span>
+      <span>Shift: {shiftLabel(now)}</span>
+    </span>
   );
 }
 
@@ -93,17 +92,20 @@ function FreshnessControl({
       onClick={onRefresh}
       disabled={isFetching}
       title="Refresh now"
+      aria-label={`Dashboard data freshness: ${label}. Refresh now.`}
       className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border/80 bg-surface/50 px-2.5 text-[11px] font-medium text-muted-foreground hover:border-brand hover:text-brand disabled:opacity-70"
     >
-      <span className={cn("h-1.5 w-1.5 rounded-full", isFetching ? "animate-pulse bg-warning" : "bg-success")} />
-      <RefreshCw className={cn("h-3 w-3", isFetching && "animate-spin")} />
-      <span className="tabular-nums">{label}</span>
+      <span className={cn("h-1.5 w-1.5 rounded-full", isFetching ? "animate-pulse bg-warning" : "bg-success")} aria-hidden />
+      <RefreshCw className={cn("h-3 w-3", isFetching && "animate-spin")} aria-hidden />
+      <span className="tabular-nums" aria-live="polite">
+        {label}
+      </span>
     </button>
   );
 }
 
 export const Route = createFileRoute("/app/")({
-  head: () => ({ meta: [{ title: "Operations — Command Center" }] }),
+  head: () => ({ meta: [{ title: "Overview — FlowERP AI" }] }),
   component: DashboardPage,
 });
 
@@ -115,11 +117,13 @@ function DashboardPage() {
   if (userError || !currentUser) {
     return <ErrorState message={userError || "Failed to load account."} onRetry={() => refetchUser()} />;
   }
-  if (role === "DRIVER") return <DriverDashboardSummary firstName={currentUser.user.firstName} />;
+  if (role === "DRIVER") {
+    return <Navigate to="/app/driver" />;
+  }
 
   return (
     <OperationsCommandCenter
-      includeFleet={FLEET_VISIBLE_ROLES.has(role ?? "")}
+      includeFleet={DISPATCH_ROLES.includes(role as MembershipRole)}
       includeTelematics={FLEET_ROLES.includes(role as MembershipRole)}
       role={role as MembershipRole}
     />
@@ -212,38 +216,48 @@ function OperationsCommandCenter({
   const loading = summary.loading || (includeFleet && board.loading && !board.data);
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/60 pb-3">
-        <OpsClock />
-        <div className="flex flex-wrap items-center gap-1.5">
-          <FreshnessControl updatedAt={updatedAt} isFetching={isRefreshing} onRefresh={retryAll} />
-          <Link
-            to="/app/ai-assistant"
-            className="inline-flex h-8 items-center gap-1 rounded-lg border border-border/80 px-2.5 text-[11px] font-medium text-muted-foreground hover:border-brand hover:text-brand"
-          >
-            <Sparkles className="h-3 w-3" />
-            Ask AI
-          </Link>
-          {canCreateOrder && (
-            <Link
-              to="/app/orders"
-              search={{ create: true }}
-              className="inline-flex h-8 items-center gap-1 rounded-lg border border-border/80 px-2.5 text-[11px] font-medium text-muted-foreground hover:border-brand hover:text-brand"
-            >
-              <Plus className="h-3 w-3" />
-              Order
-            </Link>
-          )}
-          {canCreateDispatch && (
-            <Link
-              to="/app/dispatches/create"
-              className="inline-flex h-8 items-center gap-1 rounded-lg bg-brand px-3 text-[11px] font-semibold text-brand-foreground hover:opacity-90"
-            >
-              <Plus className="h-3 w-3" />
-              Dispatch
-            </Link>
-          )}
-        </div>
+    // Tests need to say "the dashboard rendered" without depending on whatever
+    // the headline copy happens to be this month.
+    <div className="space-y-8" data-testid="dashboard">
+      <div className="border-b border-border/60 pb-4">
+        <PageHeader
+          title="Today"
+          subtitle={<OpsClock />}
+          action={
+            <>
+              <FreshnessControl
+                updatedAt={updatedAt}
+                isFetching={isRefreshing}
+                onRefresh={retryAll}
+              />
+              {/* These were hand-styled anchors sized `h-8 text-[11px]`, which put
+                  the dashboard's only calls to action a step below every other
+                  button in the app. */}
+              <Button asChild variant="outline" size="sm">
+                <Link to="/app/ai-assistant">
+                  <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                  Ask AI
+                </Link>
+              </Button>
+              {canCreateOrder && (
+                <Button asChild variant="outline" size="sm">
+                  <Link to="/app/orders" search={{ create: true }}>
+                    <Plus className="mr-1.5 h-3.5 w-3.5" />
+                    Order
+                  </Link>
+                </Button>
+              )}
+              {canCreateDispatch && (
+                <Button asChild size="sm">
+                  <Link to="/app/dispatches/create">
+                    <Plus className="mr-1.5 h-3.5 w-3.5" />
+                    Dispatch
+                  </Link>
+                </Button>
+              )}
+            </>
+          }
+        />
       </div>
 
       {error && (
@@ -255,32 +269,42 @@ function OperationsCommandCenter({
         </div>
       )}
 
-      <ExceptionHero
-        delayed={totals?.delayedOrders ?? 0}
-        worstDelayDays={worstDelayDays}
-        unassigned={unassigned}
-        oldestUnassignedWait={oldestUnassignedWait}
-        readyDrivers={boardData ? boardData.drivers.available.length : null}
-        readyVehicles={boardData ? boardData.vehicles.available.length : null}
-        includeFleet={includeFleet}
-        loading={loading}
-      />
+      <SetupChecklist canDismiss={ADMIN_OPS_ROLES.includes(role)} />
 
-      {!loading && today && (
-        <SecondaryPulse
-          dueToday={today.dueToday}
-          deliveredToday={today.deliveredToday}
-          pickups={today.pickupsDueToday}
-          freeDrivers={boardData ? boardData.drivers.available.length : null}
-          freeVehicles={boardData ? boardData.vehicles.available.length : null}
+      <KpiCards data={summary.data} loading={summary.loading} />
+      <DashboardCharts data={summary.data} loading={summary.loading} />
+
+      <AttentionCenter attention={summary.data?.attention} loading={summary.loading} />
+      <RecentActivity items={summary.data?.recentActivity} loading={summary.loading} />
+
+      <div className="space-y-4">
+        <ExceptionHero
+          delayed={totals?.delayedOrders ?? 0}
+          worstDelayDays={worstDelayDays}
+          unassigned={unassigned}
+          oldestUnassignedWait={oldestUnassignedWait}
+          readyDrivers={boardData ? boardData.drivers.available.length : null}
+          readyVehicles={boardData ? boardData.vehicles.available.length : null}
           includeFleet={includeFleet}
+          loading={loading}
         />
-      )}
+
+        {!loading && today && (
+          <SecondaryPulse
+            dueToday={today.dueToday}
+            deliveredToday={today.deliveredToday}
+            pickups={today.pickupsDueToday}
+            freeDrivers={boardData ? boardData.drivers.available.length : null}
+            freeVehicles={boardData ? boardData.vehicles.available.length : null}
+            includeFleet={includeFleet}
+          />
+        )}
+      </div>
 
       {includeFleet ? (
-        <section className="grid grid-cols-1 gap-3 min-[960px]:grid-cols-12 min-[960px]:items-start">
+        <section className="grid grid-cols-1 gap-4 min-[960px]:grid-cols-12 min-[960px]:items-start">
           {/* Dominant ops column — Needs Dispatch / Ready / Delayed */}
-          <div className="flex flex-col gap-3 min-[960px]:col-span-7">
+          <div className="flex flex-col gap-4 min-[960px]:col-span-7">
             <UnassignedQueue
               orders={boardData?.unassignedOrders ?? []}
               loading={board.loading}
@@ -297,8 +321,8 @@ function OperationsCommandCenter({
           </div>
 
           {/* Secondary monitoring — AI / On Road / Money */}
-          <div className="flex flex-col gap-3 min-[960px]:col-span-5">
-            <AiOpsSuggestions board={boardData ?? null} canDispatch={canCreateDispatch} />
+          <div className="flex flex-col gap-4 min-[960px]:col-span-5">
+            <AiOpsSuggestions board={boardData ?? null} canDispatch={canCreateDispatch} loading={board.loading} />
             <LiveDispatch
               board={boardData}
               loading={board.loading}
@@ -308,7 +332,7 @@ function OperationsCommandCenter({
           </div>
         </section>
       ) : (
-        <section className="grid grid-cols-1 gap-3 min-[960px]:grid-cols-12 min-[960px]:items-start">
+        <section className="grid grid-cols-1 gap-4 min-[960px]:grid-cols-12 min-[960px]:items-start">
           <div className="min-[960px]:col-span-7">
             <DelayedDeliveries
               orders={summary.data?.delayedOrders.items ?? []}

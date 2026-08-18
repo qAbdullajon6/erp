@@ -5,6 +5,7 @@ import {
   type DemoConfirmationEmailMessage,
   type InvitationEmailMessage,
   type LeadNotificationEmailMessage,
+  type PasswordResetEmailMessage,
   type RawEmailMessage,
 } from "../mail.service";
 import { MailOutbox } from "../mail.outbox";
@@ -34,6 +35,14 @@ export class OutboxMailService extends MailService {
     this.logger.debug(
       `Customer portal invitation email captured (not sent). Accept URL: ${message.acceptUrl}`,
     );
+    return Promise.resolve();
+  }
+
+  sendPasswordResetEmail(message: PasswordResetEmailMessage): Promise<void> {
+    this.outbox.recordPasswordReset(message);
+    // Unlike invitation links, reset capabilities are never written to logs,
+    // including development logs. Tests retrieve them directly from MailOutbox.
+    this.logger.debug("Password reset email captured (not sent).");
     return Promise.resolve();
   }
 

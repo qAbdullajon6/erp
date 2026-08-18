@@ -18,6 +18,7 @@ import {
 import { useCurrentUser } from '@/lib/api/auth';
 import type { MembershipRole } from '@/lib/api/organizations';
 import { ADMIN_OPS_ROLES } from '@/lib/role-access';
+import { describeError } from '@/lib/api/describe-error';
 
 /// Must stay in lockstep with API_KEY_SCOPES in
 /// apps/api/src/developer/api-keys/dto/api-key.dto.ts — the server rejects
@@ -82,7 +83,7 @@ export function ApiKeysTab() {
       setNewExpiry('');
       toast.success('API key created — copy it now, it won\'t be shown again');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create API key');
+      toast.error(describeError(err, 'Failed to create API key'));
     }
   };
 
@@ -95,7 +96,7 @@ export function ApiKeysTab() {
       await revokeKey(id);
       toast.success('API key revoked');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to revoke API key');
+      toast.error(describeError(err, 'Failed to revoke API key'));
     }
   };
 
@@ -109,7 +110,7 @@ export function ApiKeysTab() {
       setCreatedKey(result);
       setShowCreate(true);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to rotate key');
+      toast.error(describeError(err, 'Failed to rotate key'));
     } finally {
       setRotatingId(null);
     }
@@ -121,7 +122,7 @@ export function ApiKeysTab() {
       await setEnabled({ id, enabled: !currentlyActive });
       toast.success(currentlyActive ? 'API key disabled' : 'API key enabled');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update API key');
+      toast.error(describeError(err, 'Failed to update API key'));
     } finally {
       setTogglingId(null);
     }
@@ -287,6 +288,7 @@ export function ApiKeysTab() {
                         title="Revoke API key?"
                         description={`Revoke "${key.name}"? Any integration using this key will stop working immediately. This cannot be undone.`}
                         confirmLabel="Revoke"
+                        confirmPhrase="REVOKE"
                         onConfirm={() => handleRevoke(key.id)}
                         destructive
                       />

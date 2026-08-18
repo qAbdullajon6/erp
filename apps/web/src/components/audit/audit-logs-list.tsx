@@ -19,9 +19,9 @@ import {
 import { PageHeader } from "@/components/shared/page-header";
 import { ListToolbar, FilterSelect } from "@/components/shared/list-toolbar";
 import {
-  LoadingState,
   ErrorState,
   EmptyState,
+  TableSkeleton,
 } from "@/components/shared/list-states";
 import { PaginationBar } from "@/components/shared/pagination-bar";
 import { SortHeader } from "@/components/shared/sort-header";
@@ -139,7 +139,7 @@ export function AuditLogsList() {
   return (
     <div className="space-y-6" data-testid="audit-logs-page">
       <PageHeader
-        title="Audit Log"
+        title="Activity log"
         subtitle={
           loading
             ? "Loading..."
@@ -175,6 +175,10 @@ export function AuditLogsList() {
           <option value="dispatch.status_change">Dispatch Status Change</option>
           <option value="dispatch.reassign">Dispatch Reassign</option>
           <option value="dispatch.cancel">Dispatch Cancel</option>
+          <option value="dispatch.conflict_detected">Dispatch Conflict Detected</option>
+          <option value="dispatch.conflict_ignored">Dispatch Conflict Ignored</option>
+          <option value="dispatch.conflict_resolved">Dispatch Conflict Resolved</option>
+          <option value="dispatch.conflict_rechecked">Dispatch Conflict Rechecked</option>
           <option value="driver.create">Driver Create</option>
           <option value="invoice.create">Invoice Create</option>
           <option value="invoice.send">Invoice Send</option>
@@ -203,7 +207,7 @@ export function AuditLogsList() {
       </ListToolbar>
 
       <div className="overflow-hidden rounded-lg border border-brand/10">
-        {loading && <LoadingState label="Loading audit logs..." />}
+        {loading && <TableSkeleton columns={[2, 3, 2, 2, 2]} label="Loading audit log" />}
 
         {error && !loading && (
           <ErrorState message={error} onRetry={() => refetch()} />

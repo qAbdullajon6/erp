@@ -2,6 +2,7 @@ import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import {
   availabilityKeys,
   dashboardKeys,
+  dispatchAnalyticsKeys,
   dispatchBoardKeys,
   dispatchKeys,
   driverDispatchKeys,
@@ -26,7 +27,7 @@ import {
 ///
 ///   dispatch changed  ->  dispatches.*  +  orders.*  +  availability.*
 ///                      +  dispatch-board  +  dashboard  +  driver-dispatches
-///                      +  reports
+///                      +  reports  +  dispatch-analytics
 ///
 /// Drivers and vehicles are deliberately NOT invalidated. Assigning somebody does
 /// not change their employment status or their number plate — only whether they are
@@ -57,6 +58,11 @@ export function invalidateOperationalState(queryClient: QueryClient): Promise<vo
     // Reports KPIs / exception lists are projections of the same operational
     // + financial facts.
     queryClient.invalidateQueries({ queryKey: reportKeys.all }),
+    // Dispatch Analytics' backend-aggregated KPIs/trends/charts are a real
+    // query over the same dispatch data now (DispatchAnalyticsService) —
+    // without this it would sit stale until its 60s poll, same class of bug
+    // as forgetting `availability`.
+    queryClient.invalidateQueries({ queryKey: dispatchAnalyticsKeys.all }),
   ]).then(() => undefined);
 }
 

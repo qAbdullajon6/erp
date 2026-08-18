@@ -4,7 +4,7 @@ import { formatMoney, formatDate } from "@/lib/format";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Package, CheckCircle2, Wallet, Bell, ArrowRight } from "lucide-react";
+import { Package, CheckCircle2, Wallet, Bell, ArrowRight, CreditCard } from "lucide-react";
 
 export const Route = createFileRoute("/portal/")({
   head: () => ({
@@ -70,6 +70,12 @@ function PortalDashboardPage() {
     { icon: Package, label: "Open Orders", value: dashboard.openOrdersCount, color: "text-brand" },
     { icon: CheckCircle2, label: "Delivered This Month", value: dashboard.deliveredThisMonth, color: "text-success" },
     { icon: Wallet, label: "Outstanding Balance", value: formatMoney(dashboard.outstandingBalance), color: "text-destructive" },
+    {
+      icon: CreditCard,
+      label: "Paid This Month",
+      value: formatMoney(dashboard.paymentsThisMonth ?? "0"),
+      color: "text-brand",
+    },
     { icon: Bell, label: "Unread Notifications", value: dashboard.unreadNotificationCount, color: "text-warning" },
   ];
 
@@ -80,8 +86,8 @@ function PortalDashboardPage() {
         <p className="mt-1 text-muted-foreground">Welcome to your customer portal.</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {kpis.map((kpi) => (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          {kpis.map((kpi) => (
           <Card key={kpi.label}>
             <CardContent className="flex items-center gap-4 p-6">
               <div className={`flex h-12 w-12 items-center justify-center rounded-xl bg-brand/10 ${kpi.color}`}>

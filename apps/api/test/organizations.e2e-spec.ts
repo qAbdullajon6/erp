@@ -128,7 +128,7 @@ describe("Organizations (e2e)", () => {
     expect(members.map((m) => m.id)).toEqual([orgB.membership.id]);
   });
 
-  it("only ADMIN can manage organization settings and members", async () => {
+  it("allows fleet roles to read the roster but keeps organization and member mutations ADMIN-only", async () => {
     const admin = await registerAdmin(`Admin-only Org ${randomUUID()}`);
     const dispatcher = await addMemberWithRole(admin, "DISPATCHER");
 
@@ -138,9 +138,32 @@ describe("Organizations (e2e)", () => {
       .send({ name: "Hijacked Name" })
       .expect(403);
 
-    await request(app.getHttpServer())
+    const rosterRes = await request(app.getHttpServer())
       .get("/organizations/current/members")
       .set("Authorization", `Bearer ${dispatcher.accessToken}`)
+      .expect(200);
+    const roster = (
+      rosterRes.body as {
+        data: Array<{ id: string; role: string; user: { email: string } }>;
+      }
+    ).data;
+    expect(roster).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: admin.membership.id, role: "ADMIN" }),
+        expect.objectContaining({
+          id: dispatcher.membershipId,
+          role: "DISPATCHER",
+        }),
+      ]),
+    );
+    expect(
+      roster.find((membership) => membership.id === dispatcher.membershipId)?.user.email,
+    ).toBe(dispatcher.email);
+
+    await request(app.getHttpServer())
+      .patch(`/organizations/current/members/${dispatcher.membershipId}`)
+      .set("Authorization", `Bearer ${dispatcher.accessToken}`)
+      .send({ role: "ACCOUNTANT" })
       .expect(403);
 
     // Inviting a member is the only way to grow an organization now that

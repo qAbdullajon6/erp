@@ -150,7 +150,7 @@ export class ToolExecutor {
       const response = err.getResponse();
       if (typeof response === "string") return response;
       if (typeof response === "object" && response !== null && "message" in response) {
-        const message = (response as { message: unknown }).message;
+        const message = (response).message;
         if (typeof message === "string") return message;
         if (Array.isArray(message)) return message.join(", ");
       }
@@ -186,7 +186,7 @@ function jsonSafe(_key: string, value: unknown): unknown {
   if (value === null || value === undefined) return value;
   if (value instanceof Date) return value.toISOString();
   if (typeof value === "bigint") return value.toString();
-  if (typeof value === "object" && "toFixed" in (value as object) && "s" in (value as object)) {
+  if (typeof value === "object" && "toFixed" in (value) && "s" in (value)) {
     return (value as { toString(): string }).toString();
   }
   return value;

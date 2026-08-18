@@ -32,7 +32,7 @@ test.describe('DIAGNOSTIC: Auth flow and page rendering', () => {
     try {
       // STEP 1: Navigate to login
       console.log('\n=== STEP 1: Navigate to login ===');
-      await page.goto(`${FRONTEND_URL}/auth/sign-in`, { waitUntil: 'domcontentloaded' });
+      await page.goto(`${FRONTEND_URL}/login`, { waitUntil: 'domcontentloaded' });
       console.log(`URL after goto: ${page.url()}`);
 
       // STEP 2: Perform login via UI
@@ -67,7 +67,7 @@ test.describe('DIAGNOSTIC: Auth flow and page rendering', () => {
       const currentUrl = page.url();
       console.log(`Current URL: ${currentUrl}`);
 
-      if (currentUrl.includes('/auth/sign-in')) {
+      if (currentUrl.includes('/login')) {
         console.log('ERROR: REDIRECTED TO LOGIN - Auth state lost or invalid');
       } else if (currentUrl.includes('/app/customers')) {
         console.log('SUCCESS: On /app/customers page');

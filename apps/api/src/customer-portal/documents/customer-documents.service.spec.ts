@@ -1,10 +1,18 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { PrismaService } from "../../prisma/prisma.service";
+import { asDependency } from "../test-support/portal-spec.helpers";
 import { CustomerDocumentsService } from "./customer-documents.service";
+
+function makePrisma() {
+  return {
+    invoice: { findMany: jest.fn() },
+    order: { findMany: jest.fn().mockResolvedValue([]) },
+  };
+}
 
 describe("CustomerDocumentsService", () => {
   let svc: CustomerDocumentsService;
-  let prisma: any;
+  let prisma: ReturnType<typeof makePrisma>;
 
   const payload = {
     accountId: "acc-1",
@@ -15,12 +23,10 @@ describe("CustomerDocumentsService", () => {
   };
 
   beforeEach(async () => {
-    prisma = {
-      invoice: { findMany: jest.fn() },
-    };
+    prisma = makePrisma();
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [CustomerDocumentsService, { provide: PrismaService, useValue: prisma }],
+      providers: [CustomerDocumentsService, { provide: PrismaService, useValue: asDependency<PrismaService>(prisma) }],
     }).compile();
 
     svc = module.get(CustomerDocumentsService);
@@ -43,5 +49,36 @@ describe("CustomerDocumentsService", () => {
     expect(prisma.invoice.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { organizationId: "org-1", customerId: "cust-1" } }),
     );
+  });
+
+  it("adds POD documents when non-meta proofs exist", async () => {
+    prisma.invoice.findMany.mockResolvedValue([]);
+    prisma.order.findMany.mockResolvedValue([
+      {
+        id: "ord-1",
+        orderNumber: "ORD-1",
+        updatedAt: new Date("2026-01-03"),
+        dispatches: [
+          {
+            deliveryProofs: [
+              {
+                id: "p1",
+                createdAt: new Date("2026-01-03"),
+                metadata: null,
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const result = await svc.list(payload);
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        id: "pod:ord-1",
+        type: "POD",
+        title: "POD — Order #ORD-1",
+      }),
+    ]);
   });
 });

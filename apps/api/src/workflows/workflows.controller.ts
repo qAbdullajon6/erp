@@ -10,7 +10,7 @@ import { WorkflowsService } from './workflows.service';
 import { WorkflowEngineService } from './engine/workflow-engine.service';
 import { TRIGGER_DEFINITIONS } from './triggers/trigger-registry';
 import { ACTION_DEFINITIONS } from './actions/action-registry';
-import { MembershipRole } from '@prisma/client';
+import { MembershipRole, WorkflowExecutionStatus, WorkflowStatus } from '@prisma/client';
 
 interface AuthenticatedUser {
   userId: string;
@@ -36,7 +36,7 @@ export class WorkflowsController {
       page: query.page ? Number(query.page) : undefined,
       limit: query.limit ? Number(query.limit) : undefined,
       active: query.active,
-      status: query.status as any,
+      status: query.status as WorkflowStatus | undefined,
       search: query.search,
     });
     return result;
@@ -193,7 +193,7 @@ export class WorkflowsController {
   async duplicate(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { name?: string },
+    @Body() body: { name?: string } = {},
   ) {
     const workflow = await this.service.duplicate(user.organizationId, user.userId, id, body.name);
     return workflow;
@@ -234,7 +234,7 @@ export class WorkflowsController {
     const result = await this.service.getExecutions(user.organizationId, id, {
       page: query.page ? Number(query.page) : undefined,
       limit: query.limit ? Number(query.limit) : undefined,
-      status: query.status as any,
+      status: query.status as WorkflowExecutionStatus | undefined,
     });
     return result;
   }

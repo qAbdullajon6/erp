@@ -34,6 +34,31 @@ export const CONSENT_ESSENTIAL: ConsentState = {
   functionality: true,
 };
 
+/// Whether the consent banner is currently occupying the bottom of the screen.
+///
+/// The banner is pinned to `bottom-0` at `z-[60]`, and on a phone it is tall
+/// enough to cover anything else docked down there — including the landing
+/// page's sticky "Get started" button, which is the primary mobile conversion
+/// path. Rather than stack two bars on a 667px-tall screen, whatever else wants
+/// that space subscribes here and stands down until the visitor has chosen.
+let bannerOnScreen = false;
+const bannerListeners = new Set<() => void>();
+
+export function setConsentBannerOnScreen(value: boolean): void {
+  if (bannerOnScreen === value) return;
+  bannerOnScreen = value;
+  bannerListeners.forEach((listener) => listener());
+}
+
+export function subscribeConsentBanner(listener: () => void): () => void {
+  bannerListeners.add(listener);
+  return () => bannerListeners.delete(listener);
+}
+
+export function getConsentBannerOnScreen(): boolean {
+  return bannerOnScreen;
+}
+
 function doNotTrackEnabled(): boolean {
   if (typeof navigator === 'undefined') return false;
   const dnt =

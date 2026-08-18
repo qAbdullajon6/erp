@@ -4,6 +4,7 @@ import { invalidateOperationalState } from './invalidate';
 import {
   availabilityKeys,
   dashboardKeys,
+  dispatchAnalyticsKeys,
   dispatchBoardKeys,
   dispatchKeys,
   driverKeys,
@@ -63,16 +64,18 @@ describe('invalidateOperationalState — the invalidation matrix', () => {
     expect(isStale(availabilityKeys.window(WINDOW))).toBe(true);
   });
 
-  it('also marks board summary, dashboard, and reports stale', async () => {
+  it('also marks board summary, dashboard, reports, and dispatch analytics stale', async () => {
     await seed(dispatchBoardKeys.all);
     await seed(dashboardKeys.summary());
     await seed(reportKeys.all);
+    await seed(dispatchAnalyticsKeys.snapshot({ dateFrom: '2038-01-01', dateTo: '2038-01-31' }));
 
     await invalidateOperationalState(queryClient);
 
     expect(isStale(dispatchBoardKeys.all)).toBe(true);
     expect(isStale(dashboardKeys.summary())).toBe(true);
     expect(isStale(reportKeys.all)).toBe(true);
+    expect(isStale(dispatchAnalyticsKeys.snapshot({ dateFrom: '2038-01-01', dateTo: '2038-01-31' }))).toBe(true);
   });
 
   it('invalidates EVERY cached availability window, not just the one on screen', async () => {

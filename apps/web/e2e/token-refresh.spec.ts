@@ -29,10 +29,9 @@ test('an expired access token is refreshed instead of logging the user out', asy
   await page.waitForTimeout(8000);
 
   expect(refreshCalls, 'the app should have exchanged the refresh token').toContain(200);
-  await expect(page).not.toHaveURL(/\/auth\/sign-in/);
+  await expect(page).not.toHaveURL(/\/login/);
 
-  const body = await page.locator('body').innerText();
-  expect(body).toContain('Command Center');
+  await expect(page.getByTestId('dashboard')).toBeVisible();
 
   // The rotated tokens must be persisted, otherwise the next request 401s again.
   const stored = await page.evaluate(() => sessionStorage.getItem('flowerp_access_token'));

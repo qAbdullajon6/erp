@@ -6,7 +6,8 @@ export interface ActionDefinition {
 
 export const ACTION_DEFINITIONS: ActionDefinition[] = [
   { type: 'send_email', displayName: 'Send Email', description: 'Send an email to a specified address' },
-  { type: 'send_notification', displayName: 'Send Notification', description: 'Create an in-app notification' },
+  { type: 'send_notification', displayName: 'Send Notification', description: 'Create an in-app notification (not pushed to email/SMS channels)' },
+  { type: 'dispatch_notification', displayName: 'Dispatch Notification', description: 'Create a notification and push it through the user\'s configured channels (email/SMS/in-app)' },
   { type: 'send_sms', displayName: 'Send SMS', description: 'Not configured — records the attempt but does not send (no SMS provider)' },
   { type: 'webhook', displayName: 'HTTP Request', description: 'Make an HTTP request to an external URL (private IPs blocked)' },
   { type: 'create_entity', displayName: 'Create Record', description: 'Create a new record in the system' },

@@ -14,6 +14,7 @@ import {
   useReactivateMutation,
 } from "@/lib/api/billing";
 import { CreditCard } from "lucide-react";
+import { describeError } from "@/lib/api/describe-error";
 
 /// Billing settings surfaces the renewal behaviour that IS controllable through
 /// the existing subscription lifecycle endpoints (scheduled cancel ⇄ reactivate,
@@ -48,7 +49,7 @@ export function SettingsTab() {
       await cancel.mutateAsync({ immediate: false, reason: "admin_requested" });
       toast.success("Auto-renew turned off — cancels at period end");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to update renewal");
+      toast.error(describeError(err, "Failed to update renewal"));
     }
   };
 
@@ -57,7 +58,7 @@ export function SettingsTab() {
       await reactivate.mutateAsync();
       toast.success("Auto-renew turned back on");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to update renewal");
+      toast.error(describeError(err, "Failed to update renewal"));
     }
   };
 

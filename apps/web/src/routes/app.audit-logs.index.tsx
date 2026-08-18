@@ -4,6 +4,9 @@ import { ProtectedApiRoute } from "@/components/layout/protected-api-route";
 import { AUDIT_ROLES } from "@/lib/role-access";
 
 export const Route = createFileRoute("/app/audit-logs/")({
+  head: () => ({
+    meta: [{ title: "Activity log — FlowERP AI" }],
+  }),
   component: AuditLogsPage,
 });
 

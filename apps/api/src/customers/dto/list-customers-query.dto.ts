@@ -1,5 +1,6 @@
 import { CustomerStatus } from "@prisma/client";
 import { Transform, Type } from "class-transformer";
+import { emptyToUndefined } from "../../common/query-transform.util";
 import { IsBoolean, IsEnum, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
 
 export const CUSTOMER_SORT_FIELDS = [
@@ -16,10 +17,11 @@ function parseBooleanParam({ value }: { value: unknown }): boolean {
   return value === "true" || value === true;
 }
 
-/// `hasOverdueBalance` is deliberately NOT a filter here: Customers has no
-/// relation yet to Invoices/Orders (those are still ERP modules that only
-/// exist in the frontend's localStorage demo), so there is nothing to
-/// compute an overdue balance from on this API. See docs/CUSTOMERS_API.md.
+/// `hasOverdueBalance` is deliberately NOT a filter here even though Customer
+/// now has real Order/Invoice relations: computing it means aggregating every
+/// customer's invoices, which this endpoint's single findMany/count is not
+/// shaped to do cheaply. The frontend derives an equivalent "Outstanding"
+/// view client-side today (customer-relationship-stats.ts) instead.
 export class ListCustomersQueryDto {
   @IsOptional()
   @Type(() => Number)
@@ -42,6 +44,7 @@ export class ListCustomersQueryDto {
   search?: string;
 
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsEnum(CustomerStatus)
   status?: CustomerStatus;
 
@@ -51,10 +54,12 @@ export class ListCustomersQueryDto {
   includeArchived: boolean = false;
 
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsIn(CUSTOMER_SORT_FIELDS)
   sortBy: CustomerSortField = "createdAt";
 
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsIn(["asc", "desc"])
   sortOrder: "asc" | "desc" = "desc";
 }

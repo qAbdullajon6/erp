@@ -13,11 +13,11 @@ test('DIAGNOSTIC: Authenticated session - navigate to customers and verify page 
     console.log('[DIAGNOSTIC] Navigating to /app/customers');
     await page.goto('http://localhost:3001/app/customers', { waitUntil: 'domcontentloaded' });
 
-    // STEP 2: Verify URL (should NOT redirect to /auth/sign-in)
+    // STEP 2: Verify URL (should NOT redirect to /login)
     const finalUrl = page.url();
     console.log(`[DIAGNOSTIC] Final URL: ${finalUrl}`);
     expect(finalUrl).toContain('/app/customers');
-    expect(finalUrl).not.toContain('/auth/sign-in');
+    expect(finalUrl).not.toContain('/login');
 
     // STEP 3: Verify sessionStorage is populated (after page load)
     const sessionAfterNav = await page.evaluate(() => ({

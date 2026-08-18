@@ -1,7 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import type { AiTool } from "./tool.interface";
 import type { CurrentUserPayload } from "../../auth/interfaces/current-user.interface";
-import type { MembershipRole } from "@prisma/client";
+import type { MembershipRole, UsageMetricType } from "@prisma/client";
 import { FeatureGateService } from "../../billing/feature-gate.service";
 import { UsageMeteringService } from "../../billing/usage-metering.service";
 import { BillingSeatsService } from "../../billing/billing-seats.service";
@@ -76,7 +76,7 @@ export class BillingTools {
               autoRenew: subscription.autoRenew,
               cancelAt: subscription.cancelAt,
             };
-          } catch (error: any) {
+          } catch {
             return { error: "No active subscription found" };
           }
         },
@@ -139,15 +139,15 @@ export class BillingTools {
         allowedRoles: ALL_STAFF,
         mutating: false,
         handler: async (args: Record<string, unknown>, user: CurrentUserPayload) => {
-          const metric = args.metric as string;
+          const metric = args.metric as UsageMetricType;
           const currentUsage = await this.usageMetering.getCurrentUsage(
             user.organizationId,
-            metric as any,
+            metric,
           );
 
           const remaining = await this.usageMetering.getRemainingQuota(
             user.organizationId,
-            metric as any,
+            metric,
           );
 
           return {
@@ -229,8 +229,9 @@ export class BillingTools {
                 percentageUsed: m.percentageUsed.toFixed(1) + "%",
               })),
             };
-          } catch (error: any) {
-            return { error: "Unable to generate recommendation", details: error.message };
+          } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : "Unknown error";
+            return { error: "Unable to generate recommendation", details: message };
           }
         },
       },

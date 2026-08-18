@@ -15,6 +15,7 @@ import { MailService, type InvitationEmailMessage } from "../mail/mail.service";
 import { PasswordService } from "../auth/password.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { BillingSeatsService } from "../billing/billing-seats.service";
+import { LeadTimelineService } from "../leads/lead-timeline.service";
 import {
   InvitationAccountUnavailableError,
   InvitationAlreadyAcceptedError,
@@ -129,6 +130,7 @@ export class InvitationService {
     private readonly passwordService: PasswordService,
     private readonly billingSeats: BillingSeatsService,
     private readonly auditService: AuditService,
+    private readonly leadTimeline: LeadTimelineService,
   ) {
     this.invitationConfig = this.configService.get<InvitationConfig>("invitation")!;
   }
@@ -138,6 +140,17 @@ export class InvitationService {
   /// that transaction commits — so a failed write never produces an email, and
   /// a failed email never rolls back a committed invitation.
   async createInvitation(input: CreateInvitationInput): Promise<InvitationSummary> {
+    const result = await this.createInvitationWithDeliveryReport(input);
+    return result.invitation;
+  }
+
+  /// Same as createInvitation, but surfaces delivery outcome and the accept
+  /// URL so platform convert / support can copy the link when SMTP fails.
+  async createInvitationWithDeliveryReport(input: CreateInvitationInput): Promise<{
+    invitation: InvitationSummary;
+    emailSent: boolean;
+    acceptUrl: string;
+  }> {
     // Fails fast, before minting a token or touching the invitation table, so
     // an org at its seat limit gets the same ConflictException addMember used
     // to give rather than a usable invitation nothing can ever accept.
@@ -180,16 +193,35 @@ export class InvitationService {
       }
     });
 
+    const acceptUrl = this.buildAcceptUrl(rawToken);
+
     // After commit only.
-    await this.deliverInvitationEmail({
+    const emailSent = await this.deliverInvitationEmail({
       to: email,
       organizationName: input.organizationName,
       inviterName: input.inviterDisplayName,
-      acceptUrl: this.buildAcceptUrl(rawToken),
+      acceptUrl,
       expiresAt,
     });
 
-    return this.toSummary(invitation);
+    await this.auditService.log({
+      organizationId: input.organizationId,
+      actorUserId: input.invitedByUserId,
+      action: "organization.member.invite",
+      entityType: "Invitation",
+      entityId: invitation.id,
+      metadata: {
+        email,
+        role: input.role,
+        organizationName: input.organizationName,
+      },
+    });
+
+    return {
+      invitation: this.toSummary(invitation),
+      emailSent,
+      acceptUrl,
+    };
   }
 
   /// Issues a fresh token for an existing active invitation and re-sends the
@@ -200,7 +232,7 @@ export class InvitationService {
   async resendInvitation(
     organizationId: string,
     invitationId: string,
-  ): Promise<InvitationSummary> {
+  ): Promise<InvitationSummary & { emailSent: boolean; acceptUrl: string }> {
     const rawToken = this.createToken();
     const tokenHash = this.hashToken(rawToken);
     const expiresAt = this.calculateExpiry();
@@ -233,15 +265,16 @@ export class InvitationService {
     // persisted invitation, read via Prisma — no OrganizationService/UserService
     // dependency.
     const context = await this.loadInvitationEmailContext(invitation);
-    await this.deliverInvitationEmail({
+    const acceptUrl = this.buildAcceptUrl(rawToken);
+    const emailSent = await this.deliverInvitationEmail({
       to: invitation.email,
       organizationName: context.organizationName,
       inviterName: context.inviterName,
-      acceptUrl: this.buildAcceptUrl(rawToken),
+      acceptUrl,
       expiresAt,
     });
 
-    return this.toSummary(invitation);
+    return { ...this.toSummary(invitation), emailSent, acceptUrl };
   }
 
   /// Revokes an active invitation. Scoped to `organizationId`: another
@@ -439,6 +472,15 @@ export class InvitationService {
       });
     }
 
+    // Best-effort lead timeline: only when this org was created via Convert.
+    void this.leadTimeline
+      .recordInvitationAccepted(result.organizationId, validated.email, result.userId)
+      .catch((error) =>
+        this.logger.warn(
+          `Lead timeline update after invite accept failed: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      );
+
     return {
       userId: result.userId,
       organizationId: result.organizationId,
@@ -592,12 +634,15 @@ export class InvitationService {
   /// Sends the invitation email after the DB transaction has committed. A
   /// delivery failure is swallowed and logged generically — never with the
   /// email, token, hash, or URL — because the invitation is already valid and
-  /// can be resent; rolling it back here would be wrong.
-  private async deliverInvitationEmail(message: InvitationEmailMessage): Promise<void> {
+  /// can be resent; rolling it back here would be wrong. Returns whether SMTP
+  /// accepted the message so platform convert can warn the operator.
+  private async deliverInvitationEmail(message: InvitationEmailMessage): Promise<boolean> {
     try {
       await this.mailService.sendInvitationEmail(message);
+      return true;
     } catch {
       this.logger.error("Invitation email delivery failed after commit");
+      return false;
     }
   }
 

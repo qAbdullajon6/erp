@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/shared/page-header';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,7 +20,9 @@ import {
 import { useCurrentUser } from '@/lib/api/auth';
 import { CUSTOMER_WRITE_ROLES, INVOICE_READ_ROLES } from '@/lib/role-access';
 import type { MembershipRole } from '@/lib/api/organizations';
-import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-states';
+import { ErrorState, EmptyState, ListSkeleton } from '@/components/shared/list-states';
+import { FilterTabs } from '@/components/shared/filter-tabs';
+import { SearchInput } from '@/components/shared/search-input';
 import { PaginationBar } from '@/components/shared/pagination-bar';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { CustomersCreateSheet } from '@/components/customers/customers-create-sheet';
@@ -42,7 +45,6 @@ import {
   MoreHorizontal,
   Phone,
   Plus,
-  Search,
   User,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -103,8 +105,21 @@ export function CustomersList() {
   const search = searchState.search || '';
   const createOpen = Boolean(searchState.create);
   const tabQuery = tabToQuery(tab);
-  const sortBy = (searchState.sortBy as CustomerSortField | undefined) || tabQuery.sortBy || 'updatedAt';
-  const sortOrder = searchState.sortOrder || tabQuery.sortOrder || 'desc';
+  const allowedSort: CustomerSortField[] = [
+    'customerCode',
+    'companyName',
+    'createdAt',
+    'updatedAt',
+    'creditLimit',
+    'status',
+  ];
+  const sortBy = allowedSort.includes(searchState.sortBy as CustomerSortField)
+    ? (searchState.sortBy as CustomerSortField)
+    : tabQuery.sortBy || 'updatedAt';
+  const sortOrder =
+    searchState.sortOrder === 'asc' || searchState.sortOrder === 'desc'
+      ? searchState.sortOrder
+      : tabQuery.sortOrder || 'desc';
 
   const listEnabled = tab !== 'outstanding';
   const { data, meta, loading, error, refetch } = useCustomersList(
@@ -267,71 +282,54 @@ export function CustomersList() {
 
   return (
     <div className="space-y-4" data-testid="customers-page">
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">Customers</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {loading ? 'Loading…' : error ? 'Could not load accounts' : `${meta.total} accounts`}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="outline" onClick={handleExport} disabled={displayRows.length === 0}>
-            <Download className="mr-1.5 h-3.5 w-3.5" />
-            Export
-          </Button>
-          {canWrite && (
-            <Button
-              size="sm"
-              className="bg-gradient-brand text-brand-foreground hover:opacity-90"
-              onClick={() => setCreateOpen(true)}
-            >
-              <Plus className="mr-1.5 h-3.5 w-3.5" />
-              New Customer
+      <PageHeader
+        title="Customers"
+        subtitle={
+          loading
+            ? 'Loading…'
+            : error
+              ? 'Could not load accounts'
+              : `${meta.total} account${meta.total === 1 ? '' : 's'}`
+        }
+        action={
+          <>
+            <Button size="sm" variant="outline" onClick={handleExport} disabled={displayRows.length === 0}>
+              <Download className="mr-1.5 h-3.5 w-3.5" />
+              Export
             </Button>
-          )}
-        </div>
-      </div>
+            {canWrite && (
+              <Button
+                size="sm"
+                className="bg-gradient-brand text-brand-foreground hover:opacity-90"
+                onClick={() => setCreateOpen(true)}
+              >
+                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                New Customer
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {/* Search + quick filters */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[16rem] flex-1">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={localSearch}
-            onChange={(e) => setLocalSearch(e.target.value)}
-            placeholder="Search company, contact, email, phone…"
-            data-testid="customers-search-input"
-            className="h-9 w-full rounded-md border border-border bg-background pl-8 pr-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
-          />
-        </div>
-        <Button
-          size="sm"
-          variant={tab === 'active' ? 'secondary' : 'outline'}
-          className="h-9"
-          onClick={() => setTab('active')}
-        >
-          Active
-        </Button>
-        {canViewInvoices && (
-          <Button
-            size="sm"
-            variant={tab === 'outstanding' ? 'secondary' : 'outline'}
-            className="h-9"
-            onClick={() => setTab('outstanding')}
-          >
-            Outstanding
-          </Button>
-        )}
-        <Button
-          size="sm"
-          variant={tab === 'high_value' ? 'secondary' : 'outline'}
-          className="h-9"
-          onClick={() => setTab('high_value')}
-        >
-          High value
-        </Button>
+        <SearchInput
+          className="min-w-[16rem] flex-1"
+          value={localSearch}
+          onChange={setLocalSearch}
+          placeholder="Search company, contact, email, phone…"
+          label="Search customers"
+          testId="customers-search-input"
+        />
       </div>
+
+      {relationships.truncated && (
+        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-foreground">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warning" />
+          Open orders / invoices exceed what this page can total — per-account balances and
+          utilization below may be understated. Open an account to see its own full history.
+        </div>
+      )}
 
       {/* Ops summary strip */}
       {summaryChips.length > 0 && (
@@ -348,27 +346,15 @@ export function CustomersList() {
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="flex flex-wrap gap-1 border-b border-border/60">
-        {TAB_CONFIG.filter((t) => t.key !== 'outstanding' || canViewInvoices).map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setTab(t.key)}
-            className={cn(
-              '-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors',
-              tab === t.key
-                ? 'border-brand text-foreground'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <FilterTabs
+        tabs={TAB_CONFIG.filter((t) => t.key !== 'outstanding' || canViewInvoices)}
+        value={tab}
+        onChange={setTab}
+        label="Customer filters"
+      />
 
       <div className="overflow-hidden rounded-xl border border-border/70 bg-surface">
-        {loading && <LoadingState label="Loading customers…" />}
+        {loading && <ListSkeleton rows={6} label="Loading customers" />}
         {error && !loading && <ErrorState message={error} onRetry={() => refetch()} />}
 
         {!loading && !error && displayRows.length === 0 && (

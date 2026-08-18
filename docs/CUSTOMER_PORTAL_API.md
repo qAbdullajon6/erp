@@ -120,12 +120,17 @@ login — a staff token is never accepted here (different Passport strategy, dif
 | `GET /customer-portal/auth/me` | Current session. |
 | `POST /customer-portal/auth/logout` | Revokes one refresh token. |
 | `POST /customer-portal/auth/change-password` | Revokes every other active session. |
-| `GET /customer-portal/dashboard` | Aggregates: open orders, delivered this month, outstanding balance/count, recent orders, upcoming deliveries, unread count. |
-| `GET /customer-portal/orders`, `GET /customer-portal/orders/:id`, `GET /customer-portal/orders/:id/timeline` | Always scoped to the caller's own `customerId`; cross-customer/cross-org access returns 404, never 403 (see Security). |
+| `GET /customer-portal/dashboard` | Aggregates: open orders, delivered this month, outstanding balance/count, payments this month, recent orders, upcoming deliveries, unread count. |
+| `GET /customer-portal/orders`, `GET /customer-portal/orders/:id`, `GET /customer-portal/orders/:id/timeline` | Always scoped to the caller's own `customerId`; cross-customer/cross-org access returns 404, never 403 (see Security). Timeline returns customer-safe labeled events (`ORDER` / `DISPATCH`). Order detail may include a `shipment` summary (dispatch number, status, driver first name + last initial, vehicle plate/code — no phone/email). |
+| `GET /customer-portal/orders/:id/tracking` | Live vehicle position for an owned order (no driver PII). |
+| `GET /customer-portal/orders/:id/delivery-proof` | Proof-of-delivery list for the order (excludes meta-only PHOTO stubs). Returns download URLs — never raw `storagePath`. |
+| `GET /customer-portal/orders/:id/delivery-proof/:proofId/file` | Streams the proof file after ownership check (`uploads/driver-proofs/...`). |
 | `GET /customer-portal/invoices`, `GET /customer-portal/invoices/:id` | Same scoping rule. |
-| `GET /customer-portal/documents` | Synthesized list (see Known limitations — invoices only, currently). |
-| `GET /customer-portal/notifications`, `.../unread-count`, `POST .../:key/read`, `POST .../read-all` | Synthesized feed (see below), with per-account read tracking. |
-| `GET /customer-portal/profile`, `PATCH /customer-portal/profile` | Read/update the linked `Customer` record's contact fields. Monetary fields (`creditLimit`) are decimal **strings**, never JS numbers. |
+| `GET /customer-portal/payments`, `GET /customer-portal/payments/summary` | Payments joined through invoices owned by this customer. Summary: outstandingBalance, paidThisMonth, lastPayment, overdueCount. |
+| `GET /customer-portal/documents` | Synthesized list of invoices and POD documents (when delivery proofs exist). |
+| `GET /customer-portal/notifications`, `.../unread-count`, `POST .../:key/read`, `POST .../read-all` | Synthesized feed (see below), filtered by notification preferences, with per-account read tracking. |
+| `GET /customer-portal/notifications/preferences`, `PATCH .../preferences` | Preference flags + `language` / `timezone` on `CustomerPortalAccount`. |
+| `GET /customer-portal/profile`, `PATCH /customer-portal/profile` | Read/update the linked `Customer` contact fields plus portal language/timezone/notification preferences. Monetary fields (`creditLimit`) are decimal **strings**, never JS numbers. |
 
 ### Staff-facing (organization session, `ADMIN`/`SALES_CRM_MANAGER`)
 
@@ -157,11 +162,16 @@ there, undocumented; `customer_portal_invitations` is new — see the Prisma mig
 `20260717050000_add_customer_portal_invitations`):
 
 - `customer_portal_accounts` — `organizationId`, `customerId` (unique), `email`,
-  `passwordHash`, `status` (`ACTIVE`/`SUSPENDED`/`DISABLED`), `lastLoginAt`.
+  `passwordHash`, `status` (`ACTIVE`/`SUSPENDED`/`DISABLED`), `lastLoginAt`,
+  optional `notificationPreferences` (JSON), `language` (default `en`),
+  `timezone` (default `UTC`).
 - `customer_refresh_tokens` — mirrors `refresh_tokens` exactly, scoped to an account instead
   of a user.
 - `customer_notification_reads` — `accountId`, `key`, unique on the pair.
 - `customer_portal_invitations` — mirrors `invitations` exactly (see Provisioning above).
+
+Delivery proofs themselves live on `dispatch_delivery_proofs` (driver workspace / POD
+uploads); the portal only reads rows for dispatches belonging to the caller's orders.
 
 ## Security
 
@@ -201,23 +211,15 @@ there, undocumented; `customer_portal_invitations` is new — see the Prisma mig
 
 ## Known limitations
 
-- **Delivery Proof viewing is not wired up.** The original design included a customer-facing
-  proof-of-delivery viewer (`GET /customer-portal/orders/:id/delivery-proof`, a "POD"
-  document type). The Delivery Proof module (model, service, storage) is **not present in
-  this repository** as of this milestone — it existed in an earlier session and was removed
-  before this one began. Rather than reference a table/service that doesn't exist, this
-  capability was omitted outright: `CustomerOrdersService` has no delivery-proof methods,
-  and `CustomerDocumentsService` only synthesizes invoice documents. The frontend's
-  `usePortalOrderDeliveryProofs` hook and the order-detail page's "Delivery Proofs" card
-  still exist and degrade gracefully (an empty result, no error shown — the card simply
-  doesn't render), but will show nothing until Delivery Proof is recovered/rebuilt and this
-  module's order/document services are extended to use it again.
 - **No test-only account seeding.** There is no seed script that creates a demo
   `CustomerPortalAccount` — every account must go through the real invite → activate flow
   (including in e2e tests, which do exactly that).
 - **No self-service password reset** ("forgot password") — only authenticated
   change-password. A reset flow would need its own token/email infrastructure, deliberately
   out of scope for this milestone.
+- **Notification feed is synthesized**, not a push/email channel — preference flags only
+  filter the in-portal feed (assigned / delayed / delivered shipments, invoice created /
+  overdue, payment received). Outbound email/SMS for those events is not wired here.
 
 ## Deployment requirements
 

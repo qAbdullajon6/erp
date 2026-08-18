@@ -2,6 +2,7 @@ import { Controller, Get, Param, ParseUUIDPipe, Query, Req, UseGuards } from "@n
 import type { Request } from "express";
 import { ApiKeyGuard } from "../developer/guards/api-key.guard";
 import { ApiKeyRateLimitGuard } from "../developer/guards/api-key-rate-limit.guard";
+import { ApiQuotaGuard } from "../developer/guards/api-quota.guard";
 import { RequireApiKeyScopes } from "../developer/decorators/api-key-scopes.decorator";
 import { OrdersService } from "../orders/orders.service";
 import { CustomersService } from "../customers/customers.service";
@@ -32,9 +33,10 @@ import { ListTripsQueryDto } from "../telematics/dto/list-trips-query.dto";
 /// and the UI can never drift into seeing different data.
 ///
 /// Guard order matters: ApiKeyGuard authenticates and populates req.apiKey,
-/// which ApiKeyRateLimitGuard then meters. Reversing them would meter nothing.
+/// which ApiKeyRateLimitGuard and ApiQuotaGuard then meter. Reversing them
+/// would meter nothing.
 @Controller("v1")
-@UseGuards(ApiKeyGuard, ApiKeyRateLimitGuard)
+@UseGuards(ApiKeyGuard, ApiKeyRateLimitGuard, ApiQuotaGuard)
 export class PublicApiController {
   constructor(
     private readonly orders: OrdersService,

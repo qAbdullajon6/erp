@@ -3,6 +3,9 @@ import { ProtectedApiRoute } from '@/components/layout/protected-api-route';
 import { CUSTOMER_WRITE_ROLES } from '@/lib/role-access';
 
 export const Route = createFileRoute('/app/customers/create')({
+  head: () => ({
+    meta: [{ title: "New Customer — FlowERP AI" }],
+  }),
   beforeLoad: () => {
     throw redirect({ to: '/app/customers', search: { create: true } as const });
   },

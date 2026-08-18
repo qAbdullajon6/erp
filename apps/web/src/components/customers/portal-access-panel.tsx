@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
+import { describeError } from '@/lib/api/describe-error';
 import { Mail, RefreshCw, Ban, Play, XCircle } from 'lucide-react';
 import {
   useCustomerPortalAccessStatus,
@@ -61,7 +62,7 @@ export function PortalAccessPanel({
       await invite();
       toast.success('Portal invitation sent');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to send portal invitation');
+      toast.error(describeError(err, 'Failed to send portal invitation'));
     } finally {
       setBusy(false);
     }
@@ -74,7 +75,7 @@ export function PortalAccessPanel({
       await resend(status.pendingInvitation.id);
       toast.success('Invitation resent');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to resend invitation');
+      toast.error(describeError(err, 'Failed to resend invitation'));
     } finally {
       setBusy(false);
     }
@@ -87,7 +88,7 @@ export function PortalAccessPanel({
       await revoke(status.pendingInvitation.id);
       toast.success('Invitation revoked');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to revoke invitation');
+      toast.error(describeError(err, 'Failed to revoke invitation'));
     } finally {
       setBusy(false);
     }
@@ -99,7 +100,7 @@ export function PortalAccessPanel({
       await suspend();
       toast.success('Portal access suspended');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to suspend portal access');
+      toast.error(describeError(err, 'Failed to suspend portal access'));
     } finally {
       setBusy(false);
     }
@@ -111,7 +112,7 @@ export function PortalAccessPanel({
       await reactivate();
       toast.success('Portal access reactivated');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to reactivate portal access');
+      toast.error(describeError(err, 'Failed to reactivate portal access'));
     } finally {
       setBusy(false);
     }

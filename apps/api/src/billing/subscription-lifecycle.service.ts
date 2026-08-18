@@ -1,10 +1,11 @@
 import { ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { OrganizationSubscription, Prisma, SubscriptionStatus } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { SubscriptionPlanService } from "./subscription-plan.service";
 import { FeatureGateService } from "./feature-gate.service";
+import type { SubscriptionWithPlan } from "./types/subscription.types";
 
 /// Subscription lifecycle management: create, upgrade, downgrade, cancel, renew, expire.
 ///
@@ -45,7 +46,7 @@ export class SubscriptionLifecycleService {
       paymentCustomerId?: string;
       actor?: CurrentUserPayload;
     } = {},
-  ): Promise<OrganizationSubscription> {
+  ): Promise<SubscriptionWithPlan> {
     // Check if subscription already exists
     const existing = await this.prisma.organizationSubscription.findUnique({
       where: { organizationId },
@@ -117,7 +118,7 @@ export class SubscriptionLifecycleService {
     organizationId: string,
     newPlanId: string,
     actor: CurrentUserPayload,
-  ): Promise<OrganizationSubscription> {
+  ): Promise<SubscriptionWithPlan> {
     const subscription = await this.getActiveSubscription(organizationId);
     const currentPlan = await this.planService.getPlanById(subscription.planId);
     const newPlan = await this.planService.getPlanById(newPlanId);
@@ -176,7 +177,7 @@ export class SubscriptionLifecycleService {
     newPlanId: string,
     actor: CurrentUserPayload,
     opts: { immediate?: boolean } = {},
-  ): Promise<OrganizationSubscription> {
+  ): Promise<SubscriptionWithPlan> {
     const subscription = await this.getActiveSubscription(organizationId);
     const currentPlan = await this.planService.getPlanById(subscription.planId);
     const newPlan = await this.planService.getPlanById(newPlanId);
@@ -236,7 +237,7 @@ export class SubscriptionLifecycleService {
               scheduledBy: actor.userId,
               scheduledAt: new Date().toISOString(),
             },
-          } as Prisma.InputJsonValue,
+          },
         },
         include: { plan: true },
       });
@@ -262,7 +263,7 @@ export class SubscriptionLifecycleService {
       });
 
       this.logger.log(
-        `Scheduled downgrade for org ${organizationId}: ${currentPlan.name} -> ${newPlan.name} at ${subscription.currentPeriodEnd}`,
+        `Scheduled downgrade for org ${organizationId}: ${currentPlan.name} -> ${newPlan.name} at ${subscription.currentPeriodEnd.toISOString()}`,
       );
 
       return updated;
@@ -276,7 +277,7 @@ export class SubscriptionLifecycleService {
     organizationId: string,
     actor: CurrentUserPayload,
     opts: { immediate?: boolean; reason?: string } = {},
-  ): Promise<OrganizationSubscription> {
+  ): Promise<SubscriptionWithPlan> {
     const subscription = await this.getSubscription(organizationId);
 
     // Idempotent: already cancelled
@@ -353,7 +354,7 @@ export class SubscriptionLifecycleService {
         metadata: { effectiveDate: subscription.currentPeriodEnd, reason: opts.reason },
       });
 
-      this.logger.log(`Scheduled cancellation for org ${organizationId} at ${subscription.currentPeriodEnd}`);
+      this.logger.log(`Scheduled cancellation for org ${organizationId} at ${subscription.currentPeriodEnd.toISOString()}`);
 
       return updated;
     }
@@ -364,7 +365,7 @@ export class SubscriptionLifecycleService {
   async reactivateSubscription(
     organizationId: string,
     actor: CurrentUserPayload,
-  ): Promise<OrganizationSubscription> {
+  ): Promise<SubscriptionWithPlan> {
     const subscription = await this.getSubscription(organizationId);
 
     if (subscription.status === "CANCELLED") {
@@ -417,7 +418,7 @@ export class SubscriptionLifecycleService {
   /// Renew subscription for next billing period.
   /// Called by background job or payment webhook.
   /// Handles scheduled downgrades if present.
-  async renewSubscription(organizationId: string): Promise<OrganizationSubscription> {
+  async renewSubscription(organizationId: string): Promise<SubscriptionWithPlan> {
     const subscription = await this.getSubscription(organizationId);
 
     // Check for scheduled downgrade
@@ -491,7 +492,7 @@ export class SubscriptionLifecycleService {
   async suspendSubscription(
     organizationId: string,
     reason: string,
-  ): Promise<OrganizationSubscription> {
+  ): Promise<SubscriptionWithPlan> {
     const subscription = await this.getActiveSubscription(organizationId);
 
     const updated = await this.prisma.organizationSubscription.update({
@@ -501,7 +502,7 @@ export class SubscriptionLifecycleService {
         metadata: {
           suspendedAt: new Date().toISOString(),
           suspensionReason: reason,
-        } as Prisma.InputJsonValue,
+        },
       },
       include: { plan: true },
     });
@@ -524,7 +525,7 @@ export class SubscriptionLifecycleService {
 
   /// Expire subscription (end without renewal).
   /// Called by background job when period ends and autoRenew=false.
-  async expireSubscription(organizationId: string): Promise<OrganizationSubscription> {
+  async expireSubscription(organizationId: string): Promise<SubscriptionWithPlan> {
     const subscription = await this.getSubscription(organizationId);
 
     const updated = await this.prisma.organizationSubscription.update({
@@ -555,7 +556,7 @@ export class SubscriptionLifecycleService {
     organizationId: string,
     count: number,
     actor: CurrentUserPayload,
-  ): Promise<OrganizationSubscription> {
+  ): Promise<SubscriptionWithPlan> {
     const subscription = await this.getActiveSubscription(organizationId);
 
     if (subscription.seats === null) {
@@ -599,7 +600,7 @@ export class SubscriptionLifecycleService {
 
   /// Get active subscription.
   /// Throws NotFoundException if no active subscription exists.
-  private async getActiveSubscription(organizationId: string): Promise<OrganizationSubscription> {
+  private async getActiveSubscription(organizationId: string): Promise<SubscriptionWithPlan> {
     const subscription = await this.prisma.organizationSubscription.findUnique({
       where: { organizationId },
       include: { plan: true },
@@ -619,7 +620,7 @@ export class SubscriptionLifecycleService {
   }
 
   /// Get subscription (any status).
-  private async getSubscription(organizationId: string): Promise<OrganizationSubscription> {
+  private async getSubscription(organizationId: string): Promise<SubscriptionWithPlan> {
     const subscription = await this.prisma.organizationSubscription.findUnique({
       where: { organizationId },
       include: { plan: true },

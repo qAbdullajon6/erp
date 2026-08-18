@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { useRecordPaymentMutation, type PaymentMethod } from '@/lib/api/payments';
 import { formatMoney } from '@/lib/format';
+import { describeError } from '@/lib/api/describe-error';
 
 interface RecordPaymentDialogProps {
   invoiceId: string;
@@ -66,7 +67,7 @@ export function RecordPaymentDialog({ invoiceId, balanceDue, currency }: RecordP
       toast.success('Payment recorded');
       handleOpenChange(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to record payment');
+      toast.error(describeError(err, 'Failed to record payment'));
     }
   };
 
@@ -81,7 +82,7 @@ export function RecordPaymentDialog({ invoiceId, balanceDue, currency }: RecordP
             <DialogTitle>Record Payment</DialogTitle>
             <DialogDescription>Balance due: {formatMoney(balanceDue, currency)}</DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} noValidate className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="text-sm font-medium text-foreground">Amount *</label>

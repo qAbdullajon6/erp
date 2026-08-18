@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from './fetch';
+import { unwrapResponse } from './error';
 import { dashboardKeys, financeSummaryKeys, reportKeys } from './query-keys';
 
 export type ExpenseCategory = 'FUEL' | 'TOLL' | 'MAINTENANCE' | 'DRIVER_ADVANCE' | 'PARKING' | 'INSURANCE' | 'OTHER';
@@ -81,14 +82,13 @@ function buildQuery(params: object): string {
   return qs ? `?${qs}` : '';
 }
 
-async function unwrap<T>(response: Response, fallbackMessage: string): Promise<T> {
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.message || fallbackMessage);
-  }
-  const result = await response.json();
-  return (result.data ?? result) as T;
-}
+/// The shared unwrapper, not a local copy. The copy that used to live here read
+/// `body.message`, but the API wraps failures as `{ error: { message } }` — so
+/// "This expense has already been approved" was thrown away and the caller
+/// showed a generic fallback instead. It also threw a plain Error, which left
+/// React Query unable to tell a 409 from a dropped connection and retrying the
+/// refusal three times.
+const unwrap = unwrapResponse;
 
 class ExpensesAPI {
   async list(params: ListExpensesParams = {}): Promise<ListExpensesResponse> {

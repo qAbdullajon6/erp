@@ -1,11 +1,16 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { createDecipheriv } from "crypto";
+import { PaymentProviderConfig, PaymentProviderType } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
-import { PaymentProviderType } from "@prisma/client";
 import { PaymentProvider } from "./providers/payment-provider.interface";
 import { StripePaymentProvider } from "./providers/stripe.provider";
 import { ClickPaymentProvider } from "./providers/click.provider";
 import { PaymePaymentProvider } from "./providers/payme.provider";
+import type {
+  ClickProviderConfig,
+  PaymeProviderConfig,
+  StripeProviderConfig,
+} from "./types/payment-provider-config.types";
 
 /// Payment provider registry - follows EmailProviderRegistry pattern exactly.
 ///
@@ -88,34 +93,40 @@ export class PaymentProviderRegistry {
 
   /// Create provider instance from DB config.
   /// Decrypts credentials and instantiates provider class.
-  private createProvider(dbProvider: any): PaymentProvider {
+  private createProvider(dbProvider: PaymentProviderConfig): PaymentProvider {
     const config = this.decryptConfig(dbProvider.config);
 
     switch (dbProvider.providerType) {
-      case PaymentProviderType.STRIPE:
+      case PaymentProviderType.STRIPE: {
+        const stripeConfig = config as unknown as StripeProviderConfig;
         return new StripePaymentProvider({
           providerType: "STRIPE",
-          secretKey: config.secretKey,
+          secretKey: stripeConfig.secretKey,
         });
+      }
 
-      case PaymentProviderType.CLICK:
+      case PaymentProviderType.CLICK: {
+        const clickConfig = config as unknown as ClickProviderConfig;
         return new ClickPaymentProvider({
           providerType: "CLICK",
-          merchantId: config.merchantId,
-          serviceId: config.serviceId,
-          secretKey: config.secretKey,
-          merchantUserId: config.merchantUserId,
+          merchantId: clickConfig.merchantId,
+          serviceId: clickConfig.serviceId,
+          secretKey: clickConfig.secretKey,
+          merchantUserId: clickConfig.merchantUserId,
         });
+      }
 
-      case PaymentProviderType.PAYME:
+      case PaymentProviderType.PAYME: {
+        const paymeConfig = config as unknown as PaymeProviderConfig;
         return new PaymePaymentProvider({
           providerType: "PAYME",
-          merchantId: config.merchantId,
-          secretKey: config.secretKey,
+          merchantId: paymeConfig.merchantId,
+          secretKey: paymeConfig.secretKey,
         });
+      }
 
       default:
-        throw new Error(`Unsupported payment provider type: ${dbProvider.providerType}`);
+        throw new Error(`Unsupported payment provider type: ${String(dbProvider.providerType)}`);
     }
   }
 
@@ -123,7 +134,7 @@ export class PaymentProviderRegistry {
   /// Format: iv:encrypted (both hex-encoded)
   /// Algorithm: AES-256-CBC
   /// Same pattern as EmailProviderRegistry.
-  private decryptConfig(encryptedConfig: string): any {
+  private decryptConfig(encryptedConfig: string): Record<string, string> {
     const secret = process.env.APP_SECRET;
     if (!secret) {
       throw new Error("APP_SECRET not configured - cannot decrypt payment provider credentials");
@@ -145,7 +156,7 @@ export class PaymentProviderRegistry {
       let decrypted = decipher.update(encrypted);
       decrypted = Buffer.concat([decrypted, decipher.final()]);
 
-      return JSON.parse(decrypted.toString());
+      return JSON.parse(decrypted.toString()) as Record<string, string>;
     } catch (error) {
       this.logger.error("Failed to decrypt payment provider config:", error);
       throw new Error("Failed to decrypt payment provider credentials");

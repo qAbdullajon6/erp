@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiFetch } from './fetch';
+import { ApiError, unwrapResponse } from './error';
 import { reportKeys } from './query-keys';
 
 /// Reports client.
@@ -290,14 +291,9 @@ function buildQuery(params: object): string {
   return qs ? `?${qs}` : '';
 }
 
-async function unwrap<T>(response: Response, fallbackMessage: string): Promise<T> {
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.message || fallbackMessage);
-  }
-  const result = await response.json();
-  return (result.data ?? result) as T;
-}
+/// See expenses.ts — the local copy read the wrong field on the error envelope
+/// and threw a status-less Error.
+const unwrap = unwrapResponse;
 
 class ReportsAPI {
   async executiveOverview(params: ReportFilterParams): Promise<ExecutiveOverviewReport> {
@@ -327,8 +323,10 @@ class ReportsAPI {
   async export(type: ExportReportType, params: ReportFilterParams): Promise<{ blob: Blob; filename: string }> {
     const response = await apiFetch(`/api/reports/export${buildQuery({ ...params, type })}`, { method: 'GET' });
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || 'Failed to export report');
+      // Not unwrapResponse: a successful export is a CSV blob, not the JSON
+      // envelope it parses. Only the failure path shares the envelope shape.
+      const body = await response.json().catch(() => ({}));
+      throw new ApiError(body?.error?.message ?? body?.message ?? 'Failed to export report', response.status);
     }
     const disposition = response.headers.get('Content-Disposition') ?? '';
     const match = /filename="?([^"]+)"?/.exec(disposition);

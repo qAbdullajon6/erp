@@ -12,6 +12,8 @@ import {
   GripVertical,
 } from 'lucide-react';
 import type { ApiDispatch } from '@/lib/api/dispatches';
+import type { DispatchConflictSummary } from '@/lib/api/dispatch-conflicts';
+import { DispatchConflictBadge } from '@/components/dispatch/dispatch-conflict-badge';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -29,6 +31,7 @@ interface DispatchCardProps {
   pending: boolean;
   selected?: boolean;
   canWrite?: boolean;
+  conflictSummary?: DispatchConflictSummary;
   onOpen: (id: string) => void;
   onReassign: (dispatch: ApiDispatch) => void;
   onCancel: (dispatch: ApiDispatch) => void;
@@ -49,6 +52,7 @@ function DispatchCardImpl({
   pending,
   selected = false,
   canWrite = true,
+  conflictSummary,
   onOpen,
   onReassign,
   onCancel,
@@ -117,6 +121,7 @@ function DispatchCardImpl({
             </button>
 
             <div className="flex items-center gap-0.5">
+              <DispatchConflictBadge summary={conflictSummary} />
               {urgency && (
                 <span
                   className={cn(

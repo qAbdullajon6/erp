@@ -8,6 +8,9 @@ import {
   type CreateCustomerRequest,
   type CreateCustomerResponse,
 } from "./payment-provider.interface";
+import { loadStripe } from "./stripe-loader";
+import { getErrorMessage, isStripePaymentError } from "./stripe-errors";
+import type { StripeClient } from "./stripe-sdk.types";
 
 /// Stripe payment provider implementation.
 ///
@@ -24,7 +27,7 @@ import {
 export class StripePaymentProvider extends PaymentProvider {
   private readonly logger = new Logger(StripePaymentProvider.name);
   private readonly secretKey: string;
-  private stripe: any; // Stripe SDK type (lazy-loaded)
+  private stripe: StripeClient | null = null;
 
   constructor(config: { providerType: "STRIPE"; secretKey: string }) {
     super(config);
@@ -33,18 +36,16 @@ export class StripePaymentProvider extends PaymentProvider {
 
   /// Lazy-load Stripe SDK.
   /// Throws if stripe package not installed.
-  private async getStripeClient(): Promise<any> {
+  private getStripeClient(): StripeClient {
     if (this.stripe) return this.stripe;
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const Stripe = require("stripe");
-      this.stripe = new Stripe(this.secretKey, {
+      this.stripe = loadStripe(this.secretKey, {
         apiVersion: "2024-12-18.acacia",
         typescript: true,
       });
       return this.stripe;
-    } catch (error) {
+    } catch {
       throw new Error(
         `Stripe SDK not installed. Run: npm install stripe\n` +
           `This provider requires the 'stripe' package to be installed.`,
@@ -54,7 +55,7 @@ export class StripePaymentProvider extends PaymentProvider {
 
   async charge(request: ChargeRequest): Promise<ChargeResponse> {
     try {
-      const stripe = await this.getStripeClient();
+      const stripe = this.getStripeClient();
 
       const paymentIntent = await stripe.paymentIntents.create({
         amount: request.amount,
@@ -76,26 +77,26 @@ export class StripePaymentProvider extends PaymentProvider {
           chargeId: paymentIntent.id,
           createdAt: new Date(paymentIntent.created * 1000),
         };
-      } else {
-        // Payment requires additional action or failed
-        return {
-          success: false,
-          error: `Payment ${paymentIntent.status}: ${paymentIntent.last_payment_error?.message ?? "Unknown error"}`,
-          errorCode: paymentIntent.last_payment_error?.code,
-        };
       }
-    } catch (error: any) {
+
+      // Payment requires additional action or failed
+      return {
+        success: false,
+        error: `Payment ${paymentIntent.status}: ${paymentIntent.last_payment_error?.message ?? "Unknown error"}`,
+        errorCode: paymentIntent.last_payment_error?.code,
+      };
+    } catch (error: unknown) {
       // Stripe API error
-      if (error.type === "StripeCardError") {
+      if (isStripePaymentError(error) && error.type === "StripeCardError") {
         // Card was declined
         return {
           success: false,
-          error: error.message,
+          error: error.message ?? "Card declined",
           errorCode: error.code,
         };
       }
 
-      // Network/API error - throw for retry
+      // Network/API error - throw for retry (preserve Stripe error shape)
       this.logger.error(`Stripe charge failed:`, error);
       throw error;
     }
@@ -103,7 +104,7 @@ export class StripePaymentProvider extends PaymentProvider {
 
   async refund(request: RefundRequest): Promise<RefundResponse> {
     try {
-      const stripe = await this.getStripeClient();
+      const stripe = this.getStripeClient();
 
       const refund = await stripe.refunds.create({
         payment_intent: request.chargeId,
@@ -118,17 +119,17 @@ export class StripePaymentProvider extends PaymentProvider {
         refundedAmount: refund.amount,
         createdAt: new Date(refund.created * 1000),
       };
-    } catch (error: any) {
-      if (error.type === "StripeInvalidRequestError") {
+    } catch (error: unknown) {
+      if (isStripePaymentError(error) && error.type === "StripeInvalidRequestError") {
         // Invalid refund request (already refunded, charge not found, etc.)
         return {
           success: false,
-          error: error.message,
+          error: error.message ?? "Invalid refund request",
           errorCode: error.code,
         };
       }
 
-      // Network/API error - throw for retry
+      // Network/API error - throw for retry (preserve Stripe error shape)
       this.logger.error(`Stripe refund failed:`, error);
       throw error;
     }
@@ -136,7 +137,7 @@ export class StripePaymentProvider extends PaymentProvider {
 
   async createCustomer(request: CreateCustomerRequest): Promise<CreateCustomerResponse> {
     try {
-      const stripe = await this.getStripeClient();
+      const stripe = this.getStripeClient();
 
       const customer = await stripe.customers.create({
         email: request.email,
@@ -152,11 +153,11 @@ export class StripePaymentProvider extends PaymentProvider {
         success: true,
         customerId: customer.id,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.logger.error(`Stripe create customer failed:`, error);
       return {
         success: false,
-        error: error.message,
+        error: getErrorMessage(error),
       };
     }
   }
@@ -164,9 +165,7 @@ export class StripePaymentProvider extends PaymentProvider {
   verifyWebhookSignature(payload: string, signature: string, webhookSecret: string): boolean {
     try {
       // Synchronous verification (Stripe SDK requirement)
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const Stripe = require("stripe");
-      const stripe = new Stripe(this.secretKey);
+      const stripe = loadStripe(this.secretKey);
 
       // Throws if signature invalid
       stripe.webhooks.constructEvent(payload, signature, webhookSecret);
@@ -179,7 +178,7 @@ export class StripePaymentProvider extends PaymentProvider {
 
   async getCustomerPortalUrl(customerId: string, returnUrl?: string): Promise<string | null> {
     try {
-      const stripe = await this.getStripeClient();
+      const stripe = this.getStripeClient();
 
       const session = await stripe.billingPortal.sessions.create({
         customer: customerId,

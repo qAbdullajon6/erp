@@ -4,6 +4,9 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 /// the list (`DispatchesCreateSheet`). Deep links to /app/dispatches/create still
 /// work (including ?orderId=) — they land on the list with the sheet open.
 export const Route = createFileRoute("/app/dispatches/create")({
+  head: () => ({
+    meta: [{ title: "New Dispatch — FlowERP AI" }],
+  }),
   validateSearch: (search: Record<string, unknown>): { orderId?: string } => ({
     orderId: typeof search.orderId === "string" ? search.orderId : undefined,
   }),

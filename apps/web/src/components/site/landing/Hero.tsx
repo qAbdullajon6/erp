@@ -1,259 +1,158 @@
-import { useEffect, useState } from "react";
-import { ArrowRight, ArrowUp, Sparkles, Play } from "lucide-react";
+import { ArrowRight, Play } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { openDemoModal } from "@/components/site/DemoModal";
 import { analytics } from "@/lib/analytics";
-import { useSectionVisibility } from "@/lib/analytics/hooks";
-import { cn } from "@/lib/utils";
-import { Container, BrowserFrame, IconTile, LiveDot } from "./primitives";
-import { CountUp, Reveal, useTypewriter, usePointerParallax, usePrefersReducedMotion } from "./motion";
-
-const CONVERSATION = [
-  {
-    q: "Which deliveries are running late today?",
-    a: "7 shipments are delayed — 5 on Route 14 from congestion. Reassigning 3 to nearby drivers recovers ~22 min each. Want me to apply it?",
-  },
-  {
-    q: "Show unpaid invoices over 30 days.",
-    a: "4 accounts, $22,670 outstanding. Alfa Trade is the largest at $8,420. I can draft reminders for all four right now.",
-  },
-  {
-    q: "Is any driver overloaded this week?",
-    a: "Aziz K. and Bekzod A. are past 55 hours. Moving 6 stops to Route 07 rebalances the week and keeps every SLA green.",
-  },
-];
+import { FleetTrackingAnimation } from "./FleetTrackingAnimation";
+import { Reveal } from "./motion";
 
 export function Hero() {
-  const sectionRef = useSectionVisibility("hero");
-
-  const handleDemo = () => {
-    analytics.track({ name: "hero_cta_click", params: { cta_text: "Request a personalized demo" } });
+  const handleGetStarted = () => {
+    analytics.track({ name: "hero_cta_click", params: { cta_text: "Get started free" } });
     analytics.track({ name: "book_demo_click", params: { source: "hero" } });
     openDemoModal("hero");
   };
 
-  const handleWatch = () => {
-    analytics.track({ name: "hero_cta_click", params: { cta_text: "See how it works" } });
-    document.getElementById("ai")?.scrollIntoView({ behavior: "smooth" });
+  const handleWatchDemo = () => {
+    analytics.track({ name: "book_demo_click", params: { source: "hero_demo" } });
+    const el = document.getElementById("demo");
+    if (el) el.scrollIntoView({ behavior: "smooth" });
   };
 
   return (
-    <section ref={sectionRef} className="relative isolate overflow-hidden">
-      {/* ambient: one soft brand wash + a barely-there grid, both masked */}
-      <div aria-hidden className="lv2-wash pointer-events-none absolute inset-x-0 top-0 -z-10 h-[720px]" />
+    <section className="relative isolate min-h-[92vh] overflow-hidden bg-white dark:bg-[oklch(0.09_0.008_260)] pt-16">
+      {/* Background grid – light */}
       <div
         aria-hidden
-        className="lv2-grid lv2-mask-b pointer-events-none absolute inset-x-0 top-0 -z-10 h-[720px] opacity-60"
+        className="pointer-events-none absolute inset-0 -z-10 dark:hidden"
+        style={{
+          backgroundImage:
+            "linear-gradient(to right, oklch(0 0 0 / 0.035) 1px, transparent 1px), linear-gradient(to bottom, oklch(0 0 0 / 0.035) 1px, transparent 1px)",
+          backgroundSize: "60px 60px",
+        }}
+      />
+      {/* Background grid – dark */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-10 hidden dark:block"
+        style={{
+          backgroundImage:
+            "linear-gradient(to right, oklch(1 0 0 / 0.03) 1px, transparent 1px), linear-gradient(to bottom, oklch(1 0 0 / 0.03) 1px, transparent 1px)",
+          backgroundSize: "60px 60px",
+        }}
+      />
+      {/* Orange glow at top */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[500px]"
+        style={{
+          background:
+            "radial-gradient(ellipse 70% 50% at 50% -5%, oklch(0.72 0.20 48 / 0.18), transparent 70%)",
+        }}
+      />
+      {/* Subtle side glows */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -left-40 top-40 -z-10 h-80 w-80 rounded-full"
+        style={{ background: "radial-gradient(circle, oklch(0.72 0.20 48 / 0.06), transparent 70%)" }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -right-40 top-60 -z-10 h-80 w-80 rounded-full"
+        style={{ background: "radial-gradient(circle, oklch(0.72 0.20 48 / 0.05), transparent 70%)" }}
       />
 
-      <Container width="wide" className="pb-20 pt-32 sm:pb-28 sm:pt-40">
-        <div className="mx-auto max-w-3xl text-center">
+      <div className="mx-auto max-w-7xl px-6">
+        {/* Top label */}
+        <div className="flex justify-center pt-14 sm:pt-20">
           <Reveal>
-            <a
-              href="#ai"
-              className="group inline-flex items-center gap-2 rounded-full border border-border bg-surface/80 py-1 pl-1.5 pr-3 text-sm text-muted-foreground backdrop-blur transition-colors hover:border-brand/40 hover:text-foreground"
-            >
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-brand/10 px-2.5 py-0.5 text-xs font-semibold text-brand">
-                <Sparkles className="h-3.5 w-3.5" />
-                New
+            <div className="inline-flex items-center gap-2 rounded-full border border-[oklch(0.72_0.20_48/0.30)] bg-[oklch(0.72_0.20_48/0.10)] px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-[oklch(0.52_0.18_45)] dark:text-[oklch(0.85_0.15_50)]">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[oklch(0.74_0.20_48)] opacity-75" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[oklch(0.74_0.20_48)]" />
               </span>
-              <span className="hidden sm:inline">Real-time AI dispatch that reasons like your best planner</span>
-              <span className="sm:hidden">Real-time AI dispatch</span>
-              <ArrowRight className="h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-0.5" />
-            </a>
+              Logistics Operations Platform
+            </div>
+          </Reveal>
+        </div>
+
+        {/* Headline */}
+        <div className="mx-auto mt-8 max-w-4xl text-center">
+          <Reveal delay={60}>
+            <h1 className="text-balance font-display text-[2.75rem] font-bold leading-[1.05] tracking-tight text-foreground sm:text-[3.75rem] lg:text-[4.5rem]">
+              Run your fleet.{" "}
+              <span
+                className="font-bold"
+                style={{
+                  background: "linear-gradient(135deg, oklch(0.85 0.18 55), oklch(0.72 0.22 45))",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  backgroundClip: "text",
+                }}
+              >
+                Track every move.
+              </span>{" "}
+              Invoice faster.
+            </h1>
           </Reveal>
 
-          <Reveal delay={70} as="h1" className="mt-7 text-balance font-display text-[2.6rem] font-semibold leading-[1.05] tracking-tight text-foreground sm:text-6xl lg:text-7xl">
-            The operating system for
-            <br className="hidden sm:block" /> <span className="text-brand">modern logistics</span>
-          </Reveal>
-
-          <Reveal delay={140}>
-            <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground sm:text-xl">
-              FlowERP unifies orders, dispatch, fleet, and finance into one live command center — with
-              an AI copilot that answers questions, catches problems, and takes action in seconds.
+          <Reveal delay={120}>
+            <p className="mx-auto mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground">
+              Orders, dispatch, fleet tracking and finance in one platform — built for logistics
+              companies that need real-time visibility over every delivery.
             </p>
           </Reveal>
 
-          <Reveal delay={210}>
-            <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+          <Reveal delay={180}>
+            <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <Button
-                onClick={handleDemo}
+                onClick={handleGetStarted}
                 size="lg"
-                className="h-12 w-full bg-brand px-7 text-base font-semibold text-brand-foreground hover:bg-brand/90 sm:w-auto"
+                className="h-12 w-full px-8 text-base font-bold sm:w-auto"
+                style={{ background: "oklch(0.62 0.22 45)", color: "white" }}
               >
-                Request a personalized demo
+                Get started free
                 <ArrowRight className="h-5 w-5" />
               </Button>
               <Button
-                onClick={handleWatch}
-                variant="outline"
+                onClick={handleWatchDemo}
                 size="lg"
-                className="h-12 w-full border-border bg-surface/60 px-6 text-base font-semibold text-foreground hover:bg-surface hover:text-foreground sm:w-auto"
+                variant="outline"
+                className="h-12 w-full px-8 text-base font-semibold sm:w-auto
+                  border-border text-foreground hover:bg-[oklch(0.62_0.22_45/0.07)] hover:text-foreground
+                  dark:border-[oklch(1_0_0/0.15)] dark:bg-[oklch(1_0_0/0.05)] dark:text-white dark:hover:border-[oklch(0.72_0.20_48/0.50)] dark:hover:bg-[oklch(0.72_0.20_48/0.08)] dark:hover:text-white"
               >
-                <Play className="h-4 w-4" />
-                See how it works
+                <Play className="h-4 w-4 fill-current" />
+                Watch demo
               </Button>
             </div>
           </Reveal>
 
-          <Reveal delay={280}>
-            <p className="mt-6 text-sm text-muted-foreground">
-              No credit card required · 14-day trial · We reply within one business day
-            </p>
+          <Reveal delay={230}>
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <span className="h-1 w-1 rounded-full bg-[oklch(0.66_0.18_145)]" />
+                14-day free trial
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-1 w-1 rounded-full bg-[oklch(0.66_0.18_145)]" />
+                No credit card required
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-1 w-1 rounded-full bg-[oklch(0.66_0.18_145)]" />
+                Live in under a week
+              </span>
+            </div>
           </Reveal>
         </div>
 
-        <CommandCenter />
-      </Container>
+        {/* Product preview — FleetTrackingAnimation already renders its own chrome */}
+        <div className="mt-16 pb-16 lg:mt-20">
+          <Reveal delay={280}>
+            <FleetTrackingAnimation />
+          </Reveal>
+        </div>
+      </div>
     </section>
-  );
-}
-
-function CommandCenter() {
-  const { containerRef, style: parallax } = usePointerParallax(10);
-
-  return (
-    <Reveal delay={340} className="relative mx-auto mt-16 max-w-5xl sm:mt-20">
-      <div ref={containerRef} className="relative">
-        {/* soft grounding wash (no blur orb) */}
-        <div aria-hidden className="lv2-wash-soft pointer-events-none absolute -inset-x-8 -top-6 -z-10 h-64" />
-
-        <div style={parallax}>
-          <BrowserFrame url="app.flowerp.ai · Operations Copilot">
-            <AiConsole />
-          </BrowserFrame>
-        </div>
-
-        {/* floating status chips — hug the frame edges so they never cover content */}
-        <div
-          style={parallax}
-          className="lv2-float pointer-events-none absolute -bottom-4 left-6 hidden rounded-xl border border-success/30 bg-background/90 px-3.5 py-2.5 shadow-xl backdrop-blur md:block lg:-left-4 lg:bottom-10"
-        >
-          <div className="flex items-center gap-2 text-xs font-medium text-success">
-            <LiveDot />
-            3 routes optimized
-          </div>
-        </div>
-        <div
-          style={parallax}
-          className="lv2-float-slow pointer-events-none absolute -top-4 right-6 hidden rounded-xl border border-brand/30 bg-background/90 px-3.5 py-2.5 shadow-xl backdrop-blur md:block lg:-right-4 lg:top-10"
-        >
-          <div className="flex items-center gap-2 text-xs font-medium text-brand">
-            <Sparkles className="h-3.5 w-3.5" />
-            2 delays predicted
-          </div>
-        </div>
-      </div>
-    </Reveal>
-  );
-}
-
-function AiConsole() {
-  const [index, setIndex] = useState(0);
-  const reduced = usePrefersReducedMotion();
-  const current = CONVERSATION[index];
-  const { text: typed, done } = useTypewriter(current.a, { speed: 22, startDelay: 450 });
-
-  useEffect(() => {
-    if (!done || reduced) return;
-    const t = setTimeout(() => setIndex((i) => (i + 1) % CONVERSATION.length), 2600);
-    return () => clearTimeout(t);
-  }, [done, reduced]);
-
-  return (
-    <div className="grid gap-0 sm:grid-cols-[1fr_240px]">
-      {/* conversation */}
-      <div className="p-5 sm:p-7">
-        <div className="flex items-center gap-3">
-          <IconTile>
-            <Sparkles className="h-5 w-5" />
-          </IconTile>
-          <div>
-            <div className="text-sm font-semibold text-foreground">Operations Copilot</div>
-            <div className="text-xs text-muted-foreground">Connected to your live operation</div>
-          </div>
-        </div>
-
-        <div className="mt-6 space-y-3">
-          <div
-            key={`q-${index}`}
-            className="ml-auto max-w-md rounded-2xl rounded-tr-sm bg-muted/60 px-4 py-2.5 text-sm font-medium text-foreground"
-            style={{ animation: reduced ? undefined : "lv2-rise 0.4s cubic-bezier(0.16,1,0.3,1) both" }}
-          >
-            {current.q}
-          </div>
-          {/*
-            Grid-stack trick: every full answer renders invisibly in the same
-            cell so the grid auto-sizes to the tallest one. The real, typed
-            bubble sits on top of that reserved space, so the line-wrap that
-            happens mid-typing never grows the container or shifts anything
-            below it.
-          */}
-          <div className="grid">
-            {CONVERSATION.map((c, i) => (
-              <p
-                key={`sizer-${i}`}
-                aria-hidden
-                className="invisible col-start-1 row-start-1 max-w-lg border border-transparent px-4 py-3 text-sm leading-relaxed"
-              >
-                {c.a}
-              </p>
-            ))}
-            <div className="col-start-1 row-start-1 max-w-lg rounded-2xl rounded-tl-sm border border-brand/25 bg-brand/[0.07] px-4 py-3 text-sm leading-relaxed text-foreground/95">
-              {typed}
-              {!done && <span className="lv2-caret ml-0.5 inline-block h-4 w-0.5 -translate-y-0.5 bg-brand align-middle" />}
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-6 flex items-center gap-2 rounded-xl border border-border bg-background/60 px-3.5 py-2.5">
-          <input
-            disabled
-            aria-hidden
-            tabIndex={-1}
-            placeholder="Ask about deliveries, invoices, fleet…"
-            className="flex-1 bg-transparent text-sm text-muted-foreground outline-none placeholder:text-muted-foreground/60"
-          />
-          <kbd className="hidden rounded border border-border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline">
-            ⌘K
-          </kbd>
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-brand-foreground">
-            <ArrowUp className="h-4 w-4" />
-          </span>
-        </div>
-      </div>
-
-      {/* live ops rail */}
-      <div className="grid grid-cols-3 gap-px border-t border-border bg-border/60 sm:grid-cols-1 sm:border-l sm:border-t-0">
-        <LiveStat label="Orders today" value={<CountUp value={1284} />} />
-        <LiveStat label="Fleet active" value={<CountUp value={86} suffix="/92" />} />
-        <LiveStat label="On-time rate" value={<CountUp value={97.4} decimals={1} suffix="%" />} tone="success" />
-      </div>
-    </div>
-  );
-}
-
-function LiveStat({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: React.ReactNode;
-  tone?: "success";
-}) {
-  return (
-    <div className="bg-surface px-4 py-4 sm:px-5 sm:py-6">
-      <div
-        className={cn(
-          "font-display text-2xl font-semibold tracking-tight text-foreground sm:text-3xl",
-          tone === "success" && "text-success",
-        )}
-      >
-        {value}
-      </div>
-      <div className="mt-1 text-xs text-muted-foreground">{label}</div>
-    </div>
   );
 }

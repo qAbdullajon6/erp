@@ -76,6 +76,7 @@ export function NotificationItem({
             <Link
               to={entityLink.to}
               params={entityLink.params}
+              search={entityLink.search}
               onClick={onNavigate}
               className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
             >

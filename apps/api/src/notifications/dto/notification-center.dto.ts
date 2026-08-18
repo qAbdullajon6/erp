@@ -1,5 +1,26 @@
-import { IsString, IsOptional, IsBoolean, IsInt, Min, Max, IsEnum } from 'class-validator';
 import { NotificationCategory, NotificationSeverity } from '@prisma/client';
+import { Transform, Type } from 'class-transformer';
+import {
+  IsBoolean,
+  IsEnum,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+} from 'class-validator';
+import {
+  NOTIFICATION_SORT_FIELDS,
+  type NotificationSortField,
+} from './list-notifications-query.dto';
+
+/// Same query-string parsing as ListNotificationsQueryDto — Nest receives
+/// page/limit/booleans as strings from the URL, so @Type/@Transform are
+/// required or ValidationPipe rejects the request with 400.
+function parseBooleanParam({ value }: { value: unknown }): boolean {
+  return value === 'true' || value === true;
+}
 
 export class NotificationQueryDto {
   @IsOptional()
@@ -15,23 +36,35 @@ export class NotificationQueryDto {
   severity?: NotificationSeverity;
 
   @IsOptional()
+  @Transform(parseBooleanParam)
   @IsBoolean()
   isRead?: boolean;
 
   @IsOptional()
+  @Transform(parseBooleanParam)
   @IsBoolean()
   isArchived?: boolean;
 
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   page?: number = 1;
 
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(100)
   limit?: number = 20;
+
+  @IsOptional()
+  @IsIn(NOTIFICATION_SORT_FIELDS)
+  sortBy?: NotificationSortField = 'createdAt';
+
+  @IsOptional()
+  @IsIn(['asc', 'desc'])
+  sortOrder?: 'asc' | 'desc' = 'desc';
 }
 
 export class BulkNotificationActionDto {

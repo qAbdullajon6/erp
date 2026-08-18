@@ -289,20 +289,54 @@ export class ValidationService {
     seenNaturalKeys: Set<string>,
   ): Promise<void> {
     const keyField = definition.naturalKey;
+    await this.detectFieldConflicts(organizationId, definition, keyField, results, seenNaturalKeys, {
+      severity: "WARNING",
+      excludeArchived: false,
+      existingMessage: (key) =>
+        `${keyField} "${key}" already exists — it will be handled according to your duplicate strategy`,
+    });
 
+    // The natural key represents "the same business record being re-imported"
+    // — what to do about it is the user's duplicate-strategy choice. A
+    // secondary unique field (e.g. Vehicle.plateNumber) is different: a
+    // collision there means two DIFFERENT records claim the same value, which
+    // no duplicate strategy can sensibly resolve (there is no "same record"
+    // to skip or update). It must fail the row outright.
+    if (definition.secondaryUniqueField) {
+      const field = definition.secondaryUniqueField;
+      await this.detectFieldConflicts(organizationId, definition, field, results, new Set<string>(), {
+        severity: "ERROR",
+        excludeArchived: true,
+        existingMessage: (key) => `${field} "${key}" already exists on another record`,
+      });
+    }
+  }
+
+  private async detectFieldConflicts(
+    organizationId: string,
+    definition: EntityDefinition,
+    keyField: string,
+    results: ValidatedRow[],
+    seenKeys: Set<string>,
+    options: {
+      severity: "ERROR" | "WARNING";
+      excludeArchived: boolean;
+      existingMessage: (key: string) => string;
+    },
+  ): Promise<void> {
     const keys = results
       .map((r) => r.data[keyField])
       .filter((k): k is string => typeof k === "string" && k.length > 0);
 
     const existing = keys.length > 0
-      ? await this.findExistingNaturalKeys(organizationId, definition, keys)
+      ? await this.queryExistingValues(organizationId, definition, keyField, keys, options.excludeArchived)
       : new Set<string>();
 
     for (const result of results) {
       const key = result.data[keyField];
       if (typeof key !== "string" || key.length === 0) continue;
 
-      if (seenNaturalKeys.has(key)) {
+      if (seenKeys.has(key)) {
         result.errors.push({
           row: result.rowNumber,
           column: keyField,
@@ -312,26 +346,18 @@ export class ValidationService {
         });
         continue;
       }
-      seenNaturalKeys.add(key);
+      seenKeys.add(key);
 
       if (existing.has(key)) {
         result.errors.push({
           row: result.rowNumber,
           column: keyField,
-          message: `${keyField} "${key}" already exists — it will be handled according to your duplicate strategy`,
+          message: options.existingMessage(key),
           value: this.truncate(key),
-          severity: "WARNING",
+          severity: options.severity,
         });
       }
     }
-  }
-
-  private async findExistingNaturalKeys(
-    organizationId: string,
-    definition: EntityDefinition,
-    keys: string[],
-  ): Promise<Set<string>> {
-    return new Set(await this.queryNaturalKeys(organizationId, definition, keys));
   }
 
   /// The `as never` casts are the price of one generic path over five Prisma
@@ -339,11 +365,13 @@ export class ValidationService {
   /// distinct. The alternative is a five-way switch that says the same thing
   /// five times — and would need a sixth arm every time the registry grows,
   /// which is exactly the coupling the registry exists to remove.
-  private async queryNaturalKeys(
+  private async queryExistingValues(
     organizationId: string,
     definition: EntityDefinition,
+    keyField: string,
     keys: string[],
-  ): Promise<string[]> {
+    excludeArchived: boolean,
+  ): Promise<Set<string>> {
     const delegate = this.prisma[definition.prismaModel] as unknown as {
       findMany(args: unknown): Promise<Record<string, unknown>[]>;
     };
@@ -353,13 +381,17 @@ export class ValidationService {
         // No `mode: "insensitive"` — see detectDuplicates. It made this an
         // ILIKE-ANY over the whole table (one comparison per row per key), which
         // took validation from ~2,400 rows/sec to ~69.
-        [definition.naturalKey]: { in: keys },
+        [keyField]: { in: keys },
+        // Vehicle's plate-number uniqueness is a partial index over live
+        // (non-archived) rows — see schema.prisma — so an archived record's
+        // old value is legitimately reusable and must not be flagged.
+        ...(excludeArchived ? { archivedAt: null } : {}),
       },
-      select: { [definition.naturalKey]: true },
+      select: { [keyField]: true },
     });
-    return rows
-      .map((r) => r[definition.naturalKey])
-      .filter((v): v is string => typeof v === "string");
+    return new Set(
+      rows.map((r) => r[keyField]).filter((v): v is string => typeof v === "string"),
+    );
   }
 
   private truncate(value: unknown): string | undefined {

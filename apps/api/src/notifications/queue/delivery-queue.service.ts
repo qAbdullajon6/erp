@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import {
   NotificationChannel,
   DeliveryStatus,
+  NotificationDeliveryQueue,
   Prisma,
 } from '@prisma/client';
 import { EmailService } from '../email/email.service';
@@ -15,14 +16,61 @@ export interface EnqueueRequest {
   channel: NotificationChannel;
   priority?: number;
   scheduledFor?: Date;
-  payload: {
-    to: string;
-    subject?: string;
-    body: string;
-    metadata: {
-      templateKey: string;
-      variables: Record<string, any>;
+  payload: DeliveryQueuePayload;
+}
+
+export interface DeliveryQueuePayload {
+  to: string;
+  subject?: string;
+  body: string;
+  metadata: {
+    templateKey: string;
+    variables: Record<string, unknown>;
+  };
+}
+
+function parseDeliveryQueuePayload(payload: Prisma.JsonValue): DeliveryQueuePayload {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    return {
+      to: '',
+      body: '',
+      metadata: { templateKey: '', variables: {} },
     };
+  }
+
+  const record = payload as Record<string, unknown>;
+  const metadataRaw = record.metadata;
+  let metadata: DeliveryQueuePayload['metadata'] = {
+    templateKey: '',
+    variables: {},
+  };
+
+  if (
+    typeof metadataRaw === 'object' &&
+    metadataRaw !== null &&
+    !Array.isArray(metadataRaw)
+  ) {
+    const metadataRecord = metadataRaw as Record<string, unknown>;
+    const variablesRaw = metadataRecord.variables;
+    metadata = {
+      templateKey:
+        typeof metadataRecord.templateKey === 'string'
+          ? metadataRecord.templateKey
+          : '',
+      variables:
+        typeof variablesRaw === 'object' &&
+        variablesRaw !== null &&
+        !Array.isArray(variablesRaw)
+          ? (variablesRaw as Record<string, unknown>)
+          : {},
+    };
+  }
+
+  return {
+    to: typeof record.to === 'string' ? record.to : '',
+    subject: typeof record.subject === 'string' ? record.subject : undefined,
+    body: typeof record.body === 'string' ? record.body : '',
+    metadata,
   };
 }
 
@@ -52,7 +100,7 @@ export class DeliveryQueueService implements OnModuleInit {
         channel: request.channel,
         priority: request.priority || 5,
         scheduledFor: request.scheduledFor || new Date(),
-        payload: request.payload as Prisma.InputJsonValue,
+        payload: request.payload as unknown as Prisma.InputJsonValue,
         maxAttempts: this.MAX_ATTEMPTS,
       },
     });
@@ -101,7 +149,9 @@ export class DeliveryQueueService implements OnModuleInit {
     await Promise.all(items.map((item) => this.processItem(item)));
   }
 
-  private async processItem(item: any) {
+  private async processItem(item: NotificationDeliveryQueue) {
+    const payload = parseDeliveryQueuePayload(item.payload);
+
     await this.prisma.notificationDeliveryQueue.update({
       where: { id: item.id },
       data: { status: DeliveryStatus.SENDING },
@@ -112,17 +162,18 @@ export class DeliveryQueueService implements OnModuleInit {
       let error: string | undefined;
 
       switch (item.channel) {
-        case NotificationChannel.EMAIL:
+        case NotificationChannel.EMAIL: {
           const emailResult = await this.emailService.send({
             organizationId: item.organizationId,
-            to: item.payload.to,
-            subject: item.payload.subject || 'Notification',
-            text: item.payload.body,
-            html: item.payload.body,
+            to: payload.to,
+            subject: payload.subject || 'Notification',
+            text: payload.body,
+            html: payload.body,
           });
           success = emailResult.success;
           error = emailResult.error;
           break;
+        }
 
         case NotificationChannel.IN_APP:
           success = true;
@@ -153,7 +204,7 @@ export class DeliveryQueueService implements OnModuleInit {
           });
         }
 
-        this.logger.log(`Successfully delivered ${item.channel} to ${item.payload.to}`);
+        this.logger.log(`Successfully delivered ${item.channel} to ${payload.to}`);
       } else {
         await this.handleFailure(item, error || 'Unknown error');
       }
@@ -165,7 +216,7 @@ export class DeliveryQueueService implements OnModuleInit {
     }
   }
 
-  private async handleFailure(item: any, error: string) {
+  private async handleFailure(item: NotificationDeliveryQueue, error: string) {
     const attempts = item.attempts + 1;
 
     if (attempts >= item.maxAttempts) {

@@ -1,5 +1,7 @@
 import {
+  IsBoolean,
   IsDateString,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
@@ -9,6 +11,8 @@ import {
   Min,
   MinLength,
 } from "class-validator";
+import { Transform } from "class-transformer";
+import { ACTIVE_ISO_4217_CODES } from "../currency-codes.util";
 
 export class CreateOrderDto {
   /// Omit to auto-generate the next sequential ORD-<year>-0001-style number
@@ -72,7 +76,7 @@ export class CreateOrderDto {
 
   @IsOptional()
   @IsString()
-  @Matches(/^[A-Z]{3}$/, { message: "currency must be a 3-letter ISO 4217 code, e.g. USD" })
+  @IsIn([...ACTIVE_ISO_4217_CODES], { message: "currency must be a valid ISO 4217 code, e.g. USD" })
   currency?: string;
 
   @IsOptional()
@@ -84,4 +88,10 @@ export class CreateOrderDto {
   @IsString()
   @MaxLength(2000)
   deliveryNotes?: string;
+
+  /// Set when the client proceeded despite a duplicate warning.
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === "true")
+  @IsBoolean()
+  acknowledgeDuplicate?: boolean;
 }
