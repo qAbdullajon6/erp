@@ -368,8 +368,8 @@ test.describe('Customers CRUD - Unauthenticated', () => {
     await page.goto(`${FRONTEND_URL}/app/customers`);
 
     // Should redirect to login
-    await page.waitForURL(`**/auth/sign-in*`, { timeout: 10000 });
-    expect(page.url()).toContain('/auth/sign-in');
+    await page.waitForURL(`**/login*`, { timeout: 10000 });
+    expect(page.url()).toContain('/login');
 
     // Verify login page is shown
     const emailInput = page.locator('input[type="email"]');

@@ -26,29 +26,15 @@ export function openDemoModal(source = "demo_modal") {
   }
 }
 
-/// The dialog used to say "Request a personalized demo" no matter which CTA
-/// opened it — a visitor who clicked "Contact Sales" or "Request a Trial" saw
-/// no acknowledgment of the action they'd actually taken. Every CTA still
-/// opens the same form (there's no separate trial/sales flow to build), but
-/// the copy now at least reflects what was clicked.
-function copyForSource(source: string): { title: string; description: string } {
-  if (source === "pricing_enterprise" || source === "pricing_custom") {
-    return {
-      title: "Talk to our sales team",
-      description: "Tell us about your operation and we'll be in touch to discuss your rollout.",
-    };
-  }
-  if (source.startsWith("pricing_")) {
-    return {
-      title: "Request your trial",
-      description: "Tell us about your operation and we'll set up your 14-day trial.",
-    };
-  }
-  return {
-    title: "Request a personalized demo",
-    description: "Tell us about your operation and we'll tailor the walkthrough to your fleet and routes.",
-  };
-}
+/// The site has one call to action — "Get started" — so this dialog has one
+/// set of copy. It previously branched per pricing tier, including a variant
+/// that promised to "set up your 14-day trial"; there is no self-serve trial
+/// to set up, and the pricing section those branches belonged to is gone.
+const DIALOG_COPY = {
+  title: "Get started with FlowERP",
+  description:
+    "Tell us about your operation and we'll walk you through the workspace your team would use.",
+};
 
 export function DemoModal() {
   const [open, setOpen] = useState(false);
@@ -165,10 +151,10 @@ export function DemoModal() {
         <div className="min-h-0 overflow-y-auto p-6 sm:p-8">
           <DialogHeader className="space-y-2 text-left">
             <DialogTitle className="font-display text-2xl font-semibold tracking-tight">
-              {copyForSource(ctaSource).title}
+              {DIALOG_COPY.title}
             </DialogTitle>
             <DialogDescription className="text-sm text-muted-foreground">
-              {copyForSource(ctaSource).description}
+              {DIALOG_COPY.description}
             </DialogDescription>
           </DialogHeader>
 
@@ -180,7 +166,7 @@ export function DemoModal() {
             )}
 
             <div className="grid gap-2">
-              <Label htmlFor="d-name">Full Name</Label>
+              <Label htmlFor="d-name">Full name</Label>
               <Input
                 id="d-name"
                 name="name"
@@ -192,7 +178,7 @@ export function DemoModal() {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="d-email">Work Email</Label>
+              <Label htmlFor="d-email">Work email</Label>
               <Input
                 id="d-email"
                 name="email"
@@ -205,7 +191,7 @@ export function DemoModal() {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="d-company">Company Name</Label>
+              <Label htmlFor="d-company">Company name</Label>
               <Input
                 id="d-company"
                 name="company"
@@ -243,7 +229,7 @@ export function DemoModal() {
             </div>
 
             <Button type="submit" disabled={submitting} className="h-11 w-full bg-brand font-semibold text-brand-foreground hover:bg-brand/90">
-              {submitting ? "Sending…" : "Request my demo"}
+              {submitting ? "Sending…" : "Get started"}
             </Button>
 
             <div className="flex items-center justify-center gap-2 pt-1 text-xs text-muted-foreground">

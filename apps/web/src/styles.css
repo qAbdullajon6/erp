@@ -61,74 +61,129 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Manrope", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
 }
 
 :root {
   --radius: 0.75rem;
 
-  /* Dark navy identity as default */
-  --background: oklch(0.19 0.035 260);
-  --foreground: oklch(0.98 0.005 240);
+  /* Light theme */
+  --background: oklch(0.98 0.003 75);
+  --foreground: oklch(0.14 0.025 50);
 
-  --surface: oklch(0.23 0.038 260);
-  --surface-elevated: oklch(0.27 0.04 260);
+  --surface: oklch(1 0 0);
+  --surface-elevated: oklch(1 0 0);
 
-  --card: oklch(0.23 0.038 260);
-  --card-foreground: oklch(0.98 0.005 240);
-  --popover: oklch(0.23 0.04 260);
-  --popover-foreground: oklch(0.98 0.005 240);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.14 0.025 50);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.14 0.025 50);
 
-  --primary: oklch(0.68 0.17 250);
-  --primary-foreground: oklch(0.15 0.03 260);
-  --brand: oklch(0.68 0.17 250);
-  --brand-foreground: oklch(0.15 0.03 260);
-  --brand-glow: oklch(0.78 0.14 240);
+  /* Amber / orange brand — logistics-grade */
+  --primary: oklch(0.62 0.22 45);
+  --primary-foreground: oklch(0.99 0 0);
+  --brand: oklch(0.62 0.22 45);
+  --brand-foreground: oklch(0.99 0 0);
+  --brand-glow: oklch(0.72 0.19 50);
 
-  --secondary: oklch(0.28 0.04 260);
-  --secondary-foreground: oklch(0.98 0.005 240);
-  --muted: oklch(0.27 0.035 260);
-  --muted-foreground: oklch(0.72 0.02 250);
-  --accent: oklch(0.3 0.05 255);
-  --accent-foreground: oklch(0.98 0.005 240);
+  --secondary: oklch(0.96 0.008 75);
+  --secondary-foreground: oklch(0.14 0.025 50);
+  --muted: oklch(0.95 0.006 75);
+  --muted-foreground: oklch(0.44 0.02 60);
+  --accent: oklch(0.96 0.008 75);
+  --accent-foreground: oklch(0.14 0.025 50);
 
   --destructive: oklch(0.62 0.22 25);
-  --destructive-foreground: oklch(0.98 0.005 240);
-  --success: oklch(0.72 0.16 155);
-  --warning: oklch(0.78 0.16 75);
+  --destructive-foreground: oklch(0.99 0 0);
+  --success: oklch(0.60 0.16 145);
+  --warning: oklch(0.76 0.16 75);
 
-  --border: oklch(1 0 0 / 8%);
-  --input: oklch(1 0 0 / 10%);
-  --ring: oklch(0.68 0.17 250);
+  --border: oklch(0 0 0 / 8%);
+  --input: oklch(0 0 0 / 10%);
+  --ring: oklch(0.62 0.22 45);
 
-  --chart-1: oklch(0.68 0.17 250);
-  --chart-2: oklch(0.72 0.16 155);
-  --chart-3: oklch(0.78 0.16 75);
-  --chart-4: oklch(0.7 0.19 300);
-  --chart-5: oklch(0.72 0.18 20);
+  --chart-1: oklch(0.62 0.22 45);
+  --chart-2: oklch(0.60 0.16 145);
+  --chart-3: oklch(0.76 0.16 75);
+  --chart-4: oklch(0.60 0.19 300);
+  --chart-5: oklch(0.60 0.20 20);
 
-  /* Categorical series colours for the revenue/expenses chart. Deliberately
-     NOT --success/--warning: those are reserved status colours, and reusing a
-     status hue for a plain data series makes "amber" mean two things at once.
-     Both sit inside the dark-mode lightness band (L 0.48–0.67) and separate by
-     ΔE 113 under protanopia — verified with the palette validator, not by eye. */
-  --series-revenue: oklch(0.66 0.17 250);
-  --series-expenses: oklch(0.66 0.16 75);
+  --series-revenue: oklch(0.60 0.20 45);
+  --series-expenses: oklch(0.56 0.16 75);
 
-  --sidebar: oklch(0.21 0.035 260);
-  --sidebar-foreground: oklch(0.98 0.005 240);
-  --sidebar-primary: oklch(0.68 0.17 250);
-  --sidebar-primary-foreground: oklch(0.15 0.03 260);
-  --sidebar-accent: oklch(0.27 0.04 260);
-  --sidebar-accent-foreground: oklch(0.98 0.005 240);
+  --sidebar: oklch(0.98 0.003 75);
+  --sidebar-foreground: oklch(0.14 0.025 50);
+  --sidebar-primary: oklch(0.62 0.22 45);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.95 0.006 75);
+  --sidebar-accent-foreground: oklch(0.14 0.025 50);
+  --sidebar-border: oklch(0 0 0 / 8%);
+  --sidebar-ring: oklch(0.62 0.22 45);
+
+  --gradient-brand: linear-gradient(135deg, oklch(0.62 0.22 45), oklch(0.52 0.22 35));
+  --gradient-hero: radial-gradient(ellipse 80% 60% at 50% 0%, oklch(0.62 0.22 45 / 0.10), transparent 70%);
+  --shadow-elevated: 0 20px 60px -20px oklch(0 0 0 / 0.10);
+  --shadow-glow: 0 0 60px -10px oklch(0.62 0.22 45 / 0.35);
+}
+
+/* Dark mode — activated by .dark class on <html> */
+.dark {
+  --background: oklch(0.09 0.008 260);
+  --foreground: oklch(0.93 0.004 75);
+
+  --surface: oklch(0.13 0.008 260);
+  --surface-elevated: oklch(0.16 0.008 260);
+
+  --card: oklch(0.13 0.008 260);
+  --card-foreground: oklch(0.93 0.004 75);
+  --popover: oklch(0.15 0.008 260);
+  --popover-foreground: oklch(0.93 0.004 75);
+
+  --primary: oklch(0.74 0.20 48);
+  --primary-foreground: oklch(0.09 0.008 48);
+  --brand: oklch(0.74 0.20 48);
+  --brand-foreground: oklch(0.09 0.008 48);
+  --brand-glow: oklch(0.80 0.17 52);
+
+  --secondary: oklch(0.18 0.008 260);
+  --secondary-foreground: oklch(0.84 0.004 75);
+  --muted: oklch(0.18 0.008 260);
+  --muted-foreground: oklch(0.54 0.008 260);
+  --accent: oklch(0.18 0.008 260);
+  --accent-foreground: oklch(0.84 0.004 75);
+
+  --destructive: oklch(0.65 0.22 25);
+  --destructive-foreground: oklch(0.99 0 0);
+  --success: oklch(0.66 0.18 145);
+  --warning: oklch(0.80 0.17 75);
+
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 11%);
+  --ring: oklch(0.74 0.20 48);
+
+  --chart-1: oklch(0.74 0.20 48);
+  --chart-2: oklch(0.66 0.18 145);
+  --chart-3: oklch(0.80 0.17 75);
+  --chart-4: oklch(0.65 0.19 300);
+  --chart-5: oklch(0.68 0.22 20);
+
+  --series-revenue: oklch(0.74 0.20 48);
+  --series-expenses: oklch(0.80 0.17 75);
+
+  --sidebar: oklch(0.11 0.008 260);
+  --sidebar-foreground: oklch(0.84 0.004 75);
+  --sidebar-primary: oklch(0.74 0.20 48);
+  --sidebar-primary-foreground: oklch(0.09 0.008 48);
+  --sidebar-accent: oklch(0.18 0.008 260);
+  --sidebar-accent-foreground: oklch(0.84 0.004 75);
   --sidebar-border: oklch(1 0 0 / 8%);
-  --sidebar-ring: oklch(0.68 0.17 250);
+  --sidebar-ring: oklch(0.74 0.20 48);
 
-  --gradient-brand: linear-gradient(135deg, oklch(0.68 0.17 250), oklch(0.78 0.14 220));
-  --gradient-hero: radial-gradient(ellipse 80% 60% at 50% 0%, oklch(0.35 0.12 255 / 0.5), transparent 70%);
-  --shadow-elevated: 0 20px 60px -20px oklch(0 0 0 / 0.6);
-  --shadow-glow: 0 0 60px -10px oklch(0.68 0.17 250 / 0.5);
+  --gradient-brand: linear-gradient(135deg, oklch(0.74 0.20 48), oklch(0.62 0.20 38));
+  --gradient-hero: radial-gradient(ellipse 80% 60% at 50% 0%, oklch(0.74 0.20 48 / 0.14), transparent 70%);
+  --shadow-elevated: 0 20px 60px -20px oklch(0 0 0 / 0.50);
+  --shadow-glow: 0 0 60px -10px oklch(0.74 0.20 48 / 0.40);
 }
 
 @layer base {
@@ -141,10 +196,7 @@
     text-rendering: optimizeLegibility;
     /* The marketing nav is a set of in-page #anchors; without this they jump. */
     scroll-behavior: smooth;
-    /* The product is dark, but the browser did not know that: native <select>
-       menus, date pickers, scrollbars and autofilled fields all rendered in
-       light OS chrome against it. */
-    color-scheme: dark;
+    color-scheme: light dark;
   }
   /* Vestibular safety: honour the OS "reduce motion" setting. */
 @media (prefers-reduced-motion: reduce) {
@@ -232,11 +284,11 @@
 
 @utility lv2-wash {
   /* Single soft brand wash — the only ambient colour we allow. */
-  background: radial-gradient(60% 55% at 50% -5%, oklch(0.68 0.17 250 / 0.14), transparent 72%);
+  background: radial-gradient(60% 55% at 50% -5%, oklch(0.72 0.20 48 / 0.13), transparent 72%);
 }
 
 @utility lv2-wash-soft {
-  background: radial-gradient(55% 50% at 50% 50%, oklch(0.68 0.17 250 / 0.08), transparent 72%);
+  background: radial-gradient(55% 50% at 50% 50%, oklch(0.72 0.20 48 / 0.07), transparent 72%);
 }
 
 @utility lv2-mask-x {

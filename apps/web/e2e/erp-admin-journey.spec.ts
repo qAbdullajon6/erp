@@ -36,7 +36,7 @@ test.describe('ERP admin journey', () => {
     const orderPrice = 1250;
 
     // ---------- 1. Open app + login ----------
-    await page.goto(`${FRONTEND}/auth/sign-in`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${FRONTEND}/login`, { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#email')).toBeVisible({ timeout: 60_000 });
 
     // Wait for hydration (password reveal is client-only).

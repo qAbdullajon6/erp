@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { Printer } from 'lucide-react';
 import { toast } from 'sonner';
@@ -8,9 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCurrentUser } from '@/lib/api/auth';
 import { useInvoiceQuery, useSendInvoiceMutation, useCancelInvoiceMutation } from '@/lib/api/invoices';
-import { customersAPI } from '@/lib/api/customers';
-import { ordersAPI } from '@/lib/api/orders';
-import { useOrganizationQuery, type MembershipRole } from '@/lib/api/organizations';
+import { type MembershipRole } from '@/lib/api/organizations';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { formatMoney } from '@/lib/format';
 import { INVOICE_FINALIZE_ROLES } from '@/lib/role-access';
@@ -18,7 +15,7 @@ import { ErrorState } from '@/components/shared/list-states';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { RecordPaymentDialog } from './record-payment-dialog';
-import { printInvoiceDocument } from './invoice-print';
+import { useInvoicePrint } from './use-invoice-print';
 import { describeError } from '@/lib/api/describe-error';
 
 interface InvoiceDetailSheetProps {
@@ -34,21 +31,7 @@ export function InvoiceDetailSheet({ invoiceId, onOpenChange }: InvoiceDetailShe
     currentUser && INVOICE_FINALIZE_ROLES.includes(currentUser.membership.role as MembershipRole),
   );
   const { data: invoice, isLoading, isError, error, refetch } = useInvoiceQuery(invoiceId ?? '');
-  /// The printed invoice needs the full company identity (legal name, tax ID,
-  /// address), not just the name carried in the session payload.
-  const { data: organization } = useOrganizationQuery();
-
-  const { data: customer } = useQuery({
-    queryKey: ['customer-for-invoice', invoice?.customerId],
-    queryFn: () => customersAPI.getById(invoice!.customerId),
-    enabled: !!invoice?.customerId,
-  });
-
-  const { data: order } = useQuery({
-    queryKey: ['order-for-invoice', invoice?.orderId],
-    queryFn: () => ordersAPI.getOrder(invoice!.orderId!),
-    enabled: !!invoice?.orderId,
-  });
+  const { customer, order, print } = useInvoicePrint(invoice);
 
   const { mutateAsync: sendInvoice, isPending: sending } = useSendInvoiceMutation(invoiceId ?? '');
   const { mutateAsync: cancelInvoice, isPending: cancelling } = useCancelInvoiceMutation(invoiceId ?? '');
@@ -207,17 +190,7 @@ export function InvoiceDetailSheet({ invoiceId, onOpenChange }: InvoiceDetailShe
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() =>
-                  printInvoiceDocument({
-                    invoice,
-                    organization,
-                    customerName: customer?.companyName,
-                    customerAddress: customer?.address,
-                    customerCity: customer?.city,
-                    customerCountry: customer?.country,
-                    orderNumber: order?.orderNumber,
-                  })
-                }
+                onClick={print}
               >
                 <Printer className="mr-1.5 h-3.5 w-3.5" />
                 Print / Save PDF

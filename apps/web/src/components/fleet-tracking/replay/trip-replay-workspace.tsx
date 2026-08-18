@@ -14,6 +14,7 @@ import {
   ErrorState,
   LoadingState,
 } from '@/components/shared/list-states';
+import { WorkspaceHeader } from '@/components/shared/page-header';
 import {
   useGeofenceEventsQuery,
   useTelematicsTripQuery,
@@ -242,32 +243,29 @@ export function TripReplayWorkspace({ tripId }: Props) {
       className="flex min-h-[calc(100vh-4rem)] flex-col bg-background lg:h-[calc(100vh-4rem)] lg:min-h-0"
       data-testid="trip-replay-workspace"
     >
-      <header className="shrink-0 border-b border-border/70 bg-surface px-4 py-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <Button asChild variant="ghost" size="icon" className="h-8 w-8">
-              <Link to="/app/fleet-tracking" aria-label="Back to Fleet Tracking">
-                <ArrowLeft className="h-4 w-4" />
-              </Link>
-            </Button>
-            <div className="min-w-0">
-              <h1 className="truncate font-display text-xl font-bold text-foreground">
-                Trip Replay
-              </h1>
-              <p className="truncate font-mono text-[11px] text-muted-foreground">
-                {trip.id} · recorded fixes only
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+      <WorkspaceHeader
+        title="Trip Replay"
+        icon={
+          <Button asChild variant="ghost" size="icon" className="-ml-2 h-8 w-8">
+            <Link to="/app/fleet-tracking" aria-label="Back to Fleet Tracking">
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+          </Button>
+        }
+        subtitle={
+          <span className="font-mono">{trip.id} · recorded fixes only</span>
+        }
+        action={
+          <span className="flex items-center gap-2 text-xs text-muted-foreground">
             <span>{points.length.toLocaleString()} positions</span>
             <span aria-hidden>·</span>
             <span>{trip.status}</span>
-          </div>
-        </div>
+          </span>
+        }
+      >
         {truncated ? (
           <div
-            className="mt-2 flex items-start gap-2 rounded-md border border-warning/25 bg-warning/10 px-3 py-2 text-xs text-warning"
+            className="flex items-start gap-2 rounded-md border border-warning/25 bg-warning/10 px-3 py-2 text-xs text-warning"
             role="status"
           >
             <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -278,7 +276,7 @@ export function TripReplayWorkspace({ tripId }: Props) {
             </span>
           </div>
         ) : null}
-      </header>
+      </WorkspaceHeader>
 
       <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <main className="flex min-h-[32rem] min-w-0 flex-col border-r border-border/60 lg:min-h-0">

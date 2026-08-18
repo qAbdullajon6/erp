@@ -22,6 +22,7 @@ import { CUSTOMER_WRITE_ROLES, INVOICE_READ_ROLES } from '@/lib/role-access';
 import type { MembershipRole } from '@/lib/api/organizations';
 import { ErrorState, EmptyState, ListSkeleton } from '@/components/shared/list-states';
 import { FilterTabs } from '@/components/shared/filter-tabs';
+import { SearchInput } from '@/components/shared/search-input';
 import { PaginationBar } from '@/components/shared/pagination-bar';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { CustomersCreateSheet } from '@/components/customers/customers-create-sheet';
@@ -44,7 +45,6 @@ import {
   MoreHorizontal,
   Phone,
   Plus,
-  Search,
   User,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -313,16 +313,14 @@ export function CustomersList() {
 
       {/* Search + quick filters */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[16rem] flex-1">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={localSearch}
-            onChange={(e) => setLocalSearch(e.target.value)}
-            placeholder="Search company, contact, email, phone…"
-            data-testid="customers-search-input"
-            className="h-9 w-full rounded-md border border-border bg-background pl-8 pr-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
-          />
-        </div>
+        <SearchInput
+          className="min-w-[16rem] flex-1"
+          value={localSearch}
+          onChange={setLocalSearch}
+          placeholder="Search company, contact, email, phone…"
+          label="Search customers"
+          testId="customers-search-input"
+        />
       </div>
 
       {relationships.truncated && (

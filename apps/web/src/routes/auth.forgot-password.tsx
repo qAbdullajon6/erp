@@ -3,13 +3,13 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { AuthStatusCard } from "@/components/auth/AuthStatusCard";
 import { SubmitButton } from "@/components/auth/SubmitButton";
-import { FormError, FormField } from "@/components/shared/form-field";
-import { Input } from "@/components/ui/input";
+import { TextField } from "@/components/auth/TextField";
+import { FormError } from "@/components/shared/form-field";
 import { authAPI } from "@/lib/api/auth";
 import { MailCheck } from "lucide-react";
 
 export const Route = createFileRoute("/auth/forgot-password")({
-  head: () => ({ meta: [{ title: "Forgot Password — FlowERP AI" }] }),
+  head: () => ({ meta: [{ title: "Forgot password — FlowERP AI" }] }),
   component: ForgotPasswordPage,
 });
 
@@ -42,7 +42,7 @@ function ForgotPasswordPage() {
           title="Request received"
           description="If an eligible FlowERP account exists for that address, a one-time reset link has been sent."
           secondary={
-            <Link to="/auth/sign-in" className="font-medium text-brand hover:underline">
+            <Link to="/login" className="font-medium text-brand hover:underline">
               Back to sign in
             </Link>
           }
@@ -58,7 +58,7 @@ function ForgotPasswordPage() {
       footer={
         <>
           Remembered it?{" "}
-          <Link to="/auth/sign-in" className="font-medium text-brand hover:underline">
+          <Link to="/login" className="font-medium text-brand hover:underline">
             Sign in
           </Link>
         </>
@@ -66,19 +66,25 @@ function ForgotPasswordPage() {
     >
       <form onSubmit={onSubmit} className="space-y-5" noValidate>
         {error && <FormError message={error} />}
-        <FormField id="email" label="Email address" required>
-          <Input
-            id="email"
-            type="email"
-            autoComplete="email"
-            autoFocus
-            required
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="you@company.com"
-          />
-        </FormField>
-        <SubmitButton loading={loading}>Send reset link</SubmitButton>
+        {/* `TextField`, not the in-app `FormField`: this screen sits next to
+            sign-in, and the two were rendering different field heights and a
+            required asterisk on one but not the other. */}
+        <TextField
+          id="email"
+          label="Email"
+          type="email"
+          name="email"
+          autoComplete="email"
+          autoFocus
+          required
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          placeholder="you@company.com"
+          disabled={loading}
+        />
+        <SubmitButton loading={loading} loadingLabel="Sending…">
+          Send reset link
+        </SubmitButton>
       </form>
     </AuthShell>
   );

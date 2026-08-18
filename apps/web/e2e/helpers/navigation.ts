@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test';
 
 /** Stable app routes used by regression suites. */
 export const ROUTES = {
-  signIn: '/auth/sign-in',
+  signIn: '/login',
   home: '/app',
   customers: '/app/customers',
   orders: '/app/orders',

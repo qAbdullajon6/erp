@@ -238,8 +238,8 @@ test.describe('Phase 2: Customers CRUD', () => {
     await page.goto(`${FRONTEND_URL}/app/customers`);
 
     // Should redirect to login
-    await page.waitForURL(`**/auth/sign-in*`, { timeout: 10000 });
-    expect(page.url()).toContain('/auth/sign-in');
+    await page.waitForURL(`**/login*`, { timeout: 10000 });
+    expect(page.url()).toContain('/login');
   });
 
   test('Can archive and restore a customer', async ({ authenticatedPage: page }) => {

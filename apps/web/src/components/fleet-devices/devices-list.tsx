@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/shared/page-header';
 import { ErrorState, EmptyState } from '@/components/shared/list-states';
+import { FilterSelect } from '@/components/shared/list-toolbar';
+import { SearchInput } from '@/components/shared/search-input';
 import { PaginationBar } from '@/components/shared/pagination-bar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
@@ -24,7 +26,7 @@ import {
   providerLabel,
 } from '@/components/fleet-devices/devices-ops';
 import { DevicesCreateSheet } from '@/components/fleet-devices/devices-create-sheet';
-import { Cpu, Plus, Search } from 'lucide-react';
+import { Cpu, Plus } from 'lucide-react';
 
 type DeviceTab = 'active' | 'inactive' | 'archived' | 'all';
 
@@ -125,30 +127,26 @@ export function DevicesList() {
       />
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[14rem] flex-1">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={localSearch}
-            onChange={(e) => setLocalSearch(e.target.value)}
-            placeholder="Search name or IMEI…"
-            className="h-9 w-full rounded-md border border-border bg-background pl-8 pr-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
-            aria-label="Search devices"
-          />
-        </div>
-        <select
+        <SearchInput
+          className="min-w-[14rem] flex-1"
+          value={localSearch}
+          onChange={setLocalSearch}
+          placeholder="Search name or IMEI…"
+          label="Search devices"
+        />
+        <FilterSelect
+          label="Provider"
           value={provider ?? ''}
-          onChange={(e) =>
+          onChange={(value) =>
             void navigate({
               to: '/app/devices',
               search: (prev) => ({
                 ...prev,
                 page: 1,
-                provider: e.target.value || undefined,
+                provider: value || undefined,
               }),
             })
           }
-          className="h-9 rounded-md border border-border bg-background px-3 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          aria-label="Filter by provider"
         >
           <option value="">All providers</option>
           {TELEMATICS_PROVIDERS.map((p) => (
@@ -156,7 +154,7 @@ export function DevicesList() {
               {providerLabel(p)}
             </option>
           ))}
-        </select>
+        </FilterSelect>
       </div>
 
       <div className="flex flex-wrap gap-1">

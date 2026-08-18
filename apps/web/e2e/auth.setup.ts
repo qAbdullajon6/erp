@@ -10,7 +10,7 @@ async function authenticateUser() {
   const page = await browser.newPage();
 
   // Navigate to login
-  await page.goto(`${FRONTEND_URL}/auth/sign-in`);
+  await page.goto(`${FRONTEND_URL}/login`);
 
   // Fill in login form
   const emailInput = page.locator('input[type="email"]').first();

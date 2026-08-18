@@ -143,25 +143,27 @@ export function FinancialTab({ params }: FinancialTabProps) {
       {isFetching && !isLoading && <p className="text-xs text-muted-foreground">Refreshing for the new date range...</p>}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50 p-6">
-          <div className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Invoices</div>
-          <div className="mt-3 font-display text-2xl font-bold text-foreground">{icp.invoiceCount}</div>
-          <div className="mt-2 text-sm text-muted-foreground">{icp.paidInvoiceCount} fully paid</div>
-        </div>
-        <div className="rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50 p-6">
-          <div className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Collection Rate</div>
-          <div className="mt-3 font-display text-2xl font-bold text-foreground">{icp.collectionRate.toFixed(1)}%</div>
-          <div className="mt-2 text-sm text-muted-foreground">
-            {money(icp.totalCollected)} of {money(icp.totalInvoiced)}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50 p-6">
-          <div className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Avg. Days to Full Payment</div>
-          <div className="mt-3 font-display text-2xl font-bold text-foreground">
-            {icp.averageDaysToFullPayment == null ? '—' : icp.averageDaysToFullPayment.toFixed(1)}
-          </div>
-          <div className="mt-2 text-sm text-muted-foreground">{icp.averageDaysToFullPayment == null ? 'no fully paid invoices yet' : 'days'}</div>
-        </div>
+        <MetricCard
+          label="Invoices"
+          value={String(icp.invoiceCount)}
+          icon={FileText}
+          variant="compact"
+          footer={`${icp.paidInvoiceCount} fully paid`}
+        />
+        <MetricCard
+          label="Collection rate"
+          value={`${icp.collectionRate.toFixed(1)}%`}
+          icon={Percent}
+          variant="compact"
+          footer={`${money(icp.totalCollected)} of ${money(icp.totalInvoiced)}`}
+        />
+        <MetricCard
+          label="Avg. days to full payment"
+          value={icp.averageDaysToFullPayment == null ? '—' : icp.averageDaysToFullPayment.toFixed(1)}
+          icon={Clock}
+          variant="compact"
+          footer={icp.averageDaysToFullPayment == null ? 'no fully paid invoices yet' : 'days'}
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

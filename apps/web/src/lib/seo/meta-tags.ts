@@ -131,11 +131,12 @@ export function generateLinkTags(seo: Pick<SEOMetaTags, 'canonical'>) {
  * Default SEO configuration for the landing page.
  */
 export const defaultSEO: SEOMetaTags = {
-  title: 'FlowERP — The AI operating system for logistics',
+  title: 'FlowERP AI — Logistics operations platform',
   // Kept under ~160 chars so Google doesn't truncate the SERP snippet
-  // mid-sentence — the previous copy ran to 192 chars.
+  // mid-sentence — the previous copy ran to 192 chars. It also promised a
+  // "14-day free trial", which nothing in the product offers.
   description:
-    'FlowERP unifies orders, dispatch, fleet, and finance into one AI-powered command center that answers questions and takes action in seconds. 14-day free trial.',
+    'Run your entire logistics operation in one place: orders, dispatch, fleet, tracking and finance, with an AI assistant that answers questions about your live data.',
   canonical: siteConfig.url,
   keywords: [
     'logistics management software',

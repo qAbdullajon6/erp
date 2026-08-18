@@ -42,7 +42,7 @@ async function apiPost(token: string, path: string, payload?: unknown) {
 
 async function login(page: Page) {
   const token = await apiLogin();
-  await page.goto(`${FRONTEND}/auth/sign-in`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${FRONTEND}/login`, { waitUntil: 'domcontentloaded' });
   await page.evaluate((access) => {
     sessionStorage.setItem('flowerp_access_token', access);
   }, token);

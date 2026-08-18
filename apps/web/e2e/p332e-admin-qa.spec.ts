@@ -19,7 +19,7 @@ async function login(page: Page, email = 'admin@flowerp.test') {
     }
     const body = await res.json();
     const token = (body.data ?? body).accessToken as string;
-    await page.goto(`${FRONTEND}/auth/sign-in`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${FRONTEND}/login`, { waitUntil: 'domcontentloaded' });
     await page.evaluate((t) => sessionStorage.setItem('flowerp_access_token', t), token);
     await page.goto(`${FRONTEND}/app`, { waitUntil: 'domcontentloaded' });
     return token;

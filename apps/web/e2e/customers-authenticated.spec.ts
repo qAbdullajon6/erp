@@ -8,7 +8,7 @@ test.describe('Customers CRUD - Authenticated E2E Tests', () => {
     await page.waitForLoadState('networkidle', { timeout: 5000 });
 
     expect(page.url()).toContain('/app/customers');
-    expect(page.url()).not.toContain('/auth/sign-in');
+    expect(page.url()).not.toContain('/login');
 
     const bodyText = await page.locator('body').textContent();
     expect(bodyText).toBeTruthy();
@@ -47,7 +47,7 @@ test.describe('Customers CRUD - Authenticated E2E Tests', () => {
     let redirected = false;
 
     page.on('framenavigated', (frame) => {
-      if (frame.url().includes('/auth/sign-in')) {
+      if (frame.url().includes('/login')) {
         redirected = true;
       }
     });
@@ -64,7 +64,7 @@ test.describe('Customers CRUD - Authenticated E2E Tests', () => {
     await page.goto(`${FRONTEND_URL}/app/customers`, { waitUntil: 'domcontentloaded' });
 
     // Should redirect to sign-in
-    await page.waitForURL('**/auth/sign-in', { timeout: 10000 });
-    expect(page.url()).toContain('/auth/sign-in');
+    await page.waitForURL('**/login', { timeout: 10000 });
+    expect(page.url()).toContain('/login');
   });
 });

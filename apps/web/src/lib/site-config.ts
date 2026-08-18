@@ -45,7 +45,7 @@ export const siteConfig = {
   name: env('VITE_SITE_NAME', 'FlowERP'),
   legalName: env('VITE_SITE_LEGAL_NAME', 'FlowERP AI'),
   description:
-    'The AI operating system for logistics. Unify orders, dispatch, fleet, and finance in one live command center.',
+    'Orders, dispatch, fleet, tracking and finance for logistics companies — in one workspace.',
 
   /** Canonical public marketing origin (no trailing slash). */
   url: marketingUrl,

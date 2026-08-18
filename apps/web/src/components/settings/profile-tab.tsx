@@ -46,7 +46,7 @@ export function ProfileTab() {
       await changePassword(currentPassword, newPassword);
       sessionManager.clearTokens();
       toast.success('Password changed. Sign in again with your new password.');
-      await navigate({ to: '/auth/sign-in', replace: true });
+      await navigate({ to: '/login', replace: true });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to change password');
     }

@@ -23,7 +23,7 @@ function PlatformRoute() {
   const ready = useSessionGuard({
     hasValidSession: () => sessionManager.hasValidSession(),
     onExpired: onSessionExpired,
-    loginPath: '/auth/sign-in',
+    loginPath: '/login',
   });
 
   const isPlatformAdmin = currentUser?.user.isPlatformAdmin === true;
@@ -36,7 +36,7 @@ function PlatformRoute() {
 
   const handleLogout = async () => {
     await logout();
-    navigate({ to: '/auth/sign-in', replace: true });
+    navigate({ to: '/login', replace: true });
   };
 
   if (!ready) return null;

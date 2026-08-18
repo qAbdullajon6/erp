@@ -16,6 +16,7 @@ import { useDriversList, type Driver, type DriverStatus } from '@/lib/api/driver
 import { useDispatches } from '@/lib/hooks/use-dispatches';
 import { ErrorState, EmptyState } from '@/components/shared/list-states';
 import { FilterTabs } from '@/components/shared/filter-tabs';
+import { SearchInput } from '@/components/shared/search-input';
 import { PaginationBar } from '@/components/shared/pagination-bar';
 import { DriversCreateSheet } from '@/components/drivers/drivers-create-sheet';
 import { DriversEditSheet } from '@/components/drivers/drivers-edit-sheet';
@@ -46,7 +47,6 @@ import {
   MoreHorizontal,
   Phone,
   Plus,
-  Search,
   Truck,
   UserRoundCog,
 } from 'lucide-react';
@@ -303,16 +303,14 @@ export function DriversList() {
       />
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[16rem] flex-1">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={localSearch}
-            onChange={(e) => setLocalSearch(e.target.value)}
-            placeholder="Search name, code, email, phone…"
-            data-testid="drivers-search-input"
-            className="h-9 w-full rounded-md border border-border bg-background pl-8 pr-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
-          />
-        </div>
+        <SearchInput
+          className="min-w-[16rem] flex-1"
+          value={localSearch}
+          onChange={setLocalSearch}
+          placeholder="Search name, code, email, phone…"
+          label="Search drivers"
+          testId="drivers-search-input"
+        />
       </div>
 
       {liveDispatchesTruncated && (

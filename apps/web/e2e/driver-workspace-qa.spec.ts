@@ -18,7 +18,7 @@ async function token(request: APIRequestContext, email: string) {
 }
 
 async function injectSession(page: Page, accessToken: string) {
-  await page.goto(`${FRONTEND}/auth/sign-in`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${FRONTEND}/login`, { waitUntil: 'domcontentloaded' });
   await page.evaluate((access) => {
     sessionStorage.setItem('flowerp_access_token', access);
   }, accessToken);

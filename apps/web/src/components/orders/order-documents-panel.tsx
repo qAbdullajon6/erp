@@ -23,9 +23,8 @@ import {
 } from '@/lib/api/orders';
 import type { Invoice } from '@/lib/api/invoices';
 import { useInvoiceQuery } from '@/lib/api/invoices';
-import { useOrganizationQuery } from '@/lib/api/organizations';
 import { InvoiceDetailSheet } from '@/components/finance/invoice-detail-sheet';
-import { printInvoiceDocument } from '@/components/finance/invoice-print';
+import { useInvoicePrint } from '@/components/finance/use-invoice-print';
 import { downloadBlob } from '@/lib/api/imports';
 import { formatDateTime, formatMoney } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -329,14 +328,13 @@ export function OrderDocumentsPanel({
   canViewInvoices,
   orderStatus,
 }: OrderDocumentsPanelProps) {
-  /// Printing needs the full company identity, not the session's org summary.
-  const { data: organization } = useOrganizationQuery();
   const { data: documents, loading, error, refetch } = useOrderDocuments(orderId);
   const { upload, loading: uploading } = useUploadOrderDocument(orderId);
   const [previewDoc, setPreviewDoc] = useState<OrderDocument | null>(null);
   const [invoiceSheetId, setInvoiceSheetId] = useState<string | null>(null);
   const fullInvoiceQuery = useInvoiceQuery(invoice?.id ?? '');
   const printableInvoice = fullInvoiceQuery.data ?? invoice ?? null;
+  const { print: printInvoice } = useInvoicePrint(printableInvoice);
 
   const pods = documents.filter((d) => d.kind === 'POD');
   const attachments = documents.filter((d) => d.kind === 'ATTACHMENT' || d.kind === 'OTHER');
@@ -356,11 +354,6 @@ export function OrderDocumentsPanel({
     },
     [upload, refetch],
   );
-
-  const printInvoice = () => {
-    if (!printableInvoice) return;
-    printInvoiceDocument({ invoice: printableInvoice, organization });
-  };
 
   return (
     <div className="space-y-4">

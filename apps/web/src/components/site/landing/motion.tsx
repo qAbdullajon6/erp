@@ -80,6 +80,7 @@ export function Reveal({
   y = 16,
   className,
   once = true,
+  id,
 }: {
   children: React.ReactNode;
   as?: React.ElementType;
@@ -87,6 +88,9 @@ export function Reveal({
   y?: number;
   className?: string;
   once?: boolean;
+  /// So a revealed block can also be an in-page anchor target without
+  /// wrapping it in an extra div purely to hold the id.
+  id?: string;
 }) {
   const reduced = usePrefersReducedMotion();
   const [ref, inView] = useInView<HTMLDivElement>({ once });
@@ -95,6 +99,7 @@ export function Reveal({
   return (
     <Tag
       ref={ref}
+      id={id}
       className={className}
       style={{
         opacity: shown ? 1 : 0,

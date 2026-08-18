@@ -34,7 +34,7 @@ export default defineConfig({
       warmup: {
         clientFiles: [
           './src/routes/__root.tsx',
-          './src/routes/auth.sign-in.tsx',
+          './src/routes/login.tsx',
           './src/routes/platform.tsx',
           './src/routes/platform.index.tsx',
           './src/routes/platform.organizations.index.tsx',

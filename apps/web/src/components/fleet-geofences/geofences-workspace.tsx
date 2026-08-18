@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { ErrorState } from '@/components/shared/list-states';
+import { WorkspaceHeader } from '@/components/shared/page-header';
+import { SearchInput } from '@/components/shared/search-input';
 import { PaginationBar } from '@/components/shared/pagination-bar';
 import {
   useArchiveGeofenceMutation,
@@ -35,7 +36,6 @@ import {
   Hexagon,
   Plus,
   RefreshCw,
-  Search,
 } from 'lucide-react';
 
 type FenceTab = 'active' | 'inactive' | 'archived' | 'all';
@@ -215,26 +215,20 @@ export function GeofencesWorkspace() {
       className="flex h-[calc(100dvh-3.5rem)] flex-col"
       data-testid="geofences-workspace"
     >
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 bg-surface px-3 py-2.5 sm:px-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <Hexagon className="h-4 w-4 shrink-0 text-brand" aria-hidden />
-            <h1 className="truncate text-sm font-semibold text-foreground">
-              Geofences
-            </h1>
-          </div>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
-            {list.isLoading
-              ? 'Loading geofences…'
-              : list.isError
-                ? list.errorMessage
-                : fences.length === 0
-                  ? 'No geofences in this view'
-                  : `${fences.length} fence${fences.length === 1 ? '' : 's'} · provider-independent`}
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-1.5">
+      <WorkspaceHeader
+        title="Geofences"
+        icon={<Hexagon className="h-4 w-4 shrink-0 text-brand" aria-hidden />}
+        subtitle={
+          list.isLoading
+            ? 'Loading geofences…'
+            : list.isError
+              ? list.errorMessage
+              : fences.length === 0
+                ? 'No geofences in this view'
+                : `${fences.length} fence${fences.length === 1 ? '' : 's'} · provider-independent`
+        }
+        action={
+          <>
           <Button size="sm" variant="outline" className="h-8" asChild>
             <Link to="/app/fleet-tracking">
               <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
@@ -271,8 +265,9 @@ export function GeofencesWorkspace() {
               Create
             </Button>
           ) : null}
-        </div>
-      </header>
+          </>
+        }
+      />
 
       {list.isError ? (
         <div className="p-6">
@@ -315,16 +310,13 @@ export function GeofencesWorkspace() {
               )}
             >
               <div className="space-y-2 border-b border-border/50 p-3">
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    value={localSearch}
-                    onChange={(e) => setLocalSearch(e.target.value)}
-                    placeholder="Search geofences…"
-                    className="h-8 pl-8 text-sm"
-                    aria-label="Search geofences"
-                  />
-                </div>
+                <SearchInput
+                  size="sm"
+                  value={localSearch}
+                  onChange={setLocalSearch}
+                  placeholder="Search geofences…"
+                  label="Search geofences"
+                />
                 <div className="flex flex-wrap gap-1" role="tablist">
                   {TABS.map((t) => (
                     <button

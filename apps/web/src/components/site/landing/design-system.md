@@ -1,11 +1,31 @@
-# FlowERP Landing — Design System (V2)
+# FlowERP Landing — Design System
 
-FlowERP is positioned as an **AI Logistics Operating System**. The landing must feel
-like a world-class enterprise platform: **enterprise gravity** plus **AI that feels alive**.
+FlowERP AI is a **logistics operations platform**: orders, dispatch, fleet, tracking and
+finance in one workspace, with an AI assistant across all of it. The landing page's job is
+to make that legible in about five seconds and then get out of the way.
 
 Quality here comes from **typography, spacing, hierarchy, and motion** — not decoration.
-Restraint in colour; life through motion. Every section composes the primitives in
-`primitives.tsx` and the motion layer in `motion.tsx`. No section re-invents these.
+Every section composes the primitives in `primitives.tsx` and the motion layer in
+`motion.tsx`. No section re-invents these.
+
+## The one non-negotiable rule: nothing invented
+
+The page previously carried a "Live operations" panel (orders in flight, fleet active,
+on-time rate), named customer testimonials, a customer logo marquee, and an implementation
+timeline — none of it real. It is all gone, and it does not come back. Anything that reads
+as a number, a customer, a result, or a commitment has to be something we can stand behind.
+
+In practice:
+
+- **No metrics** on the page, animated or otherwise. `CountUp` was removed with them.
+- **No customers, logos or quotes** until there are real ones with permission to use them.
+- **Feature claims must have repository evidence.** `Capabilities.tsx` describes what the
+  modules do, in an operator's words, not what they achieve.
+- The product visual (`ProductPreview.tsx`) is plainly the *shape* of a screen — an order
+  number, a route, a status — rendered with the app's own `StatusBadge`. It is labelled a
+  preview, not dressed with a "Live" indicator.
+- **No pricing** is shown, and there is no pricing page, so the header does not link to one
+  and the structured data carries no `offers`. The single conversion path is the demo modal.
 
 Shared tokens live in `styles.css` (dark navy, one brand hue `--brand = oklch(0.68 0.17 250)`,
 `--radius = 0.75rem`). We **do not** change shared tokens — the whole app depends on them.
@@ -58,13 +78,17 @@ The landing-only ambient/motion utilities are prefixed `lv2-` and defined in `st
 
 - `Card`: `rounded-xl border border-border bg-surface`; `interactive` adds the one hover.
 - `IconTile`: `rounded-lg bg-brand/10 text-brand ring-1 ring-inset ring-brand/15`, `h-11`/`h-9`.
-- `Pill` (muted/brand/success) and `LiveDot` (pulsing) for status.
-- `BrowserFrame` wraps every product visual in one consistent window chrome.
+- `Pill` (muted/brand/success) for status. Statuses inside a product visual use the app's
+  real `StatusBadge`, so a status is the same colour here as it is inside the product.
+- `BrowserFrame` wraps every product visual in one consistent window chrome. Its `live`
+  prop defaults off — there is no live data behind these.
 
 ## 7. Inputs
 
-- `h-11`, `bg-background/40`, `border-border`, `focus-visible` ring. (Demo modal is the one
-  real form; hero/teaser inputs are non-interactive product mocks, `aria-hidden`.)
+Auth and the demo modal share one treatment via `AUTH_INPUT_CLASSES` (`h-11`,
+`bg-background/40`, `rounded-lg`): size and surface only. **Focus and invalid states come
+from the shared `ui/input` primitive**, so fixing a focus ring once fixes it everywhere
+rather than only on the marketing site.
 
 ## 8. Icons
 
@@ -72,12 +96,12 @@ Lucide only. `h-5 w-5` default, `h-4 w-4`/`h-3.5 w-3.5` inline. One accent-tile 
 
 ## 9. Motion (`motion.tsx` + `lv2-` keyframes)
 
-- **One entrance:** `<Reveal>` — fade + rise, easing `cubic-bezier(0.16,1,0.3,1)` ~700ms,
-  staggered by `delay`. IntersectionObserver-driven, opt-in.
-- **Live systems:** hero copilot typewriter (`useTypewriter`) + `<CountUp>` stats + floating
-  chips; AI section streams reasoning steps; dispatch draws routes (`lv2-draw`) with flow
-  (`lv2-flow`) and a marker via `<animateMotion>`; platform network draws in; logo marquee.
-- **Pointer parallax:** `usePointerParallax` — subtle, desktop + fine-pointer only.
+- **One entrance, and only one:** `<Reveal>` — fade + rise, easing `cubic-bezier(0.16,1,0.3,1)`
+  ~700ms, staggered by `delay`. IntersectionObserver-driven, opt-in. It takes an optional
+  `id` so a revealed block can also be an in-page anchor target.
+- Because every section starts at `opacity: 0`, a failed observer would silently ship blank
+  bands. `public-responsive.spec.ts` scrolls the page and asserts each section's heading
+  actually reaches `opacity: 1`.
 - Micro-interactions: 150ms on colour/border/transform.
 - **Everything decorative is disabled under `prefers-reduced-motion`** (hooks return the
   final state; `lv2-*` animations are switched off in a media block in `styles.css`).
@@ -91,6 +115,19 @@ long announcement copy collapse. Every interactive element has a `focus-visible`
 
 ## Section order
 
-`Nav → Hero → Proof → Platform → AISection → Dispatch → Results → Integrations → Pricing →
-Faq → Closing (CTA + contact) → Footer`. Shared conversion infra (`DemoModal`,
-`openDemoModal`, analytics, pricing config, SEO) is reused, not rebuilt.
+`Nav → Hero → ProductPreview → Capabilities → HowItWorks → Closing (CTA) → Footer`.
+
+Four content sections, each with one job: what it is, what it looks like, what it does, how
+you start. The header links only to what exists on the page — `#product`, `#capabilities`,
+`#how-it-works`. Shared conversion infra (`DemoModal`, `openDemoModal`, analytics, SEO) is
+reused, not rebuilt.
+
+## The bottom of a phone screen is contested
+
+Three things want `bottom-0` on mobile: the consent banner (`z-[60]`), the sticky
+`MobileCTA` (`z-40`), and the mobile nav sheet's own CTA. Two of them have already been
+found invisible on a first visit, buried under the banner. `MobileCTA` now subscribes to
+`subscribeConsentBanner` and stands down until the visitor has chosen, and the sheet's CTA
+sits up with the nav links rather than pinned to the bottom. Both are covered by
+`public-responsive.spec.ts`, which probes with `elementFromPoint` — being *visible* is not
+enough when something else is painted on top.

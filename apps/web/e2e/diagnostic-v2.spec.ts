@@ -29,8 +29,8 @@ test('DIAGNOSTIC-V2: Trace exact form submission behavior', async ({ page }) => 
 
   try {
     // Step 1: Navigate to login
-    events.push('\n=== STEP 1: Navigate to /auth/sign-in ===');
-    await page.goto(`${FRONTEND_URL}/auth/sign-in`, { waitUntil: 'domcontentloaded' });
+    events.push('\n=== STEP 1: Navigate to /login ===');
+    await page.goto(`${FRONTEND_URL}/login`, { waitUntil: 'domcontentloaded' });
     events.push(`Current URL: ${page.url()}`);
     await page.waitForLoadState('networkidle', { timeout: 5000 });
 

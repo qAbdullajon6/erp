@@ -14,7 +14,6 @@ import {
 } from '@dnd-kit/core';
 import { useNavigate } from '@tanstack/react-router';
 import {
-  Loader2,
   Plus,
   RefreshCw,
   AlertTriangle,
@@ -36,6 +35,8 @@ import { useDispatchConflictsBatch, type DispatchConflictSummary } from '@/lib/a
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState, ErrorState } from '@/components/shared/list-states';
+import { LiveIndicator } from '@/components/shared/live-indicator';
+import { WorkspaceHeader } from '@/components/shared/page-header';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { DispatchesCreateSheet } from '@/components/dispatch/dispatches-create-sheet';
 import { DispatchViewToggle } from '@/components/dispatch/dispatch-view-toggle';
@@ -517,41 +518,22 @@ export function DispatchBoard() {
   return (
     <div className="flex min-h-0 min-w-0 flex-col gap-2">
       {/* Sticky chrome — survives page scroll on 1366×768 */}
-      <div className="sticky top-0 z-20 -mx-1 space-y-2 border-b border-border/80 bg-background/95 px-1 pb-2 pt-0.5 backdrop-blur supports-[backdrop-filter]:bg-background/85">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <h1 className="font-display text-xl font-bold tracking-tight text-foreground sm:text-2xl">
-              Dispatch Board
-            </h1>
-            <p className="truncate text-xs text-muted-foreground sm:text-sm">
-              {meta?.total ?? allDispatches.length} dispatches
-              {counts.overdue > 0 ? (
-                <span className="text-destructive"> · {counts.overdue} overdue</span>
-              ) : null}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+      <WorkspaceHeader
+        className="sticky top-0 z-20 -mx-1 border-border/80 bg-background/95 px-1 pb-2 pt-0.5 backdrop-blur supports-[backdrop-filter]:bg-background/85 sm:px-1"
+        title="Dispatch Board"
+        subtitle={
+          <>
+            {meta?.total ?? allDispatches.length} dispatches
+            {counts.overdue > 0 ? (
+              <span className="text-destructive"> · {counts.overdue} overdue</span>
+            ) : null}
+          </>
+        }
+        action={
+          <>
             {!isEmpty && <DispatchSearch dispatches={allDispatches} onSelect={handleSearchSelect} />}
 
-            <span
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-medium',
-                isRefreshing
-                  ? 'border-border text-muted-foreground'
-                  : 'border-success/40 bg-success/10 text-success',
-              )}
-              title="Refreshes every 30s while this tab is open"
-            >
-              {isRefreshing ? (
-                <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-              ) : (
-                <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-50" />
-                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-success" />
-                </span>
-              )}
-              {isRefreshing ? 'Updating' : ageSec < 5 ? 'Live' : `Live · ${ageSec}s`}
-            </span>
+            <LiveIndicator refreshing={isRefreshing} ageSeconds={ageSec} />
 
             <Button
               variant="outline"
@@ -576,9 +558,9 @@ export function DispatchBoard() {
                 New
               </Button>
             )}
-          </div>
-        </div>
-
+          </>
+        }
+      >
         {/* Single strip: filters + unique ops (no duplicate overdue/waiting chips) */}
         <div className="flex flex-wrap items-center gap-1.5">
           <div className="flex flex-wrap items-center gap-1" role="toolbar" aria-label="Board filters">
@@ -629,7 +611,7 @@ export function DispatchBoard() {
             </>
           )}
         </div>
-      </div>
+      </WorkspaceHeader>
 
       <div role="status" aria-live="polite" className="sr-only">
         {announcement}

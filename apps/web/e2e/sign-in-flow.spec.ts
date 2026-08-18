@@ -3,20 +3,18 @@ import { expect, test } from '@playwright/test';
 test('sign-in shows the real error, then succeeds', async ({ page }) => {
   test.setTimeout(300_000);
 
-  await page.goto('/auth/sign-in', { waitUntil: 'domcontentloaded' });
+  await page.goto('/login', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('#email')).toBeVisible({ timeout: 60_000 });
 
   // The form is server-rendered, so it is visible and fillable before React
-  // has hydrated — and a submit at that point does a native form POST instead
-  // of running onSubmit. Probe hydration with the password reveal toggle: it is
-  // pure client state, so retrying it costs nothing. Retrying a submit would
-  // instead burn the 5/min login throttle.
-  const reveal = page.getByRole('button', { name: /show password/i });
-  await expect(async () => {
-    await reveal.click();
-    await expect(page.locator('#password')).toHaveAttribute('type', 'text', { timeout: 1_000 });
-  }).toPass({ timeout: 60_000 });
+  // has hydrated. The submit button now stays disabled until it is, which
+  // makes "enabled" the honest hydration signal — and means an early submit
+  // can no longer escape as a native navigation.
+  await expect(page.getByRole('button', { name: /^sign in$/i })).toBeEnabled({ timeout: 60_000 });
 
+  const reveal = page.getByRole('button', { name: /show password/i });
+  await reveal.click();
+  await expect(page.locator('#password')).toHaveAttribute('type', 'text');
   await page.getByRole('button', { name: /hide password/i }).click();
   await expect(page.locator('#password')).toHaveAttribute('type', 'password');
 

@@ -41,15 +41,14 @@ export function LogoMark({ size = 28, className }: { size?: number; className?: 
     >
       <defs>
         <linearGradient id="flowerp-mark" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="oklch(0.68 0.17 250)" />
-          <stop offset="100%" stopColor="oklch(0.78 0.14 220)" />
+          <stop offset="0%" stopColor="#FB923C" />
+          <stop offset="100%" stopColor="#C2410C" />
         </linearGradient>
       </defs>
 
       <rect width="64" height="64" rx="16" fill="url(#flowerp-mark)" />
 
-      {/* F mark, knocked out against the tile. */}
-      <path d="M20 14h26v9H29v9h14v9H29v13h-9z" fill="oklch(0.15 0.03 260)" />
+      <path d="M20 14h26v9H29v9h14v9H29v13h-9z" fill="#1C0500" />
     </svg>
   );
 }

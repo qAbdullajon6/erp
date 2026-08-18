@@ -29,7 +29,7 @@ test('an expired access token is refreshed instead of logging the user out', asy
   await page.waitForTimeout(8000);
 
   expect(refreshCalls, 'the app should have exchanged the refresh token').toContain(200);
-  await expect(page).not.toHaveURL(/\/auth\/sign-in/);
+  await expect(page).not.toHaveURL(/\/login/);
 
   await expect(page.getByTestId('dashboard')).toBeVisible();
 

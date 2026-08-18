@@ -748,7 +748,7 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                   <div className="flex flex-wrap gap-1.5">
                     {canViewFleet && order.vehicleId && (
                       <Button asChild size="sm" variant="ghost" className="h-7 px-2 text-xs">
-                        <Link to="/app/fleet-tracking">
+                        <Link to="/app/fleet-tracking" search={{ vehicleId: order.vehicleId }}>
                           <Navigation className="mr-1 h-3 w-3" />
                           Map
                         </Link>
@@ -1024,7 +1024,15 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                   <h3 className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Live tracking
                   </h3>
-                  <Link to="/app/fleet-tracking" className="text-[11px] font-medium text-brand hover:underline">
+                  {/* The map route already deep-links a selection; both links
+                      from here dropped the vehicle, so "Map" landed the
+                      operator on the whole fleet and left them to find the
+                      truck they had just been reading about. */}
+                  <Link
+                    to="/app/fleet-tracking"
+                    search={{ vehicleId: order.vehicleId }}
+                    className="text-[11px] font-medium text-brand hover:underline"
+                  >
                     Map
                   </Link>
                 </div>

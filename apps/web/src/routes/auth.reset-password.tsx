@@ -122,7 +122,7 @@ function ResetPasswordPage() {
       footer={
         <>
           Remembered it?{' '}
-          <Link to="/auth/sign-in" className="font-medium text-brand hover:underline">
+          <Link to="/login" className="font-medium text-brand hover:underline">
             Sign in
           </Link>
         </>
@@ -175,7 +175,7 @@ function ResetPasswordInvalidView() {
         </Button>
       }
       secondary={
-        <Link to="/auth/sign-in" className="font-medium text-brand hover:underline">
+        <Link to="/login" className="font-medium text-brand hover:underline">
           Back to sign in
         </Link>
       }
@@ -206,7 +206,7 @@ function ResetPasswordSuccessView() {
       description="Your password has been changed. You can now sign in with your new password."
       action={
         <Button asChild className="h-11 w-full rounded-xl bg-gradient-brand text-brand-foreground hover:opacity-90">
-          <Link to="/auth/sign-in">Go to Sign In</Link>
+          <Link to="/login">Go to Sign In</Link>
         </Button>
       }
     />

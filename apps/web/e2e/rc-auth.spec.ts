@@ -74,7 +74,7 @@ test('RC7a: a dashboard-load fan-out spends exactly one refresh token', async ({
   // would spend an already-revoked one and sign the user out.
   const successful = refreshCalls.filter((s) => s === 200).length;
   if (successful !== 1) fail('P0', `expected exactly one successful refresh, saw ${successful} (${refreshCalls})`);
-  if (/\/auth\/sign-in/.test(page.url())) fail('P0', 'an expired access token still bounces the user to sign-in');
+  if (/\/login/.test(page.url())) fail('P0', 'an expired access token still bounces the user to sign-in');
   if (!dashboardRendered) fail('P1', 'dashboard did not render after the refresh');
   if (apiFailures.length) fail('P1', `requests still failing after refresh: ${apiFailures.join(', ')}`);
 });
@@ -127,7 +127,7 @@ test('RC7d: closing the tab ends the session', async ({ browser, request }) => {
   await page2.waitForTimeout(6000);
   const url = page2.url();
   console.log(`[RC7d] fresh tab url: ${url}`);
-  if (!/\/auth\/sign-in/.test(url)) fail('P1', `a fresh tab did not require sign-in, landed on ${url}`);
+  if (!/\/login/.test(url)) fail('P1', `a fresh tab did not require sign-in, landed on ${url}`);
   await second.close();
 });
 

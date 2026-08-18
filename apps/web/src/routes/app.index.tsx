@@ -18,6 +18,8 @@ import { useFinanceSummaryQuery } from "@/lib/api/finance";
 import { useLiveFleetQuery } from "@/lib/api/telematics";
 import { useDispatchBoardSummary } from "@/lib/hooks/use-dispatches";
 import { LoadingState, ErrorState } from "@/components/shared/list-states";
+import { PageHeader } from "@/components/shared/page-header";
+import { Button } from "@/components/ui/button";
 import { ADMIN_OPS_ROLES, ORDER_WRITE_ROLES, DISPATCH_WRITE_ROLES, DISPATCH_ROLES, FLEET_ROLES } from "@/lib/role-access";
 import type { MembershipRole } from "@/lib/api/organizations";
 import { formatRelativeTime } from "@/lib/format";
@@ -50,25 +52,19 @@ function OpsClock() {
   const day = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" }).format(now);
 
   return (
-    <div className="min-w-0">
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <h1 className="text-lg font-semibold tracking-tight text-foreground">Today</h1>
-        <span className="text-lg font-semibold tabular-nums text-foreground">{time}</span>
-      </div>
-      <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[12px] text-muted-foreground">
-        <span>
-          {day} · {weekday}
-        </span>
-        <span className="text-border" aria-hidden>
-          ·
-        </span>
-        <span>Shift: {shiftLabel(now)}</span>
-        <span className="text-border" aria-hidden>
-          ·
-        </span>
-        <span className="font-medium text-foreground">Operations Center</span>
-      </p>
-    </div>
+    <span className="flex flex-wrap items-center gap-x-2">
+      <span className="font-medium tabular-nums text-foreground">{time}</span>
+      <span className="text-border" aria-hidden>
+        ·
+      </span>
+      <span>
+        {day} · {weekday}
+      </span>
+      <span className="text-border" aria-hidden>
+        ·
+      </span>
+      <span>Shift: {shiftLabel(now)}</span>
+    </span>
   );
 }
 
@@ -223,37 +219,45 @@ function OperationsCommandCenter({
     // Tests need to say "the dashboard rendered" without depending on whatever
     // the headline copy happens to be this month.
     <div className="space-y-8" data-testid="dashboard">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/60 pb-4">
-        <OpsClock />
-        <div className="flex flex-wrap items-center gap-1.5">
-          <FreshnessControl updatedAt={updatedAt} isFetching={isRefreshing} onRefresh={retryAll} />
-          <Link
-            to="/app/ai-assistant"
-            className="inline-flex h-8 items-center gap-1 rounded-lg border border-border/80 px-2.5 text-[11px] font-medium text-muted-foreground hover:border-brand hover:text-brand"
-          >
-            <Sparkles className="h-3 w-3" />
-            Ask AI
-          </Link>
-          {canCreateOrder && (
-            <Link
-              to="/app/orders"
-              search={{ create: true }}
-              className="inline-flex h-8 items-center gap-1 rounded-lg border border-border/80 px-2.5 text-[11px] font-medium text-muted-foreground hover:border-brand hover:text-brand"
-            >
-              <Plus className="h-3 w-3" />
-              Order
-            </Link>
-          )}
-          {canCreateDispatch && (
-            <Link
-              to="/app/dispatches/create"
-              className="inline-flex h-8 items-center gap-1 rounded-lg bg-brand px-3 text-[11px] font-semibold text-brand-foreground hover:opacity-90"
-            >
-              <Plus className="h-3 w-3" />
-              Dispatch
-            </Link>
-          )}
-        </div>
+      <div className="border-b border-border/60 pb-4">
+        <PageHeader
+          title="Today"
+          subtitle={<OpsClock />}
+          action={
+            <>
+              <FreshnessControl
+                updatedAt={updatedAt}
+                isFetching={isRefreshing}
+                onRefresh={retryAll}
+              />
+              {/* These were hand-styled anchors sized `h-8 text-[11px]`, which put
+                  the dashboard's only calls to action a step below every other
+                  button in the app. */}
+              <Button asChild variant="outline" size="sm">
+                <Link to="/app/ai-assistant">
+                  <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                  Ask AI
+                </Link>
+              </Button>
+              {canCreateOrder && (
+                <Button asChild variant="outline" size="sm">
+                  <Link to="/app/orders" search={{ create: true }}>
+                    <Plus className="mr-1.5 h-3.5 w-3.5" />
+                    Order
+                  </Link>
+                </Button>
+              )}
+              {canCreateDispatch && (
+                <Button asChild size="sm">
+                  <Link to="/app/dispatches/create">
+                    <Plus className="mr-1.5 h-3.5 w-3.5" />
+                    Dispatch
+                  </Link>
+                </Button>
+              )}
+            </>
+          }
+        />
       </div>
 
       {error && (

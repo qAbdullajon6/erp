@@ -1,5 +1,16 @@
+import {
+  Activity,
+  AlertTriangle,
+  Fuel,
+  Gauge,
+  MapPin,
+  Route,
+  type LucideIcon,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { MetricCard } from '@/components/ui/metric-card';
+import { SurfaceCard } from '@/components/ui/surface-card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useFleetTelematicsReportQuery } from '@/lib/api/reports';
 import { describeError } from '@/lib/api/describe-error';
@@ -42,15 +53,23 @@ export function FleetTelematicsTab({ dateFrom, dateTo }: FleetTelematicsTabProps
   }
 
   const { overview, utilization, driverBehavior, fuel } = data;
-  const kpis = [
-    { label: 'Distance (km)', value: overview.totalDistanceKm.toLocaleString() },
-    { label: 'Trips', value: overview.totalTrips.toLocaleString() },
-    { label: 'Utilization', value: `${overview.utilizationPct.toFixed(1)}%` },
-    { label: 'Open Alerts', value: String(overview.openAlerts), warn: overview.openAlerts > 0 },
-    { label: 'Harsh Events', value: String(overview.harshEvents) },
-    { label: 'Speeding Events', value: String(overview.speedingEvents) },
-    { label: 'Est. Fuel (L)', value: fuel.totalEstimatedFuelLiters.toLocaleString() },
-    { label: 'Fleet L/100km', value: fuel.fleetLitersPer100Km.toFixed(1) },
+  /// Labels in sentence case to match the Overview tab's KPIs — this tab used
+  /// Title Case, so the same screen named its figures two different ways
+  /// depending on which tab you were on.
+  const kpis: { label: string; value: string; icon: LucideIcon; warn?: boolean }[] = [
+    { label: 'Distance (km)', value: overview.totalDistanceKm.toLocaleString(), icon: Route },
+    { label: 'Trips', value: overview.totalTrips.toLocaleString(), icon: MapPin },
+    { label: 'Utilization', value: `${overview.utilizationPct.toFixed(1)}%`, icon: Gauge },
+    {
+      label: 'Open alerts',
+      value: String(overview.openAlerts),
+      icon: AlertTriangle,
+      warn: overview.openAlerts > 0,
+    },
+    { label: 'Harsh events', value: String(overview.harshEvents), icon: Activity },
+    { label: 'Speeding events', value: String(overview.speedingEvents), icon: Gauge },
+    { label: 'Est. fuel (L)', value: fuel.totalEstimatedFuelLiters.toLocaleString(), icon: Fuel },
+    { label: 'Fleet L/100km', value: fuel.fleetLitersPer100Km.toFixed(1), icon: Fuel },
   ];
 
   return (
@@ -62,17 +81,23 @@ export function FleetTelematicsTab({ dateFrom, dateTo }: FleetTelematicsTabProps
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {kpis.map((kpi) => (
-          <div key={kpi.label} className="rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50 p-6">
-            <div className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{kpi.label}</div>
-            <div className={`mt-3 font-display text-2xl font-bold ${kpi.warn ? 'text-destructive' : 'text-foreground'}`}>
-              {kpi.value}
-            </div>
-          </div>
+          <MetricCard
+            key={kpi.label}
+            label={kpi.label}
+            value={kpi.value}
+            icon={kpi.icon}
+            variant="compact"
+            note={
+              kpi.warn
+                ? { icon: AlertTriangle, text: 'needs attention', tone: 'warning' }
+                : undefined
+            }
+          />
         ))}
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50 p-6">
+        <SurfaceCard className="p-6">
           <h3 className="font-display text-lg font-bold text-foreground">Fleet state now</h3>
           <dl className="mt-4 space-y-2 text-sm">
             {(
@@ -90,7 +115,7 @@ export function FleetTelematicsTab({ dateFrom, dateTo }: FleetTelematicsTabProps
               </div>
             ))}
           </dl>
-        </div>
+        </SurfaceCard>
 
         <ReportTableCard
           className="lg:col-span-2"

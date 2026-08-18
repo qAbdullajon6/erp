@@ -13,6 +13,7 @@ import {
   type TrackingDebugPacket,
 } from '@/lib/api/tracking-debug';
 import { EmptyState, ErrorState } from '@/components/shared/list-states';
+import { PageHeader } from '@/components/shared/page-header';
 import { describeError } from '@/lib/api/describe-error';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -111,10 +112,20 @@ export function TrackingDebugConsole() {
     }
   }
 
+  /// Every branch keeps the same heading, so the page identifies itself while
+  /// it loads and while it is failing — which, on a diagnostics screen, is
+  /// exactly when you most need to know you are in the right place.
+  const heading = (
+    <PageHeader
+      title="Tracking Diagnostics"
+      subtitle="Why a vehicle is or isn't reporting: device sessions, recent GPS packets, and connection health."
+    />
+  );
+
   if (query.isLoading) {
     return (
-      <div className="space-y-3 p-6">
-        <Skeleton className="h-8 w-64" />
+      <div className="space-y-6">
+        {heading}
         <Skeleton className="h-24 w-full" />
         <Skeleton className="h-64 w-full" />
       </div>
@@ -123,9 +134,10 @@ export function TrackingDebugConsole() {
 
   if (query.isError) {
     return (
-      <div className="p-6">
+      <div className="space-y-6">
+        {heading}
         <ErrorState
-          message={describeError(query.error, 'Tracking debug unavailable')}
+          message={describeError(query.error, 'Tracking diagnostics unavailable')}
           onRetry={() => void query.refetch()}
         />
       </div>
@@ -134,10 +146,11 @@ export function TrackingDebugConsole() {
 
   if (!snapshot) {
     return (
-      <div className="p-6">
+      <div className="space-y-6">
+        {heading}
         <EmptyState
-          title="No debug data yet"
-          description="Send GPS from the Driver app or /tracking/dev simulate endpoints, then refresh."
+          title="Nothing reported yet"
+          description="No tracking device has sent data to this workspace. Once a vehicle's device connects, its sessions and GPS packets appear here."
         />
       </div>
     );
@@ -147,20 +160,21 @@ export function TrackingDebugConsole() {
     snapshot;
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 p-4 md:p-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Tracking Debug Console</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Development observability for Driver Mobile GPS — live sessions, packets, timeline,
-            and diagnostics from the real backend only.
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Generated {new Date(snapshot.generatedAt).toLocaleString()} · offline threshold{' '}
-            {snapshot.offlineThresholdSec}s · auto-refresh 5s
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+    <div className="flex h-full min-h-0 flex-col gap-4">
+      <PageHeader
+        title="Tracking Diagnostics"
+        subtitle={
+          <>
+            Why a vehicle is or isn&apos;t reporting: device sessions, recent GPS packets, and
+            connection health.
+            <span className="mt-1 block text-xs">
+              Updated {new Date(snapshot.generatedAt).toLocaleString()} · treated as offline after{' '}
+              {snapshot.offlineThresholdSec}s · refreshes every 5s
+            </span>
+          </>
+        }
+        action={
+          <>
           <Button
             type="button"
             variant="outline"
@@ -181,8 +195,9 @@ export function TrackingDebugConsole() {
             <Download className="size-3.5" />
             Export JSON
           </Button>
-        </div>
-      </header>
+          </>
+        }
+      />
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
         <MetricCard

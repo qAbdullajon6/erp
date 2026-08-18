@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, Loader2, Plus, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { useDispatches } from '@/lib/hooks/use-dispatches';
 import { useCurrentUser } from '@/lib/api/auth';
@@ -13,6 +13,8 @@ import type { CalendarSearch } from '@/routes/app.dispatches.calendar';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/shared/list-states';
+import { LiveIndicator } from '@/components/shared/live-indicator';
+import { WorkspaceHeader } from '@/components/shared/page-header';
 import { DispatchesCreateSheet } from '@/components/dispatch/dispatches-create-sheet';
 import { DispatchViewToggle } from '@/components/dispatch/dispatch-view-toggle';
 import { DispatchCalendarFiltersBar } from '@/components/dispatch/dispatch-calendar-filters-bar';
@@ -303,35 +305,13 @@ export function DispatchCalendar() {
       data-testid="dispatch-calendar"
     >
       {/* Operations chrome — compact, full width */}
-      <div className="shrink-0 space-y-2 border-b border-white/[0.08] bg-background/95 px-3 py-2 backdrop-blur-md sm:px-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="min-w-0">
-            <h1 className="font-display text-lg font-bold tracking-tight text-foreground sm:text-xl">
-              Dispatch Calendar
-            </h1>
-            <p className="text-[11px] text-muted-foreground">
-              {format(anchor, 'EEEE, MMM d')} · {rangeLabel(anchor, view)}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-medium',
-                refreshing
-                  ? 'border-border text-muted-foreground'
-                  : 'border-success/40 bg-success/10 text-success',
-              )}
-            >
-              {refreshing ? (
-                <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-              ) : (
-                <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-50" />
-                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-success" />
-                </span>
-              )}
-              {refreshing ? 'Updating' : ageSec < 5 ? 'Live' : `Live · ${ageSec}s`}
-            </span>
+      <WorkspaceHeader
+        className="border-white/[0.08] bg-background/95 px-3 py-2 backdrop-blur-md sm:px-4"
+        title="Dispatch Calendar"
+        subtitle={`${format(anchor, 'EEEE, MMM d')} · ${rangeLabel(anchor, view)}`}
+        action={
+          <>
+            <LiveIndicator refreshing={refreshing} ageSeconds={ageSec} />
 
             <Button
               variant="outline"
@@ -355,9 +335,9 @@ export function DispatchCalendar() {
                 New
               </Button>
             )}
-          </div>
-        </div>
-
+          </>
+        }
+      >
         <DispatchCalendarKpis
           kpis={kpis}
           activeFocus={filters.kpiFocus}
@@ -440,7 +420,7 @@ export function DispatchCalendar() {
             {rangeLabel(anchor, view)}
           </p>
         </div>
-      </div>
+      </WorkspaceHeader>
 
       {/* Workspace: calendar + context rail */}
       <div className="flex min-h-0 flex-1 flex-col xl:flex-row">

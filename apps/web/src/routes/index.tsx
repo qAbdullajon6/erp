@@ -2,14 +2,12 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { Nav } from "@/components/site/landing/Nav";
 import { Hero } from "@/components/site/landing/Hero";
-import { Proof } from "@/components/site/landing/Proof";
-import { Platform } from "@/components/site/landing/Platform";
-import { AISection } from "@/components/site/landing/AISection";
-import { Dispatch } from "@/components/site/landing/Dispatch";
-import { Results } from "@/components/site/landing/Results";
-import { Integrations } from "@/components/site/landing/Integrations";
+import { VideoSection } from "@/components/site/landing/VideoSection";
+import { Capabilities } from "@/components/site/landing/Capabilities";
+import { HowItWorks } from "@/components/site/landing/HowItWorks";
+import { SocialProof } from "@/components/site/landing/SocialProof";
 import { Pricing } from "@/components/site/landing/Pricing";
-import { Faq, FAQS } from "@/components/site/landing/Faq";
+import { FAQ } from "@/components/site/landing/FAQ";
 import { Closing } from "@/components/site/landing/Closing";
 import { Footer } from "@/components/site/landing/Footer";
 import { MobileCTA } from "@/components/site/landing/MobileCTA";
@@ -23,7 +21,6 @@ import {
   getOrganizationSchema,
   getWebSiteSchema,
   getSoftwareApplicationSchema,
-  getFAQPageSchema,
   serializeSchema,
 } from "@/lib/seo/structured-data";
 
@@ -36,7 +33,6 @@ export const Route = createFileRoute("/")({
     const organizationSchema = getOrganizationSchema();
     const webSiteSchema = getWebSiteSchema();
     const softwareSchema = getSoftwareApplicationSchema();
-    const faqSchema = getFAQPageSchema(FAQS.map((f) => ({ question: f.q, answer: f.a })));
 
     return {
       meta: [
@@ -60,10 +56,6 @@ export const Route = createFileRoute("/")({
         {
           type: "application/ld+json",
           children: serializeSchema(softwareSchema as unknown as Record<string, unknown>),
-        },
-        {
-          type: "application/ld+json",
-          children: serializeSchema(faqSchema as unknown as Record<string, unknown>),
         },
       ],
     };
@@ -89,14 +81,12 @@ function Landing() {
       <Nav />
       <main id="main-content">
         <Hero />
-        <Proof />
-        <Platform />
-        <AISection />
-        <Dispatch />
-        <Results />
-        <Integrations />
+        <VideoSection />
+        <Capabilities />
+        <HowItWorks />
+        <SocialProof />
         <Pricing />
-        <Faq />
+        <FAQ />
         <Closing />
       </main>
       <Footer />

@@ -12,8 +12,9 @@ import {
   Users,
   Workflow,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ErrorState } from '@/components/shared/list-states';
+import { PageHeader } from '@/components/shared/page-header';
 import { useCurrentUser } from '@/lib/api/auth';
 import { getNavForRole } from '@/components/layout/nav-config';
 import type { MembershipRole } from '@/lib/api/organizations';
@@ -108,17 +109,28 @@ export function SettingsView() {
     });
   };
 
-  if (loading) {
-    return <Skeleton className="h-96 rounded-xl" />;
-  }
-
-  if (error || !currentUser) {
+  /// The heading stays put through loading and failure.
+  ///
+  /// Both branches used to replace the whole screen, so the title disappeared
+  /// the moment you opened Settings and shifted the page down when it came
+  /// back — and while it was gone the page had no `<h1>` at all, which is what
+  /// a screen-reader user navigates by. Whether the request is in flight has
+  /// nothing to do with what page you are on.
+  if (loading || error || !currentUser) {
     return (
-      <div role="alert" className="rounded-lg bg-destructive/10 p-6 text-sm text-destructive">
-        {error || 'Failed to load your account'}
-        <Button onClick={() => refetch()} variant="ghost" size="sm" className="ml-4">
-          Retry
-        </Button>
+      <div className="space-y-8">
+        <PageHeader
+          title="Settings"
+          subtitle="Company details that appear on your documents, who can access this workspace, and your own preferences."
+        />
+        {loading ? (
+          <Skeleton className="h-96 rounded-xl" />
+        ) : (
+          <ErrorState
+            message={error || 'Failed to load your account'}
+            onRetry={() => refetch()}
+          />
+        )}
       </div>
     );
   }
@@ -129,10 +141,7 @@ export function SettingsView() {
   if (isDriver) {
     return (
       <div className="space-y-6">
-        <header>
-          <h1 className="font-display text-2xl font-bold text-foreground">Account</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Your profile for the driver portal</p>
-        </header>
+        <PageHeader title="Account" subtitle="Your profile for the driver portal" />
         <ProfileTab />
       </div>
     );
@@ -140,13 +149,10 @@ export function SettingsView() {
 
   return (
     <div className="space-y-8">
-      <header>
-        <h1 className="font-display text-3xl font-bold text-foreground">Settings</h1>
-        <p className="mt-2 text-muted-foreground">
-          Company details that appear on your documents, who can access this workspace, and your own
-          preferences.
-        </p>
-      </header>
+      <PageHeader
+        title="Settings"
+        subtitle="Company details that appear on your documents, who can access this workspace, and your own preferences."
+      />
 
       <div className="grid gap-6 lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-start lg:gap-8">
         <SettingsNav

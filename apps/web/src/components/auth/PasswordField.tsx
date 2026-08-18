@@ -65,9 +65,12 @@ export const PasswordField = React.forwardRef<HTMLInputElement, PasswordFieldPro
           <button
             type="button"
             onClick={() => setVisible((v) => !v)}
-            className="group absolute right-1 top-1/2 -translate-y-1/2 rounded-lg p-2.5 text-muted-foreground transition-colors hover:text-foreground"
+            /// Reachable by keyboard. It was `tabIndex={-1}`, which meant the
+            /// only way to check what you had typed was a mouse — exactly the
+            /// person least likely to be using one.
+            className="group absolute right-1 top-1/2 -translate-y-1/2 rounded-lg p-2.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label={visible ? 'Hide password' : 'Show password'}
-            tabIndex={-1}
+            aria-pressed={visible}
           >
             <span className="relative block h-4 w-4">
               <Eye

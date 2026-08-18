@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-states';
+import { WorkspaceHeader } from '@/components/shared/page-header';
+import { SearchInput } from '@/components/shared/search-input';
 import {
   mergeLiveFleetSnapshot,
   mergeVehicleDetail,
@@ -59,7 +61,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   RefreshCw,
-  Search,
   Truck,
   X,
   ZoomIn,
@@ -528,43 +529,40 @@ export function FleetTrackingScreen() {
       className="flex h-[calc(100vh-4rem)] flex-col"
       data-testid="fleet-tracking-page"
     >
-      <div className="shrink-0 space-y-2 border-b border-border/70 bg-surface px-4 py-2.5 sm:px-5">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="font-display text-lg font-bold tracking-tight text-foreground sm:text-xl">
-                Fleet Tracking
-              </h1>
-              <LivePill
-                status={streamStatus}
-                lastReceivedAt={selected?.lastReceivedAt ?? null}
-                isStale={selected?.isStale}
-              />
-            </div>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {isLoading
-                ? 'Loading live fleet…'
-                : isError
-                  ? loadErrorMessage
-                  : emptyFleet
-                    ? 'No live tracking devices connected'
-                    : `${filtered.length} shown · ${vehicles.length} total · ${trackedOnMap} on map`}
-              {!sseConnected && !isLoading && !isError && !emptyFleet && (
-                <span className="text-warning">
-                  {' '}
-                  · Stream {streamReconnecting ? 'reconnecting' : 'offline'}
-                </span>
-              )}
-              {sseConnected && !streamLiveData && !isLoading && !isError && !emptyFleet && (
-                <span className="text-muted-foreground">
-                  {' '}
-                  · Connected · waiting for GPS events
-                </span>
-              )}
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-1.5">
+      <WorkspaceHeader
+        title="Fleet Tracking"
+        status={
+          <LivePill
+            status={streamStatus}
+            lastReceivedAt={selected?.lastReceivedAt ?? null}
+            isStale={selected?.isStale}
+          />
+        }
+        subtitle={
+          <>
+            {isLoading
+              ? 'Loading live fleet…'
+              : isError
+                ? loadErrorMessage
+                : emptyFleet
+                  ? 'No live tracking devices connected'
+                  : `${filtered.length} shown · ${vehicles.length} total · ${trackedOnMap} on map`}
+            {!sseConnected && !isLoading && !isError && !emptyFleet && (
+              <span className="text-warning">
+                {' '}
+                · Stream {streamReconnecting ? 'reconnecting' : 'offline'}
+              </span>
+            )}
+            {sseConnected && !streamLiveData && !isLoading && !isError && !emptyFleet && (
+              <span className="text-muted-foreground">
+                {' '}
+                · Connected · waiting for GPS events
+              </span>
+            )}
+          </>
+        }
+        action={
+          <>
             <Button
               size="sm"
               variant="outline"
@@ -613,26 +611,24 @@ export function FleetTrackingScreen() {
                   <DropdownMenuItem asChild>
                     <Link to="/app/fleet-tracking/debug">
                       <Bug className="mr-2 h-3.5 w-3.5" />
-                      Debug
+                      Diagnostics
                     </Link>
                   </DropdownMenuItem>
                 ) : null}
               </DropdownMenuContent>
             </DropdownMenu>
-          </div>
-        </div>
-
-        <div className="relative min-w-[14rem]">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <input
-            ref={searchRef}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search plate, code, driver… (/)"
-            className="h-8 w-full rounded-md border border-border bg-background pl-8 pr-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
-            aria-label="Search fleet"
-          />
-        </div>
+          </>
+        }
+      >
+        <SearchInput
+          className="min-w-[14rem]"
+          ref={searchRef}
+          size="sm"
+          value={search}
+          onChange={setSearch}
+          placeholder="Search plate, code, driver… (/)"
+          label="Search fleet"
+        />
 
         <div
           className="flex flex-wrap items-center gap-1.5"
@@ -699,7 +695,7 @@ export function FleetTrackingScreen() {
             </Button>
           </div>
         )}
-      </div>
+      </WorkspaceHeader>
 
       {isLoading ? (
         <LoadingState label="Loading live fleet…" />
