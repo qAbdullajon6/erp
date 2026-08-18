@@ -28,6 +28,7 @@ import { InvitationService } from "./invitation.service";
     AuditModule,
     LeadTimelineModule,
   ],
+  imports: [PrismaModule, MailModule, ConfigModule, AuthModule, BillingModule, AuditModule],
   controllers: [InvitationController, PublicInvitationController],
   providers: [InvitationService],
   exports: [InvitationService],

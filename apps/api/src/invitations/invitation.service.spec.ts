@@ -88,6 +88,8 @@ function buildInternals(
   } as unknown as import("../leads/lead-timeline.service").LeadTimelineService;
 
   const service = new InvitationService(prisma, mail, config, password, billingSeats, audit, timeline);
+
+  const service = new InvitationService(prisma, mail, config, password, billingSeats, audit);
   return service as unknown as InvitationServiceInternals;
 }
 

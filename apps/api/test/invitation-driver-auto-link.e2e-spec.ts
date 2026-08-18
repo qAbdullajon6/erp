@@ -64,12 +64,15 @@ describe("Invitation DRIVER auto-link (e2e)", () => {
     const body = res.body as RegisterBody;
     const organizationId = body.data.organization.id;
     const userId = body.data.user.id;
+    const organizationId = res.body.data.organization.id as string;
+    const userId = res.body.data.user.id as string;
     createdOrganizationIds.push(organizationId);
     createdUserIds.push(userId);
     return {
       organizationId,
       adminUserId: userId,
       accessToken: body.data.accessToken,
+      accessToken: res.body.data.accessToken as string,
     };
   }
 
@@ -126,6 +129,11 @@ describe("Invitation DRIVER auto-link (e2e)", () => {
     // Sanity: login works with invite email
     void emailHint;
     return body.data;
+    expect(res.body.data.role).toBe("DRIVER");
+    createdUserIds.push(res.body.data.userId);
+    // Sanity: login works with invite email
+    void emailHint;
+    return res.body.data as { userId: string; organizationId: string; role: string };
   }
 
   it("successful auto-link: exactly one unlinked Driver with same email", async () => {

@@ -37,6 +37,31 @@ Remaining lint note (does **not** fail CI): one `@typescript-eslint/no-unsafe-ar
 warning in `subscription-renewal.worker.ts` where the cron path passes `null as any`
 as actor — widening `cancelSubscription` to accept `null` would change null-safe
 audit writes and is deferred.
+| `Web · typecheck · lint · unit · build` | The frontend typechecks, lints clean, unit tests pass (30), and the production `vite build` succeeds. |
+| `API · build` | `nest build` compiles `src` — this **is** the API `src` typecheck (it uses `tsconfig.build.json`, which excludes `test/`). |
+| `Migrations · apply … + status` | All migrations apply cleanly to a fresh Postgres via the exact `prisma migrate deploy` the API runs on boot, and `migrate status` shows no drift. |
+| `Docker · build API + WEB images` | The production API **and** WEB images build (multi-stage, non-root, tini, HEALTHCHECK). |
+
+**Non-blocking (`continue-on-error: true` — visible, not gating):**
+
+| Job | Why non-blocking |
+| --- | --- |
+| `API · lint + full typecheck` | Two known debts: (1) type-aware ESLint errors in `src/workflows/*` (`no-base-to-string`, `require-await`, `no-unused-vars`, …) from the enterprise-core work, and (2) the **full** `tsc --noEmit` (incl. `test/`) red on the telematics `*.e2e-spec.ts` typing (supertest default-import + implicit `any`). Both steps are `continue-on-error` at the **step** level, so the job concludes green and never blocks; the errors show as annotations. |
+| `API · unit tests` | The Jest suite isn't stabilised for parallel CI yet (e.g. an argon2id timing-sensitive spec). Step-level `continue-on-error`; runs for signal. |
+
+> Both advisory jobs use **step-level** `continue-on-error` so the job's own
+> check concludes success. A job-level `continue-on-error` alone lets the *run*
+> pass but still reports the *job* as failed — which blocks a merge when that job
+> is (mistakenly) a required status check. Keep these out of the required checks
+> (GITHUB_SETUP.md §4).
+
+**Making the advisory jobs into blocking gates** is an honest, multi-step path:
+fix the `src/workflows/*` type-aware lint errors (proper `String(...)` on
+`unknown`/JSON `config` fields, drop needless `async`, remove unused params);
+fix the telematics `*.e2e-spec.ts` typing (default-import `supertest`, annotate
+`res`/`chunk`); stabilise the DB/timing-sensitive Jest specs; then remove
+`continue-on-error` and add them to the required checks. Do not flip them to
+blocking before that, or `main` becomes unmergeable.
 
 ## Reproduce CI locally
 

@@ -152,6 +152,8 @@ verify_deployment() {
   }
   health_ok "health/ready" || {
     echo "error: verification failed — API /health/ready (database + configured Redis)" >&2
+  health_ok "health/database" || {
+    echo "error: verification failed — API /health/database" >&2
     return 1
   }
 
