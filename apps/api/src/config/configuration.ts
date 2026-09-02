@@ -145,9 +145,9 @@ export default (): {
     );
   }
 
-  // Only required in production: locally and in tests the browser loads the web
-  // app from Vite on :3000, and no invitation email is actually sent.
-  const appPublicUrl = process.env.APP_PUBLIC_URL ?? "";
+  // Only required in production. In test/CI the e2e suite sends emails through
+  // the mock outbox and parses acceptUrl / resetUrl, so we need a valid base.
+  const appPublicUrl = process.env.APP_PUBLIC_URL ?? (nodeEnv === "test" ? "http://localhost:3000" : "");
   if (nodeEnv === "production" && !appPublicUrl) {
     throw new Error(
       "APP_PUBLIC_URL is not set. It is required in production to build invitation links, e.g. https://app.flowerp.uz",
