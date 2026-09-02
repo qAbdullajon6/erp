@@ -133,10 +133,10 @@ test('every landing section actually becomes visible', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
 
   for (const heading of [
-    /run your entire logistics operation/i,
-    /one system for every part of your operation/i,
+    /run your fleet/i,
+    /everything a logistics company needs/i,
     /live in four steps/i,
-    /see flowerp running your operation/i,
+    /watch flowerp run/i,
   ]) {
     const node = page.getByRole('heading', { name: heading });
     await node.scrollIntoViewIfNeeded();
@@ -148,7 +148,7 @@ test('every landing section actually becomes visible', async ({ page }) => {
 test('the landing page keeps one h1 and a sensible heading order', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('h1')).toHaveCount(1);
-  await expect(page.locator('h1')).toContainText(/logistics operation/i);
+  await expect(page.locator('h1')).toContainText(/run your fleet/i);
 });
 
 test('the login page keeps one h1', async ({ page }) => {

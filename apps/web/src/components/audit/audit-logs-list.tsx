@@ -16,7 +16,6 @@ import {
   type AuditLogEntry,
   type ListAuditLogsParams,
 } from "@/lib/api/audit-logs";
-import { PageHeader } from "@/components/shared/page-header";
 import { ListToolbar, FilterSelect } from "@/components/shared/list-toolbar";
 import {
   ErrorState,
@@ -138,17 +137,6 @@ export function AuditLogsList() {
 
   return (
     <div className="space-y-6" data-testid="audit-logs-page">
-      <PageHeader
-        title="Activity log"
-        subtitle={
-          loading
-            ? "Loading..."
-            : error
-              ? "Error loading audit logs"
-              : `${meta.total} entries`
-        }
-      />
-
       <ListToolbar
         searchValue={localSearch}
         onSearchChange={handleSearch}
