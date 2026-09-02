@@ -16,8 +16,8 @@ export function SettingsView() {
   const isAdmin = role === 'ADMIN';
   const isDriver = role === 'DRIVER';
 
-  /// A non-admin who follows a link to ?tab=members — or keeps a bookmark from
-  /// before their role changed — would otherwise land on a section that renders
+  /// A non-admin who follows a link to ?tab=members â€” or keeps a bookmark from
+  /// before their role changed â€” would otherwise land on a section that renders
   /// nothing at all.
   const requested = search.tab;
   const activeSection: SettingsTab =
