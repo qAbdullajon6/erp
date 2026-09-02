@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Bell, BellOff, CheckCheck } from 'lucide-react';
 import { toast } from 'sonner';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -40,34 +40,24 @@ export function PlatformNotificationBell() {
 
   return (
     <>
-      {/* Dropdown anchored to the bell — mirrors the tenant-side
-          NotificationBell so both consoles share one notification gesture. */}
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <button
-            className="relative rounded-lg p-2 text-muted-foreground transition-colors hover:bg-brand/10 hover:text-brand"
-            aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
-          >
-            <Bell className="h-5 w-5" />
-            {unreadCount > 0 && (
-              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
-                {unreadCount > 99 ? '99+' : unreadCount}
-              </span>
-            )}
-          </button>
-        </PopoverTrigger>
+      <button
+        onClick={() => setOpen(true)}
+        className="relative rounded-lg p-2 text-muted-foreground transition-colors hover:bg-brand/10 hover:text-brand"
+        aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+      >
+        <Bell className="h-5 w-5" />
+        {unreadCount > 0 && (
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </span>
+        )}
+      </button>
 
-        <PopoverContent
-          side="bottom"
-          align="end"
-          sideOffset={8}
-          className="flex max-h-[70vh] w-[calc(100vw-1.5rem)] flex-col gap-0 overflow-hidden border-brand/10 p-0 sm:w-96"
-        >
-          <div className="flex items-center justify-between gap-3 border-b border-brand/10 py-3 pl-4 pr-3">
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-lg">
+          <div className="flex items-center justify-between gap-4 border-b border-brand/10 py-5 pl-6 pr-14">
             <div className="flex items-center gap-2.5">
-              <p id="platform-alerts-panel-title" className="text-base font-semibold">
-                Platform alerts
-              </p>
+              <SheetTitle className="text-lg font-semibold">Platform alerts</SheetTitle>
               {unreadCount > 0 && <Badge variant="danger">{unreadCount} unread</Badge>}
             </div>
             {unreadCount > 0 && (
@@ -79,12 +69,12 @@ export function PlatformNotificationBell() {
                 className="gap-1.5 text-muted-foreground hover:text-foreground"
               >
                 <CheckCheck className="h-4 w-4" />
-                {markingAll ? 'Marking…' : 'Mark all'}
+                {markingAll ? 'Marking…' : 'Mark all read'}
               </Button>
             )}
           </div>
 
-          <div aria-labelledby="platform-alerts-panel-title" className="flex-1 space-y-2 overflow-y-auto scrollbar-thin px-3 py-3">
+          <div className="flex-1 space-y-2 overflow-y-auto scrollbar-thin px-4 py-4">
             {isLoading && Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
 
             {isError && !isLoading && (
@@ -128,8 +118,8 @@ export function PlatformNotificationBell() {
                 </button>
               ))}
           </div>
-        </PopoverContent>
-      </Popover>
+        </SheetContent>
+      </Sheet>
     </>
   );
 }

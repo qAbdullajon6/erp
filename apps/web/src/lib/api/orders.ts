@@ -15,36 +15,13 @@ export interface Order {
   pickupAddress: string;
   pickupCity: string;
   pickupDate: string; // ISO date
-  pickupPostalCode: string | null;
-  pickupCountryCode: string | null;
-  pickupLat: number | null;
-  pickupLng: number | null;
-  pickupPlaceName: string | null;
-  pickupContactName: string | null;
-  pickupContactPhone: string | null;
-  pickupInstructions: string | null;
-  pickupWindowStart: string | null; // ISO datetime
-  pickupWindowEnd: string | null;   // ISO datetime
   deliveryAddress: string;
   deliveryCity: string;
   deliveryDate: string; // ISO date
-  deliveryPostalCode: string | null;
-  deliveryCountryCode: string | null;
-  deliveryLat: number | null;
-  deliveryLng: number | null;
-  deliveryPlaceName: string | null;
-  deliveryContactName: string | null;
-  deliveryContactPhone: string | null;
-  deliveryInstructions: string | null;
-  deliveryWindowStart: string | null; // ISO datetime
-  deliveryWindowEnd: string | null;   // ISO datetime
   cargoDescription: string;
   cargoWeightKg: string | null;
   cargoVolumeM3: string | null;
   price: string; // decimal as string
-  freightCharge: string | null;
-  fuelSurcharge: string | null;
-  otherCharges: string | null;
   currency: string;
   status: OrderStatus;
   /// Which statuses this order may legally move to, straight from the server's own
@@ -62,10 +39,9 @@ export interface Order {
   deliveredAt: string | null;
   archivedAt?: string | null;
   statusHistory?: OrderStatusHistoryEntry[];
-  orderStops?: OrderStop[];
   customer?: { id: string; companyName: string; phone: string | null };
   plannedDriver?: { id: string; firstName: string; lastName: string; employeeCode: string } | null;
-  plannedVehicle?: { id: string; plateNumber: string; vehicleCode: string; type: string } | null;
+  plannedVehicle?: { id: string; plateNumber: string; vehicleCode: string } | null;
   activeDispatch?: { id: string; status: string; driverId: string; vehicleId: string } | null;
 }
 
@@ -75,38 +51,6 @@ export interface OrderStatusHistoryEntry {
   changedByUserId: string | null;
   note: string | null;
   createdAt: string;
-}
-
-export interface OrderStop {
-  id: string;
-  stopIndex: number;
-  address: string;
-  city: string;
-  postalCode: string | null;
-  countryCode: string | null;
-  placeName: string | null;
-  contactName: string | null;
-  contactPhone: string | null;
-  instructions: string | null;
-  windowStart: string | null;
-  windowEnd: string | null;
-  lat: number | null;
-  lng: number | null;
-}
-
-export interface OrderStopInput {
-  address: string;
-  city: string;
-  postalCode?: string;
-  countryCode?: string;
-  placeName?: string;
-  contactName?: string;
-  contactPhone?: string;
-  instructions?: string;
-  windowStart?: string;
-  windowEnd?: string;
-  lat?: number;
-  lng?: number;
 }
 
 export interface ListOrdersResponse {
@@ -125,29 +69,9 @@ export interface CreateOrderInput {
   pickupAddress: string;
   pickupCity: string;
   pickupDate: string;
-  pickupPostalCode?: string;
-  pickupCountryCode?: string;
-  pickupLat?: number;
-  pickupLng?: number;
-  pickupPlaceName?: string;
-  pickupContactName?: string;
-  pickupContactPhone?: string;
-  pickupInstructions?: string;
-  pickupWindowStart?: string;
-  pickupWindowEnd?: string;
   deliveryAddress: string;
   deliveryCity: string;
   deliveryDate: string;
-  deliveryPostalCode?: string;
-  deliveryCountryCode?: string;
-  deliveryLat?: number;
-  deliveryLng?: number;
-  deliveryPlaceName?: string;
-  deliveryContactName?: string;
-  deliveryContactPhone?: string;
-  deliveryInstructions?: string;
-  deliveryWindowStart?: string;
-  deliveryWindowEnd?: string;
   cargoDescription: string;
   cargoWeightKg?: number;
   cargoVolumeM3?: number;
@@ -156,7 +80,6 @@ export interface CreateOrderInput {
   notes?: string;
   deliveryNotes?: string;
   acknowledgeDuplicate?: boolean;
-  orderStops?: OrderStopInput[];
 }
 
 export interface UpdateOrderInput {
@@ -165,29 +88,9 @@ export interface UpdateOrderInput {
   pickupAddress?: string;
   pickupCity?: string;
   pickupDate?: string;
-  pickupPostalCode?: string;
-  pickupCountryCode?: string;
-  pickupLat?: number;
-  pickupLng?: number;
-  pickupPlaceName?: string;
-  pickupContactName?: string;
-  pickupContactPhone?: string;
-  pickupInstructions?: string;
-  pickupWindowStart?: string;
-  pickupWindowEnd?: string;
   deliveryAddress?: string;
   deliveryCity?: string;
   deliveryDate?: string;
-  deliveryPostalCode?: string;
-  deliveryCountryCode?: string;
-  deliveryLat?: number;
-  deliveryLng?: number;
-  deliveryPlaceName?: string;
-  deliveryContactName?: string;
-  deliveryContactPhone?: string;
-  deliveryInstructions?: string;
-  deliveryWindowStart?: string;
-  deliveryWindowEnd?: string;
   cargoDescription?: string;
   cargoWeightKg?: number;
   cargoVolumeM3?: number;
@@ -195,7 +98,6 @@ export interface UpdateOrderInput {
   currency?: string;
   notes?: string;
   deliveryNotes?: string;
-  orderStops?: OrderStopInput[];
 }
 
 export interface AssignOrderInput {

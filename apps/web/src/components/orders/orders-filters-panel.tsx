@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,7 +22,7 @@ import type { OrderPaymentStatus, OrderStatus } from '@/lib/api/orders';
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import { CalendarIcon, X } from 'lucide-react';
+import { CalendarIcon, Filter, RotateCcw, X } from 'lucide-react';
 
 export type OrdersFilterValues = {
   status?: OrderStatus;
@@ -54,7 +54,7 @@ const ORDER_STATUSES: OrderStatus[] = [
 
 const PAYMENT_STATUSES: OrderPaymentStatus[] = ['UNPAID', 'PARTIAL', 'PAID', 'NO_INVOICE'];
 
-export function countActiveFilters(values: OrdersFilterValues): number {
+function countActiveFilters(values: OrdersFilterValues): number {
   let n = 0;
   if (values.status) n++;
   if (values.customerId) n++;
@@ -142,18 +142,29 @@ interface OrdersFiltersPanelProps {
   values: OrdersFilterValues;
   onChange: (values: OrdersFilterValues) => void;
   onClear: () => void;
-  footer?: React.ReactNode;
+  expanded?: boolean;
+  onToggleExpanded?: () => void;
 }
 
-/// The filter field grid — rendered inline by the caller when the panel is open.
-/// Caller is responsible for show/hide; this component always renders its grid.
-/// Data is fetched eagerly (component is only mounted when the panel is open).
-export function OrdersFiltersPanel({ values, onChange, onClear, footer }: OrdersFiltersPanelProps) {
-  const { data: customers } = useCustomersList({ limit: 200, includeArchived: true });
-  const { items: drivers } = useDriversList({ limit: 100 });
-  const { items: vehicles } = useVehiclesList({ limit: 100 });
-  const { data: members } = useMembersQuery(true);
+export function OrdersFiltersPanel({
+  values,
+  onChange,
+  onClear,
+  expanded = false,
+  onToggleExpanded,
+}: OrdersFiltersPanelProps) {
+  // Reference data for the filter dropdowns only matters once the panel is
+  // actually open — fetching it while collapsed wastes a request on every
+  // Orders list load whether or not the user ever opens Filters.
+  const { data: customers } = useCustomersList(
+    { limit: 200, includeArchived: true },
+    { enabled: expanded },
+  );
+  const { items: drivers } = useDriversList({ limit: 100 }, { enabled: expanded });
+  const { items: vehicles } = useVehiclesList({ limit: 100 }, { enabled: expanded });
+  const { data: members } = useMembersQuery(expanded);
 
+  const activeCount = useMemo(() => countActiveFilters(values), [values]);
   const dispatchers = useMemo(
     () =>
       (members ?? []).filter((m) =>
@@ -164,6 +175,10 @@ export function OrdersFiltersPanel({ values, onChange, onClear, footer }: Orders
 
   const set = (patch: Partial<OrdersFilterValues>) => onChange({ ...values, ...patch });
 
+  // Every other filter writes straight through `set()` on a discrete click
+  // (Select/date-picker/switch). Price is free-text, so it debounces locally
+  // first — otherwise each keystroke rebuilds the query key and fires a
+  // fresh request mid-type.
   const [priceMinInput, setPriceMinInput] = useState(values.priceMin?.toString() ?? '');
   const [priceMaxInput, setPriceMaxInput] = useState(values.priceMax?.toString() ?? '');
   const debouncedPriceMin = useDebouncedValue(priceMinInput, 400);
@@ -188,195 +203,228 @@ export function OrdersFiltersPanel({ values, onChange, onClear, footer }: Orders
   }, [debouncedPriceMax]);
 
   return (
-    <div className="rounded-lg border border-border/60 bg-surface/60 px-3 py-3">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
-        <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">Status</Label>
-          <Select
-            value={values.status ?? 'all'}
-            onValueChange={(v) => set({ status: v === 'all' ? undefined : (v as OrderStatus) })}
-          >
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="Any status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Any status</SelectItem>
-              {ORDER_STATUSES.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s.replace(/_/g, ' ')}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+    <div className="sticky top-0 z-20 border-b border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
+      <div className="flex flex-wrap items-center gap-2 px-1 py-2">
+        <Button
+          type="button"
+          variant={expanded ? 'secondary' : 'outline'}
+          size="sm"
+          className="h-8 gap-1.5"
+          onClick={onToggleExpanded}
+          aria-expanded={expanded}
+        >
+          <Filter className="h-3.5 w-3.5" />
+          Filters
+          {activeCount > 0 && (
+            <span className="rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-semibold text-brand-foreground">
+              {activeCount}
+            </span>
+          )}
+        </Button>
 
-        <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">Customer</Label>
-          <Select
-            value={values.customerId ?? 'all'}
-            onValueChange={(v) => set({ customerId: v === 'all' ? undefined : v })}
-          >
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="Any customer" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Any customer</SelectItem>
-              {customers.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.companyName}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {values.archivedOnly && (
+          <span className="rounded-md bg-muted px-2 py-1 text-xs font-medium text-foreground">
+            Archived only
+          </span>
+        )}
 
-        <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">Driver</Label>
-          <Select
-            value={values.driverId ?? 'all'}
-            onValueChange={(v) => set({ driverId: v === 'all' ? undefined : v })}
-          >
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="Any driver" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Any driver</SelectItem>
-              {drivers.map((d) => (
-                <SelectItem key={d.id} value={d.id}>
-                  {d.firstName} {d.lastName}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {activeCount > 0 && (
+          <Button type="button" variant="ghost" size="sm" className="h-8 gap-1" onClick={onClear}>
+            <RotateCcw className="h-3.5 w-3.5" />
+            Clear filters
+          </Button>
+        )}
+      </div>
 
-        <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">Vehicle</Label>
-          <Select
-            value={values.vehicleId ?? 'all'}
-            onValueChange={(v) => set({ vehicleId: v === 'all' ? undefined : v })}
-          >
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="Any vehicle" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Any vehicle</SelectItem>
-              {vehicles.map((v) => (
-                <SelectItem key={v.id} value={v.id}>
-                  {v.plateNumber}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      {expanded && (
+        <div className="grid grid-cols-1 gap-3 border-t border-border/70 px-1 py-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Status</Label>
+            <Select
+              value={values.status ?? 'all'}
+              onValueChange={(v) => set({ status: v === 'all' ? undefined : (v as OrderStatus) })}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Any status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Any status</SelectItem>
+                {ORDER_STATUSES.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {s.replace(/_/g, ' ')}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-        <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">Dispatcher</Label>
-          <Select
-            value={values.dispatcherId ?? 'all'}
-            onValueChange={(v) => set({ dispatcherId: v === 'all' ? undefined : v })}
-          >
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="Any dispatcher" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Any dispatcher</SelectItem>
-              {dispatchers.map((m) => (
-                <SelectItem key={m.user.id} value={m.user.id}>
-                  {m.user.firstName} {m.user.lastName}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Customer</Label>
+            <Select
+              value={values.customerId ?? 'all'}
+              onValueChange={(v) => set({ customerId: v === 'all' ? undefined : v })}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Any customer" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Any customer</SelectItem>
+                {customers.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.companyName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-        <DateRangeField
-          label="Pickup date"
-          from={values.pickupDateFrom}
-          to={values.pickupDateTo}
-          onFromChange={(pickupDateFrom) => set({ pickupDateFrom })}
-          onToChange={(pickupDateTo) => set({ pickupDateTo })}
-        />
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Driver</Label>
+            <Select
+              value={values.driverId ?? 'all'}
+              onValueChange={(v) => set({ driverId: v === 'all' ? undefined : v })}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Any driver" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Any driver</SelectItem>
+                {drivers.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    {d.firstName} {d.lastName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-        <DateRangeField
-          label="Delivery date"
-          from={values.deliveryDateFrom}
-          to={values.deliveryDateTo}
-          onFromChange={(deliveryDateFrom) => set({ deliveryDateFrom })}
-          onToChange={(deliveryDateTo) => set({ deliveryDateTo })}
-        />
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Vehicle</Label>
+            <Select
+              value={values.vehicleId ?? 'all'}
+              onValueChange={(v) => set({ vehicleId: v === 'all' ? undefined : v })}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Any vehicle" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Any vehicle</SelectItem>
+                {vehicles.map((v) => (
+                  <SelectItem key={v.id} value={v.id}>
+                    {v.plateNumber}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-        <DateRangeField
-          label="Created date"
-          from={values.createdFrom}
-          to={values.createdTo}
-          onFromChange={(createdFrom) => set({ createdFrom })}
-          onToChange={(createdTo) => set({ createdTo })}
-        />
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Dispatcher</Label>
+            <Select
+              value={values.dispatcherId ?? 'all'}
+              onValueChange={(v) => set({ dispatcherId: v === 'all' ? undefined : v })}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Any dispatcher" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Any dispatcher</SelectItem>
+                {dispatchers.map((m) => (
+                  <SelectItem key={m.user.id} value={m.user.id}>
+                    {m.user.firstName} {m.user.lastName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-        <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">Value range</Label>
-          <div className="flex gap-2">
-            <Input
-              type="number"
-              min={0}
-              placeholder="Min"
-              className="h-8 text-xs"
-              value={priceMinInput}
-              onChange={(e) => setPriceMinInput(e.target.value)}
-            />
-            <Input
-              type="number"
-              min={0}
-              placeholder="Max"
-              className="h-8 text-xs"
-              value={priceMaxInput}
-              onChange={(e) => setPriceMaxInput(e.target.value)}
-            />
+          <DateRangeField
+            label="Pickup date"
+            from={values.pickupDateFrom}
+            to={values.pickupDateTo}
+            onFromChange={(pickupDateFrom) => set({ pickupDateFrom })}
+            onToChange={(pickupDateTo) => set({ pickupDateTo })}
+          />
+
+          <DateRangeField
+            label="Delivery date"
+            from={values.deliveryDateFrom}
+            to={values.deliveryDateTo}
+            onFromChange={(deliveryDateFrom) => set({ deliveryDateFrom })}
+            onToChange={(deliveryDateTo) => set({ deliveryDateTo })}
+          />
+
+          <DateRangeField
+            label="Created date"
+            from={values.createdFrom}
+            to={values.createdTo}
+            onFromChange={(createdFrom) => set({ createdFrom })}
+            onToChange={(createdTo) => set({ createdTo })}
+          />
+
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Value range</Label>
+            <div className="flex gap-2">
+              <Input
+                type="number"
+                min={0}
+                placeholder="Min"
+                className="h-8 text-xs"
+                value={priceMinInput}
+                onChange={(e) => setPriceMinInput(e.target.value)}
+              />
+              <Input
+                type="number"
+                min={0}
+                placeholder="Max"
+                className="h-8 text-xs"
+                value={priceMaxInput}
+                onChange={(e) => setPriceMaxInput(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Payment status</Label>
+            <Select
+              value={values.paymentStatus ?? 'all'}
+              onValueChange={(v) =>
+                set({ paymentStatus: v === 'all' ? undefined : (v as OrderPaymentStatus) })
+              }
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Any" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Any</SelectItem>
+                {PAYMENT_STATUSES.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {s.replace(/_/g, ' ')}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-end gap-2 pb-0.5">
+            <div
+              className={cn(
+                'flex w-full items-center justify-between rounded-lg border border-border px-3 py-2',
+                values.archivedOnly && 'border-brand/40 bg-brand/5',
+              )}
+            >
+              <Label htmlFor="archived-only" className="text-xs font-medium">
+                Archived only
+              </Label>
+              <Switch
+                id="archived-only"
+                checked={Boolean(values.archivedOnly)}
+                onCheckedChange={(archivedOnly) => set({ archivedOnly: archivedOnly || undefined })}
+              />
+            </div>
           </div>
         </div>
-
-        <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">Payment status</Label>
-          <Select
-            value={values.paymentStatus ?? 'all'}
-            onValueChange={(v) =>
-              set({ paymentStatus: v === 'all' ? undefined : (v as OrderPaymentStatus) })
-            }
-          >
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="Any" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Any</SelectItem>
-              {PAYMENT_STATUSES.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s.replace(/_/g, ' ')}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-      </div>
-      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border/40 pt-3">
-        <div
-          className={cn(
-            'flex shrink-0 items-center justify-between gap-3 rounded-lg border border-border px-3 py-2',
-            values.archivedOnly && 'border-brand/40 bg-brand/5',
-          )}
-        >
-          <Label htmlFor="archived-only" className="text-xs font-medium">
-            Archived only
-          </Label>
-          <Switch
-            id="archived-only"
-            checked={Boolean(values.archivedOnly)}
-            onCheckedChange={(archivedOnly) => set({ archivedOnly: archivedOnly || undefined })}
-          />
-        </div>
-        {footer}
-      </div>
+      )}
     </div>
   );
 }
@@ -386,11 +434,13 @@ export const ORDERS_COLUMNS_KEY = 'flowerp.orders.visible-columns';
 
 export type OrdersListColumn =
   | 'route'
-  | 'orderNumber'
   | 'timeline'
   | 'customer'
   | 'value'
-  | 'status';
+  | 'status'
+  | 'orderNumber'
+  | 'pickupDate'
+  | 'deliveryDate';
 
 export const DEFAULT_ORDERS_COLUMNS: OrdersListColumn[] = [
   'route',

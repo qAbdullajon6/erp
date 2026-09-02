@@ -79,7 +79,7 @@ export function AppSidebar({ nav, navReady }: { nav: NavItem[]; navReady: boolea
                   // command palette lists them unconditionally, so they stay
                   // findable from anywhere.
                   const inSection = isNavSectionActive(location.pathname, item);
-                  const children = inSection ? (item.children ?? []).filter(c => !c.hideFromSidebar) : [];
+                  const children = inSection ? (item.children ?? []) : [];
                   return (
                     <SidebarMenuItem key={`${item.path}:${item.label}`}>
                       <SidebarMenuButton

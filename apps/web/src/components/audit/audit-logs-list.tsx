@@ -138,15 +138,16 @@ export function AuditLogsList() {
 
   return (
     <div className="space-y-6" data-testid="audit-logs-page">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium text-muted-foreground">
-          {loading
+      <PageHeader
+        title="Activity log"
+        subtitle={
+          loading
             ? "Loading..."
             : error
               ? "Error loading audit logs"
-              : `${meta.total} entries`}
-        </h2>
-      </div>
+              : `${meta.total} entries`
+        }
+      />
 
       <ListToolbar
         searchValue={localSearch}

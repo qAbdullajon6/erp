@@ -22,10 +22,6 @@ export interface PortalOrderItem {
   deliveryAddress: string;
   deliveryCity: string;
   deliveryDate: string;
-  deliveryWindowStart: string | null;
-  deliveryWindowEnd: string | null;
-  deliveryContactName: string | null;
-  deliveryContactPhone: string | null;
   cargoDescription: string;
   status: PortalOrderStatus;
   isDelayed: boolean;
@@ -60,7 +56,6 @@ export interface PortalShipmentSummary {
   driverName: string;
   vehiclePlate: string | null;
   vehicleCode: string | null;
-  eta: string | null;
 }
 
 export interface PortalDeliveryProof {
@@ -90,12 +85,6 @@ export interface PortalOrderTracking {
     heading: number | null;
     movementState: string | null;
     lastUpdatedAt: string;
-  } | null;
-  eta: {
-    remainingKm: number;
-    etaSeconds: number;
-    etaMinutes: number;
-    etaAt: string;
   } | null;
   message?: string;
 }

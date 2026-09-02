@@ -57,18 +57,23 @@ export function WorkflowList() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium text-muted-foreground">
-          {loading ? 'Loading...' : `${meta.total} workflow${meta.total === 1 ? '' : 's'} running on your operation`}
-        </h2>
-        <Button
-          onClick={() => setEditorOpen(true)}
-          className="gap-2 bg-gradient-brand text-brand-foreground hover:opacity-90"
-        >
-          <Plus className="h-4 w-4" />
-          New Workflow
-        </Button>
-      </div>
+      <PageHeader
+        title="Automation"
+        subtitle={
+          loading
+            ? 'Loading...'
+            : `${meta.total} workflow${meta.total === 1 ? '' : 's'} running on your operation`
+        }
+        action={
+          <Button
+            onClick={() => setEditorOpen(true)}
+            className="gap-2 bg-gradient-brand text-brand-foreground hover:opacity-90"
+          >
+            <Plus className="h-4 w-4" />
+            New Workflow
+          </Button>
+        }
+      />
 
       <div className="overflow-hidden rounded-lg border border-brand/10">
         {loading && <TableSkeleton columns={[3, 2, 2, 2]} label="Loading workflows" />}

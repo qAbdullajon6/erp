@@ -33,7 +33,6 @@ function event(
       pickupDateActual: null,
       deliveryDateScheduled: end.toISOString(),
       deliveryDateActual: null,
-      routeContext: [],
       createdAt: start.toISOString(),
       updatedAt: start.toISOString(),
     },

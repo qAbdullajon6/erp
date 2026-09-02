@@ -22,7 +22,6 @@ function stubDispatch(overrides: Partial<ApiDispatch> = {}): ApiDispatch {
     pickupDateActual: null,
     deliveryDateScheduled: '2026-07-30T17:00:00.000Z',
     deliveryDateActual: null,
-    routeContext: [],
     createdAt: '2026-07-01T00:00:00.000Z',
     updatedAt: '2026-07-01T00:00:00.000Z',
     ...overrides,

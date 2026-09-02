@@ -204,7 +204,10 @@ export function ImportWizard() {
 
   return (
     <div className="space-y-6">
-
+      <PageHeader
+        title="Data import"
+        subtitle={`Import ${entityType ? entityType.toLowerCase() + 's' : 'data'} from a CSV or Excel file`}
+      />
 
       <div className="rounded-lg border border-brand/10 bg-surface p-6">
         <div className="mb-6 flex flex-wrap items-center gap-2">

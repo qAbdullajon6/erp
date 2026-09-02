@@ -2,127 +2,49 @@
 
 import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
-import { AlertCircle, Inbox, XCircle } from 'lucide-react';
+import { toast } from 'sonner';
+import { Plus } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { PageHeader } from '@/components/shared/page-header';
+import { ListToolbar, FilterSelect } from '@/components/shared/list-toolbar';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-states';
 import { PaginationBar } from '@/components/shared/pagination-bar';
+import { StatusBadge } from '@/components/shared/status-badge';
+import { FormAlert } from '@/components/shared/form-alert';
 import {
   usePlatformSupportTicketsQuery,
+  useCreateSupportTicketMutation,
   type SupportTicketStatus,
-  type PlatformSupportTicket,
+  type SupportTicketPriority,
 } from '@/lib/api/platform';
+import { formatDate } from '@/lib/format';
 import { describeError } from '@/lib/api/describe-error';
-import { cn } from '@/lib/utils';
 
-// ─── Tabs ─────────────────────────────────────────────────────────────────────
-
-const TABS: { value: SupportTicketStatus | ''; label: string; Icon: React.ElementType }[] = [
-  { value: '',       label: 'All',       Icon: Inbox },
-  { value: 'OPEN',   label: 'Questions', Icon: AlertCircle },
-  { value: 'CLOSED', label: 'Closed',    Icon: XCircle },
-];
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function statusBadge(status: SupportTicketStatus) {
-  if (status === 'OPEN' || status === 'IN_PROGRESS') {
-    return (
-      <span className="inline-flex items-center rounded-full border border-blue-400/40 bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-        Question
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-      Closed
-    </span>
-  );
-}
-
-function lastMessageTime(ticket: PlatformSupportTicket): string {
-  const lastMsg = ticket.messages?.[0];
-  const iso = lastMsg?.createdAt ?? ticket.updatedAt;
-  const d = new Date(iso);
-  const now = new Date();
-  const isToday = d.toDateString() === now.toDateString();
-  if (isToday) {
-    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-  }
-  const isThisYear = d.getFullYear() === now.getFullYear();
-  return d.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    ...(isThisYear ? {} : { year: 'numeric' }),
-  });
-}
-
-function creatorName(ticket: PlatformSupportTicket): string {
-  if (!ticket.createdBy) return '—';
-  return `${ticket.createdBy.firstName} ${ticket.createdBy.lastName}`;
-}
-
-// ─── Row ──────────────────────────────────────────────────────────────────────
-
-function TicketRow({ ticket }: { ticket: PlatformSupportTicket }) {
-  const isOpen = ticket.status === 'OPEN' || ticket.status === 'IN_PROGRESS';
-  return (
-    <Link
-      to="/platform/support/$ticketId"
-      params={{ ticketId: ticket.id }}
-      className={cn(
-        'grid grid-cols-[2fr_2fr_2fr_auto_auto] items-center gap-4 border-b border-border px-4 py-3 transition-colors hover:bg-muted/40',
-        isOpen ? 'border-l-2 border-l-blue-500 bg-blue-500/[0.02]' : 'border-l-2 border-l-transparent',
-      )}
-    >
-      {/* Full name */}
-      <span className={cn('truncate text-sm font-medium', !isOpen && 'text-muted-foreground')}>
-        {creatorName(ticket)}
-      </span>
-
-      {/* Email */}
-      <span className="truncate text-sm text-muted-foreground">
-        {ticket.createdBy?.email ?? '—'}
-      </span>
-
-      {/* Organization */}
-      <span className="truncate text-sm text-muted-foreground">
-        {ticket.organization?.name ?? '—'}
-      </span>
-
-      {/* Status */}
-      <span>{statusBadge(ticket.status)}</span>
-
-      {/* Last message time */}
-      <span className="whitespace-nowrap text-right text-xs tabular-nums text-muted-foreground">
-        {lastMessageTime(ticket)}
-      </span>
-    </Link>
-  );
-}
-
-// ─── Column header ────────────────────────────────────────────────────────────
-
-function ColHeader() {
-  return (
-    <div className="grid grid-cols-[2fr_2fr_2fr_auto_auto] gap-4 border-b border-border bg-muted/30 px-4 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-      <span>Name</span>
-      <span>Email</span>
-      <span>Organization</span>
-      <span>Status</span>
-      <span className="text-right">Last message</span>
-    </div>
-  );
-}
-
-// ─── Main component ───────────────────────────────────────────────────────────
+const STATUSES: SupportTicketStatus[] = ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'];
+const PRIORITIES: SupportTicketPriority[] = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
 
 export function SupportList() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<SupportTicketStatus | ''>('');
-
-  const isAll = status === '';
+  const [createOpen, setCreateOpen] = useState(false);
+  const [subject, setSubject] = useState('');
+  const [body, setBody] = useState('');
+  const [priority, setPriority] = useState<SupportTicketPriority>('MEDIUM');
+  const [organizationId, setOrganizationId] = useState('');
+  const [formError, setFormError] = useState('');
 
   const { data, isLoading, isError, error, refetch } = usePlatformSupportTicketsQuery({
     page,
@@ -130,106 +52,215 @@ export function SupportList() {
     search: search || undefined,
     status: status || undefined,
   });
+  const { mutateAsync: createTicket, isPending: creating } = useCreateSupportTicketMutation();
 
   const items = data?.items ?? [];
   const meta = data?.meta;
 
-  // For "All" tab: split into two groups
-  const questions = items.filter((t) => t.status === 'OPEN' || t.status === 'IN_PROGRESS');
-  const closed = items.filter((t) => t.status === 'CLOSED' || t.status === 'RESOLVED');
+  const resetCreate = () => {
+    setSubject('');
+    setBody('');
+    setPriority('MEDIUM');
+    setOrganizationId('');
+    setFormError('');
+  };
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError('');
+    if (subject.trim().length < 3 || body.trim().length < 3) {
+      setFormError('Subject and body must be at least 3 characters.');
+      return;
+    }
+    try {
+      await createTicket({
+        subject: subject.trim(),
+        body: body.trim(),
+        priority,
+        organizationId: organizationId.trim() || undefined,
+      });
+      toast.success('Ticket created');
+      setCreateOpen(false);
+      resetCreate();
+    } catch (err) {
+      toast.error(describeError(err, 'Failed to create ticket'));
+    }
+  };
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Support"
         subtitle={
-          isLoading ? 'Loading…' : isError ? 'Error' : `${meta?.total ?? 0} tickets`
+          isLoading ? 'Loading…' : isError ? 'Error loading tickets' : `${meta?.total ?? 0} tickets`
+        }
+        action={
+          <Button size="sm" className="gap-2" onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4" />
+            New ticket
+          </Button>
         }
       />
 
-      {/* Search */}
-      <div className="max-w-sm">
-        <Input
-          placeholder="Search by name, email, subject…"
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-          className="h-9"
+      <ListToolbar
+        searchValue={search}
+        onSearchChange={(value) => {
+          setSearch(value);
+          setPage(1);
+        }}
+        searchPlaceholder="Subject, body, or org…"
+      >
+        <FilterSelect
+          label="Status"
+          value={status}
+          onChange={(value) => {
+            setStatus(value as SupportTicketStatus | '');
+            setPage(1);
+          }}
+        >
+          <option value="">All statuses</option>
+          {STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </FilterSelect>
+      </ListToolbar>
+
+      <div className="overflow-hidden rounded-lg border border-brand/10">
+        {isLoading && <LoadingState label="Loading tickets…" />}
+        {isError && !isLoading && (
+          <ErrorState
+            message={describeError(error, 'Failed to load tickets')}
+            onRetry={() => refetch()}
+          />
+        )}
+        {!isLoading && !isError && items.length === 0 && (
+          <EmptyState title="No tickets" description="Create a ticket or wait for one to arrive." />
+        )}
+        {!isLoading && !isError && items.length > 0 && (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-surface/50 hover:bg-surface/50">
+                  <TableHead>Subject</TableHead>
+                  <TableHead>Organization</TableHead>
+                  <TableHead>Priority</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Created</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {items.map((ticket) => (
+                  <TableRow key={ticket.id}>
+                    <TableCell>
+                      <Link
+                        to="/platform/support/$ticketId"
+                        params={{ ticketId: ticket.id }}
+                        className="font-medium hover:text-brand"
+                      >
+                        {ticket.subject}
+                      </Link>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {ticket.organization?.name ?? '—'}
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={ticket.priority} />
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={ticket.status} />
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-muted-foreground">
+                      {formatDate(ticket.createdAt)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+
+      {meta && (
+        <PaginationBar
+          page={meta.page}
+          totalPages={meta.totalPages}
+          total={meta.total}
+          onPageChange={setPage}
         />
-      </div>
-
-      {/* Tabs */}
-      <div className="flex items-center gap-1 border-b border-border pb-0">
-        {TABS.map(({ value, label, Icon }) => (
-          <button
-            key={value}
-            onClick={() => { setStatus(value); setPage(1); }}
-            className={cn(
-              'flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors',
-              status === value
-                ? 'border-brand text-brand'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            <Icon className={cn(
-              'h-3.5 w-3.5',
-              value === 'OPEN'   && 'text-blue-500',
-              value === 'CLOSED' && 'text-muted-foreground/60',
-              value === ''       && 'text-muted-foreground',
-            )} />
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* Content */}
-      {isLoading && <LoadingState label="Loading tickets…" />}
-      {isError && !isLoading && (
-        <ErrorState message={describeError(error, 'Failed to load tickets')} onRetry={() => refetch()} />
       )}
 
-      {!isLoading && !isError && isAll && (
-        <>
-          {items.length === 0 && (
-            <EmptyState title="No tickets" description="No support tickets yet." />
-          )}
-          {items.length > 0 && (
-            <div className="overflow-hidden rounded-lg border border-border">
-              <ColHeader />
-              {questions.map((t) => <TicketRow key={t.id} ticket={t} />)}
-              {closed.map((t) => <TicketRow key={t.id} ticket={t} />)}
+      <Dialog
+        open={createOpen}
+        onOpenChange={(next) => {
+          setCreateOpen(next);
+          if (!next) resetCreate();
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New support ticket</DialogTitle>
+            <DialogDescription>Log an issue for platform staff to track.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleCreate} className="space-y-4">
+            {formError && <FormAlert message={formError} />}
+            <div className="grid gap-2">
+              <Label htmlFor="ticket-subject">Subject</Label>
+              <Input
+                id="ticket-subject"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                disabled={creating}
+              />
             </div>
-          )}
-          {meta && meta.totalPages > 1 && (
-            <PaginationBar
-              page={meta.page}
-              totalPages={meta.totalPages}
-              total={meta.total}
-              onPageChange={setPage}
-            />
-          )}
-        </>
-      )}
-
-      {!isLoading && !isError && !isAll && (
-        <>
-          {items.length === 0 ? (
-            <EmptyState title="No tickets" description="No tickets match this filter." />
-          ) : (
-            <div className="overflow-hidden rounded-lg border border-border">
-              <ColHeader />
-              {items.map((t) => <TicketRow key={t.id} ticket={t} />)}
+            <div className="grid gap-2">
+              <Label htmlFor="ticket-body">Body</Label>
+              <Textarea
+                id="ticket-body"
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                disabled={creating}
+                rows={4}
+              />
             </div>
-          )}
-          {meta && meta.totalPages > 1 && (
-            <PaginationBar
-              page={meta.page}
-              totalPages={meta.totalPages}
-              total={meta.total}
-              onPageChange={setPage}
-            />
-          )}
-        </>
-      )}
+            <div className="grid gap-2">
+              <Label htmlFor="ticket-org">Organization ID (optional)</Label>
+              <Input
+                id="ticket-org"
+                value={organizationId}
+                onChange={(e) => setOrganizationId(e.target.value)}
+                disabled={creating}
+                placeholder="UUID"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="ticket-priority">Priority</Label>
+              <select
+                id="ticket-priority"
+                value={priority}
+                onChange={(e) => setPriority(e.target.value as SupportTicketPriority)}
+                disabled={creating}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+              >
+                {PRIORITIES.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={creating}>
+                {creating ? 'Creating…' : 'Create'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

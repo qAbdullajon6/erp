@@ -1,5 +1,6 @@
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PageHeader } from "@/components/shared/page-header";
 import type { BillingTab } from "@/routes/app.billing";
 import { BillingOverviewTab } from "./billing-overview-tab";
 import { PlansTab } from "./plans-tab";
@@ -7,7 +8,6 @@ import { SubscriptionTab } from "./subscription-tab";
 import { UsageDashboardTab } from "./usage-dashboard-tab";
 import { PaymentProvidersTab } from "./payment-providers-tab";
 import { SettingsTab } from "./settings-tab";
-import { SettingsLayout } from "@/components/settings/settings-layout";
 
 export function BillingView() {
   const navigate = useNavigate({ from: "/app/billing" });
@@ -22,11 +22,12 @@ export function BillingView() {
   };
 
   return (
-    <SettingsLayout
-      activeSection="/app/billing"
-      title="Billing"
-      subtitle="Manage this organization's subscription, plan, usage and renewal settings."
-    >
+    <div className="space-y-6">
+      <PageHeader
+        title="Billing"
+        subtitle={"Manage this organization's subscription, plan, usage and renewal settings."}
+      />
+
       <Tabs value={tab} onValueChange={setTab}>
         {/* TabsList scrolls its own overflow now, so the wrapper that used to
             provide that here would only add a second scroll container. */}
@@ -58,6 +59,6 @@ export function BillingView() {
           <SettingsTab />
         </TabsContent>
       </Tabs>
-    </SettingsLayout>
+    </div>
   );
 }

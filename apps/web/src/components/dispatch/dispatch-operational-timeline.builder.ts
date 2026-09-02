@@ -88,10 +88,8 @@ const STATUS_SEQUENCE: Record<string, number> = {
   EN_ROUTE_TO_PICKUP: 2,
   AT_PICKUP: 3,
   IN_TRANSIT: 4,
-  ARRIVED_AT_DELIVERY: 5,
-  DELIVERED: 6,
-  CANCELLED: 7,
-  DELIVERY_FAILED: 7,
+  DELIVERED: 5,
+  CANCELLED: 6,
 };
 
 function actorLabel(entry: AuditLogEntry): string | null {
@@ -239,7 +237,6 @@ function statusTitle(from: unknown, to: unknown, viaDriver = false): string {
   if (toCode === 'IN_TRANSIT') return 'In transit';
   if (toCode === 'DELIVERED') return 'Delivered';
   if (toCode === 'CANCELLED') return 'Cancelled';
-  if (toCode === 'DELIVERY_FAILED') return 'Delivery failed';
   if (toCode === 'EN_ROUTE_TO_PICKUP') return 'En route to pickup';
   if (toCode === 'ASSIGNED') return 'Assigned';
   if (toCode === 'DRAFT') return 'Draft';
@@ -600,32 +597,6 @@ function auditDispatchEntry(
             conflictType,
             ...types,
             highestSeverity,
-            actor,
-          ]),
-        },
-      ];
-    }
-
-    case 'dispatch.delivery_failed': {
-      const reason = typeof meta.reason === 'string' ? meta.reason : null;
-      const notes = typeof meta.notes === 'string' ? meta.notes : null;
-      const dispatchNumber = typeof meta.dispatchNumber === 'string' ? meta.dispatchNumber : null;
-      return [
-        {
-          id: entry.id,
-          at: entry.createdAt,
-          title: 'Delivery failed',
-          subtitle: reason ? reason.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase()) : null,
-          actor,
-          kind: 'cancel',
-          categories: categoriesForKind('cancel'),
-          sequence: STATUS_SEQUENCE.DELIVERY_FAILED,
-          detail: notes,
-          searchText: buildSearchText([
-            'delivery failed',
-            reason,
-            notes,
-            dispatchNumber,
             actor,
           ]),
         },

@@ -3,7 +3,6 @@ import {
   LayoutDashboard,
   Package,
   Route as RouteIcon,
-  Navigation,
   MapPin,
   Truck,
   Wallet,
@@ -32,10 +31,6 @@ export type NavChild = {
   /// mounted behind NODE_ENV=development (TelematicsModule), so linking to it
   /// from a production sidebar is a link to an error page.
   devOnly?: boolean;
-  /// Omit this child from the sidebar rendering entirely. It remains in the
-  /// navigation tree so that when visited, its parent remains active in the
-  /// sidebar and it resolves correctly in the breadcrumb trail.
-  hideFromSidebar?: boolean;
 };
 
 export type NavItem = {
@@ -94,14 +89,7 @@ export const DEFAULT_NAV: NavItem[] = [
     path: "/app/dispatches",
     roles: ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER", "ACCOUNTANT"],
     group: "Operations",
-    children: [{ label: "Analytics", path: "/app/dispatches/analytics", hideFromSidebar: true }],
-  },
-  {
-    icon: Navigation,
-    label: "Routes",
-    path: "/app/routes",
-    roles: ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER", "ACCOUNTANT"],
-    group: "Operations",
+    children: [{ label: "Analytics", path: "/app/dispatches/analytics" }],
   },
   { icon: MapPin, label: "Customers", path: "/app/customers", group: "Operations" },
   {
@@ -113,10 +101,10 @@ export const DEFAULT_NAV: NavItem[] = [
     // Everything positional lives under the map: the devices that feed it, the
     // geofences drawn on it, and the diagnostics that explain it.
     children: [
-      { label: "Devices", path: "/app/devices", roles: ADMIN_OPS, hideFromSidebar: true },
-      { label: "GPS providers", path: "/app/providers", roles: ADMIN_OPS, hideFromSidebar: true },
-      { label: "Geofences", path: "/app/geofences", hideFromSidebar: true },
-      { label: "Diagnostics", path: "/app/fleet-tracking/debug", roles: ADMIN_OPS, devOnly: true, hideFromSidebar: true },
+      { label: "Devices", path: "/app/devices", roles: ADMIN_OPS },
+      { label: "GPS providers", path: "/app/providers", roles: ADMIN_OPS },
+      { label: "Geofences", path: "/app/geofences" },
+      { label: "Diagnostics", path: "/app/fleet-tracking/debug", roles: ADMIN_OPS, devOnly: true },
     ],
   },
   { icon: Truck, label: "Vehicles", path: "/app/vehicles", roles: FLEET_ROLES, group: "Fleet" },
@@ -131,12 +119,12 @@ export const DEFAULT_NAV: NavItem[] = [
     group: "Workspace",
     // Configuration surfaces that each held a top-level row of their own.
     children: [
-      { label: "Billing", path: "/app/billing", roles: ["ADMIN"], hideFromSidebar: true },
-      { label: "Notifications", path: "/app/notifications", hideFromSidebar: true },
-      { label: "Data import", path: "/app/import", roles: FLEET_ROLES, hideFromSidebar: true },
-      { label: "Automation", path: "/app/workflows", roles: ADMIN_OPS, hideFromSidebar: true },
-      { label: "Developer", path: "/app/developer", roles: ADMIN_OPS, hideFromSidebar: true },
-      { label: "Activity log", path: "/app/audit-logs", roles: ["ADMIN", "OPERATIONS_MANAGER", "ACCOUNTANT"], hideFromSidebar: true },
+      { label: "Billing", path: "/app/billing", roles: ["ADMIN"] },
+      { label: "Notifications", path: "/app/notifications" },
+      { label: "Data import", path: "/app/import", roles: FLEET_ROLES },
+      { label: "Automation", path: "/app/workflows", roles: ADMIN_OPS },
+      { label: "Developer", path: "/app/developer", roles: ADMIN_OPS },
+      { label: "Activity log", path: "/app/audit-logs", roles: ["ADMIN", "OPERATIONS_MANAGER", "ACCOUNTANT"] },
     ],
   },
 ];

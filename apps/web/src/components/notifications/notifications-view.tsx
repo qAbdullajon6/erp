@@ -124,6 +124,7 @@ export function NotificationsView() {
   if (tab === 'preferences') {
     return (
       <div className="space-y-6">
+        <PageHeader title="Notifications" subtitle="How this workspace gets notified" />
         {tabStrip}
         <NotificationPreferences />
       </div>
@@ -133,6 +134,7 @@ export function NotificationsView() {
   if (isLoading) {
     return (
       <div className="space-y-6">
+        <PageHeader title="Notifications" />
         {tabStrip}
         <div className="overflow-hidden rounded-lg border border-border bg-surface">
           <ListSkeleton rows={6} label="Loading notifications" />
@@ -144,6 +146,7 @@ export function NotificationsView() {
   if (error) {
     return (
       <div className="space-y-6">
+        <PageHeader title="Notifications" />
         {tabStrip}
         <ErrorState message={describeError(error, 'Failed to load notifications')} onRetry={() => refetch()} />
       </div>
@@ -155,14 +158,15 @@ export function NotificationsView() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium text-muted-foreground">
-          {pagination?.total ?? 0} notification{pagination?.total === 1 ? '' : 's'}
-        </h2>
-        <Button onClick={handleMarkAllAsRead} variant="outline" size="sm">
-          Mark All as Read
-        </Button>
-      </div>
+      <PageHeader
+        title="Notifications"
+        subtitle={`${pagination?.total ?? 0} notification${pagination?.total === 1 ? '' : 's'}`}
+        action={
+          <Button onClick={handleMarkAllAsRead} variant="outline" size="sm">
+            Mark All as Read
+          </Button>
+        }
+      />
 
       {tabStrip}
 
@@ -210,4 +214,3 @@ export function NotificationsView() {
     </div>
   );
 }
-

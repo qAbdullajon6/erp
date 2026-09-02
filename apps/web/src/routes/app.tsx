@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import { LoadingState } from "@/components/shared/list-states";
 import { toast } from "sonner";
 import { AlertTriangle, LifeBuoy, LogOut } from "lucide-react";
-import { PageTitleProvider } from "@/lib/page-title-context";
 
 export const Route = createFileRoute("/app")({
   head: () => ({
@@ -164,25 +163,23 @@ function AppRoute() {
   const nav = getNavForRole(role, false);
 
   return (
-    <PageTitleProvider>
-      <AppShell
-        nav={nav}
-        navReady
-        currentUser={currentUser}
-        onSignOut={handleLogout}
-        banner={
-          supportSession ? (
-            <SupportSessionBanner
-              organizationName={supportSession.organizationName}
-              organizationStatus={
-                supportSession.organizationStatus ?? currentUser.organization.status
-              }
-            />
-          ) : null
-        }
-      >
-        <Outlet />
-      </AppShell>
-    </PageTitleProvider>
+    <AppShell
+      nav={nav}
+      navReady
+      currentUser={currentUser}
+      onSignOut={handleLogout}
+      banner={
+        supportSession ? (
+          <SupportSessionBanner
+            organizationName={supportSession.organizationName}
+            organizationStatus={
+              supportSession.organizationStatus ?? currentUser.organization.status
+            }
+          />
+        ) : null
+      }
+    >
+      <Outlet />
+    </AppShell>
   );
 }

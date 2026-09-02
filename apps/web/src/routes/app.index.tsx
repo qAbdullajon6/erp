@@ -1,4 +1,4 @@
-import { createFileRoute, Navigate } from "@tanstack/react-router";
+import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { AiOpsSuggestions } from "@/components/dashboard/ai-ops-suggestions";
 import { AttentionCenter } from "@/components/dashboard/attention-center";
@@ -19,9 +19,12 @@ import { useLiveFleetQuery } from "@/lib/api/telematics";
 import { useDispatchBoardSummary } from "@/lib/hooks/use-dispatches";
 import { LoadingState, ErrorState } from "@/components/shared/list-states";
 import { PageHeader } from "@/components/shared/page-header";
-import { ADMIN_OPS_ROLES, DISPATCH_WRITE_ROLES, DISPATCH_ROLES, FLEET_ROLES } from "@/lib/role-access";
+import { Button } from "@/components/ui/button";
+import { ADMIN_OPS_ROLES, ORDER_WRITE_ROLES, DISPATCH_WRITE_ROLES, DISPATCH_ROLES, FLEET_ROLES } from "@/lib/role-access";
 import type { MembershipRole } from "@/lib/api/organizations";
 import { formatRelativeTime } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { Plus, RefreshCw, Sparkles } from "lucide-react";
 
 const LIVE_REFRESH_MS = 30_000;
 
@@ -51,16 +54,55 @@ function OpsClock() {
   return (
     <span className="flex flex-wrap items-center gap-x-2">
       <span className="font-medium tabular-nums text-foreground">{time}</span>
-      <span className="text-border" aria-hidden>·</span>
+      <span className="text-border" aria-hidden>
+        ·
+      </span>
       <span>
         {day} · {weekday}
       </span>
-      <span className="text-border" aria-hidden>·</span>
+      <span className="text-border" aria-hidden>
+        ·
+      </span>
       <span>Shift: {shiftLabel(now)}</span>
     </span>
   );
 }
 
+function FreshnessControl({
+  updatedAt,
+  isFetching,
+  onRefresh,
+}: {
+  updatedAt: number;
+  isFetching: boolean;
+  onRefresh: () => void;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const secs = updatedAt ? Math.max(0, Math.round((now - updatedAt) / 1000)) : 0;
+  const label = isFetching ? "Updating" : secs < 15 ? "Live" : secs < 60 ? `${secs}s` : `${Math.round(secs / 60)}m`;
+
+  return (
+    <button
+      type="button"
+      onClick={onRefresh}
+      disabled={isFetching}
+      title="Refresh now"
+      aria-label={`Dashboard data freshness: ${label}. Refresh now.`}
+      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border/80 bg-surface/50 px-2.5 text-[11px] font-medium text-muted-foreground hover:border-brand hover:text-brand disabled:opacity-70"
+    >
+      <span className={cn("h-1.5 w-1.5 rounded-full", isFetching ? "animate-pulse bg-warning" : "bg-success")} aria-hidden />
+      <RefreshCw className={cn("h-3 w-3", isFetching && "animate-spin")} aria-hidden />
+      <span className="tabular-nums" aria-live="polite">
+        {label}
+      </span>
+    </button>
+  );
+}
 
 export const Route = createFileRoute("/app/")({
   head: () => ({ meta: [{ title: "Overview — FlowERP AI" }] }),
@@ -68,8 +110,7 @@ export const Route = createFileRoute("/app/")({
 });
 
 function DashboardPage() {
-  const { data: currentUser, loading: userLoading, error: userError, refetch: refetchUser } =
-    useCurrentUser();
+  const { data: currentUser, loading: userLoading, error: userError, refetch: refetchUser } = useCurrentUser();
   const role = currentUser?.membership.role;
 
   if (userLoading) return <LoadingState label="Loading dashboard..." />;
@@ -98,6 +139,7 @@ function OperationsCommandCenter({
   includeTelematics: boolean;
   role: MembershipRole;
 }) {
+  const canCreateOrder = ORDER_WRITE_ROLES.includes(role);
   const canCreateDispatch = DISPATCH_WRITE_ROLES.includes(role);
 
   const summary = useDashboardSummary({ refetchInterval: LIVE_REFRESH_MS });
@@ -130,9 +172,7 @@ function OperationsCommandCenter({
     const items = summary.data?.delayedOrders.items ?? [];
     if (items.length === 0) return null;
     return Math.max(
-      ...items.map((o) =>
-        Math.max(1, Math.floor((Date.now() - new Date(o.deliveryDate).getTime()) / 86_400_000)),
-      ),
+      ...items.map((o) => Math.max(1, Math.floor((Date.now() - new Date(o.deliveryDate).getTime()) / 86_400_000))),
     );
   }, [summary.data?.delayedOrders.items]);
 
@@ -151,9 +191,7 @@ function OperationsCommandCenter({
     return iso ? formatRelativeTime(iso) : null;
   }, [boardData?.unassignedOrders]);
 
-  const errors = [summary.error, includeFleet ? board.error : null].filter(
-    (e): e is string => Boolean(e),
-  );
+  const errors = [summary.error, includeFleet ? board.error : null].filter((e): e is string => Boolean(e));
   const error =
     errors.length > 0
       ? errors.length > 1
@@ -168,17 +206,60 @@ function OperationsCommandCenter({
     if (includeTelematics) void liveFleet.refetch();
   };
 
+  const updatedAt = Math.max(
+    summary.dataUpdatedAt ?? 0,
+    includeFleet ? board.dataUpdatedAt ?? 0 : 0,
+    includeTelematics ? liveFleet.dataUpdatedAt ?? 0 : 0,
+  );
+  const isRefreshing =
+    summary.isFetching || (includeFleet && board.isFetching) || (includeTelematics && liveFleet.isFetching);
   const loading = summary.loading || (includeFleet && board.loading && !board.data);
 
   return (
-    <div className="space-y-5" data-testid="dashboard">
-
-      {/* ── 1. Header ── */}
+    // Tests need to say "the dashboard rendered" without depending on whatever
+    // the headline copy happens to be this month.
+    <div className="space-y-8" data-testid="dashboard">
       <div className="border-b border-border/60 pb-4">
-        <PageHeader title="Today" subtitle={<OpsClock />} />
+        <PageHeader
+          title="Today"
+          subtitle={<OpsClock />}
+          action={
+            <>
+              <FreshnessControl
+                updatedAt={updatedAt}
+                isFetching={isRefreshing}
+                onRefresh={retryAll}
+              />
+              {/* These were hand-styled anchors sized `h-8 text-[11px]`, which put
+                  the dashboard's only calls to action a step below every other
+                  button in the app. */}
+              <Button asChild variant="outline" size="sm">
+                <Link to="/app/ai-assistant">
+                  <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                  Ask AI
+                </Link>
+              </Button>
+              {canCreateOrder && (
+                <Button asChild variant="outline" size="sm">
+                  <Link to="/app/orders" search={{ create: true }}>
+                    <Plus className="mr-1.5 h-3.5 w-3.5" />
+                    Order
+                  </Link>
+                </Button>
+              )}
+              {canCreateDispatch && (
+                <Button asChild size="sm">
+                  <Link to="/app/dispatches/create">
+                    <Plus className="mr-1.5 h-3.5 w-3.5" />
+                    Dispatch
+                  </Link>
+                </Button>
+              )}
+            </>
+          }
+        />
       </div>
 
-      {/* Error banner */}
       {error && (
         <div className="flex items-center justify-between gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-1.5 text-sm text-destructive">
           <span>{error}</span>
@@ -188,14 +269,15 @@ function OperationsCommandCenter({
         </div>
       )}
 
-      {/* ── 2. Setup checklist (conditional — hidden on seeded demo) ── */}
       <SetupChecklist canDismiss={ADMIN_OPS_ROLES.includes(role)} />
 
-      {/* ── 3. Compact KPI strip ── */}
       <KpiCards data={summary.data} loading={summary.loading} />
+      <DashboardCharts data={summary.data} loading={summary.loading} />
 
-      {/* ── 4. Exception / attention strip ── */}
-      <div className="space-y-2">
+      <AttentionCenter attention={summary.data?.attention} loading={summary.loading} />
+      <RecentActivity items={summary.data?.recentActivity} loading={summary.loading} />
+
+      <div className="space-y-4">
         <ExceptionHero
           delayed={totals?.delayedOrders ?? 0}
           worstDelayDays={worstDelayDays}
@@ -206,6 +288,7 @@ function OperationsCommandCenter({
           includeFleet={includeFleet}
           loading={loading}
         />
+
         {!loading && today && (
           <SecondaryPulse
             dueToday={today.dueToday}
@@ -218,19 +301,16 @@ function OperationsCommandCenter({
         )}
       </div>
 
-      {/* ── 5. Operations command center ── */}
       {includeFleet ? (
-        <section
-          className="grid grid-cols-1 gap-4 min-[960px]:grid-cols-12 min-[960px]:items-start"
-          aria-label="Operations"
-        >
-          {/* Left — workload: dispatch queue + delayed */}
+        <section className="grid grid-cols-1 gap-4 min-[960px]:grid-cols-12 min-[960px]:items-start">
+          {/* Dominant ops column — Needs Dispatch / Ready / Delayed */}
           <div className="flex flex-col gap-4 min-[960px]:col-span-7">
             <UnassignedQueue
               orders={boardData?.unassignedOrders ?? []}
               loading={board.loading}
               canDispatch={canCreateDispatch}
             />
+            <FleetReady board={boardData} loading={board.loading} canDispatch={canCreateDispatch} />
             <DelayedDeliveries
               orders={summary.data?.delayedOrders.items ?? []}
               total={summary.data?.delayedOrders.total ?? 0}
@@ -238,20 +318,11 @@ function OperationsCommandCenter({
               unassignedIds={unassignedIds}
               canDispatch={canCreateDispatch}
             />
-            <FleetReady
-              board={boardData}
-              loading={board.loading}
-              canDispatch={canCreateDispatch}
-            />
           </div>
 
-          {/* Right — intelligence: AI + live fleet + finance */}
+          {/* Secondary monitoring — AI / On Road / Money */}
           <div className="flex flex-col gap-4 min-[960px]:col-span-5">
-            <AiOpsSuggestions
-              board={boardData ?? null}
-              canDispatch={canCreateDispatch}
-              loading={board.loading}
-            />
+            <AiOpsSuggestions board={boardData ?? null} canDispatch={canCreateDispatch} loading={board.loading} />
             <LiveDispatch
               board={boardData}
               loading={board.loading}
@@ -275,20 +346,6 @@ function OperationsCommandCenter({
           </div>
         </section>
       )}
-
-      {/* ── 6. Performance + attention + activity (bottom) ── */}
-      <section
-        className="grid grid-cols-1 gap-4 min-[960px]:grid-cols-[minmax(0,1fr)_420px] min-[960px]:items-start"
-        aria-label="Performance and activity"
-      >
-        <DashboardCharts data={summary.data} loading={summary.loading} />
-
-        <div className="flex flex-col gap-4">
-          <AttentionCenter attention={summary.data?.attention} loading={summary.loading} />
-          <RecentActivity items={summary.data?.recentActivity} loading={summary.loading} />
-        </div>
-      </section>
-
     </div>
   );
 }

@@ -5,18 +5,12 @@ import {
   usePortalOrderTracking,
 } from "@/lib/api/portal-orders";
 import { CustomerPodPanel } from "@/components/customer/customer-pod-panel";
-import {
-  formatDate,
-  formatDateTime,
-  formatDeliveryWindow,
-  formatEtaMinutes,
-  formatRemainingDistance,
-} from "@/lib/format";
+import { formatDate, formatDateTime } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Clock, MapPin, Navigation, Phone, RefreshCw, Truck } from "lucide-react";
+import { ArrowLeft, Clock, MapPin, Navigation, RefreshCw, Truck } from "lucide-react";
 
 export const Route = createFileRoute("/portal/orders/$orderId")({
   head: () => ({
@@ -34,24 +28,6 @@ const STATUS_COLORS: Record<string, string> = {
   DELIVERED: "bg-success/10 text-success border-success/20",
   CANCELLED: "bg-destructive/10 text-destructive border-destructive/20",
 };
-
-/// Customer-safe labels for shipment (dispatch) status values.
-/// Internal enum names such as DELIVERY_FAILED are never shown verbatim.
-const SHIPMENT_STATUS_LABELS: Record<string, string> = {
-  ASSIGNED: "Assigned",
-  EN_ROUTE_TO_PICKUP: "On the way to pickup",
-  AT_PICKUP: "At pickup",
-  IN_TRANSIT: "In transit",
-  AT_STOP: "In transit",
-  ARRIVED_AT_DELIVERY: "Arrived at destination",
-  DELIVERED: "Delivered",
-  CANCELLED: "Cancelled",
-  DELIVERY_FAILED: "Delivery attempted",
-};
-
-function shipmentStatusLabel(status: string): string {
-  return SHIPMENT_STATUS_LABELS[status] ?? status.replace(/_/g, " ");
-}
 
 const LIVE_STATUSES = new Set(["ASSIGNED", "PICKED_UP", "IN_TRANSIT"]);
 
@@ -115,18 +91,9 @@ function PortalOrderDetailPage() {
           </p>
         </div>
         <Badge className={STATUS_COLORS[order.status]} variant="outline">
-          {order.status
-            .replace(/_/g, " ")
-            .toLowerCase()
-            .replace(/\b\w/g, (c) => c.toUpperCase())}
+          {order.status.replace(/_/g, " ")}
         </Badge>
       </div>
-
-      {order.status === 'PENDING' && order.shipment?.status === 'DELIVERY_FAILED' ? (
-        <div className="rounded-xl border border-warning/30 bg-warning/5 px-4 py-3 text-sm text-warning">
-          Delivery was attempted — a new delivery will be arranged.
-        </div>
-      ) : null}
 
       {order.shipment ? (
         <Card>
@@ -142,7 +109,7 @@ function PortalOrderDetailPage() {
             </p>
             <p>
               <span className="text-muted-foreground">Status:</span>{" "}
-              {shipmentStatusLabel(order.shipment.status)}
+              {order.shipment.status.replace(/_/g, " ")}
             </p>
             <p>
               <span className="text-muted-foreground">Driver:</span> {order.shipment.driverName}
@@ -151,12 +118,6 @@ function PortalOrderDetailPage() {
               <span className="text-muted-foreground">Vehicle:</span>{" "}
               {order.shipment.vehiclePlate ?? order.shipment.vehicleCode ?? "—"}
             </p>
-            {order.shipment.eta ? (
-              <p className="sm:col-span-2">
-                <span className="text-muted-foreground">Estimated arrival:</span>{" "}
-                <span className="font-medium text-foreground">{formatDateTime(order.shipment.eta)}</span>
-              </p>
-            ) : null}
           </CardContent>
         </Card>
       ) : null}
@@ -185,65 +146,23 @@ function PortalOrderDetailPage() {
               <Skeleton className="h-20 rounded-lg" />
             ) : tracking?.tracking ? (
               <>
-                {/* Distance + ETA — primary when available, graceful fallback when not */}
-                {tracking.eta ? (
-                  <div className="flex items-start gap-3 rounded-lg border border-brand/10 bg-brand/5 px-4 py-3">
-                    <Navigation className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
-                    <div>
-                      <p className="font-semibold text-foreground">
-                        {formatRemainingDistance(tracking.eta.remainingKm)}
-                      </p>
-                      <p className="mt-0.5 text-muted-foreground">
-                        {formatEtaMinutes(tracking.eta.etaMinutes)}
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="font-medium text-foreground">Live location available</p>
-                )}
-
-                {/* Delivery window — only when both values are present */}
-                {order.deliveryWindowStart && order.deliveryWindowEnd ? (
-                  <p className="text-muted-foreground">
-                    {formatDeliveryWindow(order.deliveryWindowStart, order.deliveryWindowEnd)}
-                  </p>
-                ) : null}
-
-                {/* Delivery stop contact — distinct from the customer company contact */}
-                {(order.deliveryContactName || order.deliveryContactPhone) ? (
-                  <div className="space-y-0.5">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Delivery contact
-                    </p>
-                    {order.deliveryContactName ? (
-                      <p className="text-foreground">{order.deliveryContactName}</p>
-                    ) : null}
-                    {order.deliveryContactPhone ? (
-                      <a
-                        href={`tel:${order.deliveryContactPhone}`}
-                        className="inline-flex items-center gap-1 font-medium text-brand hover:underline"
-                      >
-                        <Phone className="h-3.5 w-3.5" />
-                        {order.deliveryContactPhone}
-                      </a>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                {/* Secondary: speed, movement state, last updated */}
-                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                <p className="text-foreground">
+                  Vehicle last reported near{" "}
+                  <span className="font-medium">
+                    {tracking.tracking.latitude.toFixed(5)}, {tracking.tracking.longitude.toFixed(5)}
+                  </span>
+                </p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
                   {tracking.tracking.speedKph != null ? (
-                    <span>{Math.round(tracking.tracking.speedKph)} km/h</span>
+                    <span>Speed: {Math.round(tracking.tracking.speedKph)} km/h</span>
                   ) : null}
                   {tracking.tracking.movementState ? (
-                    <span>{tracking.tracking.movementState.replace(/_/g, " ").toLowerCase()}</span>
+                    <span>State: {tracking.tracking.movementState.replace(/_/g, " ")}</span>
                   ) : null}
                   {tracking.tracking.lastUpdatedAt ? (
-                    <span>Updated {formatDateTime(tracking.tracking.lastUpdatedAt)}</span>
+                    <span>Updated: {formatDateTime(tracking.tracking.lastUpdatedAt)}</span>
                   ) : null}
                 </div>
-
-                {/* Map action — secondary to delivery info */}
                 {mapUrl ? (
                   <a
                     href={mapUrl}
@@ -252,7 +171,7 @@ function PortalOrderDetailPage() {
                     className="inline-flex items-center gap-2 rounded-lg bg-brand/10 px-4 py-2 text-sm font-medium text-brand"
                   >
                     <MapPin className="h-4 w-4" />
-                    Track on map
+                    Open location in Maps
                   </a>
                 ) : null}
               </>

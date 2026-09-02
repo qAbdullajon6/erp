@@ -4,7 +4,15 @@ import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 
-export type VehicleSectionKey = 'identity' | 'capacity' | 'documents' | 'additional' | 'status';
+/// Shared between VehiclesCreateSheet and VehiclesEditSheet — both sheets
+/// validate and render the same vehicle fields (create leaves `vehicleCode`
+/// optional with an "auto-generate if empty" hint; edit requires it since an
+/// existing row always has one, via `requireVehicleCode`). Previously each
+/// file hand-copied its own Field, Section, and validateField — the same
+/// duplication driver-form-shared.tsx and customer-form-shared.tsx were
+/// extracted to fix.
+
+export type VehicleSectionKey = 'identity' | 'capacity' | 'documents' | 'status';
 
 export const VEHICLE_FIELD_SECTION: Record<string, VehicleSectionKey> = {
   vehicleCode: 'identity',
@@ -13,17 +21,10 @@ export const VEHICLE_FIELD_SECTION: Record<string, VehicleSectionKey> = {
   make: 'identity',
   model: 'identity',
   year: 'identity',
-  vin: 'identity',
   capacityKg: 'capacity',
   capacityM3: 'capacity',
   insuranceExpiry: 'documents',
   inspectionExpiry: 'documents',
-  odometer: 'additional',
-  fuelType: 'additional',
-  transmission: 'additional',
-  axles: 'additional',
-  engineNumber: 'additional',
-  notes: 'additional',
   status: 'status',
 };
 
@@ -40,13 +41,6 @@ export interface VehicleFormFields {
   capacityM3: string;
   insuranceExpiry: string;
   inspectionExpiry: string;
-  vin: string;
-  engineNumber: string;
-  odometer: string;
-  fuelType: string;
-  transmission: string;
-  axles: string;
-  notes: string;
 }
 
 export function toOptionalNumber(value: string): number | undefined {
@@ -55,6 +49,7 @@ export function toOptionalNumber(value: string): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+/// Mirrors CreateVehicleDto/UpdateVehicleDto (apps/api/src/vehicles/dto/*.ts).
 export function validateVehicleField(
   field: string,
   data: VehicleFormFields,
@@ -103,27 +98,6 @@ export function validateVehicleField(
       ) {
         return 'Use YYYY-MM-DD';
       }
-      return null;
-    case 'vin':
-      if (data.vin.length > 50) return 'Max 50 characters';
-      return null;
-    case 'engineNumber':
-      if (data.engineNumber.length > 100) return 'Max 100 characters';
-      return null;
-    case 'odometer': {
-      if (!data.odometer.trim()) return null;
-      const n = Number(data.odometer);
-      if (!Number.isInteger(n) || n < 0) return 'Must be ≥ 0';
-      return null;
-    }
-    case 'axles': {
-      if (!data.axles.trim()) return null;
-      const n = Number(data.axles);
-      if (!Number.isInteger(n) || n < 1 || n > 20) return 'Between 1 and 20';
-      return null;
-    }
-    case 'notes':
-      if (data.notes.length > 1000) return 'Max 1000 characters';
       return null;
     default:
       return null;
@@ -178,36 +152,6 @@ export function Field({
   );
 }
 
-export function SectionCard({
-  icon: Icon,
-  title,
-  errorCount,
-  children,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  errorCount: number;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="overflow-hidden rounded-xl border border-border/70 bg-surface">
-      <div className="flex items-center gap-2.5 border-b border-border/50 px-4 py-3">
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand/10 text-brand">
-          <Icon className="h-3.5 w-3.5" />
-        </span>
-        <h3 className="text-sm font-semibold">{title}</h3>
-        {errorCount > 0 && (
-          <Badge variant="destructive" className="ml-auto h-5 px-1.5 text-[10px]">
-            {errorCount}
-          </Badge>
-        )}
-      </div>
-      <div className="p-4">{children}</div>
-    </section>
-  );
-}
-
-/** @deprecated Use SectionCard instead — kept for VehiclesEditSheet compatibility */
 export function Section({
   icon: Icon,
   title,
@@ -238,5 +182,5 @@ export function Section({
 }
 
 export function emptySectionCounts(): Record<VehicleSectionKey, number> {
-  return { identity: 0, capacity: 0, documents: 0, additional: 0, status: 0 };
+  return { identity: 0, capacity: 0, documents: 0, status: 0 };
 }

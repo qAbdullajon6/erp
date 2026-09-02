@@ -3,34 +3,28 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { PageHeader } from '@/components/shared/page-header';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
   useCustomersList,
-  useArchiveCustomer,
   type Customer,
   type CustomerSortField,
   type CustomerStatus,
-  formatPaymentTerms,
-  creditLimitLabel,
 } from '@/lib/api/customers';
 import { useCurrentUser } from '@/lib/api/auth';
 import { CUSTOMER_WRITE_ROLES, INVOICE_READ_ROLES } from '@/lib/role-access';
 import type { MembershipRole } from '@/lib/api/organizations';
 import { ErrorState, EmptyState, ListSkeleton } from '@/components/shared/list-states';
+import { FilterTabs } from '@/components/shared/filter-tabs';
+import { SearchInput } from '@/components/shared/search-input';
+import { PaginationBar } from '@/components/shared/pagination-bar';
+import { StatusBadge } from '@/components/shared/status-badge';
 import { CustomersCreateSheet } from '@/components/customers/customers-create-sheet';
 import { CustomersEditSheet } from '@/components/customers/customers-edit-sheet';
 import {
@@ -42,45 +36,35 @@ import { formatMoney, formatRelativeTime } from '@/lib/format';
 import { toCsv, downloadCsv } from '@/lib/csv';
 import { cn } from '@/lib/utils';
 import {
-  Archive,
-  ChevronLeft,
-  ChevronRight,
+  AlertTriangle,
+  Building2,
   Download,
   Edit2,
-  Eye,
+  ExternalLink,
   Mail,
   MoreHorizontal,
+  Phone,
   Plus,
+  User,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+type CrmTab = 'active' | 'high_value' | 'outstanding' | 'inactive' | 'archived' | 'all';
 
-type CrmTab = 'all' | 'active' | 'high_value' | 'outstanding' | 'inactive' | 'archived';
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+const TAB_CONFIG: { key: CrmTab; label: string }[] = [
+  { key: 'active', label: 'Active' },
+  { key: 'high_value', label: 'High Value' },
+  { key: 'outstanding', label: 'Outstanding Balance' },
+  { key: 'inactive', label: 'Inactive' },
+  { key: 'archived', label: 'Archived' },
+  { key: 'all', label: 'All' },
+];
 
 function companyInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return '?';
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase();
-}
-
-const AVATAR_CLASS = 'bg-brand/15 text-brand';
-
-function compactPaymentTerms(terms: string, days?: number | null): string {
-  switch (terms) {
-    case 'DUE_ON_RECEIPT': return 'Due on receipt';
-    case 'NET_7':  return 'Net  7';
-    case 'NET_15': return 'Net 15';
-    case 'NET_30': return 'Net 30';
-    case 'NET_45': return 'Net 45';
-    case 'NET_60': return 'Net 60';
-    case 'NET_90': return 'Net 90';
-    case 'CUSTOM': return days != null ? `Net ${days}` : 'Custom';
-    default: return terms;
-  }
 }
 
 function tabToQuery(tab: CrmTab): {
@@ -90,154 +74,21 @@ function tabToQuery(tab: CrmTab): {
   sortOrder?: 'asc' | 'desc';
 } {
   switch (tab) {
-    case 'active':      return { status: 'ACTIVE', sortBy: 'companyName', sortOrder: 'asc' };
-    case 'high_value':  return { status: 'ACTIVE', sortBy: 'creditLimit', sortOrder: 'desc' };
-    case 'inactive':    return { status: 'INACTIVE', sortBy: 'updatedAt', sortOrder: 'desc' };
-    case 'archived':    return { status: 'ARCHIVED', includeArchived: true, sortBy: 'updatedAt', sortOrder: 'desc' };
-    case 'outstanding': return { includeArchived: false, sortBy: 'companyName', sortOrder: 'asc' };
-    default:            return { includeArchived: false, sortBy: 'updatedAt', sortOrder: 'desc' };
+    case 'active':
+      return { status: 'ACTIVE', sortBy: 'companyName', sortOrder: 'asc' };
+    case 'high_value':
+      return { status: 'ACTIVE', sortBy: 'creditLimit', sortOrder: 'desc' };
+    case 'inactive':
+      return { status: 'INACTIVE', sortBy: 'updatedAt', sortOrder: 'desc' };
+    case 'archived':
+      return { status: 'ARCHIVED', includeArchived: true, sortBy: 'updatedAt', sortOrder: 'desc' };
+    case 'outstanding':
+      return { includeArchived: false, sortBy: 'companyName', sortOrder: 'asc' };
+    case 'all':
+    default:
+      return { includeArchived: false, sortBy: 'updatedAt', sortOrder: 'desc' };
   }
 }
-
-// ─── Inline pagination ────────────────────────────────────────────────────────
-
-function Pagination({
-  page,
-  totalPages,
-  total,
-  limit,
-  onPageChange,
-  onLimitChange,
-}: {
-  page: number;
-  totalPages: number;
-  total: number;
-  limit: number;
-  onPageChange: (p: number) => void;
-  onLimitChange: (l: number) => void;
-}) {
-  const safePage = Math.min(Math.max(1, page), totalPages);
-  const from = (safePage - 1) * limit + 1;
-  const to   = Math.min(safePage * limit, total);
-
-  // Build page numbers (show up to 5, centred around current)
-  const pages: (number | '…')[] = [];
-  if (totalPages <= 7) {
-    for (let i = 1; i <= totalPages; i++) pages.push(i);
-  } else {
-    pages.push(1);
-    if (safePage > 3) pages.push('…');
-    for (let i = Math.max(2, safePage - 1); i <= Math.min(totalPages - 1, safePage + 1); i++) {
-      pages.push(i);
-    }
-    if (safePage < totalPages - 2) pages.push('…');
-    pages.push(totalPages);
-  }
-
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 px-1 py-3">
-      <p className="text-sm text-muted-foreground">
-        Showing <span className="font-medium text-foreground">{from}</span>
-        {' '}to{' '}
-        <span className="font-medium text-foreground">{to}</span>
-        {' '}of{' '}
-        <span className="font-medium text-foreground">{total}</span> customers
-      </p>
-
-      <div className="flex items-center gap-2">
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => onPageChange(safePage - 1)}
-            disabled={safePage <= 1}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-sm transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-40"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </button>
-
-          {pages.map((p, i) =>
-            p === '…' ? (
-              <span key={`ellipsis-${i}`} className="flex h-8 w-8 items-center justify-center text-sm text-muted-foreground">
-                …
-              </span>
-            ) : (
-              <button
-                key={p}
-                onClick={() => onPageChange(p as number)}
-                className={cn(
-                  'flex h-8 w-8 items-center justify-center rounded-lg border text-sm font-medium transition-colors',
-                  p === safePage
-                    ? 'border-brand bg-brand text-brand-foreground'
-                    : 'border-border hover:bg-muted',
-                )}
-              >
-                {p}
-              </button>
-            ),
-          )}
-
-          <button
-            onClick={() => onPageChange(safePage + 1)}
-            disabled={safePage >= totalPages}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-sm transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-40"
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
-          </button>
-        </div>
-
-        <Select value={String(limit)} onValueChange={(v) => onLimitChange(Number(v))}>
-          <SelectTrigger className="h-8 w-[100px] text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {[10, 25, 50].map((n) => (
-              <SelectItem key={n} value={String(n)}>{n} per page</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-    </div>
-  );
-}
-
-// ─── Tab button ───────────────────────────────────────────────────────────────
-
-function TabButton({
-  label,
-  count,
-  active,
-  onClick,
-}: {
-  label: string;
-  count?: number;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        'flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors',
-        active
-          ? 'border-brand text-brand'
-          : 'border-transparent text-muted-foreground hover:text-foreground',
-      )}
-    >
-      {label}
-      {count !== undefined && (
-        <span
-          className={cn(
-            'rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums',
-            active ? 'bg-brand text-brand-foreground' : 'bg-muted text-muted-foreground',
-          )}
-        >
-          {count}
-        </span>
-      )}
-    </button>
-  );
-}
-
-// ─── Main list component ──────────────────────────────────────────────────────
 
 export function CustomersList() {
   const navigate = useNavigate();
@@ -247,96 +98,202 @@ export function CustomersList() {
   const canWrite = Boolean(role && CUSTOMER_WRITE_ROLES.includes(role));
   const canViewInvoices = Boolean(role && INVOICE_READ_ROLES.includes(role));
 
-  const tab = (['all', 'active', 'high_value', 'outstanding', 'inactive', 'archived'].includes(
-    searchState.tab as string,
-  )
+  const tab = (TAB_CONFIG.some((t) => t.key === searchState.tab)
     ? searchState.tab
     : 'active') as CrmTab;
-
-  const page   = searchState.page || 1;
+  const page = searchState.page || 1;
   const search = searchState.search || '';
   const createOpen = Boolean(searchState.create);
-  const [limit, setLimit] = useState(10);
   const tabQuery = tabToQuery(tab);
-  const [localSearch, setLocalSearch] = useState(search);
-  const [editing, setEditing] = useState<Customer | null>(null);
-
-  const debouncedSearch = useDebouncedValue(localSearch, 300);
-  useEffect(() => { setLocalSearch(search); }, [search]);
-  useEffect(() => {
-    if (debouncedSearch === search) return;
-    navigate({ to: '/app/customers', search: (p) => ({ ...p, page: 1, search: debouncedSearch || undefined }) });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch]);
+  const allowedSort: CustomerSortField[] = [
+    'customerCode',
+    'companyName',
+    'createdAt',
+    'updatedAt',
+    'creditLimit',
+    'status',
+  ];
+  const sortBy = allowedSort.includes(searchState.sortBy as CustomerSortField)
+    ? (searchState.sortBy as CustomerSortField)
+    : tabQuery.sortBy || 'updatedAt';
+  const sortOrder =
+    searchState.sortOrder === 'asc' || searchState.sortOrder === 'desc'
+      ? searchState.sortOrder
+      : tabQuery.sortOrder || 'desc';
 
   const listEnabled = tab !== 'outstanding';
   const { data, meta, loading, error, refetch } = useCustomersList(
     {
       page: listEnabled ? page : 1,
-      limit: listEnabled ? limit : 200,
+      limit: listEnabled ? 20 : 200,
       search: search || undefined,
       status: tabQuery.status,
       includeArchived: tabQuery.includeArchived,
-      sortBy: tabQuery.sortBy,
-      sortOrder: tabQuery.sortOrder,
+      sortBy,
+      sortOrder,
     },
     { enabled: true },
   );
 
-  const relationships = useCustomerRelationshipIndex({ enabled: true, canViewInvoices });
+  const relationships = useCustomerRelationshipIndex({
+    enabled: true,
+    canViewInvoices,
+  });
 
-  // Tab counts (limit:1 queries, just for .meta.total)
-  const allCount      = useCustomersList({ limit: 1, includeArchived: false });
-  const activeCount   = useCustomersList({ status: 'ACTIVE', limit: 1 });
-  const inactiveCount = useCustomersList({ status: 'INACTIVE', limit: 1 });
-  const archivedCount = useCustomersList({ status: 'ARCHIVED', includeArchived: true, limit: 1 });
-  const highValCount  = useCustomersList({ status: 'ACTIVE', sortBy: 'creditLimit', sortOrder: 'desc', limit: 1 });
+  const activeCount = useCustomersList({ status: 'ACTIVE', limit: 1 });
+  const atRiskCount = useCustomersList({ status: 'AT_RISK', limit: 1 });
+  const recentCustomers = useCustomersList({
+    sortBy: 'createdAt',
+    sortOrder: 'desc',
+    limit: 100,
+  });
+
+  const [localSearch, setLocalSearch] = useState(search);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<Customer | null>(null);
+
+  useEffect(() => {
+    setLocalSearch(search);
+  }, [search]);
+
+  const debouncedSearch = useDebouncedValue(localSearch, 300);
+  useEffect(() => {
+    if (debouncedSearch === search) return;
+    navigate({
+      to: '/app/customers',
+      search: (prev) => ({
+        ...prev,
+        page: 1,
+        search: debouncedSearch || undefined,
+      }),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch]);
+
+  const newThisMonth = useMemo(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    let count = 0;
+    for (const c of recentCustomers.data) {
+      const d = new Date(c.createdAt);
+      if (d.getFullYear() === y && d.getMonth() === m) count += 1;
+      else if (d.getFullYear() < y || (d.getFullYear() === y && d.getMonth() < m)) break;
+    }
+    return count;
+  }, [recentCustomers.data]);
+
+  const highUtilCount = useMemo(() => {
+    const ids = new Set<string>();
+    for (const c of [...recentCustomers.data, ...data]) {
+      const util = creditUtilization(c.creditLimit, relationships.getStats(c.id).outstanding);
+      if (util != null && util >= 0.8) ids.add(c.id);
+    }
+    return ids.size;
+  }, [recentCustomers.data, data, relationships]);
 
   const displayRows = useMemo(() => {
     if (tab !== 'outstanding') return data;
     return data.filter((c) => relationships.outstandingCustomerIds.has(c.id));
   }, [tab, data, relationships.outstandingCustomerIds]);
 
-  const outstandingCount = useMemo(
-    () => [...data].filter((c) => relationships.outstandingCustomerIds.has(c.id)).length,
-    [data, relationships.outstandingCustomerIds],
-  );
+  const setCreateOpen = (open: boolean) => {
+    navigate({
+      to: '/app/customers',
+      search: (prev) => ({
+        ...prev,
+        create: open ? true : undefined,
+      }),
+    });
+  };
 
   const setTab = (next: CrmTab) => {
-    navigate({ to: '/app/customers', search: { page: 1, tab: next } });
+    const q = tabToQuery(next);
+    navigate({
+      to: '/app/customers',
+      search: {
+        page: 1,
+        search: search || undefined,
+        tab: next,
+        sortBy: q.sortBy,
+        sortOrder: q.sortOrder,
+      },
+    });
   };
 
   const handleExport = () => {
-    if (!displayRows.length) { toast.error('Nothing to export'); return; }
+    if (displayRows.length === 0) {
+      toast.error('Nothing to export on this page');
+      return;
+    }
     const rows = displayRows.map((c) => {
       const stats = relationships.getStats(c.id);
+      const util = creditUtilization(c.creditLimit, stats.outstanding);
       return {
-        code: c.customerCode, company: c.companyName,
-        contact: c.contactName, email: c.email ?? '', phone: c.phone ?? '',
-        status: c.status, creditLimit: c.creditLimit,
-        openOrders: stats.openOrders, invoices: stats.invoiceCount,
-        outstanding: stats.outstanding, updatedAt: c.updatedAt,
+        code: c.customerCode,
+        company: c.companyName,
+        contact: c.contactName,
+        email: c.email ?? '',
+        phone: c.phone ?? '',
+        status: c.status,
+        creditLimit: c.creditLimit,
+        openOrders: stats.openOrders,
+        invoices: stats.invoiceCount,
+        outstanding: stats.outstanding,
+        utilization: util != null ? `${Math.round(util * 100)}%` : '',
+        updatedAt: c.updatedAt,
       };
     });
-    downloadCsv(`customers-${page}.csv`, toCsv(rows, [
-      { key: 'code', label: 'Code' }, { key: 'company', label: 'Company' },
-      { key: 'contact', label: 'Contact' }, { key: 'email', label: 'Email' },
-      { key: 'phone', label: 'Phone' }, { key: 'status', label: 'Status' },
-      { key: 'creditLimit', label: 'Credit limit' }, { key: 'openOrders', label: 'Open orders' },
-      { key: 'invoices', label: 'Invoices' }, { key: 'outstanding', label: 'Outstanding' },
-      { key: 'updatedAt', label: 'Updated' },
-    ]));
-    toast.success('Exported');
+    downloadCsv(
+      `customers-page-${page}.csv`,
+      toCsv(rows, [
+        { key: 'code', label: 'Code' },
+        { key: 'company', label: 'Company' },
+        { key: 'contact', label: 'Contact' },
+        { key: 'email', label: 'Email' },
+        { key: 'phone', label: 'Phone' },
+        { key: 'status', label: 'Status' },
+        { key: 'creditLimit', label: 'Credit limit' },
+        { key: 'openOrders', label: 'Open orders' },
+        { key: 'invoices', label: 'Invoices' },
+        { key: 'outstanding', label: 'Outstanding' },
+        { key: 'utilization', label: 'Utilization' },
+        { key: 'updatedAt', label: 'Updated' },
+      ]),
+    );
+    toast.success('Exported current page');
   };
 
+  const summaryChips = [
+    { key: 'active', label: 'Active customers', value: activeCount.meta.total },
+    { key: 'new', label: 'New this month', value: newThisMonth },
+    canViewInvoices
+      ? { key: 'out', label: 'Outstanding invoices', value: relationships.openInvoiceCount }
+      : null,
+    canViewInvoices
+      ? { key: 'util', label: 'High credit utilization', value: highUtilCount }
+      : null,
+    atRiskCount.meta.total > 0
+      ? { key: 'risk', label: 'At risk', value: atRiskCount.meta.total }
+      : null,
+  ].filter((c): c is { key: string; label: string; value: number } => Boolean(c && c.value > 0));
+
+  const hasFilters = Boolean(search || tab !== 'active');
+
   return (
-    <div className="space-y-5" data-testid="customers-page">
+    <div className="space-y-4" data-testid="customers-page">
       <PageHeader
         title="Customers"
-        subtitle="Manage your customers and business relationships"
+        subtitle={
+          loading
+            ? 'Loading…'
+            : error
+              ? 'Could not load accounts'
+              : `${meta.total} account${meta.total === 1 ? '' : 's'}`
+        }
         action={
           <>
-            <Button size="sm" variant="outline" onClick={handleExport} disabled={!displayRows.length}>
+            <Button size="sm" variant="outline" onClick={handleExport} disabled={displayRows.length === 0}>
               <Download className="mr-1.5 h-3.5 w-3.5" />
               Export
             </Button>
@@ -344,7 +301,7 @@ export function CustomersList() {
               <Button
                 size="sm"
                 className="bg-gradient-brand text-brand-foreground hover:opacity-90"
-                onClick={() => navigate({ to: '/app/customers', search: (p) => ({ ...p, create: true }) })}
+                onClick={() => setCreateOpen(true)}
               >
                 <Plus className="mr-1.5 h-3.5 w-3.5" />
                 New Customer
@@ -354,41 +311,69 @@ export function CustomersList() {
         }
       />
 
-      {/* Tabs */}
-      <div className="flex items-center gap-0 overflow-x-auto border-b border-border">
-        <TabButton label="All"               count={allCount.meta.total}      active={tab === 'all'}         onClick={() => setTab('all')} />
-        <TabButton label="Active"            count={activeCount.meta.total}   active={tab === 'active'}      onClick={() => setTab('active')} />
-        <TabButton label="High Value"        count={highValCount.meta.total}  active={tab === 'high_value'}  onClick={() => setTab('high_value')} />
-        {canViewInvoices && (
-          <TabButton label="Outstanding Balance" count={outstandingCount}     active={tab === 'outstanding'} onClick={() => setTab('outstanding')} />
-        )}
-        <TabButton label="Inactive"          count={inactiveCount.meta.total} active={tab === 'inactive'}    onClick={() => setTab('inactive')} />
-        <TabButton label="Archived"          count={archivedCount.meta.total} active={tab === 'archived'}    onClick={() => setTab('archived')} />
-      </div>
-
-      {/* Search */}
-      <div className="max-w-lg">
-        <Input
+      {/* Search + quick filters */}
+      <div className="flex flex-wrap items-center gap-2">
+        <SearchInput
+          className="min-w-[16rem] flex-1"
           value={localSearch}
-          onChange={(e) => setLocalSearch(e.target.value)}
-          placeholder="Search by company name, contact, email, phone…"
-          className="h-9"
+          onChange={setLocalSearch}
+          placeholder="Search company, contact, email, phone…"
+          label="Search customers"
+          testId="customers-search-input"
         />
       </div>
 
-      {/* Table */}
+      {relationships.truncated && (
+        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-foreground">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warning" />
+          Open orders / invoices exceed what this page can total — per-account balances and
+          utilization below may be understated. Open an account to see its own full history.
+        </div>
+      )}
+
+      {/* Ops summary strip */}
+      {summaryChips.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {summaryChips.map((chip) => (
+            <span
+              key={chip.key}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-muted/20 px-2.5 py-1 text-xs text-foreground"
+            >
+              <span className="text-muted-foreground">{chip.label}</span>
+              <span className="font-semibold tabular-nums">{chip.value}</span>
+            </span>
+          ))}
+        </div>
+      )}
+
+      <FilterTabs
+        tabs={TAB_CONFIG.filter((t) => t.key !== 'outstanding' || canViewInvoices)}
+        value={tab}
+        onChange={setTab}
+        label="Customer filters"
+      />
+
       <div className="overflow-hidden rounded-xl border border-border/70 bg-surface">
-        {loading && <ListSkeleton rows={8} label="Loading customers" />}
+        {loading && <ListSkeleton rows={6} label="Loading customers" />}
         {error && !loading && <ErrorState message={error} onRetry={() => refetch()} />}
 
         {!loading && !error && displayRows.length === 0 && (
           <EmptyState
-            title={search ? 'No customers match' : 'No customers yet'}
-            description={search ? 'Try a different search term or clear filters.' : 'Add an account before creating orders.'}
+            title={hasFilters ? 'No customers match' : 'No customers yet'}
+            description={
+              hasFilters
+                ? tab === 'outstanding'
+                  ? 'No accounts with an open invoice balance in the loaded set.'
+                  : 'Try another tab or clear search.'
+                : 'Add an account before creating orders for them.'
+            }
             action={
-              canWrite ? (
-                <Button variant="outline" size="sm"
-                  onClick={() => navigate({ to: '/app/customers', search: (p) => ({ ...p, create: true }) })}>
+              hasFilters ? (
+                <Button variant="outline" onClick={() => setTab('active')}>
+                  Show active
+                </Button>
+              ) : canWrite ? (
+                <Button variant="outline" onClick={() => setCreateOpen(true)}>
                   New Customer
                 </Button>
               ) : undefined
@@ -397,80 +382,47 @@ export function CustomersList() {
         )}
 
         {!loading && !error && displayRows.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" data-testid="customers-table">
-              <thead>
-                <tr className="border-b border-border bg-muted/30">
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Customer
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Contact
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Payment Terms
-                  </th>
-                  {canViewInvoices && (
-                    <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Outstanding
-                    </th>
-                  )}
-                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Open Orders
-                  </th>
-                  {canViewInvoices && (
-                    <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Invoices
-                    </th>
-                  )}
-                  {canViewInvoices && (
-                    <th className="w-32 px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Utilization
-                    </th>
-                  )}
-                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Added
-                  </th>
-                  <th className="w-0 px-2 py-3" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/50">
-                {displayRows.map((customer) => (
-                  <CustomerRow
-                    key={customer.id}
-                    customer={customer}
-                    stats={relationships.getStats(customer.id)}
-                    canWrite={canWrite}
-                    canViewInvoices={canViewInvoices}
-                    onOpen={() => navigate({ to: '/app/customers/$customerId', params: { customerId: customer.id } })}
-                    onEdit={() => setEditing(customer)}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ul className="divide-y divide-border/50" data-testid="customers-table">
+            {displayRows.map((customer) => (
+              <CustomerCrmRow
+                key={customer.id}
+                customer={customer}
+                stats={relationships.getStats(customer.id)}
+                selected={selectedId === customer.id}
+                canWrite={canWrite}
+                canViewInvoices={canViewInvoices}
+                onSelect={() => setSelectedId(customer.id)}
+                onOpen={() =>
+                  navigate({ to: '/app/customers/$customerId', params: { customerId: customer.id } })
+                }
+                onEdit={() => setEditing(customer)}
+              />
+            ))}
+          </ul>
         )}
       </div>
 
-      {/* Pagination */}
-      {tab !== 'outstanding' && !loading && !error && meta.total > 0 && (
-        <Pagination
+      {tab !== 'outstanding' && !loading && !error && meta.totalPages > 1 && (
+        <PaginationBar
           page={meta.page}
           totalPages={meta.totalPages}
           total={meta.total}
-          limit={limit}
-          onPageChange={(p) => navigate({ to: '/app/customers', search: (prev) => ({ ...prev, page: p }) })}
-          onLimitChange={(l) => { setLimit(l); navigate({ to: '/app/customers', search: (p) => ({ ...p, page: 1 }) }); }}
+          onPageChange={(newPage) =>
+            navigate({
+              to: '/app/customers',
+              search: (prev) => ({ ...prev, page: newPage }),
+            })
+          }
         />
       )}
 
       {canWrite && (
         <CustomersCreateSheet
           open={createOpen}
-          onOpenChange={(open) =>
-            navigate({ to: '/app/customers', search: (p) => ({ ...p, create: open ? true : undefined }) })
+          onOpenChange={setCreateOpen}
+          onCreated={(c) =>
+            navigate({ to: '/app/customers/$customerId', params: { customerId: c.id } })
           }
-          onCreated={(c) => navigate({ to: '/app/customers/$customerId', params: { customerId: c.id } })}
         />
       )}
 
@@ -485,191 +437,246 @@ export function CustomersList() {
   );
 }
 
-// ─── Table row ────────────────────────────────────────────────────────────────
-
-function CustomerRow({
+function CustomerCrmRow({
   customer,
   stats,
+  selected,
   canWrite,
   canViewInvoices,
+  onSelect,
   onOpen,
   onEdit,
 }: {
   customer: Customer;
   stats: ReturnType<ReturnType<typeof useCustomerRelationshipIndex>['getStats']>;
+  selected: boolean;
   canWrite: boolean;
   canViewInvoices: boolean;
+  onSelect: () => void;
   onOpen: () => void;
   onEdit: () => void;
 }) {
-  const { archive } = useArchiveCustomer();
   const util = creditUtilization(customer.creditLimit, stats.outstanding);
+  const credit = parseFloat(customer.creditLimit);
   const highUtil = util != null && util >= 0.8;
-
-  const handleArchive = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!confirm(`Archive "${customer.companyName}"?`)) return;
-    try {
-      await archive(customer.id);
-      toast.success('Customer archived');
-    } catch {
-      toast.error('Failed to archive customer');
-    }
-  };
+  const atRisk = customer.status === 'AT_RISK' || highUtil || stats.outstanding > 0 && customer.status === 'ACTIVE' && util != null && util >= 0.9;
 
   return (
-    <tr
-      className="group cursor-pointer transition-colors hover:bg-muted/30"
-      onClick={onOpen}
+    <li
       data-testid="customer-row"
+      className={cn(
+        'group relative px-4 py-3.5 transition-colors hover:bg-muted/25',
+        selected && 'bg-brand/5 ring-1 ring-inset ring-brand/30',
+      )}
+      onClick={onSelect}
+      onDoubleClick={onOpen}
     >
-      {/* Customer */}
-      <td className="px-4 py-3">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-start gap-3 lg:flex-nowrap">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen();
+          }}
+          className="flex min-w-0 flex-1 items-start gap-3 text-left"
+        >
           <span
-            className={cn(
-              'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-xs font-bold',
-              AVATAR_CLASS,
-            )}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-xs font-bold text-brand"
             aria-hidden
           >
             {companyInitials(customer.companyName)}
           </span>
-          <div className="min-w-0">
-            <p className="truncate font-semibold text-foreground">{customer.companyName}</p>
-            <p className="font-mono text-[11px] text-muted-foreground">{customer.customerCode}</p>
-          </div>
-        </div>
-      </td>
-
-      {/* Contact */}
-      <td className="px-4 py-3">
-        <p className="truncate text-sm text-foreground">{customer.contactName ?? '—'}</p>
-        <p className="truncate text-xs text-muted-foreground">{customer.email ?? '—'}</p>
-      </td>
-
-      {/* Payment Terms */}
-      <td className="px-4 py-3">
-        <span
-          className={cn(
-            'inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium',
-            customer.paymentTerms === 'DUE_ON_RECEIPT'
-              ? 'border-green-400/30 bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-300'
-              : 'border-border bg-muted/60 text-foreground',
-          )}
-        >
-          {compactPaymentTerms(customer.paymentTerms, customer.paymentTermsDays)}
-        </span>
-      </td>
-
-      {/* Outstanding */}
-      {canViewInvoices && (
-        <td className="px-4 py-3 text-right">
-          {stats.outstanding > 0 ? (
-            <span className="font-medium tabular-nums text-amber-600 dark:text-amber-400">
-              {formatMoney(stats.outstanding, stats.currency ?? 'USD')}
-            </span>
-          ) : (
-            <span className="text-muted-foreground">—</span>
-          )}
-        </td>
-      )}
-
-      {/* Open Orders */}
-      <td className="px-4 py-3 text-right">
-        <span className={cn('font-medium tabular-nums', stats.openOrders > 0 ? 'text-brand' : 'text-muted-foreground')}>
-          {stats.openOrders}
-        </span>
-      </td>
-
-      {/* Invoices */}
-      {canViewInvoices && (
-        <td className="px-4 py-3 text-right">
-          <span className="tabular-nums text-muted-foreground">{stats.invoiceCount}</span>
-        </td>
-      )}
-
-      {/* Utilization */}
-      {canViewInvoices && (
-        <td className="px-4 py-3">
-          {util != null ? (
-            <div className="flex items-center gap-2">
-              <div className="h-1.5 w-20 overflow-hidden rounded-full bg-muted">
-                <div
-                  className={cn('h-full rounded-full transition-all', highUtil ? 'bg-amber-500' : 'bg-brand')}
-                  style={{ width: `${Math.min(100, Math.round(util * 100))}%` }}
-                />
-              </div>
-              <span className={cn('tabular-nums text-xs', highUtil ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground')}>
-                {Math.round(util * 100)}%
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="truncate text-sm font-semibold text-foreground">
+                {customer.companyName}
               </span>
+              <StatusBadge status={customer.status} />
+              {atRisk && customer.status !== 'AT_RISK' && (
+                <span className="inline-flex items-center gap-0.5 rounded-full bg-warning/10 px-1.5 py-0.5 text-[10px] font-semibold text-warning">
+                  <AlertTriangle className="h-2.5 w-2.5" />
+                  Risk
+                </span>
+              )}
+              {customer.status === 'AT_RISK' && (
+                <span className="inline-flex items-center gap-0.5 rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
+                  <AlertTriangle className="h-2.5 w-2.5" />
+                  At risk
+                </span>
+              )}
             </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-1">
+                <User className="h-3 w-3" />
+                {customer.contactName}
+              </span>
+              {customer.phone && (
+                <span className="inline-flex items-center gap-1">
+                  <Phone className="h-3 w-3" />
+                  {customer.phone}
+                </span>
+              )}
+              {customer.email && (
+                <span className="inline-flex items-center gap-1 truncate">
+                  <Mail className="h-3 w-3" />
+                  {customer.email}
+                </span>
+              )}
+              <span className="font-mono text-[11px]">{customer.customerCode}</span>
+            </div>
+          </div>
+        </button>
+
+        <div className="grid w-full grid-cols-2 gap-2 text-xs sm:grid-cols-4 lg:w-auto lg:min-w-[22rem] lg:grid-cols-4">
+          <Metric cell label="Open orders" value={String(stats.openOrders)} />
+          {canViewInvoices ? (
+            <Metric cell label="Invoices" value={String(stats.invoiceCount)} />
           ) : (
-            <span className="text-xs text-muted-foreground">—</span>
+            <Metric cell label="City" value={customer.city ?? '—'} />
           )}
-        </td>
-      )}
-
-      {/* Added */}
-      <td className="px-4 py-3 text-right text-xs text-muted-foreground">
-        {formatRelativeTime(customer.createdAt)}
-      </td>
-
-      {/* Actions (visible on hover) */}
-      <td
-        className="px-3 py-3"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-          <button
-            onClick={onOpen}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            title="View account"
-          >
-            <Eye className="h-3.5 w-3.5" />
-          </button>
-
-          {customer.email && (
-            <a
-              href={`mailto:${customer.email}`}
-              onClick={(e) => e.stopPropagation()}
-              className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              title="Send email"
-            >
-              <Mail className="h-3.5 w-3.5" />
-            </a>
+          {canViewInvoices ? (
+            <Metric
+              cell
+              label="Outstanding"
+              value={
+                stats.outstanding > 0
+                  ? formatMoney(stats.outstanding, stats.currency ?? 'USD')
+                  : '—'
+              }
+              tone={stats.outstanding > 0 ? 'warn' : undefined}
+            />
+          ) : (
+            <Metric
+              cell
+              label="Credit"
+              value={
+                Number.isFinite(credit)
+                  ? formatMoney(credit, 'USD')
+                  : '—'
+              }
+            />
           )}
-
-          {canWrite && customer.status !== 'ARCHIVED' && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onEdit(); }}
-              className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              title="Edit customer"
-            >
-              <Edit2 className="h-3.5 w-3.5" />
-            </button>
-          )}
-
-          {canWrite && customer.status !== 'ARCHIVED' && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-                  <MoreHorizontal className="h-3.5 w-3.5" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-40">
-                <DropdownMenuItem
-                  onClick={handleArchive}
-                  className="text-xs text-destructive focus:text-destructive"
-                >
-                  <Archive className="mr-2 h-3.5 w-3.5" />
-                  Archive Customer
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+          <Metric
+            cell
+            label={canViewInvoices ? 'Utilization' : 'Updated'}
+            value={
+              canViewInvoices
+                ? util != null
+                  ? `${Math.round(util * 100)}%`
+                  : Number.isFinite(credit) && credit > 0
+                    ? '0%'
+                    : '—'
+                : formatRelativeTime(customer.updatedAt)
+            }
+            tone={highUtil ? 'warn' : undefined}
+          />
         </div>
-      </td>
-    </tr>
+
+        <div className="hidden flex-col items-end gap-1 text-right text-xs lg:flex lg:w-28">
+          <span className="font-mono font-medium tabular-nums text-foreground">
+            {Number.isFinite(credit) ? formatMoney(credit, 'USD') : '—'}
+          </span>
+          <span className="text-muted-foreground" title={customer.updatedAt}>
+            {formatRelativeTime(customer.updatedAt)}
+          </span>
+        </div>
+
+        <div
+          className="ml-auto flex shrink-0 items-center gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Button size="sm" variant="ghost" className="h-8 px-2" onClick={onOpen}>
+            <ExternalLink className="h-3.5 w-3.5" />
+            <span className="sr-only">Open</span>
+          </Button>
+          {customer.phone && (
+            <Button size="sm" variant="ghost" className="h-8 px-2" asChild>
+              <a href={`tel:${customer.phone}`}>
+                <Phone className="h-3.5 w-3.5" />
+                <span className="sr-only">Call</span>
+              </a>
+            </Button>
+          )}
+          {customer.email && (
+            <Button size="sm" variant="ghost" className="h-8 px-2" asChild>
+              <a href={`mailto:${customer.email}`}>
+                <Mail className="h-3.5 w-3.5" />
+                <span className="sr-only">Email</span>
+              </a>
+            </Button>
+          )}
+          {canWrite && customer.status !== 'ARCHIVED' && (
+            <Button size="sm" variant="ghost" className="h-8 px-2" onClick={onEdit}>
+              <Edit2 className="h-3.5 w-3.5" />
+              <span className="sr-only">Edit</span>
+            </Button>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="ghost" className="h-8 px-2">
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem onClick={onOpen}>
+                <Building2 className="mr-2 h-3.5 w-3.5" />
+                Open account
+              </DropdownMenuItem>
+              {customer.phone && (
+                <DropdownMenuItem asChild>
+                  <a href={`tel:${customer.phone}`}>
+                    <Phone className="mr-2 h-3.5 w-3.5" />
+                    Call
+                  </a>
+                </DropdownMenuItem>
+              )}
+              {customer.email && (
+                <DropdownMenuItem asChild>
+                  <a href={`mailto:${customer.email}`}>
+                    <Mail className="mr-2 h-3.5 w-3.5" />
+                    Email
+                  </a>
+                </DropdownMenuItem>
+              )}
+              {canWrite && customer.status !== 'ARCHIVED' && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={onEdit}>
+                    <Edit2 className="mr-2 h-3.5 w-3.5" />
+                    Edit
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function Metric({
+  label,
+  value,
+  tone,
+  cell,
+}: {
+  label: string;
+  value: string;
+  tone?: 'warn';
+  cell?: boolean;
+}) {
+  return (
+    <div className={cn(cell && 'min-w-0')}>
+      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p
+        className={cn(
+          'mt-0.5 truncate font-medium tabular-nums text-foreground',
+          tone === 'warn' && 'text-warning',
+        )}
+      >
+        {value}
+      </p>
+    </div>
   );
 }
