@@ -286,7 +286,7 @@ export function FleetTrackingAnimation() {
       // ── 1. Fetch real road routes (parallel) ───────────────────────────
       setLoadMsg("Fetching road routes…");
       const fetched = await Promise.all(
-        TRUCKS.map(async (t, i) => {
+        TRUCKS.map(async (t) => {
           const coords = await fetchRoadRoute(t.start, t.end);
           return coords ?? t.fallback;
         }),
@@ -487,7 +487,7 @@ export function FleetTrackingAnimation() {
       mapRef.current?.remove();
       mapRef.current = null;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, []);
 
   // ── Select / deselect helpers ──────────────────────────────────────────────

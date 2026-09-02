@@ -31,6 +31,8 @@ const CATEGORY_LABEL: Record<Notification['category'], string> = {
   FINANCE: 'Finance',
   CUSTOMERS: 'Customers',
   FLEET: 'Fleet',
+  BILLING: 'Billing',
+  SUPPORT: 'Support',
 };
 
 export function NotificationItem({

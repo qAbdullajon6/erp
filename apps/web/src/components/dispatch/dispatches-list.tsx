@@ -296,7 +296,7 @@ export function DispatchesList() {
   const { data: board } = useDispatchBoardSummary({ enabled: true });
 
   const items = data ?? [];
-  const stripItems = activeSlice ?? [];
+  const stripItems = useMemo(() => activeSlice ?? [], [activeSlice]);
   /// The strip counts only the first 100 active dispatches — accurate for a
   /// normal shift, but an org running 500+ shipments/day can have more active
   /// dispatches than that. Say so rather than silently under-reporting.

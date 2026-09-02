@@ -7,7 +7,6 @@ import {
   endOfMonth,
   endOfWeek,
   format,
-  isSameDay,
   isSameMonth,
   isToday,
   parseISO,
@@ -34,8 +33,11 @@ export const CALENDAR_STATUS_STRIP: Record<DispatchStatus, string> = {
   EN_ROUTE_TO_PICKUP: 'border-l-[6px] border-l-cyan-400',
   AT_PICKUP: 'border-l-[6px] border-l-amber-400',
   IN_TRANSIT: 'border-l-[6px] border-l-orange-400',
+  AT_STOP: 'border-l-[6px] border-l-yellow-400',
+  ARRIVED_AT_DELIVERY: 'border-l-[6px] border-l-lime-400',
   DELIVERED: 'border-l-[6px] border-l-emerald-400',
   CANCELLED: 'border-l-[6px] border-l-red-400',
+  DELIVERY_FAILED: 'border-l-[6px] border-l-rose-400',
 };
 
 export const CALENDAR_STATUS_CLASS = CALENDAR_STATUS_STRIP;
@@ -46,8 +48,11 @@ export const CALENDAR_STATUS_DOT: Record<DispatchStatus, string> = {
   EN_ROUTE_TO_PICKUP: 'bg-cyan-400',
   AT_PICKUP: 'bg-amber-400',
   IN_TRANSIT: 'bg-orange-400',
+  AT_STOP: 'bg-yellow-400',
+  ARRIVED_AT_DELIVERY: 'bg-lime-400',
   DELIVERED: 'bg-emerald-400',
   CANCELLED: 'bg-red-400',
+  DELIVERY_FAILED: 'bg-rose-400',
 };
 
 export const CALENDAR_STATUS_GLOW: Record<DispatchStatus, string> = {
@@ -56,8 +61,11 @@ export const CALENDAR_STATUS_GLOW: Record<DispatchStatus, string> = {
   EN_ROUTE_TO_PICKUP: 'hover:border-l-cyan-300',
   AT_PICKUP: 'hover:border-l-amber-300',
   IN_TRANSIT: 'hover:border-l-orange-300',
+  AT_STOP: 'hover:border-l-yellow-300',
+  ARRIVED_AT_DELIVERY: 'hover:border-l-lime-300',
   DELIVERED: 'hover:border-l-emerald-300',
   CANCELLED: 'hover:border-l-red-300',
+  DELIVERY_FAILED: 'hover:border-l-rose-300',
 };
 
 export const CALENDAR_STATUS_ACCENT_TEXT: Record<DispatchStatus, string> = {
@@ -66,8 +74,11 @@ export const CALENDAR_STATUS_ACCENT_TEXT: Record<DispatchStatus, string> = {
   EN_ROUTE_TO_PICKUP: 'text-cyan-300',
   AT_PICKUP: 'text-amber-300',
   IN_TRANSIT: 'text-orange-300',
+  AT_STOP: 'text-yellow-300',
+  ARRIVED_AT_DELIVERY: 'text-lime-300',
   DELIVERED: 'text-emerald-300',
   CANCELLED: 'text-red-300',
+  DELIVERY_FAILED: 'text-rose-300',
 };
 
 export function parseCalendarView(raw: unknown): CalendarView {

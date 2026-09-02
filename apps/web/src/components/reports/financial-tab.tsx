@@ -15,6 +15,8 @@ import {
 } from '@/lib/api/reports';
 import { ExportCsvButton } from './export-csv-button';
 import { describeError } from '@/lib/api/describe-error';
+import { MetricCard } from '@/components/ui/metric-card';
+import { FileText, Percent, Clock } from 'lucide-react';
 
 interface FinancialTabProps {
   params: ReportFilterParams;

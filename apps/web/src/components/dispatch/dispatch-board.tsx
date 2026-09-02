@@ -23,7 +23,6 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ApiDispatch, DispatchStatus } from '@/lib/api/dispatches';
-import type { DispatchBoardSummary } from '@/lib/api/dashboard';
 import { useCurrentUser } from '@/lib/api/auth';
 import type { MembershipRole } from '@/lib/api/organizations';
 import { describeError } from '@/lib/api/describe-error';
@@ -47,7 +46,7 @@ import { DispatchSearch } from './dispatch-search';
 import { WorkQueue, buildWorkQueue, type QueueItem } from './work-queue';
 import { SelectedWorkPanel, type Selection as PanelSelection } from './selected-work-panel';
 import { OperationsRail } from './operations-rail';
-import { computeBoardOpsCounts, type BoardOpsCounts } from './dispatch-ops';
+import { computeBoardOpsCounts } from './dispatch-ops';
 import { cn } from '@/lib/utils';
 
 /// Dispatch Board — logistics operations workspace.
@@ -119,7 +118,7 @@ export function DispatchBoard() {
     useSensor(KeyboardSensor),
   );
 
-  const allDispatches = data ?? [];
+  const allDispatches = useMemo(() => data ?? [], [data]);
   const conflictBatch = useDispatchConflictsBatch(
     allDispatches.map((d) => d.id),
     allDispatches.length > 0,

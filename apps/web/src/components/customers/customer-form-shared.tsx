@@ -36,14 +36,14 @@ export const CUSTOMER_FIELD_SECTION: Record<string, CustomerSectionKey> = {
 export interface CustomerFormFields {
   customerCode?: string;
   companyName?: string;
-  contactName?: string;
+  contactName?: string | null;
   email?: string | null;
   phone?: string | null;
   country?: string | null;
   city?: string | null;
   address?: string | null;
   taxId?: string | null;
-  creditLimit?: number;
+  creditLimit?: number | null;
   deliveryNotes?: string | null;
   internalNotes?: string | null;
 }
@@ -84,7 +84,7 @@ export function validateCustomerField(field: string, data: CustomerFormFields): 
       if ((data.taxId?.length ?? 0) > 100) return 'Max 100 characters';
       return null;
     case 'creditLimit':
-      if (data.creditLimit !== undefined && (data.creditLimit < 0 || data.creditLimit > 999999.99)) {
+      if (data.creditLimit != null && (data.creditLimit < 0 || data.creditLimit > 999999.99)) {
         return 'Must be between 0 and 999,999.99';
       }
       return null;

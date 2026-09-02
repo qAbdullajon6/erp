@@ -23,8 +23,30 @@ export type DispatchStatus =
   | 'EN_ROUTE_TO_PICKUP'
   | 'AT_PICKUP'
   | 'IN_TRANSIT'
+  | 'AT_STOP'
+  | 'ARRIVED_AT_DELIVERY'
   | 'DELIVERED'
-  | 'CANCELLED';
+  | 'CANCELLED'
+  | 'DELIVERY_FAILED';
+
+export type DeliveryFailureReason =
+  | 'CUSTOMER_UNAVAILABLE'
+  | 'CUSTOMER_REFUSED'
+  | 'WRONG_ADDRESS'
+  | 'ACCESS_PROBLEM'
+  | 'DAMAGED_CARGO'
+  | 'VEHICLE_PROBLEM'
+  | 'OTHER';
+
+export const DELIVERY_FAILURE_REASON_LABELS: Record<DeliveryFailureReason, string> = {
+  CUSTOMER_UNAVAILABLE: 'Customer unavailable',
+  CUSTOMER_REFUSED: 'Customer refused delivery',
+  WRONG_ADDRESS: 'Wrong address',
+  ACCESS_PROBLEM: 'Access problem',
+  DAMAGED_CARGO: 'Damaged cargo',
+  VEHICLE_PROBLEM: 'Vehicle problem',
+  OTHER: 'Other (requires note)',
+};
 
 /// What a driver may set. Never ASSIGNED (committing a driver to a job is the
 /// dispatcher's call) and never CANCELLED (an operational decision above them).
@@ -33,6 +55,8 @@ export type DriverActionableStatus =
   | 'EN_ROUTE_TO_PICKUP'
   | 'AT_PICKUP'
   | 'IN_TRANSIT'
+  | 'AT_STOP'
+  | 'ARRIVED_AT_DELIVERY'
   | 'DELIVERED';
 
 export type DriverAcceptanceStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED';
@@ -66,12 +90,55 @@ export interface MyDeliveryOrder {
   orderNumber: string;
   pickupAddress: string;
   pickupCity: string;
+  pickupPlaceName: string | null;
+  pickupPostalCode: string | null;
+  pickupCountryCode: string | null;
+  pickupContactName: string | null;
+  pickupContactPhone: string | null;
+  pickupInstructions: string | null;
+  pickupWindowStart: string | null;
+  pickupWindowEnd: string | null;
+  pickupLat: string | null;
+  pickupLng: string | null;
   deliveryAddress: string;
   deliveryCity: string;
+  deliveryPlaceName: string | null;
+  deliveryPostalCode: string | null;
+  deliveryCountryCode: string | null;
+  deliveryContactName: string | null;
+  deliveryContactPhone: string | null;
+  deliveryInstructions: string | null;
+  deliveryWindowStart: string | null;
+  deliveryWindowEnd: string | null;
+  deliveryLat: string | null;
+  deliveryLng: string | null;
   cargoDescription: string;
   cargoWeightKg: string | null;
   deliveryNotes: string | null;
   status: string;
+}
+
+export interface DriverDispatchStop {
+  id: string;
+  stopType: 'PICKUP' | 'INTERMEDIATE' | 'DELIVERY';
+  stopIndex: number;
+  address: string;
+  city: string;
+  postalCode: string | null;
+  countryCode: string | null;
+  placeName: string | null;
+  lat: string | null;
+  lng: string | null;
+  contactName: string | null;
+  contactPhone: string | null;
+  instructions: string | null;
+  windowStart: string | null;
+  windowEnd: string | null;
+  arrivedAt: string | null;
+  completedAt: string | null;
+  failedAt: string | null;
+  failureReason: string | null;
+  failureNotes: string | null;
 }
 
 export interface MyDeliveryStatusHistoryEntry {
@@ -99,11 +166,15 @@ export interface MyDelivery {
   deliveryDateScheduled: string;
   deliveryDateActual: string | null;
   notes: string | null;
+  failureReason?: DeliveryFailureReason | null;
+  failureNotes?: string | null;
+  failedAt?: string | null;
   arrivalLat?: string | null;
   arrivalLng?: string | null;
   order: MyDeliveryOrder;
   customer: MyDeliveryCustomer;
   vehicle: MyDeliveryVehicle;
+  stops: DriverDispatchStop[];
   statusHistory?: MyDeliveryStatusHistoryEntry[];
 }
 
@@ -127,6 +198,11 @@ export interface DriverProfile {
     requireReceiverPhone: boolean;
     requireNotes: boolean;
   };
+}
+
+export interface ReportIntermediateStopFailureInput {
+  reason: DeliveryFailureReason;
+  notes?: string;
 }
 
 class MyDeliveriesAPI {
@@ -161,6 +237,37 @@ class MyDeliveriesAPI {
       body: JSON.stringify(body),
     });
     return unwrapResponse(response, 'Failed to update delivery status');
+  }
+
+  async reportFailure(
+    id: string,
+    reason: DeliveryFailureReason,
+    notes?: string,
+    location?: { lat?: number; lng?: number },
+  ): Promise<MyDelivery> {
+    const body: Record<string, unknown> = { reason };
+    if (notes) body.notes = notes;
+    if (location?.lat != null) body.lat = location.lat;
+    if (location?.lng != null) body.lng = location.lng;
+    const response = await apiFetch(`/api/dispatches/my/${id}/report-failure`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    return unwrapResponse(response, 'Failed to report delivery failure');
+  }
+
+  async reportIntermediateStopFailure(
+    dispatchId: string,
+    stopId: string,
+    input: ReportIntermediateStopFailureInput,
+  ): Promise<MyDelivery> {
+    const body: Record<string, unknown> = { reason: input.reason };
+    if (input.notes) body.notes = input.notes;
+    const response = await apiFetch(`/api/dispatches/my/${dispatchId}/stops/${stopId}/fail`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    return unwrapResponse(response, 'Failed to report stop failure');
   }
 }
 
@@ -216,6 +323,35 @@ export function useUpdateMyDeliveryStatusMutation(id: string) {
       lat?: number;
       lng?: number;
     }) => myDeliveriesAPI.updateStatus(id, status, note, { lat, lng }),
+    onSuccess: invalidateOperational,
+  });
+}
+
+export function useReportDeliveryFailureMutation(id: string) {
+  const invalidateOperational = useInvalidateOperationalState();
+
+  return useMutation({
+    mutationFn: ({
+      reason,
+      notes,
+      lat,
+      lng,
+    }: {
+      reason: DeliveryFailureReason;
+      notes?: string;
+      lat?: number;
+      lng?: number;
+    }) => myDeliveriesAPI.reportFailure(id, reason, notes, { lat, lng }),
+    onSuccess: invalidateOperational,
+  });
+}
+
+export function useReportIntermediateStopFailureMutation(dispatchId: string, stopId: string) {
+  const invalidateOperational = useInvalidateOperationalState();
+
+  return useMutation({
+    mutationFn: (input: ReportIntermediateStopFailureInput) =>
+      myDeliveriesAPI.reportIntermediateStopFailure(dispatchId, stopId, input),
     onSuccess: invalidateOperational,
   });
 }

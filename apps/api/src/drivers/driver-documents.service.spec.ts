@@ -1,8 +1,11 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { DriverDocumentType, DriverLicenseClass } from "@prisma/client";
+import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { CreateDriverDocumentDto } from "./dto/create-driver-document.dto";
+import { UpdateDriverDocumentDto } from "./dto/update-driver-document.dto";
 import { DriverDocumentsService } from "./driver-documents.service";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -11,8 +14,22 @@ const ORG = "org-1";
 const DRV = "drv-1";
 const DOC = "doc-1";
 
-const ACTOR = { userId: "user-1", organizationId: ORG, role: "ADMIN" } as any;
-const DISPATCHER_ACTOR = { userId: "user-2", organizationId: ORG, role: "DISPATCHER" } as any;
+const ACTOR: CurrentUserPayload = {
+  userId: "user-1",
+  membershipId: "mem-1",
+  organizationId: ORG,
+  role: "ADMIN",
+  email: "admin@test.com",
+  isPlatformAdmin: false,
+};
+const DISPATCHER_ACTOR: CurrentUserPayload = {
+  userId: "user-2",
+  membershipId: "mem-2",
+  organizationId: ORG,
+  role: "DISPATCHER",
+  email: "dispatcher@test.com",
+  isPlatformAdmin: false,
+};
 
 function makeDoc(overrides: Partial<any> = {}) {
   return {
@@ -187,7 +204,7 @@ describe("DriverDocumentsService.create", () => {
     const { svc, prisma } = await buildSvc();
     prisma.driverDocument.findFirst.mockResolvedValue(makeDoc());
     await expect(
-      svc.create(ORG, DRV, { type: "DRIVER_LICENSE" } as any, ACTOR),
+      svc.create(ORG, DRV, Object.assign(new CreateDriverDocumentDto(), { type: "DRIVER_LICENSE" as const }), ACTOR),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
@@ -223,7 +240,7 @@ describe("DriverDocumentsService.update (null sync)", () => {
     const updatedDoc = makeDoc({ documentNumber: null });
     prisma.driverDocument.update.mockResolvedValue(updatedDoc);
 
-    await svc.update(ORG, DRV, DOC, { documentNumber: null } as any, ACTOR);
+    await svc.update(ORG, DRV, DOC, Object.assign(new UpdateDriverDocumentDto(), { documentNumber: null }), ACTOR);
 
     expect(prisma.driver.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -237,7 +254,7 @@ describe("DriverDocumentsService.update (null sync)", () => {
     const updatedDoc = makeDoc({ licenseClass: null });
     prisma.driverDocument.update.mockResolvedValue(updatedDoc);
 
-    await svc.update(ORG, DRV, DOC, { licenseClass: null } as any, ACTOR);
+    await svc.update(ORG, DRV, DOC, Object.assign(new UpdateDriverDocumentDto(), { licenseClass: null }), ACTOR);
 
     expect(prisma.driver.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -278,7 +295,7 @@ describe("DriverDocumentsService.reject", () => {
 
   it("allows OPERATIONS_MANAGER to reject", async () => {
     const { svc, prisma } = await buildSvc();
-    const opsActor = { ...ACTOR, role: "OPERATIONS_MANAGER" };
+    const opsActor: CurrentUserPayload = { ...ACTOR, role: "OPERATIONS_MANAGER" as const };
     prisma.driverDocument.update.mockResolvedValue(makeDoc({ rejectedAt: new Date(), rejectionReason: "reason" }));
     await expect(svc.reject(ORG, DRV, DOC, "reason", opsActor)).resolves.toBeDefined();
   });

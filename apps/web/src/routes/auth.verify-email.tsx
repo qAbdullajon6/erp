@@ -2,7 +2,7 @@
 
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { z } from 'zod';
-import { Ban, CheckCircle2, Clock, MailQuestion, XCircle } from 'lucide-react';
+import { Ban, Clock } from 'lucide-react';
 import { AuthShell } from '@/components/auth/AuthShell';
 import { AuthStatusCard } from '@/components/auth/AuthStatusCard';
 import { Button } from '@/components/ui/button';
@@ -67,51 +67,6 @@ function VerifyEmailVerifyingView() {
         description="This only takes a moment. Don't close this tab."
       />
     </div>
-  );
-}
-
-function VerifyEmailSuccessView() {
-  return (
-    <AuthStatusCard
-      icon={CheckCircle2}
-      tone="success"
-      title="Email verified"
-      description="Your email address has been confirmed. You're all set."
-      action={
-        <Button asChild className="h-11 w-full rounded-xl bg-gradient-brand text-brand-foreground hover:opacity-90">
-          <Link to="/login">Go to Sign In</Link>
-        </Button>
-      }
-    />
-  );
-}
-
-function VerifyEmailFailedView() {
-  return (
-    <AuthStatusCard
-      icon={XCircle}
-      tone="destructive"
-      title="Verification failed"
-      description="We couldn't verify your email with this link. It may have already been used."
-      action={<ResendVerificationButton />}
-      secondary={
-        <Link to="/login" className="font-medium text-brand hover:underline">
-          Back to sign in
-        </Link>
-      }
-    />
-  );
-}
-
-function VerifyEmailExpiredView() {
-  return (
-    <AuthStatusCard
-      icon={MailQuestion}
-      tone="warning"
-      title="This link has expired"
-      description="Verification links are only valid for a limited time."
-      action={<ResendVerificationButton />}
-    />
   );
 }
 

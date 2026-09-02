@@ -65,7 +65,6 @@ import {
   Truck,
   User,
   Wallet,
-  XCircle,
 } from 'lucide-react';
 
 interface DispatchesDetailProps {
@@ -120,7 +119,7 @@ export function DispatchesDetail({ dispatchId }: DispatchesDetailProps) {
     { orderId: dispatch?.orderId, limit: 50 },
     { enabled: Boolean(canViewExpenses && dispatch?.orderId) },
   );
-  const expenses = expensesQuery.data?.items ?? [];
+  const expenses = useMemo(() => expensesQuery.data?.items ?? [], [expensesQuery.data?.items]);
 
   const liveFleet = useLiveFleetQuery({
     enabled: Boolean(canViewFleet && dispatch?.vehicleId),

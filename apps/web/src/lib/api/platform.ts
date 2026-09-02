@@ -301,14 +301,32 @@ export interface PlatformNotificationsList {
 
 // ── Support ────────────────────────────────────────────────────────
 
+export interface SupportTicketMessageAuthor {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+}
+
+export interface SupportTicketMessage {
+  id: string;
+  ticketId: string;
+  authorId: string | null;
+  isStaff: boolean;
+  body: string;
+  createdAt: string;
+  author: SupportTicketMessageAuthor | null;
+}
+
 export interface PlatformSupportTicket {
   id: string;
   subject: string;
   body: string;
   status: SupportTicketStatus;
   priority: SupportTicketPriority;
+  /// Non-null while the tenant has a pending "did this solve it?" prompt.
+  resolutionRequestedAt: string | null;
   organizationId: string | null;
-  assigneeUserId: string | null;
   createdById: string | null;
   resolvedAt: string | null;
   createdAt: string;
@@ -319,18 +337,20 @@ export interface PlatformSupportTicket {
     slug: string;
     status: OrganizationStatus;
   } | null;
-  assignee?: {
-    id: string;
-    email: string;
-    firstName: string;
-    lastName: string;
-  } | null;
   createdBy?: {
     id: string;
     email: string;
     firstName: string;
     lastName: string;
   } | null;
+  assignee?: {
+    id: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+  } | null;
+  /// In list responses, contains 0 or 1 item (the most recent message).
+  messages?: SupportTicketMessage[];
 }
 
 export interface ListSupportTicketsParams {
@@ -617,6 +637,37 @@ class PlatformAPI {
     return unwrap(res, 'Failed to update support ticket');
   }
 
+  async addStaffMessage(ticketId: string, body: string): Promise<SupportTicketMessage> {
+    const res = await apiFetch(`${BASE}/support/${ticketId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+    });
+    return unwrap(res, 'Failed to send reply');
+  }
+
+  /// Ask the tenant to confirm the issue is solved. The ticket stays
+  /// IN_PROGRESS until they answer the prompt in their support drawer.
+  async requestTicketConfirmation(ticketId: string): Promise<PlatformSupportTicket> {
+    const res = await apiFetch(`${BASE}/support/${ticketId}/request-confirmation`, {
+      method: 'POST',
+    });
+    return unwrap(res, 'Failed to request confirmation');
+  }
+
+  /** Upload a file attachment (staff side). Returns { url, name, mime }. */
+  async uploadStaffAttachment(
+    ticketId: string,
+    file: File,
+  ): Promise<{ url: string; name: string; mime: string; size: number }> {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await apiFetch(`${BASE}/support/${ticketId}/attachments`, {
+      method: 'POST',
+      body: form,
+    });
+    return unwrap(res, 'Failed to upload attachment');
+  }
+
   async listAudit(params: ListPlatformAuditParams = {}): Promise<ListPlatformAuditResponse> {
     const res = await apiFetch(`${BASE}/audit${buildQuery({ ...params })}`, { method: 'GET' });
     return unwrap(res, 'Failed to load audit log');
@@ -787,6 +838,7 @@ export function usePlatformSupportTicketsQuery(params: ListSupportTicketsParams 
     queryKey: platformKeys.support(params),
     queryFn: () => platformAPI.listSupportTickets(params),
     enabled,
+    refetchInterval: 15_000,
   });
 }
 
@@ -795,6 +847,7 @@ export function usePlatformSupportTicketQuery(id: string, enabled = true) {
     queryKey: platformKeys.supportTicket(id),
     queryFn: () => platformAPI.getSupportTicket(id),
     enabled: enabled && !!id,
+    refetchInterval: 10_000,
   });
 }
 
@@ -930,6 +983,32 @@ export function useUpdateSupportTicketMutation() {
       void queryClient.invalidateQueries({ queryKey: platformKeys.all });
       void queryClient.invalidateQueries({ queryKey: platformKeys.supportTicket(vars.id) });
     },
+  });
+}
+
+export function useAddStaffMessageMutation(ticketId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: string) => platformAPI.addStaffMessage(ticketId, body),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: platformKeys.supportTicket(ticketId) }),
+  });
+}
+
+export function useRequestConfirmationMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (ticketId: string) => platformAPI.requestTicketConfirmation(ticketId),
+    onSuccess: (_data, ticketId) => {
+      void queryClient.invalidateQueries({ queryKey: platformKeys.all });
+      void queryClient.invalidateQueries({ queryKey: platformKeys.supportTicket(ticketId) });
+    },
+  });
+}
+
+export function useUploadStaffAttachmentMutation(ticketId: string) {
+  return useMutation({
+    mutationFn: (file: File) => platformAPI.uploadStaffAttachment(ticketId, file),
   });
 }
 

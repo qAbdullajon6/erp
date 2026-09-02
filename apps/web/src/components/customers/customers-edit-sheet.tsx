@@ -54,7 +54,7 @@ function customerToForm(customer: Customer): EditForm {
     address: customer.address ?? '',
     taxId: customer.taxId ?? '',
     paymentTerms: customer.paymentTerms,
-    creditLimit: parseFloat(customer.creditLimit) || 0,
+    creditLimit: parseFloat(customer.creditLimit ?? '0') || 0,
     status: customer.status === 'ARCHIVED' ? undefined : customer.status,
     deliveryNotes: customer.deliveryNotes ?? '',
     internalNotes: customer.internalNotes ?? '',

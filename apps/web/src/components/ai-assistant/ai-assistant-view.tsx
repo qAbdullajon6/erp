@@ -125,7 +125,7 @@ export function AiAssistantView() {
     } catch (err) {
       toast.error(describeError(err, 'Failed to start a conversation'));
     }
-  }, [createConversation, selectedModel, readOnlyMode]);
+  }, [createConversation, selectedModel, readOnlyMode, setActiveConversationId]);
 
   const handleSend = useCallback(
     async (message: string) => {
@@ -148,7 +148,7 @@ export function AiAssistantView() {
       }
       send(message);
     },
-    [activeConversationId, createConversation, selectedModel, readOnlyMode, send],
+    [activeConversationId, createConversation, selectedModel, readOnlyMode, send, setActiveConversationId],
   );
 
   const handleSuggestion = useCallback(

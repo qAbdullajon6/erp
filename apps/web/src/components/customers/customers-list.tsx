@@ -457,7 +457,7 @@ function CustomerCrmRow({
   onEdit: () => void;
 }) {
   const util = creditUtilization(customer.creditLimit, stats.outstanding);
-  const credit = parseFloat(customer.creditLimit);
+  const credit = parseFloat(customer.creditLimit ?? '0');
   const highUtil = util != null && util >= 0.8;
   const atRisk = customer.status === 'AT_RISK' || highUtil || stats.outstanding > 0 && customer.status === 'ACTIVE' && util != null && util >= 0.9;
 

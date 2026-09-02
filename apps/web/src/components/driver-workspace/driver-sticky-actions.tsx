@@ -9,6 +9,8 @@ const ACTION_LABEL: Record<DriverActionableStatus, string> = {
   EN_ROUTE_TO_PICKUP: 'Start trip',
   AT_PICKUP: 'Arrived',
   IN_TRANSIT: 'Loaded',
+  AT_STOP: 'Arrived at stop',
+  ARRIVED_AT_DELIVERY: 'At delivery',
   DELIVERED: 'Delivered',
 };
 

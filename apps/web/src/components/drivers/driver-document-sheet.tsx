@@ -18,7 +18,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,11 +37,9 @@ import {
   useVerifyDriverDocument,
   useRejectDriverDocument,
   useRemoveDriverDocument,
-  driverDocumentsAPI,
   DOC_TYPE_LABELS,
   type DriverDocumentRecord,
   type CreateDriverDocumentInput,
-  type DriverDocumentType,
 } from '@/lib/api/driver-documents';
 import type { MembershipRole } from '@/lib/api/organizations';
 import { apiFetch } from '@/lib/api/fetch';
@@ -137,7 +134,7 @@ export function DriverDocumentSheet({ doc, driverId, open, onOpenChange }: Props
     setFileStaging(null);
     setShowRejectForm(false);
     setRejectReason('');
-  }, [doc.id, doc.type, open]);
+  }, [doc.id, doc.type, doc.documentNumber, doc.endorsements, doc.expiryDate, doc.issueDate, doc.licenseClass, doc.notes, open]);
 
   async function handleSave() {
     setSaving(true);

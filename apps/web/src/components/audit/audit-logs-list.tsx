@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
   Table,
@@ -80,7 +80,7 @@ export function AuditLogsList() {
   const sortBy = searchState.sortBy || "createdAt";
   const sortOrder = searchState.sortOrder || "desc";
 
-  const params: ListAuditLogsParams = {
+  const params: ListAuditLogsParams = useMemo(() => ({
     page,
     limit: 20,
     search: search || undefined,
@@ -88,7 +88,7 @@ export function AuditLogsList() {
     entityType: entityType || undefined,
     sortBy,
     sortOrder,
-  };
+  }), [page, search, action, entityType, sortBy, sortOrder]);
 
   const { data, meta, loading, error, refetch } = useAuditLogsList(params);
 
@@ -97,7 +97,7 @@ export function AuditLogsList() {
 
   useEffect(() => {
     refetch(params);
-  }, [page, search, action, entityType, sortBy, sortOrder, refetch]);
+  }, [params, refetch]);
 
   const updateSearch = (patch: Partial<ListSearchState>) => {
     navigate({

@@ -3,7 +3,6 @@ import { AlertTriangle, Phone, Truck } from "lucide-react";
 import type { DispatchBoardSummary } from "@/lib/api/dashboard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SurfaceCard, SurfaceCardHeader } from "@/components/ui/surface-card";
-import { cn } from "@/lib/utils";
 
 interface FleetReadyProps {
   board: DispatchBoardSummary | null;

@@ -34,7 +34,6 @@ import { cn } from '@/lib/utils';
 import {
   CALENDAR_STATUS_ACCENT_TEXT,
   CALENDAR_STATUS_CLASS,
-  CALENDAR_STATUS_DOT,
   CALENDAR_STATUS_GLOW,
   dayKey,
   driverShortName,

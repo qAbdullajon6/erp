@@ -111,7 +111,7 @@ export interface ApiDispatch {
     createdAt: string;
   }>;
   stops?: ApiDispatchStop[];
-  routeContext: Array<{
+  routeContext?: Array<{
     routeStopId: string;
     routeId: string;
     routeNumber: string;

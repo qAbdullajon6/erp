@@ -18,7 +18,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Loader2, Sparkles } from 'lucide-react';
+import { ArrowLeft, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -101,7 +101,7 @@ export function SupportAiPanel({ ticketId, ticketSubject, onBack }: SupportAiPan
     };
 
     void init();
-  }, [capabilities, selectedModel]);
+  }, [capabilities, selectedModel, createConversation, send, ticketId, ticketSubject]);
 
   const messages = conversation?.messages ?? [];
   const aiAvailable = capabilities?.available ?? false;

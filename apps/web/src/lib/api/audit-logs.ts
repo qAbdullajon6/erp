@@ -112,14 +112,14 @@ export function useAuditLogsList(initialParams?: ListAuditLogsParams) {
         setLoading(false);
       }
     },
-    [],
+    [initialParams],
   );
 
   useEffect(() => {
     if (initialParams) {
       fetch(initialParams);
     }
-  }, [JSON.stringify(initialParams), fetch]);
+  }, [initialParams, fetch]);
 
   return { data, meta, loading, error, refetch: fetch, fetch };
 }

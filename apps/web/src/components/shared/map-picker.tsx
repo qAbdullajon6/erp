@@ -47,7 +47,7 @@ export function MapPicker({ open, onClose, initialCoords, onConfirm }: MapPicker
 
     // Capture the starting center at open time — intentionally not re-reactive
     // while the picker is open (user is actively moving the pin).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     const center = initialCoords ?? DEFAULT_CENTER;
 
     let cancelled = false;

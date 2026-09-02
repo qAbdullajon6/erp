@@ -1,5 +1,4 @@
 import { ArrowRight, Play } from "lucide-react";
-import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { openDemoModal } from "@/components/site/DemoModal";
 import { analytics } from "@/lib/analytics";

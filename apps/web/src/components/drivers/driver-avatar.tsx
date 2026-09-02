@@ -73,8 +73,6 @@ export function DriverAvatarUpload({
   previewFile,
   onFileSelected,
   onRemove,
-  firstName = '',
-  lastName = '',
   error,
   size = 80,
 }: DriverAvatarUploadProps) {
@@ -109,9 +107,6 @@ export function DriverAvatarUpload({
     onFileSelected(file);
   }
 
-  const initials = firstName || lastName
-    ? driverInitials(firstName || 'D', lastName || 'R')
-    : '?';
   const dim = size;
 
   const displayError = error ?? localError;

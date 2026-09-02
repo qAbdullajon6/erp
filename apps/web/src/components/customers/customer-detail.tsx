@@ -199,7 +199,7 @@ export function CustomerDetail({ customerId }: CustomerDetailProps) {
     return { outstanding, paid, revenueYtd, currency, year };
   }, [orders, invoices]);
 
-  const creditLimit = customer ? parseFloat(customer.creditLimit) : 0;
+  const creditLimit = customer ? parseFloat(customer.creditLimit ?? '0') : 0;
   const util = customer
     ? creditUtilization(customer.creditLimit, financial.outstanding)
     : null;
