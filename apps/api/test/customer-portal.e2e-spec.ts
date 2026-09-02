@@ -455,9 +455,9 @@ describe("Customer Portal (e2e)", () => {
   });
 
   describe("authenticated portal endpoints", () => {
-    async function setUpActiveCustomer() {
+    async function setUpActiveCustomer(customerOverrides: Record<string, unknown> = {}) {
       const admin = await registerAdmin(`Portal Data Org ${randomUUID()}`);
-      const customer = await createCustomer(admin);
+      const customer = await createCustomer(admin, customerOverrides);
       const order = await createOrder(admin, customer.id);
       const invoice = await createInvoice(admin, customer.id);
       await inviteAndActivate(admin, customer.id, "data-pass-123");
@@ -570,7 +570,7 @@ describe("Customer Portal (e2e)", () => {
     });
 
     it("profile: reads and updates, with creditLimit as a string", async () => {
-      const { session } = await setUpActiveCustomer();
+      const { session } = await setUpActiveCustomer({ creditLimit: 5000 });
 
       const getRes = await request(app.getHttpServer())
         .get("/customer-portal/profile")
