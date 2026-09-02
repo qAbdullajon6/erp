@@ -1,4 +1,42 @@
-import { IsOptional, IsString, MaxLength } from "class-validator";
+import { Type } from "class-transformer";
+import {
+  IsBoolean,
+  IsObject,
+  IsOptional,
+  IsString,
+  MaxLength,
+  ValidateNested,
+} from "class-validator";
+
+class ProfileNotificationPreferencesDto {
+  @IsOptional()
+  @IsBoolean()
+  shipmentAssigned?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  shipmentDelayed?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  shipmentDelivered?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  invoiceCreated?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  invoiceOverdue?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  paymentReceived?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  documentsAvailable?: boolean;
+}
 
 export class UpdateCustomerProfileDto {
   @IsOptional()
@@ -25,4 +63,20 @@ export class UpdateCustomerProfileDto {
   @IsString()
   @MaxLength(100)
   country?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(16)
+  language?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  timezone?: string;
+
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => ProfileNotificationPreferencesDto)
+  notificationPreferences?: ProfileNotificationPreferencesDto;
 }

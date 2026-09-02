@@ -20,6 +20,13 @@ export interface Vehicle {
   year: number | null;
   insuranceExpiry: string | null;
   inspectionExpiry: string | null;
+  vin: string | null;
+  engineNumber: string | null;
+  odometer: number | null;
+  fuelType: string | null;
+  transmission: string | null;
+  axles: number | null;
+  notes: string | null;
   archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -36,6 +43,13 @@ export interface CreateVehicleInput {
   year?: number;
   insuranceExpiry?: string;
   inspectionExpiry?: string;
+  vin?: string;
+  engineNumber?: string;
+  odometer?: number;
+  fuelType?: string;
+  transmission?: string;
+  axles?: number;
+  notes?: string;
 }
 
 export interface UpdateVehicleInput {
@@ -50,6 +64,13 @@ export interface UpdateVehicleInput {
   year?: number;
   insuranceExpiry?: string;
   inspectionExpiry?: string;
+  vin?: string;
+  engineNumber?: string;
+  odometer?: number;
+  fuelType?: string;
+  transmission?: string;
+  axles?: number;
+  notes?: string;
 }
 
 export interface ListVehiclesResponse {

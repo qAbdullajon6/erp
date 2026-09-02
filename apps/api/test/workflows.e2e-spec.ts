@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
+import type { Response } from 'supertest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.config';
 import { PrismaService } from '../src/prisma/prisma.service';
@@ -13,6 +14,38 @@ interface AuthResultBody {
     organization: { id: string; slug: string };
     membership: { id: string; role: string };
   };
+}
+
+interface WorkflowData {
+  id: string;
+  name: string;
+  status: string;
+  active: boolean;
+  organizationId: string;
+  version: number;
+  config: { trigger: { event: string } };
+  exportedAt: string;
+  trigger: string;
+}
+
+interface WorkflowExecution {
+  id: string;
+  status: string;
+  logs: unknown[];
+}
+
+interface WorkflowListData {
+  items: Array<WorkflowData & WorkflowExecution>;
+  meta: { total: number; page: number };
+}
+
+interface WorkflowDefinition {
+  type: string;
+  displayName: string;
+}
+
+function responseData<T>(response: Response): T {
+  return (response.body as { data: T }).data;
 }
 
 function uniqueEmail(): string {
@@ -27,7 +60,6 @@ describe('Workflows (e2e)', () => {
 
   let adminToken: string;
   let orgId: string;
-  let orgSlug: string;
   let dispatcherToken: string;
   let driverToken: string;
 
@@ -44,7 +76,6 @@ describe('Workflows (e2e)', () => {
     const admin = await registerUser(`WF Test Org ${randomUUID()}`);
     adminToken = admin.accessToken;
     orgId = admin.organization.id;
-    orgSlug = admin.organization.slug;
 
     const dispatcher = await addMemberWithRole(admin, 'DISPATCHER');
     dispatcherToken = dispatcher.accessToken;
@@ -141,11 +172,12 @@ describe('Workflows (e2e)', () => {
         })
         .expect(201);
 
-      expect(res.body.data.name).toBe('Order Notification WF');
-      expect(res.body.data.status).toBe('DRAFT');
-      expect(res.body.data.active).toBe(false);
-      expect(res.body.data.organizationId).toBe(orgId);
-      workflowId = res.body.data.id;
+      const data = responseData<WorkflowData>(res);
+      expect(data.name).toBe('Order Notification WF');
+      expect(data.status).toBe('DRAFT');
+      expect(data.active).toBe(false);
+      expect(data.organizationId).toBe(orgId);
+      workflowId = data.id;
     });
 
     it('lists workflows (paginated)', async () => {
@@ -154,9 +186,10 @@ describe('Workflows (e2e)', () => {
         .set(authAdmin())
         .expect(200);
 
-      expect(res.body.data.items.length).toBeGreaterThanOrEqual(1);
-      expect(res.body.data.meta.total).toBeGreaterThanOrEqual(1);
-      expect(res.body.data.meta.page).toBe(1);
+      const data = responseData<WorkflowListData>(res);
+      expect(data.items.length).toBeGreaterThanOrEqual(1);
+      expect(data.meta.total).toBeGreaterThanOrEqual(1);
+      expect(data.meta.page).toBe(1);
     });
 
     it('gets workflow by ID', async () => {
@@ -165,8 +198,9 @@ describe('Workflows (e2e)', () => {
         .set(authAdmin())
         .expect(200);
 
-      expect(res.body.data.id).toBe(workflowId);
-      expect(res.body.data.config.trigger.event).toBe('order.created');
+      const data = responseData<WorkflowData>(res);
+      expect(data.id).toBe(workflowId);
+      expect(data.config.trigger.event).toBe('order.created');
     });
 
     it('updates workflow', async () => {
@@ -176,8 +210,9 @@ describe('Workflows (e2e)', () => {
         .send({ name: 'Updated WF Name', active: true })
         .expect(200);
 
-      expect(res.body.data.name).toBe('Updated WF Name');
-      expect(res.body.data.active).toBe(true);
+      const data = responseData<WorkflowData>(res);
+      expect(data.name).toBe('Updated WF Name');
+      expect(data.active).toBe(true);
     });
 
     it('toggles active', async () => {
@@ -186,7 +221,7 @@ describe('Workflows (e2e)', () => {
         .set(authAdmin())
         .expect(200);
 
-      expect(res.body.data.active).toBe(false);
+      expect(responseData<WorkflowData>(res).active).toBe(false);
     });
   });
 
@@ -196,13 +231,20 @@ describe('Workflows (e2e)', () => {
         .post(`/workflows/${workflowId}/toggle`)
         .set(authAdmin());
 
+      const before = responseData<WorkflowData>(
+        await request(app.getHttpServer())
+          .get(`/workflows/${workflowId}`)
+          .set(authAdmin())
+          .expect(200),
+      );
       const res = await request(app.getHttpServer())
         .post(`/workflows/${workflowId}/publish`)
         .set(authAdmin())
         .expect(200);
 
-      expect(res.body.data.status).toBe('PUBLISHED');
-      expect(res.body.data.version).toBe(2);
+      const data = responseData<WorkflowData>(res);
+      expect(data.status).toBe('PUBLISHED');
+      expect(data.version).toBe(before.version + 1);
     });
 
     it('exports', async () => {
@@ -211,9 +253,10 @@ describe('Workflows (e2e)', () => {
         .set(authAdmin())
         .expect(200);
 
-      expect(res.body.data.name).toBe('Updated WF Name');
-      expect(res.body.data.config).toBeDefined();
-      expect(res.body.data.exportedAt).toBeDefined();
+      const data = responseData<WorkflowData>(res);
+      expect(data.name).toBe('Updated WF Name');
+      expect(data.config).toBeDefined();
+      expect(data.exportedAt).toBeDefined();
     });
 
     it('duplicates', async () => {
@@ -223,11 +266,12 @@ describe('Workflows (e2e)', () => {
         .send({ name: 'Duplicated WF' })
         .expect(201);
 
-      expect(res.body.data.name).toBe('Duplicated WF');
-      expect(res.body.data.status).toBe('DRAFT');
+      const data = responseData<WorkflowData>(res);
+      expect(data.name).toBe('Duplicated WF');
+      expect(data.status).toBe('DRAFT');
 
       await request(app.getHttpServer())
-        .delete(`/workflows/${res.body.data.id}`)
+        .delete(`/workflows/${data.id}`)
         .set(authAdmin())
         .expect(204);
     });
@@ -245,11 +289,12 @@ describe('Workflows (e2e)', () => {
         })
         .expect(201);
 
-      expect(res.body.data.name).toBe('Imported WF');
-      expect(res.body.data.status).toBe('DRAFT');
+      const data = responseData<WorkflowData>(res);
+      expect(data.name).toBe('Imported WF');
+      expect(data.status).toBe('DRAFT');
 
       await request(app.getHttpServer())
-        .delete(`/workflows/${res.body.data.id}`)
+        .delete(`/workflows/${data.id}`)
         .set(authAdmin())
         .expect(204);
     });
@@ -262,15 +307,16 @@ describe('Workflows (e2e)', () => {
           name: 'To Archive',
           config: { trigger: { event: 'manual' }, actions: [{ type: 'log', config: { message: 'x' } }] },
         });
-      const archiveId = tmp.body.data.id;
+      const archiveId = responseData<WorkflowData>(tmp).id;
 
       const res = await request(app.getHttpServer())
         .post(`/workflows/${archiveId}/archive`)
         .set(authAdmin())
         .expect(200);
 
-      expect(res.body.data.status).toBe('ARCHIVED');
-      expect(res.body.data.active).toBe(false);
+      const data = responseData<WorkflowData>(res);
+      expect(data.status).toBe('ARCHIVED');
+      expect(data.active).toBe(false);
 
       await request(app.getHttpServer())
         .post(`/workflows/${archiveId}/publish`)
@@ -287,8 +333,9 @@ describe('Workflows (e2e)', () => {
         .send({ eventPayload: { orderNumber: 'ORD-E2E-001' } })
         .expect(200);
 
-      expect(res.body.data.trigger).toBe('manual');
-      expect(['PENDING', 'RUNNING', 'COMPLETED']).toContain(res.body.data.status);
+      const data = responseData<WorkflowData>(res);
+      expect(data.trigger).toBe('manual');
+      expect(['PENDING', 'RUNNING', 'COMPLETED']).toContain(data.status);
     });
 
     it('respects idempotency key', async () => {
@@ -305,7 +352,9 @@ describe('Workflows (e2e)', () => {
         .send({ eventPayload: {}, idempotencyKey: key })
         .expect(200);
 
-      expect(r1.body.data.id).toBe(r2.body.data.id);
+      expect(responseData<WorkflowExecution>(r1).id).toBe(
+        responseData<WorkflowExecution>(r2).id,
+      );
     });
 
     it('lists executions with logs', async () => {
@@ -316,8 +365,9 @@ describe('Workflows (e2e)', () => {
         .set(authAdmin())
         .expect(200);
 
-      expect(res.body.data.items.length).toBeGreaterThanOrEqual(1);
-      const completed = res.body.data.items.find((e: any) => e.status === 'COMPLETED');
+      const data = responseData<WorkflowListData>(res);
+      expect(data.items.length).toBeGreaterThanOrEqual(1);
+      const completed = data.items.find((execution) => execution.status === 'COMPLETED');
       if (completed) {
         expect(completed.logs.length).toBeGreaterThan(0);
       }
@@ -329,13 +379,13 @@ describe('Workflows (e2e)', () => {
         .set(authAdmin())
         .expect(200);
 
-      const execId = listRes.body.data.items[0].id;
+      const execId = responseData<WorkflowListData>(listRes).items[0].id;
       const res = await request(app.getHttpServer())
         .get(`/workflows/executions/${execId}`)
         .set(authAdmin())
         .expect(200);
 
-      expect(res.body.data.id).toBe(execId);
+      expect(responseData<WorkflowExecution>(res).id).toBe(execId);
     });
   });
 
@@ -346,10 +396,11 @@ describe('Workflows (e2e)', () => {
         .set(authAdmin())
         .expect(200);
 
-      expect(res.body.data.length).toBeGreaterThan(15);
-      const manual = res.body.data.find((t: any) => t.type === 'manual');
+      const data = responseData<WorkflowDefinition[]>(res);
+      expect(data.length).toBeGreaterThan(15);
+      const manual = data.find((trigger) => trigger.type === 'manual');
       expect(manual).toBeDefined();
-      expect(manual.displayName).toBe('Manual Trigger');
+      expect(manual?.displayName).toBe('Manual Trigger');
     });
 
     it('returns action definitions', async () => {
@@ -358,8 +409,9 @@ describe('Workflows (e2e)', () => {
         .set(authAdmin())
         .expect(200);
 
-      expect(res.body.data.length).toBeGreaterThan(10);
-      const email = res.body.data.find((a: any) => a.type === 'send_email');
+      const data = responseData<WorkflowDefinition[]>(res);
+      expect(data.length).toBeGreaterThan(10);
+      const email = data.find((action) => action.type === 'send_email');
       expect(email).toBeDefined();
     });
   });
@@ -397,7 +449,9 @@ describe('Workflows (e2e)', () => {
         .set({ Authorization: `Bearer ${other.accessToken}` })
         .expect(200);
 
-      const foreignIds = res.body.data.items.filter((w: any) => w.organizationId !== other.organization.id);
+      const foreignIds = responseData<WorkflowListData>(res).items.filter(
+        (workflow) => workflow.organizationId !== other.organization.id,
+      );
       expect(foreignIds).toHaveLength(0);
     });
 

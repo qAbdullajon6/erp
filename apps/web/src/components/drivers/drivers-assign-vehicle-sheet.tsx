@@ -43,6 +43,7 @@ export function DriversAssignVehicleSheet({
   const { update, loading } = useUpdateDispatch(liveDispatch?.id ?? '');
   const [vehicleId, setVehicleId] = useState('');
   const [error, setError] = useState('');
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const { data: availability, loading: availLoading, error: availError } = useAvailability(
     open && liveDispatch
@@ -151,21 +152,33 @@ export function DriversAssignVehicleSheet({
               Cancel
             </Button>
             {liveDispatch ? (
-              <ConfirmDialog
-                trigger={
-                  <Button disabled={loading || availLoading || !vehicleId}>
-                    {loading ? 'Assigning…' : 'Assign vehicle'}
-                  </Button>
-                }
-                title="Change vehicle?"
-                description={
-                  picked
-                    ? `Release ${liveDispatch.vehicle?.plateNumber ?? 'current'} and commit ${picked.plateNumber}.`
-                    : 'Confirm vehicle change.'
-                }
-                confirmLabel="Yes, assign"
-                onConfirm={() => void handleSave()}
-              />
+              <>
+                {/* Controlled (not `trigger`): a Radix AlertDialogTrigger nested inside an
+                    already-open Sheet never opens — the outer Sheet's dismissable layer
+                    eats the click and closes itself instead. */}
+                <Button
+                  disabled={loading || availLoading || !vehicleId}
+                  onClick={() => setConfirmOpen(true)}
+                >
+                  {loading ? 'Assigning…' : 'Assign vehicle'}
+                </Button>
+                <ConfirmDialog
+                  open={confirmOpen}
+                  onOpenChange={setConfirmOpen}
+                  title="Change vehicle?"
+                  description={
+                    picked
+                      ? `Release ${liveDispatch.vehicle?.plateNumber ?? 'current'} and commit ${picked.plateNumber}.`
+                      : 'Confirm vehicle change.'
+                  }
+                  confirmLabel="Yes, assign"
+                  onConfirm={() => {
+                    setConfirmOpen(false);
+                    void handleSave();
+                  }}
+                  onCancel={() => setConfirmOpen(false)}
+                />
+              </>
             ) : (
               <Button disabled>Assign vehicle</Button>
             )}

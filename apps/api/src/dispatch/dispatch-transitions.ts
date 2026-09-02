@@ -23,6 +23,8 @@ export const DISPATCH_SEQUENCE: DispatchStatus[] = [
   "EN_ROUTE_TO_PICKUP",
   "AT_PICKUP",
   "IN_TRANSIT",
+  "AT_STOP",
+  "ARRIVED_AT_DELIVERY",
   "DELIVERED",
 ];
 
@@ -39,6 +41,8 @@ const CANCELLABLE_VIA_STATUS: DispatchStatus[] = [
   "EN_ROUTE_TO_PICKUP",
   "AT_PICKUP",
   "IN_TRANSIT",
+  "AT_STOP",
+  "ARRIVED_AT_DELIVERY",
 ];
 
 /// Derived from the chain above: each state may step to the next one, and the
@@ -58,16 +62,34 @@ function buildTransitions(): Record<DispatchStatus, DispatchStatus[]> {
   // Terminal: nothing leaves it, and it is not on the forward chain.
   table.CANCELLED = [];
 
+  // DELIVERY_FAILED is a side exit from ARRIVED_AT_DELIVERY (not on the forward
+  // chain). It is reached only through the dedicated reportFailure endpoint, not
+  // through the standard status progression. It is terminal — no further moves.
+  table.ARRIVED_AT_DELIVERY = [...table.ARRIVED_AT_DELIVERY, "DELIVERY_FAILED"];
+  table.DELIVERY_FAILED = [];
+
+  // AT_STOP is an optional intermediate stop. The driver may stop (IN_TRANSIT ->
+  // AT_STOP) or drive straight through (IN_TRANSIT -> ARRIVED_AT_DELIVERY). Both
+  // paths are legal; most dispatches take the direct path.
+  // loopback: driver resumes transit from a stop.
+  table.AT_STOP = [...table.AT_STOP, "IN_TRANSIT"];
+  // shortcut: IN_TRANSIT can reach ARRIVED_AT_DELIVERY directly without a stop.
+  table.IN_TRANSIT = [...table.IN_TRANSIT, "ARRIVED_AT_DELIVERY"];
+
   return table;
 }
 
 /// How far along a dispatch is, derived from the same chain. CANCELLED ranks below
 /// everything: a live dispatch always governs its order over a dead one (R2).
+/// DELIVERY_FAILED ranks with ARRIVED_AT_DELIVERY (7) — it is reached FROM that
+/// state and represents the same physical position in the trip, just with a
+/// failed outcome instead of a pending delivery.
 export const DISPATCH_PROGRESS: Record<DispatchStatus, number> = {
   ...(Object.fromEntries(
     DISPATCH_SEQUENCE.map((status, index) => [status, index + 1]),
   ) as Record<DispatchStatus, number>),
   CANCELLED: 0,
+  DELIVERY_FAILED: 7,
 };
 
 /// What a DRIVER may do to a dispatch, and nothing else.
@@ -81,6 +103,8 @@ export const DRIVER_DISPATCH_STATUSES: DispatchStatus[] = [
   "EN_ROUTE_TO_PICKUP",
   "AT_PICKUP",
   "IN_TRANSIT",
+  "AT_STOP",
+  "ARRIVED_AT_DELIVERY",
   "DELIVERED",
 ];
 

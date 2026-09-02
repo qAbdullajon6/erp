@@ -28,7 +28,12 @@ export const DISPATCH_WRITE_ROLES: MembershipRole[] = ["ADMIN", "OPERATIONS_MANA
 export const FLEET_ROLES: MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER"];
 
 /// AuditController.ROLES_READ.
-export const AUDIT_ROLES: MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER", "ACCOUNTANT"];
+export const AUDIT_ROLES: MembershipRole[] = [
+  "ADMIN",
+  "OPERATIONS_MANAGER",
+  "DISPATCHER",
+  "ACCOUNTANT",
+];
 
 /// ImportController's role set.
 export const IMPORT_ROLES: MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER"];
@@ -36,6 +41,12 @@ export const IMPORT_ROLES: MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER", "D
 /// WorkflowController.WORKFLOW_ROLES / developer-portal admin controllers /
 /// TelematicsDevicesController.
 export const ADMIN_OPS_ROLES: MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER"];
+
+/// RoutesController.ROLES_READ — same as DISPATCH_ROLES.
+export const ROUTE_ROLES: MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER", "ACCOUNTANT"];
+
+/// RoutesController.ROLES_WRITE — same as DISPATCH_WRITE_ROLES.
+export const ROUTE_WRITE_ROLES: MembershipRole[] = ["ADMIN", "OPERATIONS_MANAGER", "DISPATCHER"];
 
 /// SubscriptionsController (@Roles("ADMIN")) and PlansController's admin routes —
 /// billing management is ADMIN-only, so OPERATIONS_MANAGER is deliberately

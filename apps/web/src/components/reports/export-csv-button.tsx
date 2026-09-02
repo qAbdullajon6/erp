@@ -2,6 +2,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Download } from 'lucide-react';
 import { useExportReportMutation, type ExportReportType, type ReportFilterParams } from '@/lib/api/reports';
+import { describeError } from '@/lib/api/describe-error';
 
 interface ExportCsvButtonProps {
   type: ExportReportType;
@@ -24,7 +25,7 @@ export function ExportCsvButton({ type, params }: ExportCsvButtonProps) {
       URL.revokeObjectURL(url);
       toast.success('Export downloaded');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to export report');
+      toast.error(describeError(err, 'Failed to export report'));
     }
   };
 

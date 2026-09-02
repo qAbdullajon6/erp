@@ -66,7 +66,8 @@ interface SoftwareApplicationSchema {
   name: string;
   applicationCategory: string;
   operatingSystem: string;
-  offers: {
+  /// Optional: only emit a price once one is actually published on the page.
+  offers?: {
     '@type': 'Offer';
     price: string;
     priceCurrency: string;
@@ -127,7 +128,7 @@ export function getOrganizationSchema(): OrganizationSchema {
       height: 512,
     },
     description:
-      'FlowERP orchestrates logistics operations with AI. Orders, dispatch, fleet, and finance unified in one command center.',
+      'FlowERP is a logistics operations platform: orders, dispatch, fleet, tracking and finance in one workspace.',
     contactPoint: {
       '@type': 'ContactPoint',
       telephone: siteConfig.contact.phoneDisplay,
@@ -179,13 +180,12 @@ export function getSoftwareApplicationSchema(): SoftwareApplicationSchema {
     name: 'FlowERP',
     applicationCategory: 'BusinessApplication',
     operatingSystem: 'Web, iOS, Android',
-    offers: {
-      '@type': 'Offer',
-      price: '99', // Starting price
-      priceCurrency: 'USD',
-    },
+    // No `offers`: structured data is supposed to describe what is on the
+    // page, and the landing page no longer publishes a price. Emitting a
+    // starting price of $99 that a visitor cannot find anywhere is both a
+    // rich-results violation and a number we would have to honour.
     description:
-      'AI-powered logistics management platform. Orders, dispatch, fleet tracking, and finance in one unified system. 14-day free trial, no credit card required.',
+      'Logistics operations platform. Orders, dispatch, fleet tracking and finance in one workspace, with an AI assistant across all of it.',
     url: siteConfig.url,
     provider: { '@id': ORGANIZATION_ID },
     // screenshot: 'https://flowerp.uz/screenshots/dashboard.png', // Add when available

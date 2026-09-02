@@ -205,13 +205,19 @@ describe("Customers (e2e)", () => {
         .expect(400);
     });
 
-    it("rejects an unknown query parameter on the list endpoint", async () => {
+    /// Unknown query parameters are dropped, not rejected. configureApp sets
+    /// forbidNonWhitelisted: false on purpose — UI route search params (such as
+    /// ?tab=action on /app/orders) occasionally leak into API calls, and hard
+    /// 400s on otherwise valid list requests were worse than ignoring them.
+    /// `hasOverdueBalance` is not a supported filter, so it must have no effect
+    /// rather than either failing or silently appearing to filter.
+    it("ignores an unknown query parameter on the list endpoint", async () => {
       const admin = await registerAdmin(`Validation Org ${randomUUID()}`);
 
       await request(app.getHttpServer())
         .get("/customers?hasOverdueBalance=true")
         .set("Authorization", `Bearer ${admin.accessToken}`)
-        .expect(400);
+        .expect(200);
     });
   });
 

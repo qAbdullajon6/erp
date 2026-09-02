@@ -60,6 +60,8 @@ export class TelematicsSettingsService {
         harshDrivingAlertsEnabled: dto.harshDrivingAlertsEnabled,
         offlineAlertsEnabled: dto.offlineAlertsEnabled,
         healthAlertsEnabled: dto.healthAlertsEnabled,
+        arrivalGeofenceRadiusM: dto.arrivalGeofenceRadiusM,
+        arrivalGeofenceEnabled: dto.arrivalGeofenceEnabled,
       },
     });
     this.cache.delete(organizationId);
@@ -85,6 +87,8 @@ export class TelematicsSettingsService {
       harshDrivingAlertsEnabled: s.harshDrivingAlertsEnabled,
       offlineAlertsEnabled: s.offlineAlertsEnabled,
       healthAlertsEnabled: s.healthAlertsEnabled,
+      arrivalGeofenceRadiusM: s.arrivalGeofenceRadiusM,
+      arrivalGeofenceEnabled: s.arrivalGeofenceEnabled,
       updatedAt: s.updatedAt,
     };
   }

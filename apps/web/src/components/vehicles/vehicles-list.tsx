@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/shared/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   DropdownMenu,
@@ -15,6 +16,7 @@ import { useVehiclesList, type Vehicle, type VehicleStatus } from '@/lib/api/veh
 import { useDispatches } from '@/lib/hooks/use-dispatches';
 import { useOrdersList } from '@/lib/api/orders';
 import { ErrorState, EmptyState } from '@/components/shared/list-states';
+import { SearchInput } from '@/components/shared/search-input';
 import { PaginationBar } from '@/components/shared/pagination-bar';
 import { VehiclesCreateSheet } from '@/components/vehicles/vehicles-create-sheet';
 import { VehiclesEditSheet } from '@/components/vehicles/vehicles-edit-sheet';
@@ -23,12 +25,10 @@ import { VehiclesAssignDriverSheet } from '@/components/vehicles/vehicles-assign
 import {
   LIVE_DISPATCH,
   buildVehicleOpsIndex,
-  formatCapacity,
   isDateExpiring,
+  isDateExpired,
   isOverCapacity,
-  makeModelLabel,
   vehicleAvailabilityLabel,
-  vehicleInitials,
   vehiclePrimaryBadge,
   vehicleRiskBadges,
   type OrderCargo,
@@ -40,14 +40,27 @@ import { formatRelativeTime } from '@/lib/format';
 import { toCsv, downloadCsv } from '@/lib/csv';
 import { cn } from '@/lib/utils';
 import {
+  Activity,
+  AlertTriangle,
+  ArrowUpDown,
+  Barcode,
+  CheckCircle2,
+  ClipboardCheck,
   Download,
   Edit2,
   ExternalLink,
+  Eye,
+  FileText,
   MoreHorizontal,
+  Package,
   Plus,
-  Search,
+  Shield,
+  SlidersHorizontal,
   Truck,
+  UserCircle,
   UserRound,
+  Weight,
+  Wrench,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -57,11 +70,11 @@ type FleetTab = 'available' | 'assigned' | 'maintenance' | 'archived' | 'all';
 const FLEET_FETCH_LIMIT = 100;
 
 const TAB_CONFIG: { key: FleetTab; label: string }[] = [
+  { key: 'all', label: 'All' },
   { key: 'available', label: 'Available' },
   { key: 'assigned', label: 'Assigned' },
   { key: 'maintenance', label: 'Maintenance' },
   { key: 'archived', label: 'Archived' },
-  { key: 'all', label: 'All' },
 ];
 
 function tabToQuery(tab: FleetTab): {
@@ -110,10 +123,9 @@ export function VehiclesList() {
   });
 
   const liveDispatches = useDispatches(1, 200, { statuses: LIVE_DISPATCH });
-  const allDispatchesForCounts = useDispatches(1, 200);
   const opsIndex = useMemo(
-    () => buildVehicleOpsIndex([...(liveDispatches.data ?? []), ...(allDispatchesForCounts.data ?? [])]),
-    [liveDispatches.data, allDispatchesForCounts.data],
+    () => buildVehicleOpsIndex(liveDispatches.data ?? []),
+    [liveDispatches.data],
   );
 
   const orderIds = useMemo(() => {
@@ -139,8 +151,12 @@ export function VehiclesList() {
     return map;
   }, [ordersQuery.data]);
 
-  const availableMeta = useVehiclesList({ status: 'AVAILABLE', limit: 1 });
-  const inUseMeta = useVehiclesList({ status: 'IN_USE', limit: 1 });
+  /// liveDispatches is capped at 200 and the cargo lookup at 100 orders — an
+  /// org past either ceiling gets some understated availability/capacity
+  /// badges below rather than a silent, confidently-wrong number.
+  const dataTruncated =
+    (liveDispatches.meta?.total ?? 0) > 200 || (ordersQuery.meta?.total ?? 0) > 100;
+
   const maintenanceMeta = useVehiclesList({ status: 'MAINTENANCE', limit: 1 });
 
   const [localSearch, setLocalSearch] = useState(search);
@@ -196,7 +212,6 @@ export function VehiclesList() {
   const stripCounts = useMemo(() => {
     let available = 0;
     let assigned = 0;
-    let overCapacity = 0;
     let docsExpiring = 0;
     let inspectionDue = 0;
     for (const v of items) {
@@ -205,7 +220,7 @@ export function VehiclesList() {
       const cargo = live?.orderId ? cargoByOrderId.get(live.orderId) : null;
       if (v.status === 'AVAILABLE' && !live) available += 1;
       if (live || v.status === 'IN_USE') assigned += 1;
-      if (isOverCapacity(v, cargo)) overCapacity += 1;
+      if (isOverCapacity(v, cargo)) void 0;
       if (isDateExpiring(v.insuranceExpiry) || isDateExpiring(v.inspectionExpiry)) {
         docsExpiring += 1;
       }
@@ -214,7 +229,6 @@ export function VehiclesList() {
     return {
       available,
       assigned,
-      overCapacity,
       docsExpiring,
       inspectionDue,
       maintenance: maintenanceMeta.meta?.total ?? 0,
@@ -253,6 +267,7 @@ export function VehiclesList() {
         type: v.type,
         make: v.make ?? '',
         model: v.model ?? '',
+        year: v.year ?? '',
         status: v.status,
         availability: avail.label,
         driver: live?.driver
@@ -260,7 +275,8 @@ export function VehiclesList() {
           : '',
         dispatch: live?.dispatchNumber ?? '',
         order: live?.order?.orderNumber ?? '',
-        capacity: formatCapacity(v.capacityKg, v.capacityM3),
+        capacityKg: v.capacityKg ?? '',
+        capacityM3: v.capacityM3 ?? '',
         updatedAt: v.updatedAt,
       };
     });
@@ -272,140 +288,168 @@ export function VehiclesList() {
         { key: 'type', label: 'Type' },
         { key: 'make', label: 'Make' },
         { key: 'model', label: 'Model' },
+        { key: 'year', label: 'Year' },
         { key: 'status', label: 'Status' },
         { key: 'availability', label: 'Availability' },
         { key: 'driver', label: 'Driver' },
         { key: 'dispatch', label: 'Dispatch' },
         { key: 'order', label: 'Order' },
-        { key: 'capacity', label: 'Capacity' },
+        { key: 'capacityKg', label: 'Capacity (kg)' },
+        { key: 'capacityM3', label: 'Capacity (m³)' },
         { key: 'updatedAt', label: 'Updated' },
       ]),
     );
     toast.success('Exported current page');
   };
 
-  const summaryChips = [
-    { key: 'available', label: 'Available', value: stripCounts.available },
-    { key: 'assigned', label: 'Assigned', value: stripCounts.assigned },
-    { key: 'overcap', label: 'Over capacity', value: stripCounts.overCapacity },
-    { key: 'docs', label: 'Documents expiring', value: stripCounts.docsExpiring },
-    { key: 'insp', label: 'Inspection due', value: stripCounts.inspectionDue },
-    { key: 'maint', label: 'Maintenance', value: stripCounts.maintenance },
-  ].filter((c) => c.value > 0);
+  const tabCounts: Partial<Record<FleetTab, number>> = {
+    available: stripCounts.available,
+    assigned: stripCounts.assigned,
+    maintenance: stripCounts.maintenance,
+  };
 
-  const hasFilters = Boolean(search || tab !== 'available');
-  const availableCount = availableMeta.meta?.total ?? 0;
-  const assignedCount = inUseMeta.meta?.total ?? 0;
+  const hasFilters = Boolean(search || (tab !== 'available' && tab !== 'all'));
+
+  const metaLimit = meta?.limit ?? 20;
+  const totalCount = meta?.total ?? 0;
+  const fromRow = totalCount === 0 ? 0 : (page - 1) * metaLimit + 1;
+  const toRow = Math.min(page * metaLimit, totalCount);
 
   return (
-    <div className="space-y-4" data-testid="vehicles-page">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">Vehicles</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {loading
-              ? 'Loading…'
-              : error
-                ? 'Could not load vehicles'
-                : `${meta?.total ?? 0} in fleet · ${availableCount} available · ${assignedCount} assigned`}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="outline" onClick={handleExport} disabled={displayRows.length === 0}>
-            <Download className="mr-1.5 h-3.5 w-3.5" />
-            Export
-          </Button>
-          <Button
-            size="sm"
-            className="bg-gradient-brand text-brand-foreground hover:opacity-90"
-            onClick={() => setCreateOpen(true)}
-            data-testid="create-vehicle-button"
-          >
-            <Plus className="mr-1.5 h-3.5 w-3.5" />
-            New Vehicle
-          </Button>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[16rem] flex-1">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={localSearch}
-            onChange={(e) => setLocalSearch(e.target.value)}
-            placeholder="Search plate, code, make, model…"
-            data-testid="vehicles-search-input"
-            className="h-9 w-full rounded-md border border-border bg-background pl-8 pr-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
-          />
-        </div>
-        <Button
-          size="sm"
-          variant={tab === 'available' ? 'secondary' : 'outline'}
-          className="h-9"
-          onClick={() => setTab('available')}
-        >
-          Available
-        </Button>
-        <Button
-          size="sm"
-          variant={tab === 'assigned' ? 'secondary' : 'outline'}
-          className="h-9"
-          onClick={() => setTab('assigned')}
-        >
-          Assigned
-        </Button>
-        <Button
-          size="sm"
-          variant={tab === 'maintenance' ? 'secondary' : 'outline'}
-          className="h-9"
-          onClick={() => setTab('maintenance')}
-        >
-          Maintenance
-        </Button>
-        <Button
-          size="sm"
-          variant={tab === 'archived' ? 'secondary' : 'outline'}
-          className="h-9"
-          onClick={() => setTab('archived')}
-        >
-          Archived
-        </Button>
-      </div>
-
-      {summaryChips.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {summaryChips.map((chip) => (
-            <span
-              key={chip.key}
-              className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-muted/20 px-2.5 py-1 text-xs text-foreground"
+    <div className="space-y-5" data-testid="vehicles-page">
+      <PageHeader
+        title="Vehicles"
+        subtitle="Fleet management and vehicle tracking"
+        action={
+          <>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleExport}
+              disabled={displayRows.length === 0}
             >
-              <span className="text-muted-foreground">{chip.label}</span>
-              <span className="font-semibold tabular-nums">{chip.value}</span>
-            </span>
-          ))}
+              <Download className="mr-1.5 h-3.5 w-3.5" />
+              Export
+            </Button>
+            <Button
+              size="sm"
+              className="bg-gradient-brand text-brand-foreground hover:opacity-90"
+              onClick={() => setCreateOpen(true)}
+              data-testid="create-vehicle-button"
+            >
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              New Vehicle
+            </Button>
+          </>
+        }
+      />
+
+      {/* Search + Filters */}
+      <div className="flex items-center gap-2">
+        <SearchInput
+          className="min-w-[16rem] flex-1"
+          value={localSearch}
+          onChange={setLocalSearch}
+          placeholder="Search plate, code, make, model, VIN…"
+          label="Search vehicles"
+          testId="vehicles-search-input"
+        />
+        <Button size="sm" variant="outline" className="shrink-0 gap-1.5">
+          <SlidersHorizontal className="h-3.5 w-3.5" />
+          Filters
+        </Button>
+      </div>
+
+      {dataTruncated && (
+        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-foreground">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warning" />
+          Live dispatches or order cargo data exceed what this page can total — availability and
+          dispatch badges may be understated for some vehicles.
         </div>
       )}
 
-      <div className="flex flex-wrap gap-1 border-b border-border/60">
-        {TAB_CONFIG.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setTab(t.key)}
-            className={cn(
-              '-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors',
-              tab === t.key
-                ? 'border-brand text-foreground'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
+      {/* Metric cards */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
+        <MetricCard
+          label="Total"
+          value={loading ? null : (meta?.total ?? 0)}
+          icon={Truck}
+          iconColor="text-brand"
+          bgColor="bg-brand/10"
+        />
+        <MetricCard
+          label="Available"
+          value={loading ? null : stripCounts.available}
+          icon={CheckCircle2}
+          iconColor="text-emerald-500"
+          bgColor="bg-emerald-500/10"
+        />
+        <MetricCard
+          label="Assigned"
+          value={loading ? null : stripCounts.assigned}
+          icon={Activity}
+          iconColor="text-blue-500"
+          bgColor="bg-blue-500/10"
+        />
+        <MetricCard
+          label="Maintenance"
+          value={loading ? null : stripCounts.maintenance}
+          icon={Wrench}
+          iconColor="text-amber-500"
+          bgColor="bg-amber-500/10"
+        />
+        <MetricCard
+          label="Docs Expiring"
+          value={loading ? null : stripCounts.docsExpiring}
+          icon={FileText}
+          iconColor="text-orange-500"
+          bgColor="bg-orange-500/10"
+        />
+        <MetricCard
+          label="Inspection Due"
+          value={loading ? null : stripCounts.inspectionDue}
+          icon={ClipboardCheck}
+          iconColor="text-red-500"
+          bgColor="bg-red-500/10"
+        />
       </div>
 
+      {/* Tab strip */}
+      <div className="border-b border-border/60">
+        <div className="flex items-center">
+          {TAB_CONFIG.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              className={cn(
+                'relative flex items-center gap-2 whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors',
+                tab === t.key
+                  ? 'text-foreground after:absolute after:bottom-[-1px] after:left-0 after:right-0 after:h-0.5 after:rounded-full after:bg-brand'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {t.label}
+              {tabCounts[t.key] !== undefined && (
+                <span
+                  className={cn(
+                    'inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-semibold leading-[18px]',
+                    tab === t.key
+                      ? 'bg-brand/15 text-brand'
+                      : 'bg-muted text-muted-foreground',
+                  )}
+                >
+                  {tabCounts[t.key]}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Table */}
       <div className="overflow-hidden rounded-xl border border-border/70 bg-surface">
-        {loading && <VehiclesListSkeleton />}
+        {loading && <VehiclesTableSkeleton />}
         {error && !loading && <ErrorState message={error} onRetry={() => void refetch()} />}
 
         {!loading && !error && displayRows.length === 0 && (
@@ -418,8 +462,8 @@ export function VehiclesList() {
             }
             action={
               hasFilters ? (
-                <Button variant="outline" onClick={() => setTab('available')}>
-                  Show available
+                <Button variant="outline" onClick={() => setTab('all')}>
+                  Show all vehicles
                 </Button>
               ) : (
                 <Button variant="outline" onClick={() => setCreateOpen(true)}>
@@ -431,28 +475,81 @@ export function VehiclesList() {
         )}
 
         {!loading && !error && displayRows.length > 0 && (
-          <ul className="divide-y divide-border/50" role="listbox" aria-label="Vehicles">
-            {displayRows.map((vehicle) => {
-              const live = opsIndex.get(vehicle.id)?.liveDispatch ?? null;
-              const cargo = live?.orderId ? cargoByOrderId.get(live.orderId) : null;
-              return (
-                <VehicleOpsRow
-                  key={vehicle.id}
-                  vehicle={vehicle}
-                  live={live}
-                  cargo={cargo}
-                  selected={selectedId === vehicle.id || highlightId === vehicle.id}
-                  onSelect={() => setSelectedId(vehicle.id)}
-                  onOpen={() =>
-                    navigate({ to: '/app/vehicles/$vehicleId', params: { vehicleId: vehicle.id } })
-                  }
-                  onEdit={() => setEditing(vehicle)}
-                  onAssignDispatch={() => setAssignDispatch(vehicle)}
-                  onAssignDriver={() => setAssignDriver(vehicle)}
-                />
-              );
-            })}
-          </ul>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1040px] text-sm">
+              <thead>
+                <tr className="border-b border-border/60 bg-muted/20">
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Vehicle
+                  </th>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Status
+                  </th>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Driver
+                  </th>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Dispatch
+                  </th>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Order
+                  </th>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Capacity
+                  </th>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Documents
+                  </th>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      Updated
+                      <ArrowUpDown className="h-3 w-3 text-muted-foreground/50" />
+                    </span>
+                  </th>
+                  <th className="w-16 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/40">
+                {displayRows.map((vehicle) => {
+                  const live = opsIndex.get(vehicle.id)?.liveDispatch ?? null;
+                  const cargo = live?.orderId ? cargoByOrderId.get(live.orderId) : null;
+                  return (
+                    <VehicleTableRow
+                      key={vehicle.id}
+                      vehicle={vehicle}
+                      live={live}
+                      cargo={cargo}
+                      selected={selectedId === vehicle.id || highlightId === vehicle.id}
+                      onSelect={() => setSelectedId(vehicle.id)}
+                      onOpen={() =>
+                        navigate({
+                          to: '/app/vehicles/$vehicleId',
+                          params: { vehicleId: vehicle.id },
+                        })
+                      }
+                      onEdit={() => setEditing(vehicle)}
+                      onAssignDispatch={() => setAssignDispatch(vehicle)}
+                      onAssignDriver={() => setAssignDriver(vehicle)}
+                    />
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Footer row count */}
+        {!loading && !error && displayRows.length > 0 && (
+          <div className="flex items-center justify-between border-t border-border/40 bg-muted/10 px-4 py-2 text-xs text-muted-foreground">
+            {clientFilterTab ? (
+              <span>{displayRows.length} vehicle{displayRows.length !== 1 ? 's' : ''}</span>
+            ) : (
+              <span>
+                Showing {fromRow} to {toRow} of {totalCount} vehicles
+              </span>
+            )}
+            <span>{clientFilterTab ? displayRows.length : metaLimit} per page</span>
+          </div>
         )}
       </div>
 
@@ -509,7 +606,15 @@ export function VehiclesList() {
   );
 }
 
-function VehicleOpsRow({
+function vehicleModelYearLabel(vehicle: Vehicle): string | null {
+  const mm = [vehicle.make, vehicle.model].filter(Boolean).join(' ');
+  if (mm && vehicle.year) return `${mm} • ${vehicle.year}`;
+  if (mm) return mm;
+  if (vehicle.year) return String(vehicle.year);
+  return null;
+}
+
+function VehicleTableRow({
   vehicle,
   live,
   cargo,
@@ -531,146 +636,195 @@ function VehicleOpsRow({
   onAssignDriver: () => void;
 }) {
   const primary = vehiclePrimaryBadge(vehicle, live);
-  const risks = vehicleRiskBadges(vehicle, live, cargo).filter((b) => b.key !== primary.key);
+  const risks = vehicleRiskBadges(vehicle, live, cargo);
   const canAssign =
     !vehicle.archivedAt &&
     vehicle.status !== 'MAINTENANCE' &&
     vehicle.status !== 'INACTIVE';
-  const mm = makeModelLabel(vehicle);
+  const modelYear = vehicleModelYearLabel(vehicle);
   const driverId = live?.driver?.id ?? live?.driverId;
   const orderId = live?.orderId;
-  const route =
-    live?.order?.pickupCity && live?.order?.deliveryCity
-      ? `${live.order.pickupCity} → ${live.order.deliveryCity}`
-      : null;
 
   return (
-    <li
-      role="option"
-      aria-selected={selected}
-      tabIndex={0}
+    <tr
       className={cn(
-        'group relative px-4 py-2.5 outline-none transition-colors hover:bg-muted/25 focus-visible:bg-muted/30 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring',
-        selected && 'bg-brand/5 ring-1 ring-inset ring-brand/30',
+        'group cursor-pointer transition-colors hover:bg-muted/20',
+        selected && 'bg-brand/5 ring-1 ring-inset ring-brand/20',
       )}
       onClick={onSelect}
       onDoubleClick={onOpen}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onOpen();
-        }
-      }}
     >
-      <div className="flex items-center gap-3">
+      {/* Vehicle */}
+      <td className="px-4 py-4">
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
             onOpen();
           }}
-          className="flex min-w-0 flex-[1.2] items-center gap-2.5 text-left"
+          className="flex items-center gap-3 text-left"
         >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-[11px] font-bold text-brand">
-            {vehicleInitials(vehicle.plateNumber)}
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 items-baseline gap-2">
-              <span className="truncate font-mono text-sm font-semibold leading-tight text-foreground">
+          <div className="relative h-[56px] w-[90px] shrink-0 overflow-hidden rounded-lg border border-border/60 bg-muted/30">
+            <img
+              src="/isuzi.png"
+              alt=""
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: 'contain',
+                padding: '6px',
+              }}
+            />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-2">
+              <span className="whitespace-nowrap font-mono text-sm font-semibold text-foreground">
                 {vehicle.plateNumber}
               </span>
               <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
                 {vehicle.vehicleCode}
               </span>
             </div>
-            <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0 text-[11px] leading-tight text-muted-foreground">
-              <span>{vehicle.type}</span>
-              {mm && <span className="truncate">{mm}</span>}
-              {route && <span className="truncate text-foreground/80">{route}</span>}
-            </div>
+            {modelYear && (
+              <div className="mt-0.5 text-[11px] text-muted-foreground">{modelYear}</div>
+            )}
+            <div className="mt-0.5 text-[11px] text-muted-foreground">{vehicle.type}</div>
+            {vehicle.vin && (
+              <div className="mt-0.5 flex items-center gap-1">
+                <Barcode className="h-3 w-3 shrink-0 text-muted-foreground/40" />
+                <span className="font-mono text-[10px] text-muted-foreground/50">
+                  VIN: {vehicle.vin}
+                </span>
+              </div>
+            )}
           </div>
         </button>
+      </td>
 
-        <div className="hidden min-w-0 flex-1 flex-col justify-center gap-1 sm:flex">
-          <div className="flex flex-wrap items-center gap-1">
-            <OpsChip badge={primary} />
+      {/* Status — primary + all risk badges */}
+      <td className="px-4 py-4">
+        <div className="flex flex-col gap-1">
+          <OpsChip badge={primary} />
+          {risks.map((b) => (
+            <OpsChip key={b.key} badge={b} />
+          ))}
+        </div>
+      </td>
+
+      {/* Driver */}
+      <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
+        {live?.driver && driverId ? (
+          <div className="flex items-center gap-1.5">
+            <UserCircle className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
+            <Link
+              to="/app/drivers/$driverId"
+              params={{ driverId }}
+              className="text-xs font-medium text-brand underline-offset-2 hover:underline"
+            >
+              {live.driver.firstName} {live.driver.lastName}
+            </Link>
           </div>
-          {risks.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {risks.slice(0, 3).map((b) => (
-                <OpsChip key={b.key} badge={b} dense />
-              ))}
+        ) : (
+          <div className="flex flex-col gap-0.5">
+            <div className="flex items-center gap-1.5">
+              <UserCircle className="h-3.5 w-3.5 shrink-0 text-foreground" />
+              <span className="text-xs text-foreground">–</span>
             </div>
+            <span className="pl-5 text-[11px] text-muted-foreground/50">Unassigned</span>
+          </div>
+        )}
+      </td>
+
+      {/* Dispatch */}
+      <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
+        {live?.dispatchNumber ? (
+          <Link
+            to="/app/dispatches/$dispatchId"
+            params={{ dispatchId: live.id }}
+            className="font-mono text-xs font-medium text-brand underline-offset-2 hover:underline"
+          >
+            {live.dispatchNumber}
+          </Link>
+        ) : (
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs text-foreground">–</span>
+            <span className="text-[11px] text-muted-foreground/50">No active dispatch</span>
+          </div>
+        )}
+      </td>
+
+      {/* Order */}
+      <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
+        {live?.order?.orderNumber && orderId ? (
+          <Link
+            to="/app/orders/$orderId"
+            params={{ orderId }}
+            className="font-mono text-xs font-medium text-brand underline-offset-2 hover:underline"
+          >
+            {live.order.orderNumber}
+          </Link>
+        ) : (
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs text-foreground">–</span>
+            <span className="text-[11px] text-muted-foreground/50">No active order</span>
+          </div>
+        )}
+      </td>
+
+      {/* Capacity — icon per row */}
+      <td className="px-4 py-4">
+        <div className="flex flex-col gap-1">
+          {vehicle.capacityKg ? (
+            <div className="flex items-center gap-1.5">
+              <Weight className="h-3.5 w-3.5 shrink-0 text-foreground" />
+              <span className="whitespace-nowrap text-xs text-foreground">
+                {vehicle.capacityKg} kg
+              </span>
+            </div>
+          ) : null}
+          {vehicle.capacityM3 ? (
+            <div className="flex items-center gap-1.5">
+              <Package className="h-3.5 w-3.5 shrink-0 text-foreground" />
+              <span className="whitespace-nowrap text-xs text-foreground">
+                {vehicle.capacityM3} m³
+              </span>
+            </div>
+          ) : null}
+          {!vehicle.capacityKg && !vehicle.capacityM3 && (
+            <span className="font-mono text-xs text-muted-foreground/40">—</span>
           )}
         </div>
+      </td>
 
-        <div
-          className="hidden min-w-0 flex-[1.25] items-center gap-3 lg:flex"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <OpsEntity
-            label="Driver"
-            value={
-              live?.driver
-                ? `${live.driver.firstName} ${live.driver.lastName}`
-                : null
-            }
-            href={
-              driverId
-                ? { to: '/app/drivers/$driverId' as const, params: { driverId } }
-                : null
-            }
-          />
-          <OpsEntity
-            label="Dispatch"
-            value={live?.dispatchNumber}
-            href={
-              live
-                ? { to: '/app/dispatches/$dispatchId' as const, params: { dispatchId: live.id } }
-                : null
-            }
-          />
-          <OpsEntity
-            label="Order"
-            value={live?.order?.orderNumber}
-            href={
-              orderId
-                ? { to: '/app/orders/$orderId' as const, params: { orderId } }
-                : null
-            }
-          />
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-              Capacity
-            </p>
-            <p className="mt-0.5 truncate text-xs font-medium text-foreground">
-              {formatCapacity(vehicle.capacityKg, vehicle.capacityM3)}
-            </p>
-          </div>
-          <div className="w-[4.5rem] shrink-0 text-right">
-            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-              Updated
-            </p>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground" title={vehicle.updatedAt}>
-              {formatRelativeTime(vehicle.updatedAt)}
-            </p>
-          </div>
+      {/* Documents — shield for insurance, clipboard for inspection */}
+      <td className="px-4 py-4">
+        <div className="flex flex-col gap-1">
+          <DocDateWithIcon icon={Shield} date={vehicle.insuranceExpiry} />
+          <DocDateWithIcon icon={ClipboardCheck} date={vehicle.inspectionExpiry} />
         </div>
+      </td>
 
-        <div
-          className="ml-auto flex shrink-0 items-center gap-0.5 opacity-100 lg:opacity-0 lg:transition-opacity lg:group-hover:opacity-100 lg:group-focus-within:opacity-100"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <Button size="sm" variant="ghost" className="h-7 w-7 px-0" onClick={onOpen}>
-            <ExternalLink className="h-3.5 w-3.5" />
+      {/* Updated */}
+      <td className="px-4 py-4">
+        <span className="text-xs text-muted-foreground" title={vehicle.updatedAt}>
+          {formatRelativeTime(vehicle.updatedAt)}
+        </span>
+      </td>
+
+      {/* Actions */}
+      <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-0.5">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 w-7 px-0 opacity-0 transition-opacity group-hover:opacity-100"
+            onClick={onOpen}
+          >
+            <Eye className="h-3.5 w-3.5" />
             <span className="sr-only">Open</span>
           </Button>
-          {canAssign && (
-            <Button size="sm" variant="ghost" className="h-7 w-7 px-0" onClick={onAssignDispatch}>
-              <Truck className="h-3.5 w-3.5" />
-              <span className="sr-only">Assign dispatch</span>
-            </Button>
-          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="sm" variant="ghost" className="h-7 w-7 px-0">
@@ -707,34 +861,48 @@ function VehicleOpsRow({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-      </div>
-
-      <div
-        className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-border/40 pt-2 text-[11px] lg:hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <OpsChip badge={primary} dense />
-        {risks.slice(0, 2).map((b) => (
-          <OpsChip key={b.key} badge={b} dense />
-        ))}
-        <span className="text-muted-foreground">
-          {live?.driver
-            ? `${live.driver.firstName} ${live.driver.lastName}`
-            : 'No driver'}
-          {' · '}
-          {live?.dispatchNumber ?? 'No dispatch'}
-        </span>
-      </div>
-    </li>
+      </td>
+    </tr>
   );
 }
 
-function OpsChip({ badge, dense }: { badge: VehicleOpsBadge; dense?: boolean }) {
+function MetricCard({
+  label,
+  value,
+  icon: Icon,
+  iconColor,
+  bgColor,
+}: {
+  label: string;
+  value: number | null;
+  icon: React.ComponentType<{ className?: string }>;
+  iconColor: string;
+  bgColor: string;
+}) {
+  return (
+    <div className="rounded-xl border border-border/60 bg-card p-4">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          {label}
+        </span>
+        <span className={cn('flex h-7 w-7 items-center justify-center rounded-lg', bgColor)}>
+          <Icon className={cn('h-3.5 w-3.5', iconColor)} />
+        </span>
+      </div>
+      {value === null ? (
+        <Skeleton className="mt-2 h-7 w-12" />
+      ) : (
+        <p className="mt-2 text-2xl font-bold tabular-nums text-foreground">{value}</p>
+      )}
+    </div>
+  );
+}
+
+function OpsChip({ badge }: { badge: VehicleOpsBadge }) {
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full font-semibold',
-        dense ? 'px-1.5 py-0 text-[10px] leading-4' : 'px-2 py-0.5 text-[10px] leading-4',
+        'inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[10px] font-semibold leading-4',
         badge.className,
       )}
     >
@@ -743,54 +911,118 @@ function OpsChip({ badge, dense }: { badge: VehicleOpsBadge; dense?: boolean }) 
   );
 }
 
-function OpsEntity({
-  label,
-  value,
-  href,
+function DocDateWithIcon({
+  icon: Icon,
+  date,
 }: {
-  label: string;
-  value?: string | null;
-  href:
-    | { to: '/app/drivers/$driverId'; params: { driverId: string } }
-    | { to: '/app/dispatches/$dispatchId'; params: { dispatchId: string } }
-    | { to: '/app/orders/$orderId'; params: { orderId: string } }
-    | null;
+  icon: React.ComponentType<{ className?: string }>;
+  date: string | null | undefined;
 }) {
+  if (!date) {
+    return (
+      <div className="flex items-center gap-1.5">
+        <Icon className="h-3.5 w-3.5 text-muted-foreground/30" />
+        <span className="font-mono text-[11px] text-muted-foreground/40">—</span>
+      </div>
+    );
+  }
+  const expired = isDateExpired(date);
+  const expiring = !expired && isDateExpiring(date);
+  const formatted = new Date(date.split('T')[0] + 'T00:00:00').toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
   return (
-    <div className="min-w-0 flex-1">
-      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      {!value || !href ? (
-        <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground/70">—</p>
-      ) : (
-        <Link
-          {...href}
-          className="mt-0.5 block truncate text-xs font-medium text-brand underline-offset-2 hover:underline focus-visible:underline"
-        >
-          {value}
-        </Link>
-      )}
+    <div className="flex items-center gap-1.5">
+      <Icon
+        className={cn(
+          'h-3.5 w-3.5 shrink-0',
+          expired
+            ? 'text-destructive'
+            : expiring
+              ? 'text-amber-500'
+              : 'text-muted-foreground/50',
+        )}
+      />
+      <span
+        className={cn(
+          'text-[11px] font-medium',
+          expired
+            ? 'text-destructive'
+            : expiring
+              ? 'text-amber-500'
+              : 'text-muted-foreground',
+        )}
+      >
+        {formatted}
+      </span>
     </div>
   );
 }
 
-function VehiclesListSkeleton() {
+function VehiclesTableSkeleton() {
   return (
-    <div className="divide-y divide-border/50" aria-busy="true" aria-label="Loading vehicles">
-      {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="flex items-center gap-3 px-4 py-2.5">
-          <Skeleton className="h-9 w-9 shrink-0 rounded-lg" />
-          <div className="min-w-0 flex-1 space-y-1.5">
-            <Skeleton className="h-3.5 w-36" />
-            <Skeleton className="h-3 w-24" />
-          </div>
-          <Skeleton className="hidden h-5 w-20 rounded-full sm:block" />
-          <div className="hidden flex-1 gap-3 lg:flex">
-            <Skeleton className="h-8 flex-1" />
-            <Skeleton className="h-8 flex-1" />
-            <Skeleton className="h-8 flex-1" />
-          </div>
-        </div>
-      ))}
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[1040px]">
+        <thead>
+          <tr className="border-b border-border/60 bg-muted/20">
+            <th className="w-10 px-3 py-3">
+              <Skeleton className="h-4 w-4 rounded" />
+            </th>
+            {['Vehicle', 'Status', 'Driver', 'Dispatch', 'Order', 'Capacity', 'Documents', 'Updated', ''].map((h) => (
+              <th
+                key={h}
+                className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border/40" aria-busy="true" aria-label="Loading vehicles">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <tr key={i}>
+              <td className="w-10 px-3 py-4">
+                <Skeleton className="h-4 w-4 rounded" />
+              </td>
+              <td className="px-4 py-4">
+                <div className="flex items-center gap-3">
+                  <Skeleton className="h-[56px] w-[90px] shrink-0 rounded-lg" />
+                  <div className="space-y-1.5">
+                    <Skeleton className="h-3.5 w-28" />
+                    <Skeleton className="h-3 w-20" />
+                    <Skeleton className="h-3 w-16" />
+                  </div>
+                </div>
+              </td>
+              <td className="px-4 py-4">
+                <div className="space-y-1">
+                  <Skeleton className="h-5 w-20 rounded-full" />
+                  <Skeleton className="h-5 w-24 rounded-full" />
+                </div>
+              </td>
+              <td className="px-4 py-4"><Skeleton className="h-4 w-24" /></td>
+              <td className="px-4 py-4"><Skeleton className="h-4 w-20" /></td>
+              <td className="px-4 py-4"><Skeleton className="h-4 w-20" /></td>
+              <td className="px-4 py-4">
+                <div className="space-y-1.5">
+                  <Skeleton className="h-3.5 w-16" />
+                  <Skeleton className="h-3.5 w-16" />
+                </div>
+              </td>
+              <td className="px-4 py-4">
+                <div className="space-y-1.5">
+                  <Skeleton className="h-3.5 w-24" />
+                  <Skeleton className="h-3.5 w-24" />
+                </div>
+              </td>
+              <td className="px-4 py-4"><Skeleton className="h-4 w-16" /></td>
+              <td className="px-4 py-4"><Skeleton className="h-7 w-7" /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

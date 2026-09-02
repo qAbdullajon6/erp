@@ -47,16 +47,109 @@ export interface DashboardTodaySnapshot {
   dueToday: number;
   deliveredToday: number;
   pickupsDueToday: number;
+  ordersCreatedToday: number;
+  revenueToday: string;
+}
+
+export interface DashboardYesterdaySnapshot {
+  ordersCreatedYesterday: number;
+  revenueYesterday: string;
+}
+
+export interface DashboardAttentionCounts {
+  delayedDeliveries: number;
+  overdueInvoices: number;
+}
+
+export type DashboardActivityKind = 'order' | 'dispatch' | 'invoice' | 'payment';
+
+export interface DashboardActivityItem {
+  at: string;
+  label: string;
+  kind: DashboardActivityKind;
+}
+
+export interface DashboardOperationalKpis {
+  pendingDispatches: number;
+  activeVehicles: number;
+  workingDrivers: number;
+  invoicesWaiting: number;
+}
+
+export interface OrdersBucket {
+  bucket: string;
+  orders: number;
 }
 
 export interface DashboardSummary {
   currency?: string | null;
   generatedAt?: string;
   today: DashboardTodaySnapshot;
+  yesterday: DashboardYesterdaySnapshot;
+  operational: DashboardOperationalKpis;
+  attention: DashboardAttentionCounts;
+  recentActivity: DashboardActivityItem[];
   totals: ExecutiveOverviewTotals;
   revenueVsExpensesTimeSeries: RevenueBucket[];
+  ordersTimeSeries: OrdersBucket[];
   ordersByStatus: OrdersByStatusRow[];
   delayedOrders: { total: number; items: DelayedOrderRow[] };
+}
+
+const EMPTY_YESTERDAY: DashboardYesterdaySnapshot = {
+  ordersCreatedYesterday: 0,
+  revenueYesterday: '0',
+};
+
+const EMPTY_OPERATIONAL: DashboardOperationalKpis = {
+  pendingDispatches: 0,
+  activeVehicles: 0,
+  workingDrivers: 0,
+  invoicesWaiting: 0,
+};
+
+const EMPTY_ATTENTION: DashboardAttentionCounts = {
+  delayedDeliveries: 0,
+  overdueInvoices: 0,
+};
+
+/// Phase 1 dashboard fields were added after some API builds shipped
+/// `operational` alone. A stale :4000 process returns a partial payload and
+/// KpiCards used to throw on `yesterday.ordersCreatedYesterday`.
+function normalizeDashboardSummary(raw: Partial<DashboardSummary>): DashboardSummary {
+  return {
+    currency: raw.currency ?? null,
+    generatedAt: raw.generatedAt,
+    today: raw.today ?? {
+      dueToday: 0,
+      deliveredToday: 0,
+      pickupsDueToday: 0,
+      ordersCreatedToday: 0,
+      revenueToday: '0',
+    },
+    yesterday: raw.yesterday ?? EMPTY_YESTERDAY,
+    operational: raw.operational ?? EMPTY_OPERATIONAL,
+    attention: raw.attention ?? EMPTY_ATTENTION,
+    recentActivity: raw.recentActivity ?? [],
+    totals: raw.totals ?? {
+      totalOrders: 0,
+      deliveredOrders: 0,
+      activeOrders: 0,
+      delayedOrders: 0,
+      totalRevenue: '0',
+      approvedExpenses: '0',
+      estimatedGrossProfit: '0',
+      totalInvoiced: '0',
+      totalCollected: '0',
+      outstandingReceivables: '0',
+      deliveryCompletionRate: 0,
+      onTimeDeliveryRate: 0,
+    },
+    revenueVsExpensesTimeSeries: raw.revenueVsExpensesTimeSeries ?? [],
+    ordersTimeSeries: raw.ordersTimeSeries ?? [],
+    ordersByStatus: raw.ordersByStatus ?? [],
+    delayedOrders: raw.delayedOrders ?? { total: 0, items: [] },
+  };
 }
 
 export interface BoardOrderSummary {
@@ -72,6 +165,7 @@ export interface BoardOrderSummary {
   currency?: string | null;
   createdAt?: string;
   cargoWeightKg?: string | null;
+  lastFailedDelivery?: { failureReason: string | null } | null;
 }
 
 export interface BoardDriverSummary {
@@ -81,6 +175,9 @@ export interface BoardDriverSummary {
   lastName: string;
   phone: string;
   status: string;
+  /** Additive from P3.3.4 board summary — operational presence. */
+  operationalStatus?: string;
+  onBreak?: boolean;
   licenseExpiry?: string | null;
 }
 
@@ -103,6 +200,7 @@ export interface DispatchBoardSummary {
   drivers: {
     available: BoardDriverSummary[];
     busy: Array<{ driver: BoardDriverSummary; currentOrder: BoardOrderSummary }>;
+    onBreak?: BoardDriverSummary[];
     onLeave: BoardDriverSummary[];
     inactive: BoardDriverSummary[];
   };
@@ -120,7 +218,8 @@ class DashboardAPI {
 
   async getDashboardSummary(): Promise<DashboardSummary> {
     const response = await apiFetch(`${this.baseUrl}/reports/dashboard-summary`, { method: 'GET' });
-    return unwrapResponse(response, 'Failed to load dashboard overview');
+    const raw = await unwrapResponse<Partial<DashboardSummary>>(response, 'Failed to load dashboard overview');
+    return normalizeDashboardSummary(raw);
   }
 
   /// Shared with the real Dispatch Board (use-dispatches.ts's

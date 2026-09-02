@@ -14,9 +14,6 @@ import {
 } from '@dnd-kit/core';
 import { useNavigate } from '@tanstack/react-router';
 import {
-  List,
-  LayoutGrid,
-  Loader2,
   Plus,
   RefreshCw,
   AlertTriangle,
@@ -34,11 +31,15 @@ import { dispatchesAPI } from '@/lib/api/dispatches';
 import { useInvalidateOperationalState } from '@/lib/api/invalidate';
 import { DISPATCH_WRITE_ROLES } from '@/lib/role-access';
 import { useDispatches, useDispatchBoardSummary } from '@/lib/hooks/use-dispatches';
+import { useDispatchConflictsBatch, type DispatchConflictSummary } from '@/lib/api/dispatch-conflicts';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState, ErrorState } from '@/components/shared/list-states';
+import { LiveIndicator } from '@/components/shared/live-indicator';
+import { WorkspaceHeader } from '@/components/shared/page-header';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { DispatchesCreateSheet } from '@/components/dispatch/dispatches-create-sheet';
+import { DispatchViewToggle } from '@/components/dispatch/dispatch-view-toggle';
 import { BOARD_COLUMNS, canDropInto, groupByStatus, isCancelDrop } from './board-columns';
 import { DispatchCard } from './dispatch-card';
 import { DispatchReassignDialog } from './dispatch-reassign-dialog';
@@ -60,7 +61,7 @@ const LIVE_REFRESH_MS = 30_000;
 
 type Selection = { kind: 'dispatch'; id: string } | { kind: 'order'; id: string };
 
-type BoardFilter = 'all' | 'overdue' | 'waiting' | 'in_transit' | 'delivered_today';
+type BoardFilter = 'all' | 'overdue' | 'waiting' | 'in_transit' | 'delivered_today' | 'failed';
 
 function toSelection(item: QueueItem): Selection {
   return item.target === 'order' ? { kind: 'order', id: item.id } : { kind: 'dispatch', id: item.id };
@@ -119,6 +120,10 @@ export function DispatchBoard() {
   );
 
   const allDispatches = data ?? [];
+  const conflictBatch = useDispatchConflictsBatch(
+    allDispatches.map((d) => d.id),
+    allDispatches.length > 0,
+  );
   const counts = useMemo(
     () => computeBoardOpsCounts(allDispatches, boardSummary),
     [allDispatches, boardSummary],
@@ -145,6 +150,8 @@ export function DispatchBoard() {
           const when = d.deliveryDateActual || d.updatedAt;
           return new Date(when).toDateString() === new Date().toDateString();
         });
+      case 'failed':
+        return allDispatches.filter((d) => d.status === 'DELIVERY_FAILED');
       default:
         return allDispatches;
     }
@@ -281,13 +288,37 @@ export function DispatchBoard() {
     try {
       if (isCancelDrop(target)) {
         await dispatchesAPI.cancel(dispatch.id);
+        await invalidate();
+        const label = target.replace(/_/g, ' ').toLowerCase();
+        toast.success(`${dispatch.dispatchNumber} moved to ${label}`);
+        setAnnouncement(`${dispatch.dispatchNumber} moved to ${label}`);
       } else {
+        const previousStatus = dispatch.status;
         await dispatchesAPI.updateStatus(dispatch.id, { status: target });
+        await invalidate();
+        const label = target.replace(/_/g, ' ').toLowerCase();
+        toast.success(`${dispatch.dispatchNumber} moved to ${label}`, {
+          duration: 8000,
+          action: {
+            label: 'Undo',
+            onClick: () => {
+              void (async () => {
+                try {
+                  await dispatchesAPI.undoStatus(dispatch.id);
+                  await invalidate();
+                  const back = previousStatus.replace(/_/g, ' ').toLowerCase();
+                  toast.success(`${dispatch.dispatchNumber} restored to ${back}`);
+                  setAnnouncement(`${dispatch.dispatchNumber} restored to ${back}`);
+                  markResolving(dispatch.id);
+                } catch (undoErr) {
+                  toast.error(describeError(undoErr, 'Undo failed'));
+                }
+              })();
+            },
+          },
+        });
+        setAnnouncement(`${dispatch.dispatchNumber} moved to ${label}`);
       }
-      await invalidate();
-      const label = target.replace(/_/g, ' ').toLowerCase();
-      toast.success(`${dispatch.dispatchNumber} moved to ${label}`);
-      setAnnouncement(`${dispatch.dispatchNumber} moved to ${label}`);
       markResolving(dispatch.id);
     } catch (err) {
       const message = describeError(err, 'Move rejected');
@@ -448,6 +479,12 @@ export function DispatchBoard() {
     { key: 'waiting', label: 'Waiting', count: counts.waitingPickup },
     { key: 'in_transit', label: 'In Transit', count: counts.inTransit },
     { key: 'delivered_today', label: 'Delivered Today', count: counts.deliveredToday },
+    {
+      key: 'failed',
+      label: 'Failed',
+      count: counts.failedDeliveries,
+      urgent: counts.failedDeliveries > 0,
+    },
   ];
 
   /// Unique ops chips only — do not restate Overdue/Waiting already in filters.
@@ -489,41 +526,22 @@ export function DispatchBoard() {
   return (
     <div className="flex min-h-0 min-w-0 flex-col gap-2">
       {/* Sticky chrome — survives page scroll on 1366×768 */}
-      <div className="sticky top-0 z-20 -mx-1 space-y-2 border-b border-border/80 bg-background/95 px-1 pb-2 pt-0.5 backdrop-blur supports-[backdrop-filter]:bg-background/85">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <h1 className="font-display text-xl font-bold tracking-tight text-foreground sm:text-2xl">
-              Dispatch Board
-            </h1>
-            <p className="truncate text-xs text-muted-foreground sm:text-sm">
-              {meta?.total ?? allDispatches.length} dispatches
-              {counts.overdue > 0 ? (
-                <span className="text-destructive"> · {counts.overdue} overdue</span>
-              ) : null}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+      <WorkspaceHeader
+        className="sticky top-0 z-20 -mx-1 border-border/80 bg-background/95 px-1 pb-2 pt-0.5 backdrop-blur supports-[backdrop-filter]:bg-background/85 sm:px-1"
+        title="Dispatch Board"
+        subtitle={
+          <>
+            {meta?.total ?? allDispatches.length} dispatches
+            {counts.overdue > 0 ? (
+              <span className="text-destructive"> · {counts.overdue} overdue</span>
+            ) : null}
+          </>
+        }
+        action={
+          <>
             {!isEmpty && <DispatchSearch dispatches={allDispatches} onSelect={handleSearchSelect} />}
 
-            <span
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-medium',
-                isRefreshing
-                  ? 'border-border text-muted-foreground'
-                  : 'border-success/40 bg-success/10 text-success',
-              )}
-              title="Refreshes every 30s while this tab is open"
-            >
-              {isRefreshing ? (
-                <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-              ) : (
-                <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-50" />
-                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-success" />
-                </span>
-              )}
-              {isRefreshing ? 'Updating' : ageSec < 5 ? 'Live' : `Live · ${ageSec}s`}
-            </span>
+            <LiveIndicator refreshing={isRefreshing} ageSeconds={ageSec} />
 
             <Button
               variant="outline"
@@ -535,30 +553,7 @@ export function DispatchBoard() {
               <RefreshCw className={cn('h-3.5 w-3.5', isRefreshing && 'animate-spin')} />
             </Button>
 
-            <div
-              className="inline-flex rounded-md border border-border p-0.5"
-              role="group"
-              aria-label="Dispatch view"
-            >
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 gap-1 px-2 text-xs text-muted-foreground"
-                onClick={() => void navigate({ to: '/app/dispatches' })}
-              >
-                <List className="h-3.5 w-3.5" />
-                List
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="h-7 gap-1 px-2 text-xs"
-                aria-current="page"
-              >
-                <LayoutGrid className="h-3.5 w-3.5" />
-                Board
-              </Button>
-            </div>
+            <DispatchViewToggle current="board" />
 
             {canWrite && (
               <Button
@@ -571,9 +566,9 @@ export function DispatchBoard() {
                 New
               </Button>
             )}
-          </div>
-        </div>
-
+          </>
+        }
+      >
         {/* Single strip: filters + unique ops (no duplicate overdue/waiting chips) */}
         <div className="flex flex-wrap items-center gap-1.5">
           <div className="flex flex-wrap items-center gap-1" role="toolbar" aria-label="Board filters">
@@ -624,7 +619,7 @@ export function DispatchBoard() {
             </>
           )}
         </div>
-      </div>
+      </WorkspaceHeader>
 
       <div role="status" aria-live="polite" className="sr-only">
         {announcement}
@@ -659,8 +654,8 @@ export function DispatchBoard() {
             <span className="text-muted-foreground"> — nothing needs attention. Use the board below.</span>
           </div>
         ) : (
-          <div className="grid h-[min(34rem,calc(100vh-12rem))] grid-cols-1 divide-y divide-border/50 lg:grid-cols-[18%_minmax(0,1fr)_18%] lg:divide-x lg:divide-y-0">
-            <div className="min-h-0 overflow-hidden">
+          <div className="grid h-[min(38rem,calc(100vh-10rem))] grid-cols-1 divide-y divide-border/40 lg:grid-cols-[18%_minmax(0,1fr)_18%] lg:divide-x lg:divide-y-0">
+            <div className="min-h-0 overflow-hidden bg-muted/[0.04]">
               {queueEmpty ? (
                 <div className="p-5 text-sm text-muted-foreground">All clear — nothing in queue.</div>
               ) : (
@@ -678,7 +673,7 @@ export function DispatchBoard() {
                 />
               )}
             </div>
-            <div className="min-h-0 overflow-hidden bg-background/40">
+            <div className="min-h-0 overflow-hidden bg-background/60">
               <SelectedWorkPanel
                 selection={panelSelection}
                 onReassign={setReassigning}
@@ -762,6 +757,7 @@ export function DispatchBoard() {
               onCancel={setCancelling}
               onViewOrder={handleViewOrder}
               onCall={callDriver}
+              conflictsByDispatchId={conflictBatch.data}
             />
           ))}
         </div>
@@ -832,6 +828,7 @@ interface BoardColumnProps {
   onCancel: (dispatch: ApiDispatch) => void;
   onViewOrder: (orderId: string) => void;
   onCall: (dispatch: ApiDispatch) => void;
+  conflictsByDispatchId?: Record<string, { summary: DispatchConflictSummary }>;
 }
 
 function BoardColumn({
@@ -849,6 +846,7 @@ function BoardColumn({
   onCancel,
   onViewOrder,
   onCall,
+  conflictsByDispatchId,
 }: BoardColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: status, disabled: !canWrite });
   const isLegalTarget = canWrite && draggingDispatch ? canDropInto(draggingDispatch, status) : true;
@@ -860,38 +858,47 @@ function BoardColumn({
       aria-label={`${fullTitle}, ${dispatches.length} ${dispatches.length === 1 ? 'dispatch' : 'dispatches'}`}
       title={fullTitle}
       className={cn(
-        'flex w-[17rem] shrink-0 flex-col rounded-xl border border-border/70 bg-card/60 p-3 transition-colors duration-150 sm:w-[18rem]',
-        terminal ? 'bg-muted/20' : 'bg-card/60',
+        'flex shrink-0 flex-col rounded-xl border p-3 transition-colors duration-150',
+        dispatches.length === 0
+          ? 'w-[13rem] sm:w-[14rem] border-border/40 bg-muted/10 opacity-60'
+          : 'w-[17rem] sm:w-[18rem] border-border/70 bg-card/60',
+        terminal && dispatches.length > 0 && 'bg-muted/20',
+        status === 'IN_TRANSIT' && dispatches.length > 0 && 'border-brand/25 bg-brand/5',
         isOver && isLegalTarget && 'border-brand bg-brand/5 ring-2 ring-brand/35',
         draggingDispatch && !isLegalTarget && 'opacity-35',
         showDropHint && !isOver && 'border-dashed border-brand/45',
-        !draggingDispatch && 'border-border/70',
       )}
       data-testid={`board-column-${status}`}
     >
       <header className="mb-2.5 flex items-center justify-between gap-1 px-0.5">
-        <h2 className="truncate text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h2 className={cn(
+          'truncate text-xs font-semibold uppercase tracking-wide',
+          dispatches.length === 0 ? 'text-muted-foreground/50' : 'text-muted-foreground',
+          status === 'IN_TRANSIT' && dispatches.length > 0 && 'text-brand',
+        )}>
           {title}
         </h2>
-        <span
-          className={cn(
-            'shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums',
-            terminal ? 'bg-muted text-muted-foreground' : 'bg-brand/10 text-brand',
-          )}
-          aria-hidden="true"
-        >
-          {dispatches.length}
-        </span>
+        {dispatches.length > 0 && (
+          <span
+            className={cn(
+              'shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums',
+              terminal ? 'bg-muted text-muted-foreground' : 'bg-brand/10 text-brand',
+            )}
+            aria-hidden="true"
+          >
+            {dispatches.length}
+          </span>
+        )}
       </header>
 
       <div className="flex max-h-[min(28rem,calc(100vh-20rem))] flex-col gap-2.5 overflow-y-auto scrollbar-thin">
         {dispatches.length === 0 ? (
           <p
             className={cn(
-              'rounded-lg border border-dashed py-10 text-center text-xs',
+              'rounded-lg border border-dashed py-6 text-center text-xs',
               showDropHint
                 ? 'border-brand/50 bg-brand/5 font-medium text-brand'
-                : 'border-border/60 text-muted-foreground',
+                : 'border-border/40 text-muted-foreground/40',
             )}
           >
             {showDropHint ? 'Drop here' : '—'}
@@ -915,6 +922,7 @@ function BoardColumn({
                 onCancel={onCancel}
                 onViewOrder={onViewOrder}
                 onCall={onCall}
+                conflictSummary={conflictsByDispatchId?.[dispatch.id]?.summary}
               />
             ))}
           </>

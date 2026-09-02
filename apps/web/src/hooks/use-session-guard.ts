@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from '@tanstack/react-router';
 
 interface SessionGuardOptions {
@@ -8,6 +8,10 @@ interface SessionGuardOptions {
   /// Paths that must render without a session (login, invite activation).
   /// Defaults to `[loginPath]` when omitted.
   publicPaths?: string[];
+  /// Send the page they were trying to reach to the login screen as
+  /// `?redirect=`, so a shared deep link survives the detour. Opt-in because
+  /// only a login screen that reads the parameter can honour it.
+  preserveReturnPath?: boolean;
 }
 
 /// Architecture review fix: AppShell and PortalShell each re-implemented
@@ -35,6 +39,7 @@ export function useSessionGuard({
   onExpired,
   loginPath,
   publicPaths,
+  preserveReturnPath = false,
 }: SessionGuardOptions): boolean {
   const navigate = useNavigate();
   const location = useLocation();
@@ -48,24 +53,40 @@ export function useSessionGuard({
   const allowedPublic = publicPaths ?? [loginPath];
   const onPublicPath = allowedPublic.some((path) => location.pathname === path);
 
+  /// Carry the page they were trying to reach. Without this, following a
+  /// shared link to an order while signed out dropped you on the dashboard
+  /// after signing in, with no clue what you had been sent to look at.
+  ///
+  /// `loginPath` is a plain string here because this hook serves several
+  /// shells with different route trees, so the navigate options can't be
+  /// narrowed to one route's search schema.
+  const attempted = location.href;
+  const bounce = useCallback(() => {
+    navigate({
+      to: loginPath,
+      search: preserveReturnPath ? { redirect: attempted } : undefined,
+      replace: true,
+    } as never);
+  }, [navigate, loginPath, preserveReturnPath, attempted]);
+
   useEffect(() => {
     if (onPublicPath) {
       setReady(true);
       return;
     }
     if (!hasValidSessionRef.current()) {
-      navigate({ to: loginPath as any, replace: true });
+      bounce();
     } else {
       setReady(true);
     }
-  }, [navigate, loginPath, onPublicPath]);
+  }, [bounce, onPublicPath]);
 
   useEffect(() => {
     return onExpiredRef.current(() => {
       if (onPublicPath) return;
-      navigate({ to: loginPath as any, replace: true });
+      bounce();
     });
-  }, [navigate, loginPath, onPublicPath]);
+  }, [bounce, onPublicPath]);
 
   return ready;
 }

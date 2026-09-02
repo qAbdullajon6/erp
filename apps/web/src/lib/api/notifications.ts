@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from './fetch';
 
-export type NotificationCategory = 'OPERATIONS' | 'FINANCE' | 'CUSTOMERS' | 'FLEET';
+export type NotificationCategory = 'OPERATIONS' | 'FINANCE' | 'CUSTOMERS' | 'FLEET' | 'BILLING' | 'SUPPORT';
 export type NotificationSeverity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 
 export interface Notification {

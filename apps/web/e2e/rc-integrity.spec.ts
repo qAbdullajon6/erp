@@ -31,11 +31,13 @@ async function seed(page: Page, a: string, r: string) {
   );
 }
 
-/// The dashboard's "Orders (30d)" tile.
+/// The dashboard's "Today's Orders" tile. It was written against an
+/// "Orders (30d)" tile the dashboard no longer has, so it read null on both
+/// sides of the write and the test could not tell whether anything moved.
 async function ordersKpi(page: Page): Promise<number | null> {
   const text = await page.locator('body').innerText();
-  const m = text.replace(/\s+/g, ' ').match(/Orders \(30d\)\s*(\d+)/i);
-  return m ? Number(m[1]) : null;
+  const m = text.replace(/\s+/g, ' ').match(/Today's Orders\s*([\d,]+)/i);
+  return m ? Number(m[1].replace(/,/g, '')) : null;
 }
 
 test('RC9a: creating an order moves the dashboard KPI without a reload', async ({ page, request }) => {
@@ -45,7 +47,7 @@ test('RC9a: creating an order moves the dashboard KPI without a reload', async (
   await seed(page, accessToken, refreshToken);
 
   await page.goto('/app', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByText('Command Center')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId('dashboard')).toBeVisible({ timeout: 60_000 });
   await page.waitForTimeout(4000);
 
   const before = await ordersKpi(page);
@@ -59,7 +61,10 @@ test('RC9a: creating an order moves the dashboard KPI without a reload', async (
       })
     ).json()
   ).data.id;
+  // OrdersService.assertValidDateRange requires delivery strictly after
+  // pickup, so a same-day order is a 400 and this test was measuring nothing.
   const today = new Date().toISOString().slice(0, 10);
+  const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
   const created = await request.post(`${API}/orders`, {
     headers: auth,
     data: {
@@ -69,12 +74,13 @@ test('RC9a: creating an order moves the dashboard KPI without a reload', async (
       pickupDate: today,
       deliveryAddress: '2 B',
       deliveryCity: 'Navoi',
-      deliveryDate: today,
+      deliveryDate: tomorrow,
       cargoDescription: 'RC integrity cargo',
       price: 250,
     },
   });
   console.log(`[RC9a] order created out-of-band: ${created.status()}`);
+  if (created.status() !== 201) fail('P1', `order creation failed with ${created.status()}`);
 
   // Navigating away and back is what a user does; it must not need a hard reload.
   await page.goto('/app/orders', { waitUntil: 'domcontentloaded' });

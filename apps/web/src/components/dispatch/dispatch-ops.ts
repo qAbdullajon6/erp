@@ -10,6 +10,8 @@ export const NON_TERMINAL: ReadonlySet<DispatchStatus> = new Set([
   'EN_ROUTE_TO_PICKUP',
   'AT_PICKUP',
   'IN_TRANSIT',
+  'AT_STOP',
+  'ARRIVED_AT_DELIVERY',
 ]);
 
 export const WAITING_PICKUP: ReadonlySet<DispatchStatus> = new Set([
@@ -30,8 +32,16 @@ export function minutesUntil(iso: string): number {
   return Math.round((new Date(iso).getTime() - Date.now()) / 60000);
 }
 
+/// A dispatch is scheduled to a day, not to a minute: `deliveryDateScheduled`
+/// carries the order's date-only delivery date, so midnight. Comparing it to
+/// `Date.now()` marked every delivery due today as overdue from 00:01 — a
+/// same-day job was born red. The deadline is the end of the scheduled day.
+export function scheduleDeadline(iso: string): number {
+  return new Date(iso).getTime() + 24 * 60 * 60 * 1000;
+}
+
 export function isDispatchOverdue(d: ApiDispatch): boolean {
-  return NON_TERMINAL.has(d.status) && new Date(d.deliveryDateScheduled).getTime() < Date.now();
+  return NON_TERMINAL.has(d.status) && scheduleDeadline(d.deliveryDateScheduled) < Date.now();
 }
 
 export function isWaitingPickup(d: ApiDispatch): boolean {
@@ -53,11 +63,12 @@ export type DeliveryUrgency = {
 };
 
 export function getDeliveryUrgency(deliveryDate: string): DeliveryUrgency {
-  const target = new Date(deliveryDate);
   const now = new Date();
-  const diffMs = target.getTime() - now.getTime();
-  const diffHours = diffMs / (1000 * 60 * 60);
-  const diffDays = Math.ceil(diffHours / 24);
+  // Measured against the end of the scheduled day, not its midnight start —
+  // otherwise every job due today reads as hours late from the moment the day
+  // begins. Days remaining are still counted from the scheduled day itself.
+  const diffHours = (scheduleDeadline(deliveryDate) - now.getTime()) / (1000 * 60 * 60);
+  const diffDays = Math.ceil((new Date(deliveryDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
   if (diffHours < 0) {
     const hoursLate = Math.abs(diffHours);
@@ -78,7 +89,7 @@ export function getDeliveryUrgency(deliveryDate: string): DeliveryUrgency {
       isUrgent: true,
     };
   }
-  if (diffHours < 12) {
+  if (diffHours < 24) {
     return {
       label: 'Due today',
       tone: 'text-warning',
@@ -87,7 +98,7 @@ export function getDeliveryUrgency(deliveryDate: string): DeliveryUrgency {
       isUrgent: true,
     };
   }
-  if (diffHours < 36) {
+  if (diffHours < 48) {
     return {
       label: 'Tomorrow',
       tone: 'text-warning',
@@ -137,6 +148,7 @@ export type BoardOpsCounts = {
   waitingPickup: number;
   inTransit: number;
   deliveredToday: number;
+  failedDeliveries: number;
   driversAvailable: number;
   idleVehicles: number;
   pickupToday: number;
@@ -154,6 +166,7 @@ export function computeBoardOpsCounts(
     waitingPickup: dispatches.filter(isWaitingPickup).length,
     inTransit: dispatches.filter((d) => d.status === 'IN_TRANSIT').length,
     deliveredToday: dispatches.filter(isDeliveredToday).length,
+    failedDeliveries: dispatches.filter((d) => d.status === 'DELIVERY_FAILED').length,
     driversAvailable: board?.drivers.available.length ?? 0,
     idleVehicles: board?.vehicles.available.length ?? 0,
     pickupToday: dispatches.filter(

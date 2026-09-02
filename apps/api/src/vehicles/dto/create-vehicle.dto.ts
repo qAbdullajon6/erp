@@ -14,9 +14,6 @@ import {
 const CURRENT_YEAR = new Date().getUTCFullYear();
 
 export class CreateVehicleDto {
-  /// Omit to auto-generate the next sequential VEH-0001-style code for this
-  /// organization; provide to set one explicitly — same pattern as
-  /// Customer.customerCode / Driver.employeeCode.
   @IsOptional()
   @IsString()
   @MaxLength(50)
@@ -68,4 +65,40 @@ export class CreateVehicleDto {
   @IsOptional()
   @IsDateString()
   inspectionExpiry?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  vin?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  engineNumber?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  odometer?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  fuelType?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  transmission?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(20)
+  axles?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  notes?: string;
 }

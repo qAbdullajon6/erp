@@ -1,20 +1,22 @@
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
+import { Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCurrentUser } from '@/lib/api/auth';
 import { useInvoiceQuery, useSendInvoiceMutation, useCancelInvoiceMutation } from '@/lib/api/invoices';
-import { customersAPI } from '@/lib/api/customers';
-import { ordersAPI } from '@/lib/api/orders';
-import type { MembershipRole } from '@/lib/api/organizations';
+import { type MembershipRole } from '@/lib/api/organizations';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { formatMoney } from '@/lib/format';
 import { INVOICE_FINALIZE_ROLES } from '@/lib/role-access';
 import { ErrorState } from '@/components/shared/list-states';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { RecordPaymentDialog } from './record-payment-dialog';
+import { useInvoicePrint } from './use-invoice-print';
+import { describeError } from '@/lib/api/describe-error';
 
 interface InvoiceDetailSheetProps {
   invoiceId: string | null;
@@ -22,24 +24,14 @@ interface InvoiceDetailSheetProps {
 }
 
 export function InvoiceDetailSheet({ invoiceId, onOpenChange }: InvoiceDetailSheetProps) {
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const open = !!invoiceId;
   const { data: currentUser } = useCurrentUser();
   const canFinalize = Boolean(
     currentUser && INVOICE_FINALIZE_ROLES.includes(currentUser.membership.role as MembershipRole),
   );
   const { data: invoice, isLoading, isError, error, refetch } = useInvoiceQuery(invoiceId ?? '');
-
-  const { data: customer } = useQuery({
-    queryKey: ['customer-for-invoice', invoice?.customerId],
-    queryFn: () => customersAPI.getById(invoice!.customerId),
-    enabled: !!invoice?.customerId,
-  });
-
-  const { data: order } = useQuery({
-    queryKey: ['order-for-invoice', invoice?.orderId],
-    queryFn: () => ordersAPI.getOrder(invoice!.orderId!),
-    enabled: !!invoice?.orderId,
-  });
+  const { customer, order, print } = useInvoicePrint(invoice);
 
   const { mutateAsync: sendInvoice, isPending: sending } = useSendInvoiceMutation(invoiceId ?? '');
   const { mutateAsync: cancelInvoice, isPending: cancelling } = useCancelInvoiceMutation(invoiceId ?? '');
@@ -49,7 +41,7 @@ export function InvoiceDetailSheet({ invoiceId, onOpenChange }: InvoiceDetailShe
       await sendInvoice();
       toast.success('Invoice marked as sent');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to mark invoice as sent');
+      toast.error(describeError(err, 'Failed to mark invoice as sent'));
     }
   };
 
@@ -58,7 +50,7 @@ export function InvoiceDetailSheet({ invoiceId, onOpenChange }: InvoiceDetailShe
       await cancelInvoice();
       toast.success('Invoice cancelled');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to cancel invoice');
+      toast.error(describeError(err, 'Failed to cancel invoice'));
     }
   };
 
@@ -75,7 +67,7 @@ export function InvoiceDetailSheet({ invoiceId, onOpenChange }: InvoiceDetailShe
 
         {isError && (
           <ErrorState
-            message={error instanceof Error ? error.message : 'Failed to load invoice'}
+            message={describeError(error, 'Failed to load invoice')}
             onRetry={() => refetch()}
           />
         )}
@@ -112,27 +104,31 @@ export function InvoiceDetailSheet({ invoiceId, onOpenChange }: InvoiceDetailShe
               </div>
             </div>
 
-            <div className="rounded-lg border border-brand/10">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-brand/10 text-left text-xs uppercase text-muted-foreground">
-                    <th className="px-3 py-2">Description</th>
-                    <th className="px-3 py-2 text-right">Qty</th>
-                    <th className="px-3 py-2 text-right">Unit Price</th>
-                    <th className="px-3 py-2 text-right">Total</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-brand/10">
-                  {invoice.lineItems?.map((li) => (
-                    <tr key={li.id}>
-                      <td className="px-3 py-2">{li.description}</td>
-                      <td className="px-3 py-2 text-right">{li.quantity}</td>
-                      <td className="px-3 py-2 text-right">{formatMoney(li.unitPrice, invoice.currency)}</td>
-                      <td className="px-3 py-2 text-right">{formatMoney(li.lineTotal, invoice.currency)}</td>
-                    </tr>
+            <div className="overflow-hidden rounded-lg border border-brand/10">
+              <Table aria-label="Invoice line items">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Description</TableHead>
+                    <TableHead className="text-right">Qty</TableHead>
+                    <TableHead className="text-right">Unit Price</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {invoice.lineItems?.map((li, idx) => (
+                    <TableRow key={li.id || `line-${idx}`}>
+                      <TableCell>{li.description}</TableCell>
+                      <TableCell className="text-right tabular-nums">{li.quantity}</TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatMoney(li.unitPrice, invoice.currency)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatMoney(li.lineTotal, invoice.currency)}
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
 
             <div className="rounded-lg bg-background/60 p-4 text-sm">
@@ -191,6 +187,14 @@ export function InvoiceDetailSheet({ invoiceId, onOpenChange }: InvoiceDetailShe
             </div>
 
             <div className="flex flex-wrap gap-2 border-t border-brand/10 pt-4">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={print}
+              >
+                <Printer className="mr-1.5 h-3.5 w-3.5" />
+                Print / Save PDF
+              </Button>
               {canFinalize && invoice.status === 'DRAFT' && (
                 <Button size="sm" onClick={handleSend} disabled={sending}>
                   {sending ? 'Updating...' : 'Mark as sent'}
@@ -200,20 +204,32 @@ export function InvoiceDetailSheet({ invoiceId, onOpenChange }: InvoiceDetailShe
                 <RecordPaymentDialog invoiceId={invoice.id} balanceDue={invoice.balanceDue} currency={invoice.currency} />
               )}
               {canFinalize && invoice.status !== 'PAID' && invoice.status !== 'CANCELLED' && (
-                <ConfirmDialog
-                  trigger={
-                    <Button size="sm" variant="destructive" disabled={cancelling}>
-                      {cancelling ? 'Cancelling...' : 'Cancel Invoice'}
-                    </Button>
-                  }
-                  title="Cancel this invoice?"
-                  description="Cancelled invoices cannot be sent or receive payments. This cannot be undone from the UI."
-                  confirmLabel="Cancel invoice"
-                  destructive
-                  onConfirm={() => {
-                    void handleCancel();
-                  }}
-                />
+                <>
+                  {/* Controlled (not `trigger`): a Radix AlertDialogTrigger nested inside an
+                      already-open Sheet never opens — the outer Sheet's dismissable layer
+                      eats the click and closes itself instead. */}
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={cancelling}
+                    onClick={() => setCancelConfirmOpen(true)}
+                  >
+                    {cancelling ? 'Cancelling...' : 'Cancel Invoice'}
+                  </Button>
+                  <ConfirmDialog
+                    open={cancelConfirmOpen}
+                    onOpenChange={setCancelConfirmOpen}
+                    title="Cancel this invoice?"
+                    description="Cancelled invoices cannot be sent or receive payments. This cannot be undone from the UI."
+                    confirmLabel="Cancel invoice"
+                    destructive
+                    onConfirm={() => {
+                      setCancelConfirmOpen(false);
+                      void handleCancel();
+                    }}
+                    onCancel={() => setCancelConfirmOpen(false)}
+                  />
+                </>
               )}
             </div>
           </div>

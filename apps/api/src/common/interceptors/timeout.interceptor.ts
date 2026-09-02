@@ -8,6 +8,7 @@ import {
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { ConfigService } from "@nestjs/config";
+import type { Request } from "express";
 import { Observable, throwError, TimeoutError } from "rxjs";
 import { catchError, timeout } from "rxjs/operators";
 import { SKIP_TIMEOUT_KEY } from "../decorators/skip-timeout.decorator";
@@ -53,13 +54,13 @@ export class TimeoutInterceptor implements NestInterceptor {
       timeout(this.timeoutMs),
       catchError((err) => {
         if (err instanceof TimeoutError) {
-          const request = context.switchToHttp().getRequest();
+          const request = context.switchToHttp().getRequest<Request>();
           this.logger.warn(
             `Request timeout (${this.timeoutMs}ms exceeded): ${request.method} ${request.url}`,
           );
           return throwError(() => new RequestTimeoutException("Request processing exceeded timeout"));
         }
-        return throwError(() => err);
+        return throwError(() => err as Error);
       }),
     );
   }

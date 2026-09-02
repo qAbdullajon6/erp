@@ -11,6 +11,7 @@ import { VehiclesEditSheet } from '@/components/vehicles/vehicles-edit-sheet';
 import { VehiclesStatusSheet } from '@/components/vehicles/vehicles-status-sheet';
 import { VehiclesAssignDispatchSheet } from '@/components/vehicles/vehicles-assign-dispatch-sheet';
 import { VehiclesAssignDriverSheet } from '@/components/vehicles/vehicles-assign-driver-sheet';
+import { VehicleGpsBindingPanel } from '@/components/vehicles/vehicle-gps-binding-panel';
 import {
   LIVE_DISPATCH,
   assignedDaysCount,
@@ -22,22 +23,20 @@ import {
   isOverCapacity,
   makeModelLabel,
   vehicleAvailabilityLabel,
-  vehicleInitials,
   vehiclePrimaryBadge,
   vehicleRiskBadges,
   type VehicleOpsBadge,
   type VehicleTimelineItem,
 } from '@/components/vehicles/vehicles-ops';
-import {
-  useVehicle,
-  useArchiveVehicle,
-  useRestoreVehicle,
-} from '@/lib/api/vehicles';
+import { useVehicle, useArchiveVehicle, useRestoreVehicle } from '@/lib/api/vehicles';
+import { useCurrentUser } from '@/lib/api/auth';
 import { useDispatches } from '@/lib/hooks/use-dispatches';
-import { useOrdersList } from '@/lib/api/orders';
+import { useOrder, useOrdersList } from '@/lib/api/orders';
 import { describeError } from '@/lib/api/describe-error';
 import { formatDate, formatDateTime, formatRelativeTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { ADMIN_OPS_ROLES } from '@/lib/role-access';
+import type { MembershipRole } from '@/lib/api/organizations';
 import { toast } from 'sonner';
 import {
   Archive,
@@ -47,9 +46,12 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock,
+  Copy,
   Edit2,
   Package,
+  Radio,
   RotateCcw,
+  Shield,
   Truck,
   User,
   UserRound,
@@ -77,6 +79,10 @@ const TIMELINE_STYLE: Record<
 
 export function VehiclesDetail({ vehicleId }: VehiclesDetailProps) {
   const navigate = useNavigate();
+  const { data: currentUser } = useCurrentUser();
+  const canConnectGps =
+    !!currentUser &&
+    ADMIN_OPS_ROLES.includes(currentUser.membership.role as MembershipRole);
   const { data: vehicle, loading, error, refetch } = useVehicle(vehicleId);
   const { mutate: archiveVehicle, loading: archiving } = useArchiveVehicle(vehicleId);
   const { mutate: restoreVehicle, loading: restoring } = useRestoreVehicle(vehicleId);
@@ -89,20 +95,15 @@ export function VehiclesDetail({ vehicleId }: VehiclesDetailProps) {
     [dispatches],
   );
 
-  const orderIds = useMemo(() => [...new Set(dispatches.map((d) => d.orderId))], [dispatches]);
-  const ordersQuery = useOrdersList(
-    { limit: 20, sortBy: 'createdAt', sortOrder: 'desc' },
-    { enabled: orderIds.length > 0 },
-  );
-  const relatedOrders = useMemo(() => {
-    const idSet = new Set(orderIds);
-    return ordersQuery.data.filter((o) => idSet.has(o.id)).slice(0, 8);
-  }, [ordersQuery.data, orderIds]);
+  const ordersQuery = useOrdersList({ vehicleId, limit: 8, sortBy: 'createdAt', sortOrder: 'desc' });
+  const relatedOrders = ordersQuery.data;
 
-  const liveOrder = useMemo(
-    () => (liveDispatch ? relatedOrders.find((o) => o.id === liveDispatch.orderId) ?? null : null),
-    [liveDispatch, relatedOrders],
-  );
+  /// Fetched directly rather than derived from relatedOrders — the live
+  /// dispatch's order won't be in the 8 most recent for this vehicle if it's
+  /// a long-running trip on an older order, and cargo-vs-capacity accuracy
+  /// matters more here than avoiding one extra request.
+  const liveOrderQuery = useOrder(liveDispatch?.orderId ?? '');
+  const liveOrder = liveOrderQuery.data;
 
   const completed = dispatches.filter((d) => d.status === 'DELIVERED').length;
   const active = dispatches.filter((d) => LIVE_DISPATCH.includes(d.status)).length;
@@ -158,6 +159,20 @@ export function VehiclesDetail({ vehicleId }: VehiclesDetailProps) {
       ? `${liveDispatch.order.pickupCity} → ${liveDispatch.order.deliveryCity}`
       : null;
 
+  // Formatted subtitle: "VEH-0002 · Isuzu NPR 82 2023 · Box Truck · 5000 kg · 24 m³"
+  const subtitleParts = [
+    vehicle.vehicleCode,
+    mm,
+    vehicle.type,
+    formatCapacity(vehicle.capacityKg, vehicle.capacityM3),
+  ].filter(Boolean);
+
+  // Document expiry states for sidebar
+  const insExpired = isDateExpired(vehicle.insuranceExpiry);
+  const insExpiring = !insExpired && isDateExpiring(vehicle.insuranceExpiry);
+  const inspExpired = isDateExpired(vehicle.inspectionExpiry);
+  const inspExpiring = !inspExpired && isDateExpiring(vehicle.inspectionExpiry);
+
   const handleArchive = async () => {
     try {
       await archiveVehicle();
@@ -179,73 +194,82 @@ export function VehiclesDetail({ vehicleId }: VehiclesDetailProps) {
 
   return (
     <div className="mx-auto max-w-[1440px] space-y-2 pb-8">
+      {/* Back nav */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <button
           type="button"
           onClick={() => navigate({ to: '/app/vehicles' })}
-          className="transition-colors hover:text-foreground"
+          className="flex items-center gap-1 transition-colors hover:text-foreground"
         >
-          <ArrowLeft className="mr-1 inline h-3.5 w-3.5" />
-          Vehicles
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Back to Vehicles
         </button>
         <ChevronRight className="h-3 w-3" />
         <span className="font-mono text-foreground">{vehicle.plateNumber}</span>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border/80 bg-surface shadow-sm">
-        <div className="border-b border-border/60 px-5 py-3.5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="flex min-w-0 flex-1 items-start gap-3">
-              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-sm font-bold text-brand">
-                {vehicleInitials(vehicle.plateNumber)}
-              </span>
-              <div className="min-w-0 flex-1 space-y-1.5">
+
+        {/* ─── Header ─── */}
+        <div className="border-b border-border/60 px-5 py-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+
+            {/* Identity */}
+            <div className="flex min-w-0 flex-1 items-start gap-4">
+              {/* Vehicle image */}
+              <div className="relative h-[80px] w-[110px] shrink-0 overflow-hidden rounded-xl border border-border/60 bg-muted/30">
+                <img
+                  src="/isuzi.png"
+                  alt={vehicle.plateNumber}
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'contain',
+                    padding: '8px',
+                  }}
+                />
+              </div>
+
+              <div className="min-w-0 flex-1 space-y-2">
+                {/* Plate + badges */}
                 <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="font-mono text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+                  <h1 className="font-mono text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
                     {vehicle.plateNumber}
                   </h1>
                   <OpsChip badge={primary} />
-                  {risks.slice(0, 3).map((b) => (
+                  {risks.slice(0, 4).map((b) => (
                     <OpsChip key={b.key} badge={b} />
                   ))}
                 </div>
 
-                <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-sm">
-                  <span className="font-mono text-xs text-muted-foreground">{vehicle.vehicleCode}</span>
-                  <span className="text-muted-foreground">{vehicle.type}</span>
-                  {mm && <span className="text-muted-foreground">{mm}</span>}
-                  <span className="text-xs text-muted-foreground">
-                    {formatCapacity(vehicle.capacityKg, vehicle.capacityM3)}
-                  </span>
-                </div>
+                {/* Subtitle */}
+                <p className="text-sm text-muted-foreground">
+                  {subtitleParts.join(' · ')}
+                </p>
 
-                <div className="flex flex-wrap gap-1.5 pt-0.5">
-                  <HeaderChip label="Availability" value={avail.label} />
-                  <HeaderChip
-                    label="Driver"
-                    value={
-                      liveDispatch?.driver
-                        ? `${liveDispatch.driver.firstName} ${liveDispatch.driver.lastName}`
-                        : '—'
-                    }
-                  />
-                  <HeaderChip label="Dispatch" value={liveDispatch?.dispatchNumber ?? '—'} />
-                  <HeaderChip label="Order" value={liveDispatch?.order?.orderNumber ?? '—'} />
-                  {isOverCapacity(vehicle, cargo) && (
-                    <HeaderChip label="Capacity" value="Over" tone="warn" />
-                  )}
-                  {(isDateExpired(vehicle.inspectionExpiry) ||
-                    isDateExpiring(vehicle.inspectionExpiry)) && (
-                    <HeaderChip
-                      label="Inspection"
-                      value={isDateExpired(vehicle.inspectionExpiry) ? 'Expired' : 'Due'}
-                      tone="warn"
-                    />
-                  )}
-                </div>
+                {/* VIN */}
+                {vehicle.vin && (
+                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <span>VIN: {vehicle.vin}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void navigator.clipboard.writeText(vehicle.vin!);
+                        toast.success('VIN copied');
+                      }}
+                      className="transition-colors hover:text-foreground"
+                      aria-label="Copy VIN"
+                    >
+                      <Copy className="h-3 w-3" />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
+            {/* Actions */}
             <div className="flex flex-wrap items-center gap-1.5">
               {canAssign && (
                 <Button
@@ -263,6 +287,21 @@ export function VehiclesDetail({ vehicleId }: VehiclesDetailProps) {
                   Assign Driver
                 </Button>
               )}
+              {canConnectGps && !vehicle.archivedAt ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    void navigate({
+                      to: '/app/devices',
+                      search: { create: true, vehicleId: vehicle.id },
+                    })
+                  }
+                >
+                  <Radio className="mr-1.5 h-3.5 w-3.5" />
+                  Connect GPS
+                </Button>
+              ) : null}
               {!vehicle.archivedAt && (
                 <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
                   <Edit2 className="mr-1.5 h-3.5 w-3.5" />
@@ -300,10 +339,10 @@ export function VehiclesDetail({ vehicleId }: VehiclesDetailProps) {
           </div>
         </div>
 
-        {/* Mission strip — no GPS / fuel / engine (not on Vehicles API) */}
+        {/* ─── Summary strip ─── */}
         <div className="grid grid-cols-2 gap-px border-b border-border/60 bg-border/40 sm:grid-cols-5">
           <SummaryStat
-            label="Current driver"
+            label="Current Driver"
             value={
               liveDispatch?.driver
                 ? `${liveDispatch.driver.firstName} ${liveDispatch.driver.lastName}`
@@ -316,10 +355,7 @@ export function VehiclesDetail({ vehicleId }: VehiclesDetailProps) {
             value={liveDispatch?.dispatchNumber ?? '—'}
             hint={liveDispatch ? statusLabel(liveDispatch.status) : undefined}
           />
-          <SummaryStat
-            label="Order"
-            value={liveDispatch?.order?.orderNumber ?? '—'}
-          />
+          <SummaryStat label="Order" value={liveDispatch?.order?.orderNumber ?? '—'} />
           <SummaryStat label="Route" value={route ?? '—'} />
           <SummaryStat
             label="Capacity"
@@ -327,11 +363,16 @@ export function VehiclesDetail({ vehicleId }: VehiclesDetailProps) {
           />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(15rem,18%)]">
+        {/* ─── Main two-column layout ─── */}
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(14rem,22%)]">
+
+          {/* Left column */}
           <div className="divide-y divide-border/50 lg:border-r lg:border-border/50">
-            <section className="p-4 sm:p-5">
-              <SectionHeader icon={Truck} title="Current assignment" />
-              <div className="mt-3">
+
+            {/* Current Assignment */}
+            <section className="p-5">
+              <SectionHeader icon={Truck} title="Current Assignment" />
+              <div className="mt-4">
                 {!liveDispatch ? (
                   <EmptyState
                     compact
@@ -340,7 +381,11 @@ export function VehiclesDetail({ vehicleId }: VehiclesDetailProps) {
                     description="This vehicle has no active dispatch right now."
                     action={
                       canAssign ? (
-                        <Button size="sm" onClick={() => setAssignDispatchOpen(true)}>
+                        <Button
+                          size="sm"
+                          className="bg-gradient-brand text-brand-foreground hover:opacity-90"
+                          onClick={() => setAssignDispatchOpen(true)}
+                        >
                           Assign Dispatch
                         </Button>
                       ) : undefined
@@ -405,7 +450,11 @@ export function VehiclesDetail({ vehicleId }: VehiclesDetailProps) {
                           </Button>
                         )}
                         {canAssign && (
-                          <Button size="sm" variant="secondary" onClick={() => setAssignDispatchOpen(true)}>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => setAssignDispatchOpen(true)}
+                          >
                             Assign Dispatch
                           </Button>
                         )}
@@ -421,11 +470,7 @@ export function VehiclesDetail({ vehicleId }: VehiclesDetailProps) {
                         }
                         tone={!liveDispatch.driver ? 'warn' : undefined}
                       />
-                      <AssignCell
-                        label="Order"
-                        value={liveDispatch.order?.orderNumber ?? '—'}
-                        mono
-                      />
+                      <AssignCell label="Order" value={liveDispatch.order?.orderNumber ?? '—'} mono />
                       <AssignCell label="Customer" value={customerName ?? '—'} />
                       <AssignCell label="Status" value={statusLabel(liveDispatch.status)} />
                     </div>
@@ -434,19 +479,24 @@ export function VehiclesDetail({ vehicleId }: VehiclesDetailProps) {
               </div>
             </section>
 
-            <section className="p-4 sm:p-5">
-              <SectionHeader icon={Truck} title="Vehicle information" />
-              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {/* Vehicle Information */}
+            <section className="p-5">
+              <SectionHeader icon={Truck} title="Vehicle Information" />
+              <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 <InfoTile label="Plate" value={vehicle.plateNumber} mono />
                 <InfoTile label="Code" value={vehicle.vehicleCode} mono />
                 <InfoTile label="Type" value={vehicle.type} />
-                <InfoTile label="Make / model" value={mm ?? '—'} />
+                <InfoTile label="Make / Model" value={mm ?? '—'} />
                 <InfoTile
                   label="Capacity"
                   value={formatCapacity(vehicle.capacityKg, vehicle.capacityM3)}
                 />
+                <InfoTile label="Fuel Type" value={vehicle.fuelType ?? '—'} />
+                {vehicle.vin ? (
+                  <InfoTile label="VIN" value={vehicle.vin} mono />
+                ) : null}
                 <InfoTile
-                  label="Insurance / registration"
+                  label="Insurance / Registration"
                   value={vehicle.insuranceExpiry ? formatDate(vehicle.insuranceExpiry) : '—'}
                   tone={
                     isDateExpired(vehicle.insuranceExpiry)
@@ -467,207 +517,229 @@ export function VehiclesDetail({ vehicleId }: VehiclesDetailProps) {
                         : undefined
                   }
                 />
-                <InfoTile label="In fleet since" value={formatDate(vehicle.createdAt)} />
-                <InfoTile label="Last updated" value={formatRelativeTime(vehicle.updatedAt)} />
+                <InfoTile label="In Fleet Since" value={formatDate(vehicle.createdAt)} />
+                <InfoTile label="Last Updated" value={formatRelativeTime(vehicle.updatedAt)} />
+                <InfoTile label="Notes" value={vehicle.notes ?? '—'} />
               </div>
             </section>
 
-            <section className="p-4 sm:p-5">
-              <SectionHeader icon={Clock} title="Timeline" />
-              <div className="mt-3">
-                {activity.length === 0 ? (
-                  <EmptyState
-                    compact
-                    icon={Clock}
-                    title="No timeline yet"
-                    description="Events appear as this vehicle is assigned and progresses dispatches."
-                  />
-                ) : (
-                  <ul className="relative space-y-0">
-                    {activity.map((item, idx) => {
-                      const style = TIMELINE_STYLE[item.kind];
-                      const Icon = style.icon;
-                      return (
-                        <li key={item.id} className="relative flex gap-3 pb-4 last:pb-0">
-                          {idx < activity.length - 1 && (
-                            <span
-                              className="absolute left-[15px] top-8 bottom-0 w-px bg-border/70"
-                              aria-hidden
-                            />
-                          )}
-                          <span
-                            className={cn(
-                              'relative z-[1] mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
-                              style.className,
-                            )}
-                          >
-                            <Icon className="h-3.5 w-3.5" />
-                          </span>
-                          <div className="min-w-0 flex-1 pt-0.5">
-                            <div className="flex flex-wrap items-baseline justify-between gap-2">
-                              <p className="text-sm font-medium leading-tight">{item.title}</p>
+            {/* Telematics / GPS */}
+            {canConnectGps ? (
+              <section className="p-5">
+                <SectionHeader icon={Radio} title="Telematics / GPS" />
+                <div className="mt-4">
+                  <VehicleGpsBindingPanel vehicle={vehicle} />
+                </div>
+              </section>
+            ) : null}
+
+            {/* Timeline + Orders + Dispatches — 3-column grid */}
+            <section className="p-5">
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+
+                {/* Timeline */}
+                <div className="flex flex-col gap-3">
+                  <SectionHeader icon={Clock} title="Timeline" />
+                  {activity.length === 0 ? (
+                    <EmptyState
+                      compact
+                      icon={Clock}
+                      title="No timeline yet"
+                      description="Events appear as this vehicle is assigned and progresses dispatches."
+                    />
+                  ) : (
+                    <ul className="relative space-y-0">
+                      {activity.slice(0, 6).map((item, idx) => {
+                        const style = TIMELINE_STYLE[item.kind];
+                        const Icon = style.icon;
+                        return (
+                          <li key={item.id} className="relative flex gap-3 pb-3 last:pb-0">
+                            {idx < Math.min(activity.length, 6) - 1 && (
                               <span
-                                className="text-[11px] text-muted-foreground"
-                                title={formatDateTime(item.at)}
-                              >
-                                {formatRelativeTime(item.at)}
-                              </span>
-                            </div>
-                            {item.detail && (
-                              <p className="mt-0.5 text-xs text-muted-foreground">{item.detail}</p>
+                                className="absolute left-[15px] top-8 bottom-0 w-px bg-border/70"
+                                aria-hidden
+                              />
                             )}
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
-            </section>
+                            <span
+                              className={cn(
+                                'relative z-[1] mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
+                                style.className,
+                              )}
+                            >
+                              <Icon className="h-3.5 w-3.5" />
+                            </span>
+                            <div className="min-w-0 flex-1 pt-0.5">
+                              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                <p className="text-sm font-medium leading-tight">{item.title}</p>
+                                <span
+                                  className="text-[11px] text-muted-foreground"
+                                  title={formatDateTime(item.at)}
+                                >
+                                  {formatRelativeTime(item.at)}
+                                </span>
+                              </div>
+                              {item.detail && (
+                                <p className="mt-0.5 text-xs text-muted-foreground">{item.detail}</p>
+                              )}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                  {activity.length > 6 && (
+                    <p className="text-[11px] font-medium text-brand hover:underline cursor-default">
+                      View full timeline →
+                    </p>
+                  )}
+                </div>
 
-            <section className="p-4 sm:p-5">
-              <SectionHeader
-                icon={Package}
-                title="Orders"
-                action={
-                  <Link
-                    to="/app/orders"
-                    search={{}}
-                    className="text-[11px] font-medium text-brand hover:underline"
-                  >
-                    All orders
-                  </Link>
-                }
-              />
-              <div className="mt-3">
-                {ordersQuery.loading ? (
-                  <div className="space-y-2">
-                    <Skeleton className="h-12 w-full rounded-lg" />
-                    <Skeleton className="h-12 w-full rounded-lg" />
-                  </div>
-                ) : relatedOrders.length === 0 ? (
-                  <EmptyState
-                    compact
+                {/* Orders */}
+                <div className="flex flex-col gap-3">
+                  <SectionHeader
                     icon={Package}
-                    title="No orders"
-                    description="Orders linked through this vehicle’s dispatches will show here."
-                  />
-                ) : (
-                  <ul className="divide-y divide-border/50 overflow-hidden rounded-xl border border-border/50">
-                    {relatedOrders.map((order) => (
-                      <li key={order.id}>
-                        <Link
-                          to="/app/orders/$orderId"
-                          params={{ orderId: order.id }}
-                          className="flex items-center justify-between gap-3 px-3.5 py-2.5 transition-colors hover:bg-muted/25 focus-visible:bg-muted/25"
-                        >
-                          <div className="min-w-0">
-                            <p className="flex items-center gap-1.5 text-sm font-medium">
-                              {order.pickupCity}
-                              <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                              {order.deliveryCity}
-                            </p>
-                            <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
-                              {order.orderNumber}
-                            </p>
-                          </div>
-                          <StatusBadge status={order.status} />
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </section>
-
-            <section className="p-4 sm:p-5">
-              <SectionHeader
-                icon={Truck}
-                title="Dispatches"
-                action={
-                  <Link
-                    to="/app/dispatches"
-                    search={{}}
-                    className="text-[11px] font-medium text-brand hover:underline"
-                  >
-                    All dispatches
-                  </Link>
-                }
-              />
-              <div className="mt-3">
-                {dispatchesQuery.loading ? (
-                  <div className="space-y-2">
-                    <Skeleton className="h-12 w-full rounded-lg" />
-                    <Skeleton className="h-12 w-full rounded-lg" />
-                  </div>
-                ) : dispatches.length === 0 ? (
-                  <EmptyState
-                    compact
-                    icon={Truck}
-                    title="No dispatches"
-                    description="Assign a dispatch to start this vehicle’s work history."
+                    title="Orders"
                     action={
-                      canAssign ? (
-                        <Button size="sm" variant="outline" onClick={() => setAssignDispatchOpen(true)}>
-                          Assign Dispatch
-                        </Button>
-                      ) : undefined
+                      <Link
+                        to="/app/orders"
+                        search={{}}
+                        className="text-[11px] font-medium text-brand hover:underline"
+                      >
+                        All orders →
+                      </Link>
                     }
                   />
-                ) : (
-                  <ul className="divide-y divide-border/50 overflow-hidden rounded-xl border border-border/50">
-                    {dispatches.slice(0, 8).map((d) => (
-                      <li key={d.id}>
-                        <Link
-                          to="/app/dispatches/$dispatchId"
-                          params={{ dispatchId: d.id }}
-                          className="flex items-center justify-between gap-3 px-3.5 py-2.5 transition-colors hover:bg-muted/25 focus-visible:bg-muted/25"
-                        >
-                          <div className="min-w-0">
-                            <p className="font-mono text-sm font-semibold">{d.dispatchNumber}</p>
-                            <p className="text-[11px] text-muted-foreground">
-                              {d.order?.pickupCity} → {d.order?.deliveryCity}
-                              {d.driver
-                                ? ` · ${d.driver.firstName} ${d.driver.lastName}`
-                                : ''}
-                            </p>
-                          </div>
-                          <StatusBadge status={d.status} />
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                  {ordersQuery.loading ? (
+                    <div className="space-y-2">
+                      <Skeleton className="h-10 w-full rounded-lg" />
+                      <Skeleton className="h-10 w-full rounded-lg" />
+                    </div>
+                  ) : relatedOrders.length === 0 ? (
+                    <EmptyState
+                      compact
+                      icon={Package}
+                      title="No orders"
+                      description="Orders linked through this vehicle's dispatches will show here."
+                    />
+                  ) : (
+                    <ul className="divide-y divide-border/50 overflow-hidden rounded-xl border border-border/50">
+                      {relatedOrders.slice(0, 4).map((order) => (
+                        <li key={order.id}>
+                          <Link
+                            to="/app/orders/$orderId"
+                            params={{ orderId: order.id }}
+                            className="flex items-center justify-between gap-2 px-3 py-2 transition-colors hover:bg-muted/25"
+                          >
+                            <div className="min-w-0">
+                              <p className="flex items-center gap-1 text-xs font-medium">
+                                {order.pickupCity}
+                                <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                                {order.deliveryCity}
+                              </p>
+                              <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">
+                                {order.orderNumber}
+                              </p>
+                            </div>
+                            <StatusBadge status={order.status} />
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                {/* Dispatches */}
+                <div className="flex flex-col gap-3">
+                  <SectionHeader
+                    icon={Truck}
+                    title="Dispatches"
+                    action={
+                      <Link
+                        to="/app/dispatches"
+                        search={{}}
+                        className="text-[11px] font-medium text-brand hover:underline"
+                      >
+                        All dispatches →
+                      </Link>
+                    }
+                  />
+                  {dispatchesQuery.loading ? (
+                    <div className="space-y-2">
+                      <Skeleton className="h-10 w-full rounded-lg" />
+                      <Skeleton className="h-10 w-full rounded-lg" />
+                    </div>
+                  ) : dispatches.length === 0 ? (
+                    <EmptyState
+                      compact
+                      icon={Truck}
+                      title="No dispatches"
+                      description="Assign a dispatch to start this vehicle's work history."
+                      action={
+                        canAssign ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setAssignDispatchOpen(true)}
+                          >
+                            Assign Dispatch
+                          </Button>
+                        ) : undefined
+                      }
+                    />
+                  ) : (
+                    <ul className="divide-y divide-border/50 overflow-hidden rounded-xl border border-border/50">
+                      {dispatches.slice(0, 4).map((d) => (
+                        <li key={d.id}>
+                          <Link
+                            to="/app/dispatches/$dispatchId"
+                            params={{ dispatchId: d.id }}
+                            className="flex items-center justify-between gap-2 px-3 py-2 transition-colors hover:bg-muted/25"
+                          >
+                            <div className="min-w-0">
+                              <p className="font-mono text-xs font-semibold">{d.dispatchNumber}</p>
+                              <p className="mt-0.5 text-[10px] text-muted-foreground">
+                                {d.order?.pickupCity} → {d.order?.deliveryCity}
+                                {d.driver ? ` · ${d.driver.firstName} ${d.driver.lastName}` : ''}
+                              </p>
+                            </div>
+                            <StatusBadge status={d.status} />
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
             </section>
 
-            <section className="p-4 sm:p-5">
-              <SectionHeader icon={CheckCircle2} title="Fleet summary" />
-              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-                <MetricCard label="Completed trips" value={String(completed)} tone="good" />
-                <MetricCard label="Active dispatches" value={String(active)} tone="brand" />
-                {assignedDays != null && (
-                  <MetricCard label="Assigned days" value={String(assignedDays)} tone="muted" />
-                )}
+            {/* Fleet Summary */}
+            <section className="p-5">
+              <SectionHeader icon={CheckCircle2} title="Fleet Summary" />
+              <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <MetricCard label="Completed Trips" value={String(completed)} tone="good" />
+                <MetricCard label="Active Dispatches" value={String(active)} tone="brand" />
                 <MetricCard label="Availability" value={avail.label} tone="muted" />
                 <MetricCard
-                  label="Last dispatch"
+                  label="Last Dispatch"
                   value={lastDispatch?.dispatchNumber ?? '—'}
                   tone="muted"
                   mono
                 />
               </div>
               <p className="mt-2 text-[11px] text-muted-foreground">
-                From this vehicle’s loaded dispatch history. No telematics or fuel metrics.
+                From this vehicle's loaded dispatch history. No telematics or fuel metrics.
               </p>
             </section>
           </div>
 
+          {/* ─── Right sidebar ─── */}
           <aside className="bg-muted/10 lg:sticky lg:top-4 lg:self-start">
-            <div className="space-y-3.5 p-3 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
+            <div className="space-y-4 p-3 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
+
+              {/* Quick Actions */}
               <div>
                 <h3 className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Quick actions
+                  Quick Actions
                 </h3>
                 <div className="divide-y divide-border/50 overflow-hidden rounded-lg border border-border/60 bg-surface">
                   {canAssign && (
@@ -676,7 +748,7 @@ export function VehiclesDetail({ vehicleId }: VehiclesDetailProps) {
                       className={RAIL_BTN}
                       onClick={() => setAssignDriverOpen(true)}
                     >
-                      <UserRound className="h-3.5 w-3.5" />
+                      <UserRound className="h-3.5 w-3.5 shrink-0" />
                       Assign Driver
                     </button>
                   )}
@@ -686,20 +758,20 @@ export function VehiclesDetail({ vehicleId }: VehiclesDetailProps) {
                       className={RAIL_BTN}
                       onClick={() => setAssignDispatchOpen(true)}
                     >
-                      <Truck className="h-3.5 w-3.5" />
+                      <Truck className="h-3.5 w-3.5 shrink-0" />
                       Assign Dispatch
                     </button>
                   )}
                   {!vehicle.archivedAt && (
                     <button type="button" className={RAIL_BTN} onClick={() => setEditOpen(true)}>
-                      <Edit2 className="h-3.5 w-3.5" />
-                      Edit
+                      <Edit2 className="h-3.5 w-3.5 shrink-0" />
+                      Edit Vehicle
                     </button>
                   )}
                   {!vehicle.archivedAt && (
                     <button type="button" className={RAIL_BTN} onClick={() => setStatusOpen(true)}>
-                      <Clock className="h-3.5 w-3.5" />
-                      Status
+                      <Clock className="h-3.5 w-3.5 shrink-0" />
+                      Update Status
                     </button>
                   )}
                   {!vehicle.archivedAt && (
@@ -708,16 +780,17 @@ export function VehiclesDetail({ vehicleId }: VehiclesDetailProps) {
                       className={cn(RAIL_BTN, 'text-destructive hover:bg-destructive/10')}
                       onClick={() => setShowArchive(true)}
                     >
-                      <Archive className="h-3.5 w-3.5" />
-                      Archive
+                      <Archive className="h-3.5 w-3.5 shrink-0" />
+                      Archive Vehicle
                     </button>
                   )}
                 </div>
               </div>
 
+              {/* Vehicle Status */}
               <div>
                 <h3 className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Vehicle status
+                  Vehicle Status
                 </h3>
                 <dl className="space-y-2 rounded-lg border border-border/60 bg-surface px-3 py-2.5 text-xs">
                   <RailRow label="Availability" value={avail.label} strong />
@@ -729,11 +802,7 @@ export function VehiclesDetail({ vehicleId }: VehiclesDetailProps) {
                         : '—'
                     }
                   />
-                  <RailRow
-                    label="Dispatch"
-                    value={liveDispatch?.dispatchNumber ?? '—'}
-                    mono
-                  />
+                  <RailRow label="Dispatch" value={liveDispatch?.dispatchNumber ?? '—'} mono />
                   <RailRow
                     label="Capacity"
                     value={formatCapacity(vehicle.capacityKg, vehicle.capacityM3)}
@@ -747,21 +816,91 @@ export function VehiclesDetail({ vehicleId }: VehiclesDetailProps) {
                 </dl>
               </div>
 
+              {/* Documents */}
+              <div>
+                <h3 className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Documents
+                </h3>
+                <div className="divide-y divide-border/50 overflow-hidden rounded-lg border border-border/60 bg-surface">
+                  <div className="px-3 py-2.5">
+                    <p className="text-[10px] font-medium text-muted-foreground">
+                      Insurance / Registration
+                    </p>
+                    <div className="mt-1.5 flex items-center justify-between gap-2">
+                      <span
+                        className={cn(
+                          'text-xs font-semibold',
+                          insExpired
+                            ? 'text-destructive'
+                            : insExpiring
+                              ? 'text-amber-500'
+                              : 'text-foreground',
+                        )}
+                      >
+                        {vehicle.insuranceExpiry ? formatDate(vehicle.insuranceExpiry) : '—'}
+                      </span>
+                      <span
+                        className={cn(
+                          'h-2 w-2 rounded-full',
+                          insExpired
+                            ? 'bg-destructive'
+                            : insExpiring
+                              ? 'bg-amber-500'
+                              : vehicle.insuranceExpiry
+                                ? 'bg-emerald-500'
+                                : 'bg-muted-foreground/30',
+                        )}
+                      />
+                    </div>
+                  </div>
+                  <div className="px-3 py-2.5">
+                    <p className="text-[10px] font-medium text-muted-foreground">Inspection</p>
+                    <div className="mt-1.5 flex items-center justify-between gap-2">
+                      <span
+                        className={cn(
+                          'text-xs font-semibold',
+                          inspExpired
+                            ? 'text-destructive'
+                            : inspExpiring
+                              ? 'text-amber-500'
+                              : 'text-foreground',
+                        )}
+                      >
+                        {vehicle.inspectionExpiry ? formatDate(vehicle.inspectionExpiry) : '—'}
+                      </span>
+                      <span
+                        className={cn(
+                          'h-2 w-2 rounded-full',
+                          inspExpired
+                            ? 'bg-destructive'
+                            : inspExpiring
+                              ? 'bg-amber-500'
+                              : vehicle.inspectionExpiry
+                                ? 'bg-emerald-500'
+                                : 'bg-muted-foreground/30',
+                        )}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Navigation */}
               <div>
                 <h3 className="mb-1.5 px-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Navigation
                 </h3>
                 <div className="divide-y divide-border/50 overflow-hidden rounded-lg border border-border/60 bg-surface">
                   <Link to="/app/drivers" search={{}} className={RAIL_BTN}>
-                    <UserRound className="h-3.5 w-3.5" />
+                    <UserRound className="h-3.5 w-3.5 shrink-0" />
                     Drivers
                   </Link>
                   <Link to="/app/dispatches" search={{}} className={RAIL_BTN}>
-                    <Truck className="h-3.5 w-3.5" />
+                    <Truck className="h-3.5 w-3.5 shrink-0" />
                     Dispatches
                   </Link>
                   <Link to="/app/orders" search={{}} className={RAIL_BTN}>
-                    <Package className="h-3.5 w-3.5" />
+                    <Package className="h-3.5 w-3.5 shrink-0" />
                     Orders
                   </Link>
                   {customerId ? (
@@ -770,19 +909,19 @@ export function VehiclesDetail({ vehicleId }: VehiclesDetailProps) {
                       params={{ customerId }}
                       className={RAIL_BTN}
                     >
-                      <Building2 className="h-3.5 w-3.5" />
+                      <Building2 className="h-3.5 w-3.5 shrink-0" />
                       Customer
                     </Link>
                   ) : null}
                   {driverId ? (
                     <Link to="/app/drivers/$driverId" params={{ driverId }} className={RAIL_BTN}>
-                      <User className="h-3.5 w-3.5" />
-                      Current driver
+                      <User className="h-3.5 w-3.5 shrink-0" />
+                      Current Driver
                     </Link>
                   ) : (
                     <span className={cn(RAIL_BTN, 'cursor-default opacity-50')}>
-                      <User className="h-3.5 w-3.5" />
-                      No driver
+                      <User className="h-3.5 w-3.5 shrink-0" />
+                      No driver assigned
                     </span>
                   )}
                 </div>
@@ -813,6 +952,8 @@ export function VehiclesDetail({ vehicleId }: VehiclesDetailProps) {
   );
 }
 
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
 function OpsChip({ badge }: { badge: VehicleOpsBadge }) {
   return (
     <span
@@ -836,46 +977,15 @@ function SectionHeader({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-        <Icon className="h-3.5 w-3.5" />
-        {title}
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center gap-2.5">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand/10 text-brand">
+          <Icon className="h-3.5 w-3.5" />
+        </span>
+        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
       </div>
       {action}
     </div>
-  );
-}
-
-function HeaderChip({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: 'warn' | 'bad';
-}) {
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs',
-        tone === 'warn' && 'border-warning/40 bg-warning/10',
-        tone === 'bad' && 'border-destructive/40 bg-destructive/10',
-        !tone && 'border-border/60 bg-muted/20',
-      )}
-    >
-      <span className="text-muted-foreground">{label}</span>
-      <span
-        className={cn(
-          'font-semibold tabular-nums',
-          tone === 'warn' && 'text-warning',
-          tone === 'bad' && 'text-destructive',
-          !tone && 'text-foreground',
-        )}
-      >
-        {value}
-      </span>
-    </span>
   );
 }
 
@@ -943,7 +1053,9 @@ function InfoTile({
 }) {
   return (
     <div className="rounded-lg border border-border/50 bg-muted/10 px-3 py-2.5">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
       <p
         className={cn(
           'mt-1 text-sm font-semibold',
@@ -981,8 +1093,16 @@ function MetricCard({
   }[tone];
   return (
     <div className={cn('rounded-lg border px-3 py-2.5', toneClass)}>
-      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className={cn('mt-1 text-sm font-semibold tabular-nums', mono && 'font-mono', valueClass)}>
+      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      <p
+        className={cn(
+          'mt-1 text-sm font-semibold tabular-nums',
+          mono && 'font-mono',
+          valueClass,
+        )}
+      >
         {value}
       </p>
     </div>

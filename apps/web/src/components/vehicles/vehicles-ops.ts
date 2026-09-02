@@ -220,20 +220,19 @@ export function buildVehicleTimeline(
       id: `disp-created-${d.id}`,
       at: d.createdAt,
       title: 'Dispatch assigned',
-      detail: [
-        d.dispatchNumber,
-        d.order?.orderNumber,
-        d.driver ? `${d.driver.firstName} ${d.driver.lastName}` : null,
-      ]
-        .filter(Boolean)
-        .join(' · '),
+      detail: [d.dispatchNumber, d.order?.orderNumber].filter(Boolean).join(' · '),
       kind: 'dispatch',
     });
 
     if (d.driver) {
+      // The dispatch's driver can be reassigned after creation, and `d.driver`
+      // always reflects the CURRENT one — so this must not be timestamped at
+      // `d.createdAt`, or a same-day reassignment would silently rewrite the
+      // original driver out of the timeline under a stale date. `updatedAt` is
+      // the closest real timestamp we have for "this driver is current as of."
       items.push({
         id: `drv-assigned-${d.id}`,
-        at: d.createdAt,
+        at: d.updatedAt,
         title: 'Assigned',
         detail: `${d.driver.firstName} ${d.driver.lastName} · ${d.dispatchNumber}`,
         kind: 'driver',

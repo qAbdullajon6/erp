@@ -1,12 +1,29 @@
 import { createHmac } from "crypto";
+import { AuditService } from "../../audit/audit.service";
+import { PrismaService } from "../../prisma/prisma.service";
+import { SubscriptionLifecycleService } from "../subscription-lifecycle.service";
+import { asDependency, firstMockArg } from "../test-support/billing-spec.helpers";
 import { ClickWebhookController } from "./click-webhook.controller";
 
 const CLICK_SECRET = "click_test_secret_key";
-// Org ID must match the controller's extractOrganizationId regex /^sub_([a-f0-9-]+)_\d+$/
 const ORG_ID = "abc123-def456";
 
-function makeDto(overrides: Partial<any> = {}) {
-  const base = {
+interface ClickWebhookDto {
+  click_trans_id: number;
+  service_id: number;
+  click_paydoc_id: number;
+  merchant_trans_id: string;
+  merchant_prepare_id: number;
+  amount: number;
+  action: number;
+  error: number;
+  error_note: string;
+  sign_time: string;
+  sign_string: string;
+}
+
+function makeDto(overrides: Partial<ClickWebhookDto> = {}): ClickWebhookDto {
+  const base: ClickWebhookDto = {
     click_trans_id: 12345,
     service_id: 100,
     click_paydoc_id: 67890,
@@ -21,7 +38,6 @@ function makeDto(overrides: Partial<any> = {}) {
     ...overrides,
   };
 
-  // Generate valid signature
   const signString =
     `${base.click_trans_id}${base.service_id}${CLICK_SECRET}${base.merchant_trans_id}${base.amount}${base.action}${base.sign_time}`;
   base.sign_string = createHmac("md5", CLICK_SECRET).update(signString).digest("hex");
@@ -29,7 +45,7 @@ function makeDto(overrides: Partial<any> = {}) {
   return base;
 }
 
-function makePrisma(opts: { existingDelivery?: any; subscription?: any } = {}) {
+function makePrisma(opts: { existingDelivery?: { id: string; status: string; eventType?: string }; subscription?: unknown } = {}) {
   return {
     paymentWebhookDelivery: {
       findFirst: jest.fn().mockResolvedValue(opts.existingDelivery ?? null),
@@ -38,31 +54,37 @@ function makePrisma(opts: { existingDelivery?: any; subscription?: any } = {}) {
     },
     organizationSubscription: {
       findUnique: jest.fn().mockResolvedValue(
-        "subscription" in opts ? opts.subscription : { id: "sub-1", organizationId: ORG_ID, plan: { price: 14900 } },
+        "subscription" in opts
+          ? opts.subscription
+          : { id: "sub-1", organizationId: ORG_ID, plan: { price: 14900 } },
       ),
     },
-  } as any;
+  };
 }
 
 function makeAuditService() {
-  return { log: jest.fn().mockResolvedValue(undefined) } as any;
+  return { log: jest.fn().mockResolvedValue(undefined) };
 }
 
 function makeLifecycle() {
-  return { renewSubscription: jest.fn().mockResolvedValue({}) } as any;
+  return { renewSubscription: jest.fn().mockResolvedValue({}) };
 }
 
 describe("ClickWebhookController", () => {
   let controller: ClickWebhookController;
-  let prisma: any;
-  let lifecycle: any;
+  let prisma: ReturnType<typeof makePrisma>;
+  let lifecycle: ReturnType<typeof makeLifecycle>;
   const originalEnv = process.env;
 
   beforeEach(() => {
     process.env = { ...originalEnv, CLICK_SECRET_KEY: CLICK_SECRET };
     prisma = makePrisma();
     lifecycle = makeLifecycle();
-    controller = new ClickWebhookController(prisma, makeAuditService(), lifecycle);
+    controller = new ClickWebhookController(
+      asDependency<PrismaService>(prisma),
+      asDependency<AuditService>(makeAuditService()),
+      asDependency<SubscriptionLifecycleService>(lifecycle),
+    );
   });
 
   afterEach(() => {
@@ -76,15 +98,13 @@ describe("ClickWebhookController", () => {
 
       expect(result.error).toBe(0);
       expect(result.error_note).toBe("Success");
-      expect(prisma.paymentWebhookDelivery.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            provider: "click",
-            eventType: "prepare",
-            status: "PENDING",
-          }),
-        }),
-      );
+      expect(prisma.paymentWebhookDelivery.create).toHaveBeenCalled();
+      const createCall = firstMockArg<{
+        data: { provider: string; eventType: string; status: string };
+      }>(prisma.paymentWebhookDelivery.create);
+      expect(createCall.data.provider).toBe("click");
+      expect(createCall.data.eventType).toBe("prepare");
+      expect(createCall.data.status).toBe("PENDING");
     });
 
     it("rejects invalid signature", async () => {
@@ -98,7 +118,11 @@ describe("ClickWebhookController", () => {
 
     it("returns success for already-processed event (idempotency)", async () => {
       prisma = makePrisma({ existingDelivery: { id: "del-1", status: "DELIVERED" } });
-      controller = new ClickWebhookController(prisma, makeAuditService(), lifecycle);
+      controller = new ClickWebhookController(
+        asDependency<PrismaService>(prisma),
+        asDependency<AuditService>(makeAuditService()),
+        asDependency<SubscriptionLifecycleService>(lifecycle),
+      );
 
       const dto = makeDto();
       const result = await controller.prepare(dto);
@@ -107,7 +131,6 @@ describe("ClickWebhookController", () => {
 
     it("rejects invalid merchant_trans_id format", async () => {
       const dto = makeDto({ merchant_trans_id: "invalid_format" });
-      // Regenerate signature for the new merchant_trans_id
       const signString =
         `${dto.click_trans_id}${dto.service_id}${CLICK_SECRET}${dto.merchant_trans_id}${dto.amount}${dto.action}${dto.sign_time}`;
       dto.sign_string = createHmac("md5", CLICK_SECRET).update(signString).digest("hex");
@@ -118,7 +141,11 @@ describe("ClickWebhookController", () => {
 
     it("rejects when subscription not found", async () => {
       prisma = makePrisma({ subscription: null });
-      controller = new ClickWebhookController(prisma, makeAuditService(), lifecycle);
+      controller = new ClickWebhookController(
+        asDependency<PrismaService>(prisma),
+        asDependency<AuditService>(makeAuditService()),
+        asDependency<SubscriptionLifecycleService>(lifecycle),
+      );
 
       const dto = makeDto();
       const result = await controller.prepare(dto);
@@ -127,7 +154,6 @@ describe("ClickWebhookController", () => {
 
     it("rejects amount mismatch", async () => {
       const dto = makeDto({ amount: 999.99 });
-      // Regenerate signature
       const signString =
         `${dto.click_trans_id}${dto.service_id}${CLICK_SECRET}${dto.merchant_trans_id}${dto.amount}${dto.action}${dto.sign_time}`;
       dto.sign_string = createHmac("md5", CLICK_SECRET).update(signString).digest("hex");
@@ -158,7 +184,11 @@ describe("ClickWebhookController", () => {
       prisma = makePrisma({
         existingDelivery: { id: "del-1", status: "DELIVERED", eventType: "complete" },
       });
-      controller = new ClickWebhookController(prisma, makeAuditService(), lifecycle);
+      controller = new ClickWebhookController(
+        asDependency<PrismaService>(prisma),
+        asDependency<AuditService>(makeAuditService()),
+        asDependency<SubscriptionLifecycleService>(lifecycle),
+      );
 
       const dto = makeDto();
       const result = await controller.complete(dto);
@@ -168,7 +198,11 @@ describe("ClickWebhookController", () => {
 
     it("returns internal error when renewal fails", async () => {
       lifecycle.renewSubscription.mockRejectedValue(new Error("Payment processing error"));
-      controller = new ClickWebhookController(prisma, makeAuditService(), lifecycle);
+      controller = new ClickWebhookController(
+        asDependency<PrismaService>(prisma),
+        asDependency<AuditService>(makeAuditService()),
+        asDependency<SubscriptionLifecycleService>(lifecycle),
+      );
 
       const dto = makeDto();
       const result = await controller.complete(dto);

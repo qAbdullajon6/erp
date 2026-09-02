@@ -1,6 +1,8 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,6 +23,41 @@ import {
 /// the dialog is opened from something that unmounts on click — a dropdown menu
 /// item, for instance, closes the menu and would take an embedded trigger with
 /// it before the dialog ever mounted.
+/// Deliberately a child of the dialog content rather than state on the dialog
+/// itself: Radix unmounts the content on close, so reopening always starts from
+/// an empty box and a locked Confirm, with no reset logic to forget.
+function PhraseGate({
+  phrase,
+  onMatchChange,
+}: {
+  phrase: string;
+  onMatchChange: (matched: boolean) => void;
+}) {
+  const [value, setValue] = useState('');
+  const inputId = useId();
+
+  useEffect(() => () => onMatchChange(false), [onMatchChange]);
+
+  const handleChange = (next: string) => {
+    setValue(next);
+    onMatchChange(next.trim() === phrase);
+  };
+
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={inputId}>
+        Type <span className="font-semibold text-foreground">{phrase}</span> to confirm
+      </Label>
+      <Input
+        id={inputId}
+        value={value}
+        autoComplete="off"
+        onChange={(e) => handleChange(e.target.value)}
+      />
+    </div>
+  );
+}
+
 export function ConfirmDialog({
   trigger,
   open,
@@ -31,7 +68,9 @@ export function ConfirmDialog({
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
   onConfirm,
+  onCancel,
   destructive = false,
+  confirmPhrase,
 }: {
   trigger?: ReactNode;
   open?: boolean;
@@ -44,21 +83,72 @@ export function ConfirmDialog({
   confirmLabel?: string;
   cancelLabel?: string;
   onConfirm: () => void;
+  /// Explicit Stay/Cancel handler (controlled dialogs only; not fired on Confirm).
+  onCancel?: () => void;
   destructive?: boolean;
+  /// Word the user must type before Confirm unlocks. For the small number of
+  /// actions that destroy something no one can hand back — a live API key, a
+  /// webhook's delivery history — where a reflexive click on a familiar-looking
+  /// dialog is the failure mode a plain confirmation cannot catch.
+  confirmPhrase?: string;
 }) {
+  const controlled = typeof open === 'boolean';
+  const [phraseMatched, setPhraseMatched] = useState(false);
+  const gated = Boolean(confirmPhrase) && !phraseMatched;
+
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       {trigger ? <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger> : null}
-      <AlertDialogContent>
+      <AlertDialogContent
+        // Controlled dialogs are commonly opened from something that already
+        // unmounted (a dropdown menu item) — Radix's default focus-return has
+        // no live trigger to land on there, so it's skipped. Uncontrolled
+        // dialogs (an AlertDialogTrigger wrapping a real, still-mounted
+        // button) keep the default: focus correctly returns to it on close.
+        onCloseAutoFocus={(e) => {
+          if (controlled) e.preventDefault();
+        }}
+        onEscapeKeyDown={(e) => {
+          if (controlled) e.stopPropagation();
+        }}
+      >
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         {children}
+        {confirmPhrase ? (
+          <PhraseGate phrase={confirmPhrase} onMatchChange={setPhraseMatched} />
+        ) : null}
         <AlertDialogFooter>
-          <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
+          <AlertDialogCancel
+            onClick={(e) => {
+              if (!controlled) {
+                onCancel?.();
+                return;
+              }
+              // Controlled + nested Sheet: prevent Radix from dismissing the parent.
+              e.preventDefault();
+              e.stopPropagation();
+              onCancel?.();
+              onOpenChange?.(false);
+            }}
+          >
+            {cancelLabel}
+          </AlertDialogCancel>
           <AlertDialogAction
-            onClick={onConfirm}
+            disabled={gated}
+            onClick={(e) => {
+              if (gated) {
+                e.preventDefault();
+                return;
+              }
+              if (controlled) {
+                e.preventDefault();
+                e.stopPropagation();
+              }
+              onConfirm();
+            }}
             className={destructive ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : undefined}
           >
             {confirmLabel}

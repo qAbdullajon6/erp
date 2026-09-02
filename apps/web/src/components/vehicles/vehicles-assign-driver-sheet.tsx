@@ -11,6 +11,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { FormAlert } from '@/components/shared/form-alert';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { useUpdateDispatch } from '@/lib/hooks/use-dispatches';
 import { useAvailability } from '@/lib/api/availability';
 import type { ApiDispatch } from '@/lib/api/dispatches';
@@ -41,6 +42,7 @@ export function VehiclesAssignDriverSheet({
   const { update, loading } = useUpdateDispatch(liveDispatch?.id ?? '');
   const [driverId, setDriverId] = useState('');
   const [error, setError] = useState('');
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const { data: availability, loading: availLoading, error: availError } = useAvailability(
     open && liveDispatch
@@ -151,13 +153,40 @@ export function VehiclesAssignDriverSheet({
           <Button variant="outline" disabled={loading} onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            className="bg-gradient-brand text-brand-foreground hover:opacity-90"
-            disabled={loading || !liveDispatch}
-            onClick={() => void handleSave()}
-          >
-            {loading ? 'Saving…' : 'Assign driver'}
-          </Button>
+          {liveDispatch ? (
+            <>
+              {/* Controlled (not `trigger`): a Radix AlertDialogTrigger nested inside an
+                  already-open Sheet never opens — the outer Sheet's dismissable layer
+                  eats the click and closes itself instead. */}
+              <Button
+                className="bg-gradient-brand text-brand-foreground hover:opacity-90"
+                disabled={loading || availLoading || !driverId}
+                onClick={() => setConfirmOpen(true)}
+              >
+                {loading ? 'Assigning…' : 'Assign driver'}
+              </Button>
+              <ConfirmDialog
+                open={confirmOpen}
+                onOpenChange={setConfirmOpen}
+                title="Change driver?"
+                description={
+                  picked
+                    ? `Release ${liveDispatch.driver ? `${liveDispatch.driver.firstName} ${liveDispatch.driver.lastName}` : 'the current driver'} and commit ${picked.firstName} ${picked.lastName}.`
+                    : 'Confirm driver change.'
+                }
+                confirmLabel="Yes, assign"
+                onConfirm={() => {
+                  setConfirmOpen(false);
+                  void handleSave();
+                }}
+                onCancel={() => setConfirmOpen(false)}
+              />
+            </>
+          ) : (
+            <Button className="bg-gradient-brand text-brand-foreground hover:opacity-90" disabled>
+              Assign driver
+            </Button>
+          )}
         </div>
       </SheetContent>
     </Sheet>

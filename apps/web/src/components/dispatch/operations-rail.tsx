@@ -1,9 +1,10 @@
 'use client';
 
-import { Phone, User, Truck, Package, AlertTriangle } from 'lucide-react';
+import { Phone, AlertTriangle } from 'lucide-react';
 import type { ApiDispatch } from '@/lib/api/dispatches';
 import type { DispatchBoardSummary } from '@/lib/api/dashboard';
 import { StatusBadge } from '@/components/shared/status-badge';
+import { DriverOperationalStatusBadge } from '@/components/shared/driver-operational-status-badge';
 import { cn } from '@/lib/utils';
 import type { BoardOpsCounts } from './dispatch-ops';
 import { isDispatchOverdue } from './dispatch-ops';
@@ -28,127 +29,115 @@ export function OperationsRail({ selectedDispatch, board, counts, onCallDriver }
       ? board.drivers.busy.filter((b) => b.driver.id === driver.id).length
       : 0;
 
+  const boardDriver =
+    board && driver
+      ? board.drivers.available.find((d) => d.id === driver.id) ??
+        board.drivers.busy.find((b) => b.driver.id === driver.id)?.driver ??
+        board.drivers.onBreak?.find((d) => d.id === driver.id) ??
+        board.drivers.onLeave.find((d) => d.id === driver.id) ??
+        null
+      : null;
+
   return (
     <aside className="flex h-full min-h-0 flex-col bg-muted/15">
       <div className="shrink-0 border-b border-border/60 px-3.5 py-2.5">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Context
+          Assignment
         </h2>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3.5 scrollbar-thin">
-        <section className="space-y-2">
-          <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            <User className="h-3 w-3" aria-hidden="true" />
-            Driver
-          </p>
-          {driver ? (
-            <div className="rounded-lg border border-border/60 bg-card/80 p-3">
-              <p className="text-sm font-medium text-foreground">
-                {driver.firstName} {driver.lastName}
-              </p>
-              <p className="font-mono text-[11px] text-muted-foreground">{driver.employeeCode}</p>
-              <div className="mt-1.5 flex items-center justify-between gap-2">
-                <StatusBadge status={driver.status} />
-                {driver.phone && (
-                  <button
-                    type="button"
-                    className="inline-flex min-h-7 items-center gap-1 text-xs font-medium text-brand hover:underline"
-                    onClick={() => onCallDriver?.(driver.phone)}
-                  >
-                    <Phone className="h-3 w-3" />
-                    Call
-                  </button>
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3 scrollbar-thin">
+        {!driver && !vehicle && !order ? (
+          <p className="pt-2 text-center text-xs text-muted-foreground/60">Select a dispatch</p>
+        ) : (
+          <>
+            {driver && (
+              <div className="rounded-lg border border-border/50 bg-card/60 px-3 py-2.5">
+                <div className="flex items-start gap-2">
+                  <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand/15 text-[10px] font-bold text-brand">
+                    {(driver.firstName[0] ?? '') + (driver.lastName[0] ?? '')}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-1">
+                      <p className="text-xs font-semibold text-foreground">
+                        {driver.firstName} {driver.lastName}
+                      </p>
+                      <StatusBadge status={driver.status} />
+                    </div>
+                    {driver.phone && (
+                      <button
+                        type="button"
+                        className="mt-0.5 inline-flex items-center gap-0.5 text-[11px] text-brand hover:underline"
+                        onClick={() => onCallDriver?.(driver.phone)}
+                      >
+                        <Phone className="h-2.5 w-2.5" />
+                        {driver.phone}
+                      </button>
+                    )}
+                    {boardDriver?.operationalStatus && (
+                      <div className="mt-1">
+                        <DriverOperationalStatusBadge
+                          status={boardDriver.operationalStatus}
+                          onBreak={boardDriver.onBreak}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {driverBusyJobs > 1 && (
+                  <p className="mt-1.5 flex items-center gap-1 text-[10px] font-medium text-warning">
+                    <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+                    {driverBusyJobs} active jobs
+                  </p>
                 )}
               </div>
-              {driverBusyJobs > 1 && (
-                <p className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-warning">
-                  <AlertTriangle className="h-3 w-3" aria-hidden="true" />
-                  {driverBusyJobs} live jobs
+            )}
+
+            {vehicle && (
+              <div className="rounded-lg border border-border/50 bg-card/60 px-3 py-2.5">
+                <div className="flex items-start justify-between gap-1.5">
+                  <div className="min-w-0">
+                    <p className="flex items-center gap-1.5">
+                      <span className="font-mono text-xs font-bold text-foreground">{vehicle.plateNumber}</span>
+                    </p>
+                    <p className="mt-0.5 text-[10px] capitalize text-muted-foreground">
+                      {vehicle.type} · {vehicle.vehicleCode}
+                    </p>
+                  </div>
+                  <StatusBadge status={vehicle.status} />
+                </div>
+              </div>
+            )}
+
+            {order && (
+              <div className="rounded-lg border border-border/50 bg-card/60 px-3 py-2.5">
+                <p className="font-mono text-[11px] font-semibold text-brand">{order.orderNumber}</p>
+                <p className="mt-0.5 text-xs font-medium text-foreground">
+                  {order.pickupCity} → {order.deliveryCity}
                 </p>
-              )}
-            </div>
-          ) : (
-            <p className="rounded-lg border border-dashed border-border/60 px-3 py-2.5 text-xs text-muted-foreground">
-              No dispatch selected
-            </p>
-          )}
-        </section>
-
-        <section className="space-y-2">
-          <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            <Truck className="h-3 w-3" aria-hidden="true" />
-            Vehicle
-          </p>
-          {vehicle ? (
-            <div className="rounded-lg border border-border/60 bg-card/80 p-3">
-              <p className="font-mono text-sm font-medium text-foreground">{vehicle.plateNumber}</p>
-              <p className="text-[11px] capitalize text-muted-foreground">
-                {vehicle.type}
-                <span className="mx-1">·</span>
-                {vehicle.vehicleCode}
-              </p>
-              <div className="mt-1.5">
-                <StatusBadge status={vehicle.status} />
+                <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
+                  {order.customer?.companyName ?? '—'}
+                </p>
+                {selectedDispatch && isDispatchOverdue(selectedDispatch) && (
+                  <p className="mt-1 text-[10px] font-semibold text-destructive">Delivery overdue</p>
+                )}
               </div>
-            </div>
-          ) : (
-            <p className="rounded-lg border border-dashed border-border/60 px-3 py-2.5 text-xs text-muted-foreground">
-              No dispatch selected
-            </p>
-          )}
-        </section>
+            )}
+          </>
+        )}
 
-        <section className="space-y-2">
-          <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            <Package className="h-3 w-3" aria-hidden="true" />
-            Order
-          </p>
-          {order ? (
-            <div className="rounded-lg border border-border/60 bg-card/80 p-3">
-              <p className="font-mono text-sm font-medium text-foreground">{order.orderNumber}</p>
-              <p className="mt-0.5 text-xs text-foreground">
-                {order.pickupCity} → {order.deliveryCity}
-              </p>
-              <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                {order.customer?.companyName ?? '—'}
-              </p>
-              <div className="mt-1.5">
-                <StatusBadge status={order.status} />
-              </div>
-              {selectedDispatch && isDispatchOverdue(selectedDispatch) && (
-                <p className="mt-1.5 text-[11px] font-semibold text-destructive">Delivery overdue</p>
-              )}
-            </div>
-          ) : (
-            <p className="rounded-lg border border-dashed border-border/60 px-3 py-2.5 text-xs text-muted-foreground">
-              No dispatch selected
-            </p>
-          )}
-        </section>
-
-        {/* Single compact snapshot — not a second copy of the filter strip */}
-        <section className="space-y-2 border-t border-border/50 pt-3.5">
+        <section className="space-y-1 border-t border-border/50 pt-3">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Shift snapshot
+            Shift
           </p>
           <ul className="space-y-0.5 text-xs">
             <RailStat label="Free drivers" value={counts.driversAvailable} tone="success" />
             <RailStat label="Free vehicles" value={counts.idleVehicles} tone="success" />
-            <RailStat
-              label="Busy drivers"
-              value={board?.drivers.busy.length ?? 0}
-              tone="muted"
-            />
+            <RailStat label="Busy drivers" value={board?.drivers.busy.length ?? 0} tone="muted" />
             <RailStat
               label="Unassigned"
               value={counts.needsAssignment}
               tone={counts.needsAssignment > 0 ? 'warning' : 'muted'}
-            />
-            <RailStat
-              label="Overloaded"
-              value={counts.needsReassignment}
-              tone={counts.needsReassignment > 0 ? 'warning' : 'muted'}
             />
           </ul>
         </section>

@@ -115,6 +115,7 @@ const isDevelopment = process.env.NODE_ENV === "development";
     AlertService,
     GeofenceService,
     TripService,
+    MapboxService,
   ],
 })
 export class TelematicsModule {}

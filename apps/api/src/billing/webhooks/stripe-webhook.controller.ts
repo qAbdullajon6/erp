@@ -1,9 +1,17 @@
 import { Controller, Post, Req, Headers, Logger, BadRequestException } from "@nestjs/common";
 import { Request } from "express";
+import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../../audit/audit.service";
 import { SubscriptionLifecycleService } from "../subscription-lifecycle.service";
 import { PaymentProviderRegistry } from "../payment-provider.registry";
+import { loadStripe } from "../providers/stripe-loader";
+import { getErrorMessage } from "../providers/stripe-errors";
+import type {
+  StripeWebhookEvent,
+  StripeWebhookPaymentIntent,
+  StripeWebhookSubscription,
+} from "../providers/stripe-sdk.types";
 
 /// Stripe webhook handler.
 ///
@@ -45,7 +53,7 @@ export class StripeWebhookController {
     }
 
     // Get raw body for signature verification
-    const payload = (req as any).rawBody || JSON.stringify(req.body);
+    const payload = req.rawBody ?? JSON.stringify(req.body);
 
     // Verify signature (throws if invalid)
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -54,14 +62,12 @@ export class StripeWebhookController {
       throw new BadRequestException("Webhook secret not configured");
     }
 
-    let event: any;
+    let event: StripeWebhookEvent;
     try {
-      // Use Stripe SDK to verify and parse event
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+      const stripe = loadStripe(process.env.STRIPE_SECRET_KEY ?? "");
       event = stripe.webhooks.constructEvent(payload, signature, webhookSecret);
-    } catch (error: any) {
-      this.logger.warn(`Stripe webhook signature verification failed: ${error.message}`);
+    } catch (error: unknown) {
+      this.logger.warn(`Stripe webhook signature verification failed: ${getErrorMessage(error)}`);
       throw new BadRequestException("Invalid signature");
     }
 
@@ -84,7 +90,7 @@ export class StripeWebhookController {
         provider: "stripe",
         externalEventId: event.id,
         eventType: event.type,
-        payload: event,
+        payload: event as unknown as Prisma.InputJsonValue,
         status: "DELIVERING",
       },
     });
@@ -100,13 +106,13 @@ export class StripeWebhookController {
       });
 
       this.logger.log(`Stripe event ${event.id} (${event.type}) processed successfully`);
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Mark as failed but don't throw (Stripe will retry on 5xx)
       await this.prisma.paymentWebhookDelivery.updateMany({
         where: { externalEventId: event.id },
         data: {
           status: "FAILED",
-          errorMessage: error.message,
+          errorMessage: getErrorMessage(error),
           processedAt: new Date(),
         },
       });
@@ -117,7 +123,7 @@ export class StripeWebhookController {
     return { received: true };
   }
 
-  private async processEvent(event: any): Promise<void> {
+  private async processEvent(event: StripeWebhookEvent): Promise<void> {
     switch (event.type) {
       case "payment_intent.succeeded":
         await this.handlePaymentSucceeded(event.data.object);
@@ -128,7 +134,7 @@ export class StripeWebhookController {
         break;
 
       case "customer.subscription.deleted":
-        await this.handleSubscriptionDeleted(event.data.object);
+        await this.handleSubscriptionDeleted(event.data.object as StripeWebhookSubscription);
         break;
 
       default:
@@ -136,7 +142,7 @@ export class StripeWebhookController {
     }
   }
 
-  private async handlePaymentSucceeded(paymentIntent: any): Promise<void> {
+  private async handlePaymentSucceeded(paymentIntent: StripeWebhookPaymentIntent): Promise<void> {
     // Extract organization ID from metadata
     const organizationId = paymentIntent.metadata?.organizationId;
     if (!organizationId) {
@@ -175,7 +181,7 @@ export class StripeWebhookController {
     this.logger.log(`Renewed subscription for org ${organizationId} after payment ${paymentIntent.id}`);
   }
 
-  private async handlePaymentFailed(paymentIntent: any): Promise<void> {
+  private async handlePaymentFailed(paymentIntent: StripeWebhookPaymentIntent): Promise<void> {
     // Extract organization ID from metadata
     const organizationId = paymentIntent.metadata?.organizationId;
     if (!organizationId) {
@@ -223,7 +229,7 @@ export class StripeWebhookController {
     this.logger.warn(`Suspended subscription for org ${organizationId} after payment failure ${paymentIntent.id}`);
   }
 
-  private async handleSubscriptionDeleted(stripeSubscription: any): Promise<void> {
+  private async handleSubscriptionDeleted(stripeSubscription: StripeWebhookSubscription): Promise<void> {
     // Handle Stripe-managed subscription deletion
     // (Most FlowERP subscriptions are managed internally, not via Stripe Subscriptions API)
     const customerId = stripeSubscription.customer;

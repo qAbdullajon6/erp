@@ -1,12 +1,17 @@
 export function formatMoney(amount: string | number, currency = 'USD'): string {
   const value = typeof amount === 'string' ? Number(amount) : amount;
   if (!Number.isFinite(value)) return '—';
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-    maximumFractionDigits: value >= 1000 ? 0 : 2,
-    notation: value >= 100000 ? 'compact' : 'standard',
-  }).format(value);
+  const code = currency && /^[A-Za-z]{3}$/.test(currency) ? currency.toUpperCase() : 'USD';
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: code,
+      maximumFractionDigits: value >= 1000 ? 0 : 2,
+      notation: value >= 100000 ? 'compact' : 'standard',
+    }).format(value);
+  } catch {
+    return `${value} ${code}`;
+  }
 }
 
 /// Every money aggregate from Finance/Reports is now keyed by currency
@@ -63,6 +68,32 @@ export function formatDateTime(iso: string | undefined | null): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+/// Extracts HH:MM from an ISO datetime string without timezone conversion.
+/// Used for stop-level time windows where the value was stored as local time
+/// (the same convention as order-form-shared.tsx's `toTimeValue`).
+/// Example: "2026-09-01T09:00:00.000Z" → "09:00"
+export function formatStopTime(iso: string): string {
+  return iso.slice(11, 16);
+}
+
+/// Customer-facing remaining distance for live tracking.
+/// Under 10 km: one decimal place. 10 km and above: round to nearest km.
+export function formatRemainingDistance(km: number): string {
+  if (km < 10) return `${(Math.round(km * 10) / 10).toFixed(1)} km`;
+  return `${Math.round(km)} km`;
+}
+
+/// Customer-facing ETA display for live tracking.
+export function formatEtaMinutes(minutes: number): string {
+  return `ETA ${minutes} min`;
+}
+
+/// Customer-facing delivery window using the same no-timezone-conversion
+/// convention as formatStopTime (window times are stored as local input).
+export function formatDeliveryWindow(start: string, end: string): string {
+  return `Expected between ${formatStopTime(start)} – ${formatStopTime(end)}`;
 }
 
 export function formatRelativeTime(iso: string): string {

@@ -46,10 +46,14 @@ export function MobileNav({
           <SheetTitle id="mobile-menu-title" className="flex items-center">
             <Logo />
           </SheetTitle>
-          <SheetDescription className="sr-only">FlowERP AI navigation</SheetDescription>
+          <SheetDescription className="sr-only">FlowERP navigation</SheetDescription>
         </SheetHeader>
 
-        <nav className="mt-6 flex flex-1 flex-col gap-1" aria-label="Mobile">
+        {/* Everything sits together at the top rather than pinning the CTA to
+            the bottom of the sheet. Pinned, it landed underneath the cookie
+            banner on a first visit — so the one action we most want a new
+            visitor to take was invisible — with a large empty gap above it. */}
+        <nav className="mt-6 flex flex-col gap-1" aria-label="Mobile">
           {NAV_LINKS.map((link) => (
             <a
               key={link.href}
@@ -64,23 +68,21 @@ export function MobileNav({
           <div className="my-3 h-px bg-border" role="separator" aria-hidden />
 
           <Link
-            to="/auth/sign-in"
-            onClick={() => go("Sign in (mobile)", "/auth/sign-in")}
+            to="/login"
+            onClick={() => go("Sign in (mobile)", "/login")}
             className="flex h-12 items-center rounded-lg px-4 text-base font-medium text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             Sign in
           </Link>
-        </nav>
 
-        <div className="flex-none pt-2">
           <Button
             onClick={handleDemo}
             size="lg"
-            className="h-12 w-full bg-brand font-semibold text-brand-foreground hover:bg-brand/90"
+            className="mt-3 h-12 w-full bg-brand font-semibold text-brand-foreground hover:bg-brand/90"
           >
-            Get a demo
+            Get started
           </Button>
-        </div>
+        </nav>
       </SheetContent>
     </Sheet>
   );

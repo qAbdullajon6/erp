@@ -1,13 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { NotificationChannel } from '@prisma/client';
+import { NotificationChannel, NotificationTemplate, Prisma } from '@prisma/client';
 import * as DOMPurify from 'isomorphic-dompurify';
 
 export interface RenderTemplateRequest {
   organizationId: string;
   templateKey: string;
   channel: NotificationChannel;
-  variables: Record<string, any>;
+  variables: Record<string, unknown>;
   locale?: string;
 }
 
@@ -18,10 +18,17 @@ export interface RenderTemplateResult {
   templateId: string;
 }
 
+function asStringArray(value: Prisma.JsonValue): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((entry): entry is string => typeof entry === 'string');
+}
+
 @Injectable()
 export class TemplateService {
   private readonly logger = new Logger(TemplateService.name);
-  private templateCache = new Map<string, any>();
+  private templateCache = new Map<string, NotificationTemplate>();
 
   constructor(private prisma: PrismaService) {}
 
@@ -40,7 +47,7 @@ export class TemplateService {
       return null;
     }
 
-    this.validateVariables(template.variables as string[], request.variables);
+    this.validateVariables(asStringArray(template.variables), request.variables);
 
     const subject = template.subject
       ? this.interpolate(template.subject, request.variables)
@@ -65,10 +72,11 @@ export class TemplateService {
     key: string,
     channel: NotificationChannel,
     locale: string,
-  ) {
+  ): Promise<NotificationTemplate | null> {
     const cacheKey = `${organizationId}:${key}:${channel}:${locale}`;
-    if (this.templateCache.has(cacheKey)) {
-      return this.templateCache.get(cacheKey);
+    const cached = this.templateCache.get(cacheKey);
+    if (cached) {
+      return cached;
     }
 
     let template = await this.prisma.notificationTemplate.findUnique({
@@ -84,14 +92,12 @@ export class TemplateService {
     });
 
     if (!template) {
-      template = await this.prisma.notificationTemplate.findUnique({
+      template = await this.prisma.notificationTemplate.findFirst({
         where: {
-          organizationId_key_channel_locale: {
-            organizationId: null as any,
-            key,
-            channel,
-            locale,
-          },
+          organizationId: null,
+          key,
+          channel,
+          locale,
           isActive: true,
         },
       });
@@ -120,7 +126,7 @@ export class TemplateService {
         subject: template.subject,
         bodyHtml: template.bodyHtml,
         bodyText: template.bodyText,
-        variables: template.variables as any,
+        variables: asStringArray(template.variables),
         createdBy,
       },
     });
@@ -133,8 +139,8 @@ export class TemplateService {
     this.clearTemplateCache(template.organizationId ?? undefined, template.key);
   }
 
-  private interpolate(template: string, variables: Record<string, any>): string {
-    return template.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+  private interpolate(template: string, variables: Record<string, unknown>): string {
+    return template.replace(/\{\{(\w+)\}\}/g, (match, key: string) => {
       if (key in variables) {
         return String(variables[key]);
       }
@@ -142,7 +148,7 @@ export class TemplateService {
     });
   }
 
-  private validateVariables(expected: string[], provided: Record<string, any>) {
+  private validateVariables(expected: string[], provided: Record<string, unknown>) {
     const missing = expected.filter((key) => !(key in provided));
     if (missing.length > 0) {
       this.logger.warn(`Missing template variables: ${missing.join(', ')}`);

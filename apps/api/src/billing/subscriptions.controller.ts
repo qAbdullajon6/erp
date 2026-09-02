@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
@@ -14,8 +14,8 @@ import {
   DowngradeSubscriptionDto,
   CancelSubscriptionDto,
   AddSeatsDto,
-  GetUsageQueryDto,
 } from "./dto/subscription.dto";
+import type { SubscriptionWithPlan } from "./types/subscription.types";
 
 /// ADMIN-ONLY subscription management endpoints.
 ///
@@ -194,7 +194,7 @@ export class SubscriptionsController {
     };
   }
 
-  private toResponse(subscription: any) {
+  private toResponse(subscription: SubscriptionWithPlan) {
     return {
       id: subscription.id,
       organizationId: subscription.organizationId,

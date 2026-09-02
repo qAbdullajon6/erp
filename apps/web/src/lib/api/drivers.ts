@@ -1,3 +1,4 @@
+import * as React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { describeError } from './describe-error';
 import { unwrapResponse } from './error';
@@ -5,6 +6,40 @@ import { apiFetch } from './fetch';
 import { driverKeys } from './query-keys';
 
 export type DriverStatus = 'ACTIVE' | 'INACTIVE' | 'ON_LEAVE';
+export type DriverLicenseClass = 'CLASS_A' | 'CLASS_B' | 'CLASS_C' | 'CLASS_D' | 'CLASS_E' | 'CE' | 'OTHER';
+export type EmploymentType = 'FULL_TIME' | 'PART_TIME' | 'CONTRACTOR';
+export type WorkShift = 'DAY' | 'NIGHT' | 'FLEXIBLE';
+export type DriverDocumentType = 'DRIVER_LICENSE' | 'PASSPORT_ID' | 'MEDICAL_CERTIFICATE' | 'ADR_CERTIFICATE' | 'BACKGROUND_CHECK' | 'OTHER';
+
+export interface DriverEmergencyContact {
+  id: string;
+  driverId: string;
+  name: string;
+  relationship: string;
+  phone: string;
+  alternatePhone: string | null;
+  email: string | null;
+  address: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DriverDocument {
+  id: string;
+  driverId: string;
+  organizationId: string;
+  type: DriverDocumentType;
+  documentNumber: string | null;
+  issueDate: string | null;
+  expiryDate: string | null;
+  fileName: string | null;
+  fileUrl: string | null;
+  mimeType: string | null;
+  fileSizeBytes: number | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface Driver {
   id: string;
@@ -15,13 +50,37 @@ export interface Driver {
   phone: string;
   email: string | null;
   status: DriverStatus;
+  profilePhotoUrl: string | null;
   licenseNumber: string | null;
+  licenseClass: DriverLicenseClass | null;
+  licenseIssueDate: string | null;
   licenseExpiry: string | null;
+  licenseEndorsements: string | null;
+  employmentType: EmploymentType | null;
+  hireDate: string | null;
+  department: string | null;
+  baseLocation: string | null;
+  workShift: WorkShift | null;
+  preferredRegions: string | null;
+  availableDays: string[] | null;
+  driverNotes: string | null;
+  internalNotes: string | null;
+  emergencyContact: DriverEmergencyContact | null;
+  driverDocuments: DriverDocument[];
   /// Linked login account when an admin has attached a DRIVER-role user.
   userId?: string | null;
   archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CreateEmergencyContactInput {
+  name: string;
+  relationship: string;
+  phone: string;
+  alternatePhone?: string;
+  email?: string;
+  address?: string;
 }
 
 export interface CreateDriverInput {
@@ -30,8 +89,22 @@ export interface CreateDriverInput {
   lastName: string;
   phone: string;
   email?: string;
+  profilePhotoUrl?: string;
   licenseNumber?: string;
+  licenseClass?: DriverLicenseClass;
+  licenseIssueDate?: string;
   licenseExpiry?: string;
+  licenseEndorsements?: string;
+  employmentType?: EmploymentType;
+  hireDate?: string;
+  department?: string;
+  baseLocation?: string;
+  workShift?: WorkShift;
+  preferredRegions?: string;
+  availableDays?: string[];
+  driverNotes?: string;
+  internalNotes?: string;
+  emergencyContact?: CreateEmergencyContactInput;
 }
 
 export interface UpdateDriverInput {
@@ -41,8 +114,22 @@ export interface UpdateDriverInput {
   phone?: string;
   email?: string;
   status?: DriverStatus;
+  profilePhotoUrl?: string;
   licenseNumber?: string;
+  licenseClass?: DriverLicenseClass;
+  licenseIssueDate?: string;
   licenseExpiry?: string;
+  licenseEndorsements?: string;
+  employmentType?: EmploymentType;
+  hireDate?: string;
+  department?: string;
+  baseLocation?: string;
+  workShift?: WorkShift;
+  preferredRegions?: string;
+  availableDays?: string[];
+  driverNotes?: string;
+  internalNotes?: string;
+  emergencyContact?: CreateEmergencyContactInput;
 }
 
 export interface ListDriversResponse {
@@ -127,6 +214,18 @@ class DriversAPI {
   async unlinkUser(id: string): Promise<Driver> {
     const response = await apiFetch(`/api/drivers/${id}/unlink-user`, { method: 'POST' });
     return unwrapResponse(response, 'Failed to unlink driver login');
+  }
+
+  async uploadPhoto(id: string, file: File): Promise<Driver> {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await apiFetch(`/api/drivers/${id}/photo`, { method: 'POST', body: form });
+    return unwrapResponse(response, 'Failed to upload driver photo');
+  }
+
+  async removePhoto(id: string): Promise<Driver> {
+    const response = await apiFetch(`/api/drivers/${id}/photo`, { method: 'DELETE' });
+    return unwrapResponse(response, 'Failed to remove driver photo');
   }
 }
 
@@ -254,4 +353,59 @@ export function useUnlinkDriverUser(id: string) {
     loading: mutation.isPending,
     error: mutation.error ? describeError(mutation.error, 'Failed to unlink driver login') : null,
   };
+}
+
+export function useUploadDriverPhoto(id: string) {
+  const invalidate = useInvalidateDrivers();
+  const mutation = useMutation({
+    mutationFn: (file: File) => driversAPI.uploadPhoto(id, file),
+    onSuccess: invalidate,
+  });
+
+  return {
+    mutate: mutation.mutateAsync,
+    loading: mutation.isPending,
+    error: mutation.error ? describeError(mutation.error, 'Failed to upload driver photo') : null,
+  };
+}
+
+export function useRemoveDriverPhoto(id: string) {
+  const invalidate = useInvalidateDrivers();
+  const mutation = useMutation({
+    mutationFn: () => driversAPI.removePhoto(id),
+    onSuccess: invalidate,
+  });
+
+  return {
+    mutate: mutation.mutateAsync,
+    loading: mutation.isPending,
+    error: mutation.error ? describeError(mutation.error, 'Failed to remove driver photo') : null,
+  };
+}
+
+/** Fetches an auth-gated image URL and returns a stable blob URL for use in <img> src. */
+const _blobCache = new Map<string, string>();
+
+export function useAuthenticatedPhotoSrc(url: string | null | undefined): string | null {
+  const [src, setSrc] = React.useState<string | null>(() => (url ? (_blobCache.get(url) ?? null) : null));
+
+  React.useEffect(() => {
+    if (!url) { setSrc(null); return; }
+    if (_blobCache.has(url)) { setSrc(_blobCache.get(url)!); return; }
+
+    let cancelled = false;
+    apiFetch(url, { method: 'GET' })
+      .then((res) => (res.ok ? res.blob() : null))
+      .then((blob) => {
+        if (!blob || cancelled) return;
+        const objectUrl = URL.createObjectURL(blob);
+        _blobCache.set(url, objectUrl);
+        setSrc(objectUrl);
+      })
+      .catch(() => { /* silently fall back to initials */ });
+
+    return () => { cancelled = true; };
+  }, [url]);
+
+  return src;
 }

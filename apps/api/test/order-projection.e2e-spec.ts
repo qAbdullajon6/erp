@@ -1,6 +1,5 @@
 import { randomUUID } from "crypto";
 import { ConflictException } from "@nestjs/common";
-import { PrismaClient } from "@prisma/client";
 import { AuditService } from "../src/audit/audit.service";
 import type { CurrentUserPayload } from "../src/auth/interfaces/current-user.interface";
 import { AssignmentPolicy } from "../src/dispatch/assignment/assignment.policy";
@@ -27,9 +26,29 @@ const queries = new AssignmentQueries(prisma);
 const policy = new AssignmentPolicy(prisma, queries);
 const writer = new OrderWriter();
 const audit = { log: jest.fn().mockResolvedValue(undefined) } as unknown as AuditService;
-const wfEvents = { emit: () => {} } as any;
-const dispatches = new DispatchesService(prisma, audit, policy, writer, wfEvents, { endSessionsForDispatch: async () => 0, endSessionsOnVehicleReassign: async () => 0, endSessionsForUser: async () => 0 } as any);
-const orders = new OrdersService(prisma, audit, writer, dispatches, policy, wfEvents);
+const wfEvents = {
+  emit: jest.fn(),
+} as unknown as ConstructorParameters<typeof DispatchesService>[4];
+const usageMetering = {
+  enforceLimit: jest.fn().mockResolvedValue(undefined),
+} as unknown as ConstructorParameters<typeof OrdersService>[6];
+const tracking = {
+  endSessionsForDispatch: jest.fn().mockResolvedValue(0),
+  endSessionsOnVehicleReassign: jest.fn().mockResolvedValue(0),
+  endSessionsForUser: jest.fn().mockResolvedValue(0),
+} as unknown as ConstructorParameters<typeof DispatchesService>[5];
+const geocoding = {
+  geocodeOrderLocations: jest.fn().mockResolvedValue(undefined),
+} as unknown as ConstructorParameters<typeof OrdersService>[7];
+const geofences = {
+  createForDispatch: jest.fn().mockResolvedValue(undefined),
+  archiveForDispatch: jest.fn().mockResolvedValue(undefined),
+  archiveIntermediateStopForDispatch: jest.fn().mockResolvedValue(undefined),
+  createForNextIntermediateStop: jest.fn().mockResolvedValue(undefined),
+  rotateIntermediateStopFence: jest.fn().mockResolvedValue(undefined),
+} as unknown as ConstructorParameters<typeof DispatchesService>[6];
+const dispatches = new DispatchesService(prisma, audit, policy, writer, wfEvents, tracking, geofences);
+const orders = new OrdersService(prisma, audit, writer, dispatches, policy, wfEvents, usageMetering, geocoding);
 
 const PICKUP = new Date("2034-04-01T08:00:00.000Z");
 const DELIVERY = new Date("2034-04-03T18:00:00.000Z");
@@ -318,18 +337,23 @@ describe("R4 / Z2 — the commercial lifecycle outranks the projection", () => {
     expect((await orderRow(order.id)).status).toBe("CANCELLED");
   });
 
-  it("a DRAFT order is never approved by a dispatch appearing (Z3)", async () => {
+  it("a DRAFT order cannot reserve resources by creating a dispatch (Z3)", async () => {
     const draft = await makeOrder({ status: "DRAFT" });
 
-    // A dispatcher may sketch a dispatch for an unapproved order...
-    await dispatches.create(
-      organizationId,
-      { orderId: draft.id, driverId: driverA, vehicleId: vehicleA },
-      actor,
-    );
+    // Commercial approval is the prerequisite for operational reservation;
+    // a dispatch must not become a back door from DRAFT into the projection.
+    await expect(
+      dispatches.create(
+        organizationId,
+        { orderId: draft.id, driverId: driverA, vehicleId: vehicleA },
+        actor,
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
 
-    // ...but that is not an approval. Only TransitionPolicy performs DRAFT -> PENDING.
     expect((await orderRow(draft.id)).status).toBe("DRAFT");
+    await expect(
+      prisma.dispatch.count({ where: { organizationId, orderId: draft.id } }),
+    ).resolves.toBe(0);
   });
 
   it("a DRAFT dispatch does not make a PENDING order look assigned (R1, Z3)", async () => {
@@ -385,6 +409,7 @@ describe("the order API still behaves exactly as it did", () => {
       "EN_ROUTE_TO_PICKUP",
       "AT_PICKUP",
       "IN_TRANSIT",
+      "ARRIVED_AT_DELIVERY",
       "DELIVERED",
     ]);
   });
@@ -467,7 +492,7 @@ describe("ADR-001 Phase 5 — backfill", () => {
   }
 
   const run = (runId: string, dryRun: boolean) =>
-    backfillDispatches(prisma as unknown as PrismaClient, { runId, dryRun, organizationId });
+    backfillDispatches(prisma, { runId, dryRun, organizationId });
 
   it("dry run reports what it would do and writes NOTHING", async () => {
     const order = await legacyOrder("IN_TRANSIT");
@@ -542,7 +567,7 @@ describe("ADR-001 Phase 5 — backfill", () => {
     const live = await makeOrder();
     await assign(live.id, driverB, vehicleB);
 
-    const { removed } = await rollbackBackfill(prisma as unknown as PrismaClient, "rb-1");
+    const { removed } = await rollbackBackfill(prisma, "rb-1");
 
     expect(removed).toBe(1);
     expect(await prisma.dispatch.count({ where: { orderId: live.id } })).toBe(1);
@@ -597,7 +622,7 @@ describe("ADR-001 Phase 5 — backfill", () => {
     await legacyOrder("ASSIGNED", driverB, vehicleB);
 
     await run("verify-1", false);
-    const result = await verifyBackfill(prisma as unknown as PrismaClient, organizationId);
+    const result = await verifyBackfill(prisma, organizationId);
 
     expect(result.orphanedOrders).toEqual([]);
     expect(result.disagreeingOrders).toEqual([]);
@@ -606,7 +631,7 @@ describe("ADR-001 Phase 5 — backfill", () => {
   it("verify() catches an orphan BEFORE the backfill runs", async () => {
     const order = await legacyOrder("IN_TRANSIT");
 
-    const result = await verifyBackfill(prisma as unknown as PrismaClient, organizationId);
+    const result = await verifyBackfill(prisma, organizationId);
 
     expect(result.orphanedOrders).toContain(order.orderNumber);
   });
@@ -666,8 +691,8 @@ describe("ADR-001 Phase 5 — backfill", () => {
 });
 
 /// Walks the dispatch to a target state through every legal intermediate step.
-async function driveDispatchTo(orderId: string, target: "IN_TRANSIT" | "DELIVERED") {
-  const path = ["EN_ROUTE_TO_PICKUP", "AT_PICKUP", "IN_TRANSIT", "DELIVERED"] as const;
+async function driveDispatchTo(orderId: string, target: "IN_TRANSIT" | "ARRIVED_AT_DELIVERY" | "DELIVERED") {
+  const path = ["EN_ROUTE_TO_PICKUP", "AT_PICKUP", "IN_TRANSIT", "ARRIVED_AT_DELIVERY", "DELIVERED"] as const;
   for (const step of path) {
     const dispatch = await liveDispatch(orderId);
     await dispatches.updateStatus(organizationId, dispatch.id, { status: step }, actor);

@@ -54,6 +54,10 @@ export class ListDispatchesQueryDto {
   vehicleId?: string;
 
   @IsOptional()
+  @IsUUID()
+  customerId?: string;
+
+  @IsOptional()
   @IsDateString()
   fromDate?: string;
 

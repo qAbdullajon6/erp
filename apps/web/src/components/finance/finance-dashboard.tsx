@@ -1,7 +1,10 @@
+import { AlertTriangle, Banknote, FileText, HandCoins, Hourglass, Receipt } from 'lucide-react';
 import { useFinanceSummaryQuery } from '@/lib/api/finance';
 import { formatMoney } from '@/lib/format';
 import { Skeleton } from '@/components/ui/skeleton';
+import { MetricCard, type MetricCardProps } from '@/components/ui/metric-card';
 import { ErrorState } from '@/components/shared/list-states';
+import { describeError } from '@/lib/api/describe-error';
 
 export function FinanceDashboard() {
   const { data, isLoading, isError, error, refetch } = useFinanceSummaryQuery();
@@ -19,30 +22,62 @@ export function FinanceDashboard() {
   if (isError || !data) {
     return (
       <ErrorState
-        message={error instanceof Error ? error.message : 'Failed to load finance summary'}
+        message={describeError(error, 'Failed to load finance summary')}
         onRetry={() => refetch()}
       />
     );
   }
 
   const currency = data.currency || 'USD';
-  const cards = [
-    { label: 'Total Invoiced', value: formatMoney(data.invoices.totalInvoiced, currency), hint: `${data.invoices.count} invoices` },
-    { label: 'Collected', value: formatMoney(data.invoices.totalCollected, currency), hint: 'paid to date' },
-    { label: 'Outstanding', value: formatMoney(data.invoices.totalOutstanding, currency), hint: 'not yet collected' },
+  const overdueCount = data.invoices.overdueCount;
+  const pendingExpenses = data.expenses.pendingCount;
+  const overdueText = `${overdueCount} invoice${overdueCount === 1 ? '' : 's'}`;
+
+  // "Cash margin", not "Est. Gross Profit": this figure is collected cash less
+  // approved expenses, while Reports computes gross profit from delivered
+  // revenue. Both are correct and they legitimately differ, but under one name
+  // the two screens simply looked like they disagreed.
+  const cards: MetricCardProps[] = [
+    {
+      label: 'Total Invoiced',
+      value: formatMoney(data.invoices.totalInvoiced, currency),
+      icon: FileText,
+      footer: `${data.invoices.count} invoices`,
+    },
+    {
+      label: 'Collected',
+      value: formatMoney(data.invoices.totalCollected, currency),
+      icon: Banknote,
+      footer: 'paid to date',
+    },
+    {
+      label: 'Outstanding',
+      value: formatMoney(data.invoices.totalOutstanding, currency),
+      icon: Hourglass,
+      footer: 'not yet collected',
+    },
     {
       label: 'Overdue',
       value: formatMoney(data.invoices.overdueAmount, currency),
-      hint: `${data.invoices.overdueCount} invoice${data.invoices.overdueCount === 1 ? '' : 's'}`,
-      warn: data.invoices.overdueCount > 0,
+      icon: AlertTriangle,
+      ...(overdueCount > 0
+        ? { note: { icon: AlertTriangle, text: overdueText, tone: 'warning' as const } }
+        : { footer: overdueText }),
     },
     {
       label: 'Pending Expenses',
-      value: String(data.expenses.pendingCount),
-      hint: 'awaiting approval',
-      warn: data.expenses.pendingCount > 0,
+      value: String(pendingExpenses),
+      icon: Receipt,
+      ...(pendingExpenses > 0
+        ? { note: { icon: AlertTriangle, text: 'awaiting approval', tone: 'warning' as const } }
+        : { footer: 'none awaiting approval' }),
     },
-    { label: 'Est. Gross Profit', value: formatMoney(data.estimatedGrossProfit, currency), hint: 'collected − approved expenses' },
+    {
+      label: 'Cash Margin',
+      value: formatMoney(data.estimatedGrossProfit, currency),
+      icon: HandCoins,
+      footer: 'collected − approved expenses',
+    },
   ];
 
   return (
@@ -56,16 +91,7 @@ export function FinanceDashboard() {
       )}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map((card) => (
-          <div
-            key={card.label}
-            className="rounded-2xl border border-brand/10 bg-gradient-to-br from-surface to-surface/50 p-6"
-          >
-            <div className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{card.label}</div>
-            <div className="mt-3 font-display text-2xl font-bold text-foreground">{card.value}</div>
-            <div className={`mt-2 text-sm font-medium ${card.warn ? 'text-destructive' : 'text-muted-foreground'}`}>
-              {card.hint}
-            </div>
-          </div>
+          <MetricCard key={card.label} {...card} variant="compact" />
         ))}
       </div>
     </div>

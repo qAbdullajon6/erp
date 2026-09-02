@@ -2,15 +2,25 @@ import { createFileRoute } from "@tanstack/react-router";
 import { ImportWizard } from "@/components/import/import-wizard";
 import { ProtectedApiRoute } from "@/components/layout/protected-api-route";
 import { IMPORT_ROLES } from "@/lib/role-access";
+import { SettingsLayout } from "@/components/settings/settings-layout";
 
 export const Route = createFileRoute("/app/import/")({
+  head: () => ({
+    meta: [{ title: "Data import — FlowERP AI" }],
+  }),
   component: ImportPage,
 });
 
 function ImportPage() {
   return (
     <ProtectedApiRoute requireRoles={IMPORT_ROLES}>
-      <ImportWizard />
+      <SettingsLayout
+        activeSection="/app/import"
+        title="Data import"
+        subtitle="Import vehicles, drivers, or legacy operational data from CSV files."
+      >
+        <ImportWizard />
+      </SettingsLayout>
     </ProtectedApiRoute>
   );
 }

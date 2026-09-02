@@ -4,11 +4,10 @@ import { Logo } from "@/components/brand/Logo";
 import { siteConfig } from "@/lib/site-config";
 
 const PRODUCT = [
-  { label: "Platform", href: "#platform" },
-  { label: "AI copilot", href: "#ai" },
-  { label: "Dispatch", href: "#dispatch" },
-  { label: "Integrations", href: "#integrations" },
+  { label: "Features", href: "#capabilities" },
+  { label: "How it works", href: "#how-it-works" },
   { label: "Pricing", href: "#pricing" },
+  { label: "FAQ", href: "#faq" },
 ];
 
 export function Footer() {
@@ -19,8 +18,8 @@ export function Footer() {
           <div>
             <Logo />
             <p className="mt-4 max-w-sm text-sm leading-relaxed text-muted-foreground">
-              The AI operating system for logistics. Run every delivery from one intelligent command
-              center.
+              Orders, dispatch, fleet, tracking and finance for logistics companies — in one
+              workspace.
             </p>
             <div className="mt-6 flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center rounded-full border border-border bg-surface px-3 py-1 text-xs text-muted-foreground">
@@ -35,7 +34,7 @@ export function Footer() {
           <nav aria-label="Footer" className="contents">
             <div>
               <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Product
+                Platform
               </h2>
               <ul className="mt-4 space-y-2.5 text-sm">
                 {PRODUCT.map((l) => (
@@ -46,7 +45,7 @@ export function Footer() {
                   </li>
                 ))}
                 <li>
-                  <Link to="/auth/sign-in" className="text-foreground/80 transition-colors hover:text-foreground">
+                  <Link to="/login" className="text-foreground/80 transition-colors hover:text-foreground">
                     Sign in
                   </Link>
                 </li>

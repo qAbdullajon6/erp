@@ -37,9 +37,9 @@ wait_healthy() {
     sleep "$HEALTH_INTERVAL"
   done
   [[ "$ok" -eq 1 ]] || return 1
-  log "liveness ok; checking /health/database (readiness)"
-  health_ok "health/database" || return 1
-  log "database readiness ok"
+  log "liveness ok; checking /health/ready (database + configured Redis)"
+  health_ok "health/ready" || return 1
+  log "dependency readiness ok"
   return 0
 }
 
@@ -150,8 +150,8 @@ verify_deployment() {
     echo "error: verification failed — API /health" >&2
     return 1
   }
-  health_ok "health/database" || {
-    echo "error: verification failed — API /health/database" >&2
+  health_ok "health/ready" || {
+    echo "error: verification failed — API /health/ready (database + configured Redis)" >&2
     return 1
   }
 
@@ -192,5 +192,38 @@ verify_deployment() {
   deploy_log "API GIT_COMMIT_SHA .... $api_sha"
   deploy_log "WEB GIT_COMMIT_SHA .... $web_sha"
   deploy_log "Verification .......... PASS"
+  return 0
+}
+
+# Traccar (the GPS protocol gateway — see docs/TRACCAR_SETUP.md) is auxiliary
+# to FlowERP's core application: web/api serve orders, dispatch, billing, etc.
+# regardless of whether GPS ingestion is up. A broken Traccar container
+# therefore does NOT fail the deploy or trigger auto-rollback of api/web —
+# doing so would roll back a legitimate application deploy over an unrelated
+# GPS hiccup. But it must never fail SILENTLY either: this prints a clear,
+# visible warning (and recent logs) to deploy output whenever Traccar isn't
+# healthy, so a broken GPS bridge is always seen, not just a broken deploy.
+# Always returns 0 — never fails deploy.sh's overall exit status.
+check_traccar_health() {
+  local status
+  status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' flowerp-traccar 2>/dev/null || echo missing)"
+  case "$status" in
+    healthy)
+      deploy_log "Traccar container ..... healthy"
+      ;;
+    starting)
+      deploy_log "Traccar container ..... starting (JVM boot can take longer than API/web — check again shortly with: docker inspect --format '{{.State.Health.Status}}' flowerp-traccar)"
+      ;;
+    none)
+      echo "WARNING: Traccar container reports no healthcheck (status=none) — cannot verify GPS bridge health automatically." >&2
+      ;;
+    missing)
+      echo "WARNING: Traccar container (flowerp-traccar) not found — GPS ingestion (S-2423/Navtelecom, future Teltonika) is NOT running. This deploy is otherwise healthy and was NOT rolled back for this." >&2
+      ;;
+    *)
+      echo "WARNING: Traccar container is UNHEALTHY (status=$status) — GPS ingestion (S-2423/Navtelecom, future Teltonika) will not work until this is fixed. This deploy is otherwise healthy and was NOT rolled back for this." >&2
+      compose logs --tail=30 traccar >&2 || true
+      ;;
+  esac
   return 0
 }

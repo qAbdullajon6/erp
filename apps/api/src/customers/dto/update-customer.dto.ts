@@ -3,6 +3,7 @@ import {
   IsEmail,
   IsEnum,
   IsIn,
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
@@ -10,7 +11,9 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
 } from "class-validator";
+import { ISO4217_CODES } from "../../common/iso4217-currencies";
 
 /// Excludes ARCHIVED from `status` on purpose — archiving/restoring always
 /// goes through the dedicated POST /:id/archive and /:id/restore endpoints,
@@ -51,7 +54,8 @@ export class UpdateCustomerDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(100)
+  @MaxLength(2)
+  @Matches(/^[A-Z]{2}$/, { message: "country must be a 2-letter ISO 3166-1 alpha-2 code (e.g. UZ)" })
   country?: string | null;
 
   @IsOptional()
@@ -59,10 +63,27 @@ export class UpdateCustomerDto {
   @MaxLength(100)
   city?: string | null;
 
+  /// Latitude from a Mapbox suggestion; null clears stored coordinates.
+  @IsOptional()
+  @ValidateIf((o: UpdateCustomerDto) => o.cityLat != null)
+  @IsNumber({ maxDecimalPlaces: 15 })
+  cityLat?: number | null;
+
+  /// Longitude from a Mapbox suggestion; null clears stored coordinates.
+  @IsOptional()
+  @ValidateIf((o: UpdateCustomerDto) => o.cityLng != null)
+  @IsNumber({ maxDecimalPlaces: 15 })
+  cityLng?: number | null;
+
   @IsOptional()
   @IsString()
   @MaxLength(300)
   address?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  postalCode?: string | null;
 
   @IsOptional()
   @IsString()
@@ -73,10 +94,25 @@ export class UpdateCustomerDto {
   @IsEnum(CustomerPaymentTerms)
   paymentTerms?: CustomerPaymentTerms;
 
+  @ValidateIf(
+    (o: UpdateCustomerDto) =>
+      o.paymentTerms === "CUSTOM" || o.paymentTermsDays !== undefined,
+  )
+  @IsInt()
+  @Min(0)
+  paymentTermsDays?: number;
+
   @IsOptional()
+  @ValidateIf((o: UpdateCustomerDto) => o.creditLimit != null)
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
-  creditLimit?: number;
+  creditLimit?: number | null;
+
+  /// null = clear override (use org default); omit = leave unchanged.
+  @IsOptional()
+  @ValidateIf((o: UpdateCustomerDto) => o.currency != null)
+  @IsIn([...ISO4217_CODES], { message: "currency must be a valid ISO 4217 code (e.g. USD, EUR, UZS)" })
+  currency?: string | null;
 
   @IsOptional()
   @IsIn(EDITABLE_STATUSES)

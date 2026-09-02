@@ -47,6 +47,14 @@ export interface CustomerPortalInvitationEmailMessage {
   expiresAt: Date;
 }
 
+export interface PasswordResetEmailMessage {
+  to: string;
+  firstName: string;
+  /// Fully assembled opaque URL. Providers must never log it.
+  resetUrl: string;
+  expiresAt: Date;
+}
+
 export interface RawEmailMessage {
   to: string;
   subject: string;
@@ -95,6 +103,23 @@ export interface DemoConfirmationEmailMessage {
   phone: string;
 }
 
+/// Everything the mail layer needs to notify a ticket creator that a
+/// FlowERP support staff member has replied to their ticket.
+export interface SupportReplyEmailMessage {
+  /// Ticket creator's email address.
+  to: string;
+  /// Display name of the ticket creator (e.g. "Aziz Karimov"), for greeting.
+  recipientName: string;
+  /// Subject of the support ticket.
+  ticketSubject: string;
+  /// Short plaintext preview of the staff reply (max ~160 chars).
+  messagePreview: string;
+  /// Human-readable current ticket status (e.g. "In progress").
+  ticketStatus: string;
+  /// Fully assembled deep-link URL that opens the Support drawer at this ticket.
+  ticketUrl: string;
+}
+
 /// The mail abstraction invitation services depend on. Exactly one concrete
 /// implementation is chosen at module load — real SMTP, the dev/test outbox,
 /// or a production-safe "unavailable" provider — see `createMailService`.
@@ -104,7 +129,9 @@ export abstract class MailService {
   abstract sendCustomerPortalInvitationEmail(
     message: CustomerPortalInvitationEmailMessage,
   ): Promise<void>;
+  abstract sendPasswordResetEmail(message: PasswordResetEmailMessage): Promise<void>;
   abstract sendRawEmail(message: RawEmailMessage): Promise<void>;
   abstract sendLeadNotificationEmail(message: LeadNotificationEmailMessage): Promise<void>;
   abstract sendDemoConfirmationEmail(message: DemoConfirmationEmailMessage): Promise<void>;
+  abstract sendSupportReplyEmail(message: SupportReplyEmailMessage): Promise<void>;
 }

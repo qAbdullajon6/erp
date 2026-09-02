@@ -20,3 +20,17 @@ export const chartAxisTickStyle = {
   fontSize: 11,
   fill: "var(--color-muted-foreground)",
 } as const;
+
+export const dispatchAnalyticsChartConfig: ChartConfig = {
+  dispatches: { label: "Dispatches", color: "var(--color-brand)" },
+  volume: { label: "Volume", color: "var(--color-series-revenue)" },
+  workload: { label: "Active", color: "var(--color-chart-3)" },
+  utilization: { label: "Utilization", color: "var(--color-chart-4)" },
+  delays: { label: "Delayed", color: "var(--color-warning)" },
+  statusDraft: { label: "Draft", color: "var(--color-muted-foreground)" },
+  statusAssigned: { label: "Assigned", color: "var(--color-brand)" },
+  statusEnRoute: { label: "En route", color: "var(--color-chart-3)" },
+  statusInTransit: { label: "In transit", color: "var(--color-chart-4)" },
+  statusDelivered: { label: "Delivered", color: "var(--color-success)" },
+  statusCancelled: { label: "Cancelled", color: "var(--color-destructive)" },
+};

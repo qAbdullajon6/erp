@@ -43,6 +43,8 @@ interface InvoiceBody {
   paidAmount: string;
   balanceDue: string;
   orderId: string | null;
+  issueDate: string;
+  dueDate: string | null;
   lineItems?: { description: string; quantity: string; unitPrice: string; lineTotal: string }[];
 }
 interface InvoiceResponse {
@@ -262,15 +264,13 @@ describe("Finance (e2e)", () => {
       expect(invoice.lineItems?.[0].lineTotal).toBe("150");
     });
 
-    it("rejects a client trying to smuggle its own totalAmount/balanceDue — those aren't real input fields", async () => {
+    it("ignores client-supplied totals and computes authoritative values server-side", async () => {
       const admin = await registerAdmin(`Invoice Smuggled Totals Org ${randomUUID()}`);
       const customer = await createCustomer(admin);
 
-      // The global ValidationPipe's forbidNonWhitelisted rejects any
-      // property CreateInvoiceDto doesn't declare — totalAmount/balanceDue
-      // are always server-computed and were never accepted as input at
-      // all, so this 400s rather than silently ignoring the extra fields.
-      await request(app.getHttpServer())
+      // Unknown fields are deliberately stripped by configureApp. The security
+      // invariant is that client totals never win, not that extra fields 400.
+      const res = await request(app.getHttpServer())
         .post("/invoices")
         .set("Authorization", `Bearer ${admin.accessToken}`)
         .send({
@@ -279,7 +279,11 @@ describe("Finance (e2e)", () => {
           totalAmount: 999999,
           balanceDue: 0,
         })
-        .expect(400);
+        .expect(201);
+
+      const invoice = (res.body as InvoiceResponse).data;
+      expect(invoice.totalAmount).toBe("100");
+      expect(invoice.balanceDue).toBe("100");
     });
 
     it("rejects creating an invoice with zero line items", async () => {
@@ -318,6 +322,34 @@ describe("Finance (e2e)", () => {
       expect(invoice.totalAmount).toBe("750");
       expect(invoice.balanceDue).toBe("750");
       expect(invoice.status).toBe("DRAFT");
+    });
+
+    /// One-click invoicing used to leave dueDate null. An invoice with no
+    /// deadline can never be chased and can never flip to OVERDUE — the sweep
+    /// compares against dueDate — so the Finance dashboard's overdue figure
+    /// silently excluded every invoice raised this way.
+    it("dates the invoice by the customer's payment terms", async () => {
+      for (const [terms, days] of [
+        ["DUE_ON_RECEIPT", 0],
+        ["NET_15", 15],
+        ["NET_45", 45],
+      ] as const) {
+        const admin = await registerAdmin(`Invoice Terms ${terms} Org ${randomUUID()}`);
+        const customer = await createCustomer(admin, { paymentTerms: terms });
+        const order = await deliverOrder(admin, customer.id, { price: 100 });
+
+        const res = await request(app.getHttpServer())
+          .post(`/invoices/from-order/${order.id}`)
+          .set("Authorization", `Bearer ${admin.accessToken}`)
+          .expect(201);
+        const invoice = (res.body as InvoiceResponse).data;
+
+        expect(invoice.dueDate).toBeTruthy();
+        const elapsedDays = Math.round(
+          (new Date(invoice.dueDate!).getTime() - new Date(invoice.issueDate).getTime()) / 86_400_000,
+        );
+        expect(elapsedDays).toBe(days);
+      }
     });
 
     it("rejects invoicing a non-delivered order", async () => {
@@ -441,7 +473,7 @@ describe("Finance (e2e)", () => {
         .set("Authorization", `Bearer ${admin.accessToken}`)
         .send({ amount: 150, method: "CASH" })
         .expect(400);
-      expect((res.body as ErrorBody).error.message).toMatch(/exceeds/i);
+      expect((res.body as ErrorBody).error.message).toMatch(/exceed/i);
     });
 
     it("rejects a mismatched payment currency", async () => {

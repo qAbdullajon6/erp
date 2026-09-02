@@ -1,6 +1,5 @@
 import { randomUUID } from "crypto";
 import { ConflictException } from "@nestjs/common";
-import type { DispatchStatus } from "@prisma/client";
 import { AuditService } from "../src/audit/audit.service";
 import type { CurrentUserPayload } from "../src/auth/interfaces/current-user.interface";
 import { AssignmentPolicy } from "../src/dispatch/assignment/assignment.policy";
@@ -32,9 +31,29 @@ const policy = new AssignmentPolicy(prisma, queries);
 const writer = new OrderWriter();
 const auditLog = jest.fn().mockResolvedValue(undefined);
 const audit = { log: auditLog } as unknown as AuditService;
-const wfEvents = { emit: () => {} } as any;
-const dispatches = new DispatchesService(prisma, audit, policy, writer, wfEvents, { endSessionsForDispatch: async () => 0, endSessionsOnVehicleReassign: async () => 0, endSessionsForUser: async () => 0 } as any);
-const orders = new OrdersService(prisma, audit, writer, dispatches, policy, wfEvents);
+const wfEvents = {
+  emit: jest.fn(),
+} as unknown as ConstructorParameters<typeof DispatchesService>[4];
+const usageMetering = {
+  enforceLimit: jest.fn().mockResolvedValue(undefined),
+} as unknown as ConstructorParameters<typeof OrdersService>[6];
+const tracking = {
+  endSessionsForDispatch: jest.fn().mockResolvedValue(0),
+  endSessionsOnVehicleReassign: jest.fn().mockResolvedValue(0),
+  endSessionsForUser: jest.fn().mockResolvedValue(0),
+} as unknown as ConstructorParameters<typeof DispatchesService>[5];
+const geocoding = {
+  geocodeOrderLocations: jest.fn().mockResolvedValue(undefined),
+} as unknown as ConstructorParameters<typeof OrdersService>[7];
+const geofences = {
+  createForDispatch: jest.fn().mockResolvedValue(undefined),
+  archiveForDispatch: jest.fn().mockResolvedValue(undefined),
+  archiveIntermediateStopForDispatch: jest.fn().mockResolvedValue(undefined),
+  createForNextIntermediateStop: jest.fn().mockResolvedValue(undefined),
+  rotateIntermediateStopFence: jest.fn().mockResolvedValue(undefined),
+} as unknown as ConstructorParameters<typeof DispatchesService>[6];
+const dispatches = new DispatchesService(prisma, audit, policy, writer, wfEvents, tracking, geofences);
+const orders = new OrdersService(prisma, audit, writer, dispatches, policy, wfEvents, usageMetering, geocoding);
 
 const PICKUP = new Date("2036-06-01T08:00:00.000Z");
 const DELIVERY = new Date("2036-06-03T18:00:00.000Z");
@@ -469,7 +488,7 @@ describe("R13 — the server tells the client which transitions are legal (Task 
 
     // Walk the forward chain, at each step taking a transition the server offered.
     for (;;) {
-      const forward = (current.allowedTransitions as DispatchStatus[]).filter(
+      const forward = (current.allowedTransitions).filter(
         (s) => s !== "CANCELLED",
       );
       if (forward.length === 0) break;

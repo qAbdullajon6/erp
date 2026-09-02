@@ -20,18 +20,22 @@ const STATUS_LABELS: Record<string, string> = {
   EN_ROUTE_TO_PICKUP: 'On the way to pickup',
   AT_PICKUP: 'At pickup',
   IN_TRANSIT: 'In transit',
+  ARRIVED_AT_DELIVERY: 'Arrived at delivery',
   DELIVERED: 'Delivered',
   CANCELLED: 'Cancelled',
+  DELIVERY_FAILED: 'Delivery failed',
 };
 
 const ACTION_LABEL: Record<DriverActionableStatus, string> = {
   EN_ROUTE_TO_PICKUP: 'On my way to pickup',
   AT_PICKUP: 'Arrived at pickup',
   IN_TRANSIT: 'Loaded — on the road',
+  AT_STOP: 'At stop',
+  ARRIVED_AT_DELIVERY: 'Arrived at delivery',
   DELIVERED: 'Mark as Delivered',
 };
 
-const LIVE_STATUSES = new Set(['ASSIGNED', 'EN_ROUTE_TO_PICKUP', 'AT_PICKUP', 'IN_TRANSIT']);
+const LIVE_STATUSES = new Set(['ASSIGNED', 'EN_ROUTE_TO_PICKUP', 'AT_PICKUP', 'IN_TRANSIT', 'ARRIVED_AT_DELIVERY']);
 
 function mapLink(address: string, city: string): string | null {
   const query = [address, city].filter(Boolean).join(', ');

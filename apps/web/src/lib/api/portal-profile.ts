@@ -1,8 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { portalFetch } from './portal-fetch';
 import { unwrapResponse as unwrap } from './error';
-import { portalProfileKeys } from './portal-query-keys';
+import { portalProfileKeys, portalNotificationPreferenceKeys } from './portal-query-keys';
 import { describeError } from './describe-error';
+
+export interface PortalNotificationPreferences {
+  shipmentAssigned: boolean;
+  shipmentDelayed: boolean;
+  shipmentDelivered: boolean;
+  invoiceCreated: boolean;
+  invoiceOverdue: boolean;
+  paymentReceived: boolean;
+  documentsAvailable: boolean;
+}
 
 export interface PortalProfile {
   id: string;
@@ -16,8 +26,12 @@ export interface PortalProfile {
   country: string | null;
   taxId: string | null;
   paymentTerms: string | null;
+  paymentTermsDays: number | null;
   creditLimit: string | null;
   deliveryNotes: string | null;
+  language: string;
+  timezone: string;
+  notificationPreferences: PortalNotificationPreferences;
 }
 
 export interface PortalProfileUpdateInput {
@@ -26,6 +40,9 @@ export interface PortalProfileUpdateInput {
   address?: string;
   city?: string;
   country?: string;
+  language?: string;
+  timezone?: string;
+  notificationPreferences?: Partial<PortalNotificationPreferences>;
 }
 
 export interface PortalProfileUpdateResponse {
@@ -34,10 +51,14 @@ export interface PortalProfileUpdateResponse {
   address: string | null;
   city: string | null;
   country: string | null;
+  language: string;
+  timezone: string;
+  notificationPreferences: PortalNotificationPreferences;
 }
 
 class PortalProfileAPI {
   private baseUrl = '/api/customer-portal/profile';
+  private prefsUrl = '/api/customer-portal/notifications/preferences';
 
   async get(): Promise<PortalProfile> {
     const response = await portalFetch(this.baseUrl, { method: 'GET' });
@@ -50,6 +71,27 @@ class PortalProfileAPI {
       body: JSON.stringify(input),
     });
     return unwrap(response, 'Failed to update profile');
+  }
+
+  async getPreferences(): Promise<{
+    preferences: PortalNotificationPreferences;
+    language: string;
+    timezone: string;
+  }> {
+    const response = await portalFetch(this.prefsUrl, { method: 'GET' });
+    return unwrap(response, 'Failed to fetch notification preferences');
+  }
+
+  async updatePreferences(input: {
+    preferences?: Partial<PortalNotificationPreferences>;
+    language?: string;
+    timezone?: string;
+  }) {
+    const response = await portalFetch(this.prefsUrl, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+    return unwrap(response, 'Failed to update notification preferences');
   }
 }
 
@@ -73,6 +115,9 @@ export function usePortalProfileUpdate() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: PortalProfileUpdateInput) => portalProfileAPI.update(input),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: portalProfileKeys.data() }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: portalProfileKeys.data() });
+      queryClient.invalidateQueries({ queryKey: portalNotificationPreferenceKeys.data() });
+    },
   });
 }

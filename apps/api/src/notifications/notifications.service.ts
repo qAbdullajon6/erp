@@ -12,6 +12,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { ListNotificationsQueryDto } from "./dto/list-notifications-query.dto";
 import { UpdateNotificationSettingsDto } from "./dto/update-notification-settings.dto";
 import { categoriesForRole } from "./notification-roles.util";
+import { startOfTodayUtc } from "../common/schedule-lateness.util";
 
 interface QualifyingEntity {
   entityId: string;
@@ -137,10 +138,24 @@ export class NotificationsService {
       where: { organizationId, type: rule.type, isArchived: false },
       select: { id: true, entityId: true },
     });
-    const openEntityIds = new Set(openExisting.map((n) => n.entityId));
+    // A user-dismissed notification (isArchived, dismissedAt set) must count
+    // as "already notified" too — otherwise the very next reconcile pass
+    // sees its entity still qualifying, finds no OPEN row for it, and
+    // recreates it as a fresh unread notification, undoing the dismissal
+    // within seconds. A SYSTEM-resolved row (isArchived, dismissedAt null)
+    // is deliberately excluded here, so a genuinely recurring condition
+    // (e.g. a renewed document expiring again) still re-fires.
+    const dismissedExisting = await this.prisma.notification.findMany({
+      where: { organizationId, type: rule.type, isArchived: true, dismissedAt: { not: null } },
+      select: { entityId: true },
+    });
+    const alreadyNotifiedEntityIds = new Set([
+      ...openExisting.map((n) => n.entityId),
+      ...dismissedExisting.map((n) => n.entityId),
+    ]);
     const qualifyingIds = new Set(qualifying.map((q) => q.entityId));
 
-    const toCreate = qualifying.filter((q) => !openEntityIds.has(q.entityId));
+    const toCreate = qualifying.filter((q) => !alreadyNotifiedEntityIds.has(q.entityId));
     if (toCreate.length > 0) {
       await this.prisma.notification.createMany({
         data: toCreate.map((q) => ({
@@ -170,7 +185,12 @@ export class NotificationsService {
 
   private async findDelayedOrders(organizationId: string, now: Date): Promise<QualifyingEntity[]> {
     const orders = await this.prisma.order.findMany({
-      where: { organizationId, status: { notIn: ["DELIVERED", "CANCELLED"] }, deliveryDate: { lt: now } },
+      where: {
+        organizationId,
+        archivedAt: null,
+        status: { notIn: ["DELIVERED", "CANCELLED"] },
+        deliveryDate: { lt: startOfTodayUtc(now) },
+      },
       select: { id: true, orderNumber: true, deliveryDate: true },
     });
     return orders.map((o) => ({
@@ -183,7 +203,7 @@ export class NotificationsService {
 
   private async findUnassignedOrders(organizationId: string): Promise<QualifyingEntity[]> {
     const orders = await this.prisma.order.findMany({
-      where: { organizationId, status: "PENDING" },
+      where: { organizationId, archivedAt: null, status: "PENDING" },
       select: { id: true, orderNumber: true },
     });
     return orders.map((o) => ({
@@ -251,23 +271,26 @@ export class NotificationsService {
 
     const results: QualifyingEntity[] = [];
     for (const customer of customers) {
+      // The query above filters creditLimit: { gt: 0 }, so creditLimit is
+      // always a positive Decimal here — use non-null assertion for TypeScript.
+      const limit = customer.creditLimit!;
       const outstanding = outstandingByCustomer.get(customer.id) ?? new Prisma.Decimal(0);
-      const exceeded = outstanding.gt(customer.creditLimit);
-      const warningThreshold = customer.creditLimit.mul(settings.creditLimitWarningPercent).div(100);
+      const exceeded = outstanding.gt(limit);
+      const warningThreshold = limit.mul(settings.creditLimitWarningPercent).div(100);
       const near = !exceeded && outstanding.gte(warningThreshold);
 
       if (kind === "EXCEEDED" && exceeded) {
         results.push({
           entityId: customer.id,
           title: `${customer.companyName} has exceeded its credit limit`,
-          message: `Outstanding balance ${outstanding.toString()} exceeds the credit limit of ${customer.creditLimit.toString()}.`,
+          message: `Outstanding balance ${outstanding.toString()} exceeds the credit limit of ${limit.toString()}.`,
           metadata: { companyName: customer.companyName },
         });
       } else if (kind === "NEAR" && near) {
         results.push({
           entityId: customer.id,
           title: `${customer.companyName} is near its credit limit`,
-          message: `Outstanding balance ${outstanding.toString()} is approaching the credit limit of ${customer.creditLimit.toString()}.`,
+          message: `Outstanding balance ${outstanding.toString()} is approaching the credit limit of ${limit.toString()}.`,
           metadata: { companyName: customer.companyName },
         });
       }
@@ -277,7 +300,7 @@ export class NotificationsService {
 
   private async findNegativeProfitOrders(organizationId: string): Promise<QualifyingEntity[]> {
     const deliveredOrders = await this.prisma.order.findMany({
-      where: { organizationId, status: "DELIVERED" },
+      where: { organizationId, archivedAt: null, status: "DELIVERED" },
       select: { id: true, orderNumber: true, price: true, currency: true },
     });
     if (deliveredOrders.length === 0) return [];
@@ -465,7 +488,7 @@ export class NotificationsService {
     const notification = await this.findVisibleOrThrow(organizationId, role, id);
     const updated = await this.prisma.notification.update({
       where: { id: notification.id },
-      data: { isArchived: true, archivedAt: new Date() },
+      data: { isArchived: true, archivedAt: new Date(), dismissedAt: new Date() },
     });
     return this.toResponse(updated);
   }
@@ -483,9 +506,26 @@ export class NotificationsService {
     const allowedCategories = categoriesForRole(role);
     const result = await this.prisma.notification.updateMany({
       where: { organizationId, category: { in: allowedCategories }, isArchived: false },
-      data: { isArchived: true, archivedAt: new Date() },
+      data: { isArchived: true, archivedAt: new Date(), dismissedAt: new Date() },
     });
     return { updatedCount: result.count };
+  }
+
+  /// Create a one-off notification that doesn't participate in the reconcile
+  /// loop — used by other services (e.g. Support) to fire immediate alerts.
+  /// Callers are responsible for deduplication and tenant isolation.
+  async createDirectNotification(data: {
+    organizationId: string;
+    type: string;
+    category: NotificationCategory;
+    severity: NotificationSeverity;
+    title: string;
+    message: string;
+    entityType?: string;
+    entityId?: string;
+    metadata?: Prisma.InputJsonValue;
+  }): Promise<Notification> {
+    return this.prisma.notification.create({ data });
   }
 
   async getSettings(organizationId: string) {

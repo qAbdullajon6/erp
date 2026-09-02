@@ -30,12 +30,11 @@ function TermsPage() {
         </p>
       </LegalSection>
 
-      <LegalSection heading="Trials & subscriptions">
+      <LegalSection heading="Plans & subscriptions">
         <p>
-          Product plans, trial length, and pricing shown on this site are described in good faith and may
-          change. The binding terms for a paid subscription are the order form or agreement you sign with
-          {" "}
-          {legalName}. A free trial carries no obligation to purchase.
+          Anything this site says about the product is described in good faith and may change. The
+          binding terms for a paid subscription are the order form or agreement you sign with{" "}
+          {legalName}. Submitting a request through this site carries no obligation to purchase.
         </p>
       </LegalSection>
 

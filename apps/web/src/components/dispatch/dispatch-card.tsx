@@ -7,11 +7,15 @@ import {
   AlertTriangle,
   Phone,
   ExternalLink,
+  Route,
   User,
   Truck,
   GripVertical,
+  Radio,
 } from 'lucide-react';
 import type { ApiDispatch } from '@/lib/api/dispatches';
+import type { DispatchConflictSummary } from '@/lib/api/dispatch-conflicts';
+import { DispatchConflictBadge } from '@/components/dispatch/dispatch-conflict-badge';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -29,6 +33,7 @@ interface DispatchCardProps {
   pending: boolean;
   selected?: boolean;
   canWrite?: boolean;
+  conflictSummary?: DispatchConflictSummary;
   onOpen: (id: string) => void;
   onReassign: (dispatch: ApiDispatch) => void;
   onCancel: (dispatch: ApiDispatch) => void;
@@ -49,6 +54,7 @@ function DispatchCardImpl({
   pending,
   selected = false,
   canWrite = true,
+  conflictSummary,
   onOpen,
   onReassign,
   onCancel,
@@ -69,6 +75,9 @@ function DispatchCardImpl({
   const isTerminal = dispatch.status === 'DELIVERED' || dispatch.status === 'CANCELLED';
   const urgency = !isTerminal ? getDeliveryUrgency(dispatch.deliveryDateScheduled) : null;
   const waiting = WAITING_PICKUP.has(dispatch.status);
+  const activeRoute = dispatch.routeContext?.find(
+    (r) => r.routeStatus !== 'CANCELLED' && r.routeStatus !== 'COMPLETED',
+  );
   /// Urgency label already encodes Late / Due today — only show Waiting as extra chip.
   const showWaitingChip = waiting && !urgency?.isLate;
 
@@ -88,6 +97,7 @@ function DispatchCardImpl({
         pending && 'animate-pulse opacity-60',
         urgency?.isLate && 'bg-destructive/5',
         !urgency?.isLate && urgency?.dueToday && 'bg-warning/5',
+        dispatch.status === 'IN_TRANSIT' && !urgency?.isLate && 'bg-brand/[0.03]',
         selected && 'ring-1 ring-inset ring-brand',
       )}
       aria-label={`Dispatch ${dispatch.dispatchNumber}${urgency?.isLate ? ', late' : ''}`}
@@ -117,6 +127,7 @@ function DispatchCardImpl({
             </button>
 
             <div className="flex items-center gap-0.5">
+              <DispatchConflictBadge summary={conflictSummary} />
               {urgency && (
                 <span
                   className={cn(
@@ -182,13 +193,16 @@ function DispatchCardImpl({
             className="mt-1 flex w-full items-center gap-1 text-left text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             onClick={() => onOpen(dispatch.id)}
           >
-            <span className="truncate font-medium text-foreground">
+            <span className={cn('truncate text-foreground', isTerminal ? 'font-medium' : 'font-semibold')}>
               {dispatch.order?.pickupCity ?? '—'}
             </span>
-            <span className="text-muted-foreground" aria-hidden="true">
+            <span
+              className={cn('shrink-0', dispatch.status === 'IN_TRANSIT' ? 'text-brand' : 'text-muted-foreground')}
+              aria-hidden="true"
+            >
               →
             </span>
-            <span className="truncate font-medium text-foreground">
+            <span className={cn('truncate text-foreground', isTerminal ? 'font-medium' : 'font-semibold')}>
               {dispatch.order?.deliveryCity ?? '—'}
             </span>
           </button>
@@ -209,18 +223,37 @@ function DispatchCardImpl({
               <span className="text-muted-foreground/80">No driver</span>
             )}
             {vehicle && (
-              <span className="flex min-w-0 items-center gap-0.5 truncate font-mono">
+              <span className="flex min-w-0 items-center gap-0.5 truncate">
                 <Truck className="h-3 w-3 shrink-0" aria-hidden="true" />
-                <span className="truncate">{vehicle.plateNumber}</span>
+                <span className="truncate font-mono">{vehicle.plateNumber}</span>
+                {vehicle.type && (
+                  <span className="truncate capitalize text-muted-foreground/60">
+                    · {vehicle.type}
+                  </span>
+                )}
               </span>
             )}
           </div>
 
-          {showWaitingChip && (
-            <span className="mt-1 inline-block rounded bg-warning/15 px-1.5 py-px text-[10px] font-medium text-warning">
-              Waiting pickup
-            </span>
-          )}
+          <div className="mt-1 flex flex-wrap items-center gap-1">
+            {dispatch.status === 'IN_TRANSIT' && (
+              <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-brand">
+                <Radio className="h-2.5 w-2.5 shrink-0" aria-hidden="true" />
+                Live
+              </span>
+            )}
+            {showWaitingChip && (
+              <span className="rounded bg-warning/15 px-1.5 py-px text-[10px] font-medium text-warning">
+                Waiting pickup
+              </span>
+            )}
+            {activeRoute && (
+              <span className="flex items-center gap-0.5 text-[10px] font-medium text-brand">
+                <Route className="h-2.5 w-2.5 shrink-0" aria-hidden="true" />
+                {activeRoute.routeNumber}
+              </span>
+            )}
+          </div>
         </div>
       </div>
     </article>

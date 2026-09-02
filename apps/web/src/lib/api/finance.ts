@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from './fetch';
+import { unwrapResponse } from './error';
 import { financeSummaryKeys } from './query-keys';
 
 export interface FinanceSummary {
@@ -26,14 +27,9 @@ export interface FinanceLookupItem {
   label: string;
 }
 
-async function unwrap<T>(response: Response, fallbackMessage: string): Promise<T> {
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.message || fallbackMessage);
-  }
-  const result = await response.json();
-  return (result.data ?? result) as T;
-}
+/// See expenses.ts — the local copy read the wrong field on the error envelope
+/// and threw a status-less Error.
+const unwrap = unwrapResponse;
 
 class FinanceAPI {
   async summary(): Promise<FinanceSummary> {

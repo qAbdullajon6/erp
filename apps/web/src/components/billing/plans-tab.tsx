@@ -14,6 +14,7 @@ import {
   type Subscription,
 } from "@/lib/api/billing";
 import { CreditCard } from "lucide-react";
+import { describeError } from "@/lib/api/describe-error";
 
 export function PlansTab() {
   const plansQuery = usePlansQuery();
@@ -61,7 +62,7 @@ export function PlansTab() {
         toast.success(`Downgrade to ${plan.name} scheduled for the end of the billing period`);
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to change plan");
+      toast.error(describeError(err, "Failed to change plan"));
     }
   };
 

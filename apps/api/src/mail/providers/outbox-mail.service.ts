@@ -5,7 +5,9 @@ import {
   type DemoConfirmationEmailMessage,
   type InvitationEmailMessage,
   type LeadNotificationEmailMessage,
+  type PasswordResetEmailMessage,
   type RawEmailMessage,
+  type SupportReplyEmailMessage,
 } from "../mail.service";
 import { MailOutbox } from "../mail.outbox";
 
@@ -37,6 +39,14 @@ export class OutboxMailService extends MailService {
     return Promise.resolve();
   }
 
+  sendPasswordResetEmail(message: PasswordResetEmailMessage): Promise<void> {
+    this.outbox.recordPasswordReset(message);
+    // Unlike invitation links, reset capabilities are never written to logs,
+    // including development logs. Tests retrieve them directly from MailOutbox.
+    this.logger.debug("Password reset email captured (not sent).");
+    return Promise.resolve();
+  }
+
   sendRawEmail(message: RawEmailMessage): Promise<void> {
     this.outbox.recordRaw(message);
     this.logger.debug(`Raw email captured (not sent). To: ${message.to}, Subject: ${message.subject}`);
@@ -52,6 +62,14 @@ export class OutboxMailService extends MailService {
   sendDemoConfirmationEmail(message: DemoConfirmationEmailMessage): Promise<void> {
     this.outbox.recordDemoConfirmation(message);
     this.logger.debug(`Demo confirmation email captured (not sent). To: ${message.to}`);
+    return Promise.resolve();
+  }
+
+  sendSupportReplyEmail(message: SupportReplyEmailMessage): Promise<void> {
+    this.outbox.recordSupportReply(message);
+    this.logger.debug(
+      `Support reply email captured (not sent). To: ${message.to}, Ticket: ${message.ticketSubject}`,
+    );
     return Promise.resolve();
   }
 }

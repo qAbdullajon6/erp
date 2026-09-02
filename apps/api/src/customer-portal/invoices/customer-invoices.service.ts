@@ -68,7 +68,7 @@ export class CustomerInvoicesService {
   async getById(payload: CurrentCustomerPayload, id: string) {
     const invoice = await this.invoices.getById(payload.organizationId, id);
     this.assertOwned(invoice, payload);
-    if (!PORTAL_VISIBLE.includes(invoice.status as InvoiceStatus)) {
+    if (!PORTAL_VISIBLE.includes(invoice.status)) {
       throw new NotFoundException("Invoice not found");
     }
     return invoice;

@@ -131,7 +131,8 @@ Supplied to the stack via `--env-file` (never committed; `.gitignore` excludes
 - [ ] DNS A record → VPS **before** first boot (so Caddy's ACME succeeds).
 - [ ] `.env.production` filled from the template; secrets generated with `openssl`.
 - [ ] `vercel.json` rewrite host == `SITE_ADDRESS`.
-- [ ] Backup cron installed with `OFFSITE_COMMAND` set (§6).
+- [ ] AWS CLI v2 and `/usr/local/bin/flowerp-offsite-backup` installed; backup
+  cron configured with `OFFSITE_WRAPPER` and S3 destination values (§6).
 
 **Each deploy:**
 - [ ] `./scripts/deploy.sh [ref]` — builds, migrates, health-gates, auto-rolls-back.
@@ -152,8 +153,19 @@ Supplied to the stack via `--env-file` (never committed; `.gitignore` excludes
 - **Schedule:** nightly cron (an odd minute). **RPO ≈ 24h** — tighten by running more
   often or moving to WAL archiving (DR doc, "Beyond nightly dumps").
 - **Retention:** 14 days local (`RETENTION_DAYS`); keep a longer tail offsite.
-- **Offsite:** `OFFSITE_COMMAND` (`rclone copy` / `aws s3 cp`) — **not optional for
-  real DR**; a dump only on the VPS dies with the VPS. The script warns when unset.
+- **Offsite:** `OFFSITE_WRAPPER=/usr/local/bin/flowerp-offsite-backup` directly
+  invokes the repository's AWS CLI v2 wrapper with the dump and checksum. It
+  uploads both under `S3_BACKUP_PREFIX` with SSE-S3, verifies lengths,
+  encryption, dump SHA-256 metadata, and exact downloaded checksum content.
+  `REQUIRE_OFFSITE_BACKUP=true` makes exhausted retries fail without pruning
+  local recovery points or writing the success marker.
+- **AWS setup:** `AWS_REGION`, `S3_BUCKET`, and `S3_BACKUP_PREFIX` are non-secret.
+  Credentials use the standard AWS CLI provider chain outside git. The private
+  bucket needs S3 Block Public Access and versioning. IAM and lifecycle examples
+  are in `deploy/aws/`; lifecycle application is a separate admin action.
+- **Deployment status:** this repository integration and fake-AWS tests do not
+  prove that AWS CLI, IAM, lifecycle, cron, credentials, or uploads are
+  configured or verified on production.
 - **`APP_SECRET` is part of the backup story:** payment-provider credentials are
   AES-256 encrypted with it. Restore with a different `APP_SECRET` and those rows
   are intact but undecryptable. Store it off-box alongside the dumps.
@@ -214,7 +226,7 @@ Every monitoring config was validated with its native tool (§10).
 | R1 | **In-process schedulers double-fire under >1 API instance** | **P1 for multi-instance; N/A single-instance** | 6 schedulers run in-process: billing renewal & usage-snapshot crons, notification delivery queue, webhook dispatcher, telematics sweeper, workflow scheduler. N instances = N× firing. Single-runner election (or a job runner) is required before scaling out. Aligns with TD-018. **The current documented topology is single-instance, where this is a non-issue.** |
 | R2 | **Telematics SSE fan-out — resolved** | ✅ | Verified in logs: `TelematicsRealtimeService` uses Redis pub/sub cross-instance when `REDIS_URL` is set. Supersedes the earlier "in-process SSE registry" note. |
 | R3 | **`APP_SECRET` loss makes encrypted rows unreadable** | High if mishandled | Payment creds are AES-256 with it. Must be stored off-box and recovered with the DB. Documented in DR doc + §6. |
-| R4 | **Offsite backup not enforced by code** | Operational | `OFFSITE_COMMAND` is opt-in; the script warns but cannot force it. Deployment checklist gates it. |
+| R4 | **Offsite backup depends on production operations** | Operational | Code supports `REQUIRE_OFFSITE_BACKUP=true` with a bounded, verified S3 wrapper, but AWS CLI, IAM, lifecycle, credentials, cron, alerting, and a restore drill still require explicit production setup and verification. |
 | R5 | **Single-VPS = single point of failure** | Accepted for this tier | No DB replica/failover. RTO ~1h via the DR rebuild. Managed Postgres / a replica is the next-tier upgrade, called out in the DR doc. |
 | R6 | **Non-root image + Prisma engine** | Verified safe | Confirmed: migrate deploy runs as uid 1000 under tini and connects — see §10. |
 | R7 | **Prisma `package.json#prisma` deprecation warning** | Cosmetic | Prisma 7 wants a `prisma.config.ts`. Warning only; no runtime impact. Schedule before a Prisma 7 upgrade. |

@@ -509,8 +509,13 @@ export class TrackingService {
     const vehicleIds = states.map((s) => s.vehicleId);
     const driverIds = states.map((s) => s.driverId).filter((id): id is string => !!id);
     const [vehicles, drivers, liveDispatches] = await Promise.all([
+      // archivedAt: null — an archived vehicle must vanish from the live fleet
+      // map exactly like it vanishes from the Vehicles list; its
+      // VehicleTelematicsState row otherwise lives forever (it's a last-known-
+      // state cache, never deleted), which would keep showing a movable,
+      // selectable pin for a vehicle the org can no longer even open normally.
       this.prisma.vehicle.findMany({
-        where: { id: { in: vehicleIds }, organizationId },
+        where: { id: { in: vehicleIds }, organizationId, archivedAt: null },
         select: { id: true, vehicleCode: true, plateNumber: true },
       }),
       driverIds.length > 0
@@ -554,7 +559,9 @@ export class TrackingService {
 
     return {
       generatedAt: new Date(),
-      vehicles: states.map((state) => {
+      // Drop states whose vehicle wasn't returned above — either it belongs
+      // to another org (shouldn't happen) or, the real case, it's archived.
+      vehicles: states.filter((state) => vehicleById.has(state.vehicleId)).map((state) => {
         const vehicle = vehicleById.get(state.vehicleId);
         const driver = state.driverId ? driverById.get(state.driverId) : null;
         const session = sessionByVehicle.get(state.vehicleId) ?? null;
@@ -576,8 +583,11 @@ export class TrackingService {
   }
 
   async vehicleLatest(organizationId: string, vehicleId: string): Promise<TrackingLivePosition> {
+    // archivedAt: null — live/detail lookups must treat archived vehicles like
+    // missing ones (404 "Vehicle not found") so existence is never leaked.
+    // History / ingest paths are intentionally separate and untouched here.
     const vehicle = await this.prisma.vehicle.findFirst({
-      where: { id: vehicleId, organizationId },
+      where: { id: vehicleId, organizationId, archivedAt: null },
       select: { id: true, vehicleCode: true, plateNumber: true },
     });
     if (!vehicle) throw new NotFoundException("Vehicle not found");

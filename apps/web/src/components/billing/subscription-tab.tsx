@@ -31,6 +31,7 @@ import {
   type Subscription,
 } from "@/lib/api/billing";
 import { CreditCard } from "lucide-react";
+import { describeError } from "@/lib/api/describe-error";
 
 export function SubscriptionTab() {
   const subQuery = useSubscriptionQuery();
@@ -130,7 +131,7 @@ function SubscriptionActions({ subscription }: { subscription: Subscription }) {
       setSeatCount("");
       setSeatsOpen(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to add seats");
+      toast.error(describeError(err, "Failed to add seats"));
     }
   };
 
@@ -139,7 +140,7 @@ function SubscriptionActions({ subscription }: { subscription: Subscription }) {
       await cancel.mutateAsync({ immediate: false, reason: "admin_requested" });
       toast.success("Cancellation scheduled for the end of the billing period");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to cancel subscription");
+      toast.error(describeError(err, "Failed to cancel subscription"));
     }
   };
 
@@ -148,7 +149,7 @@ function SubscriptionActions({ subscription }: { subscription: Subscription }) {
       await reactivate.mutateAsync();
       toast.success("Subscription reactivated");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to reactivate subscription");
+      toast.error(describeError(err, "Failed to reactivate subscription"));
     }
   };
 
@@ -168,7 +169,7 @@ function SubscriptionActions({ subscription }: { subscription: Subscription }) {
           <DialogHeader>
             <DialogTitle>Add seats</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleAddSeats} className="space-y-4">
+          <form onSubmit={handleAddSeats} noValidate className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="seat-count">Number of seats to add</Label>
               <Input

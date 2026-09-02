@@ -120,6 +120,41 @@ describe("TrackingService", () => {
     expect(latest.latitude).toBeNull();
     expect(latest.longitude).toBeNull();
     expect(latest.isStale).toBe(true);
+    expect(prisma.vehicle.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: vehicleId,
+          organizationId,
+          archivedAt: null,
+        },
+      }),
+    );
+  });
+
+  it("vehicleLatest 404s for archived vehicles without leaking existence", async () => {
+    // Prisma returns null when archivedAt: null is in the where clause.
+    prisma.vehicle.findFirst.mockResolvedValue(null);
+
+    await expect(service.vehicleLatest(organizationId, vehicleId)).rejects.toEqual(
+      expect.objectContaining({
+        message: "Vehicle not found",
+      }),
+    );
+    await expect(service.vehicleLatest(organizationId, vehicleId)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(prisma.vehicleTelematicsState.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("vehicleLatest 404s for cross-org vehicle ids (same message as archived)", async () => {
+    prisma.vehicle.findFirst.mockResolvedValue(null);
+
+    await expect(service.vehicleLatest("other-org", vehicleId)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    await expect(service.vehicleLatest("other-org", vehicleId)).rejects.toThrow(
+      "Vehicle not found",
+    );
   });
 
   it("heartbeat rejects ended sessions and publishes for active ones", async () => {

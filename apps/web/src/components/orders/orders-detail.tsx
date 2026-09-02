@@ -2,37 +2,69 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
+import { useQuery } from '@tanstack/react-query';
+import { auditLogKeys } from '@/lib/api/query-keys';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
-import { LoadingState, ErrorState } from '@/components/shared/list-states';
-import { StatusBadge } from '@/components/shared/status-badge';
+import { AssignModal, type AssignTab } from '@/components/orders/assign-modal';
+import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-states';
+import { StatusBadge, statusLabel } from '@/components/shared/status-badge';
+
+/// What each order transition is called to the person doing it. "Move to
+/// PENDING" is the database's name for confirming a draft, and it was the only
+/// way to make a new order dispatchable — the Orders list called the same step
+/// "Activate draft", so the product had two names for it and neither was the
+/// one an operator would use.
+const TRANSITION_LABELS: Partial<Record<OrderStatus, string>> = {
+  PENDING: 'Confirm order',
+  ASSIGNED: 'Mark as assigned',
+  IN_TRANSIT: 'Mark in transit',
+};
+
+const FAILURE_REASON_LABELS: Record<string, string> = {
+  CUSTOMER_UNAVAILABLE: 'Customer unavailable',
+  CUSTOMER_REFUSED: 'Customer refused delivery',
+  WRONG_ADDRESS: 'Wrong address',
+  ACCESS_PROBLEM: 'Access problem',
+  DAMAGED_CARGO: 'Damaged cargo',
+  VEHICLE_PROBLEM: 'Vehicle problem',
+  OTHER: 'Other',
+};
 import { OrderTimeline } from '@/components/orders/order-timeline';
+import {
+  OrderActivityTimeline,
+  buildOrderActivityTimeline,
+} from '@/components/orders/order-activity-timeline';
+import { OrderDocumentsPanel } from '@/components/orders/order-documents-panel';
+import { OrderNotesPanel } from '@/components/orders/order-notes-panel';
+import { ProofOfDeliveryPanel } from '@/components/dispatch/proof-of-delivery-panel';
+import {
+  driverFromDispatch,
+  hasEffectiveAssignment,
+  resolveEffectiveAssignment,
+  vehicleFromDispatch,
+} from '@/components/orders/order-assignment.util';
 import { OrdersEditSheet } from '@/components/orders/orders-edit-sheet';
+import { OrderRouteMap } from '@/components/orders/order-route-map';
+import { InvoiceDetailSheet } from '@/components/finance/invoice-detail-sheet';
 import {
   useOrder,
-  useAssignOrder,
   useUpdateOrderStatus,
   useCancelOrder,
-  type Order,
+  useArchiveOrder,
+  useRestoreOrder,
   type OrderStatus,
 } from '@/lib/api/orders';
-import { useAvailability } from '@/lib/api/availability';
+import { auditLogsAPI } from '@/lib/api/audit-logs';
 import { useDriver, type Driver } from '@/lib/api/drivers';
 import { useVehicle, type Vehicle } from '@/lib/api/vehicles';
 import { useCustomerDetail } from '@/lib/api/customers';
 import { useDispatches } from '@/lib/hooks/use-dispatches';
-import { useInvoicesQuery, useCreateInvoiceFromOrderMutation, type Invoice } from '@/lib/api/invoices';
+import { useInvoicesQuery, useCreateInvoiceFromOrderMutation } from '@/lib/api/invoices';
 import { useExpensesQuery, type Expense } from '@/lib/api/expenses';
 import { useLiveFleetQuery } from '@/lib/api/telematics';
 import { useCurrentUser } from '@/lib/api/auth';
@@ -44,18 +76,24 @@ import {
   ORDER_WRITE_ROLES,
   ORDER_OPERATIONAL_ROLES,
   EXPENSE_READ_ROLES,
+  AUDIT_ROLES,
 } from '@/lib/role-access';
 import type { MembershipRole } from '@/lib/api/organizations';
 import type { ApiDispatch } from '@/lib/api/dispatches';
 import {
   AlertTriangle,
+  Archive,
+  ArchiveRestore,
   ArrowLeft,
   ArrowRight,
   Box,
   Building2,
+  Calendar,
+  Car,
   CheckCircle2,
   ChevronRight,
   Clock,
+  Copy,
   Edit2,
   FileText,
   Mail,
@@ -68,93 +106,18 @@ import {
   Route as RouteIcon,
   Ruler,
   Scale,
-  StickyNote,
   Truck,
   User,
   UserPlus,
-  Wallet,
-  Workflow,
   XCircle,
 } from 'lucide-react';
-import { formatMoney, formatDate, formatDateTime, formatRelativeTime } from '@/lib/format';
+import { formatMoney, formatDate, formatRelativeTime, formatStopTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { describeError } from '@/lib/api/describe-error';
 
 interface OrderDetailProps {
   orderId: string;
-}
-
-type ActivityKind = 'status' | 'assignment' | 'invoice' | 'dispatch' | 'payment' | 'workflow' | 'note';
-
-type ActivityItem = {
-  id: string;
-  at: string;
-  title: string;
-  detail?: string | null;
-  status?: OrderStatus;
-  kind: ActivityKind;
-};
-
-const ACTIVITY_STYLE: Record<
-  ActivityKind,
-  { icon: typeof Clock; className: string }
-> = {
-  status: { icon: CheckCircle2, className: 'bg-brand/15 text-brand' },
-  assignment: { icon: UserPlus, className: 'bg-success/15 text-success' },
-  invoice: { icon: Receipt, className: 'bg-warning/15 text-warning' },
-  dispatch: { icon: RouteIcon, className: 'bg-brand/15 text-brand' },
-  payment: { icon: Wallet, className: 'bg-success/15 text-success' },
-  workflow: { icon: Workflow, className: 'bg-muted text-muted-foreground' },
-  note: { icon: StickyNote, className: 'bg-muted text-muted-foreground' },
-};
-
-function kindForStatus(status: OrderStatus): ActivityKind {
-  if (status === 'ASSIGNED') return 'assignment';
-  if (status === 'CANCELLED') return 'note';
-  return 'status';
-}
-
-function buildActivity(
-  order: Order,
-  invoice?: Invoice | null,
-  dispatch?: ApiDispatch | null,
-): ActivityItem[] {
-  const items: ActivityItem[] = (order.statusHistory ?? []).map((e) => ({
-    id: e.id,
-    at: e.createdAt,
-    title: e.status.replace(/_/g, ' '),
-    detail: e.note,
-    status: e.status,
-    kind: kindForStatus(e.status),
-  }));
-  if (invoice) {
-    items.push({
-      id: `invoice-${invoice.id}`,
-      at: invoice.createdAt,
-      title: `Invoice ${invoice.invoiceNumber}`,
-      detail: invoice.status.replace(/_/g, ' '),
-      kind: 'invoice',
-    });
-    if (Number(invoice.paidAmount) > 0) {
-      items.push({
-        id: `paid-${invoice.id}`,
-        at: invoice.updatedAt,
-        title: 'Payment recorded',
-        detail: formatMoney(invoice.paidAmount, invoice.currency),
-        kind: 'payment',
-      });
-    }
-  }
-  if (dispatch) {
-    items.push({
-      id: `dispatch-${dispatch.id}`,
-      at: dispatch.createdAt,
-      title: `Dispatch ${dispatch.dispatchNumber}`,
-      detail: dispatch.status.replace(/_/g, ' '),
-      kind: 'dispatch',
-    });
-  }
-  return items.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
 }
 
 function Avatar({
@@ -258,9 +221,10 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
   const navigate = useNavigate();
   const activityRef = useRef<HTMLElement>(null);
   const { data: order, loading, error, refetch } = useOrder(orderId);
-  const { assign, loading: assignLoading } = useAssignOrder();
   const { updateStatus, loading: statusLoading } = useUpdateOrderStatus();
   const { cancel, loading: cancelLoading } = useCancelOrder();
+  const { archive, loading: archiveLoading } = useArchiveOrder();
+  const { restore, loading: restoreLoading } = useRestoreOrder();
 
   const { data: currentUser } = useCurrentUser();
   const role = currentUser?.membership.role as MembershipRole | undefined;
@@ -271,6 +235,19 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
   const canWriteOrder = Boolean(role && ORDER_WRITE_ROLES.includes(role));
   const canOperateOrder = Boolean(role && ORDER_OPERATIONAL_ROLES.includes(role));
   const canViewExpenses = Boolean(role && EXPENSE_READ_ROLES.includes(role));
+  const canViewAudit = Boolean(role && AUDIT_ROLES.includes(role));
+
+  const auditQuery = useQuery({
+    queryKey: auditLogKeys.list({ entityType: 'Order', entityId: orderId }),
+    queryFn: () =>
+      auditLogsAPI.list({
+        entityType: 'Order',
+        entityId: orderId,
+        limit: 100,
+        sortOrder: 'desc',
+      }),
+    enabled: canViewAudit && Boolean(orderId),
+  });
 
   const { data: dispatchesForOrder, loading: dispatchesLoading } = useDispatches(
     1,
@@ -291,55 +268,82 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
   );
   const expenses: Expense[] = expensesQuery.data?.items ?? [];
 
-  const {
-    data: availability,
-    loading: availabilityLoading,
-    error: availabilityError,
-    refetch: refetchAvailability,
-  } = useAvailability(
-    order && canOperateOrder
-      ? { pickupDate: order.pickupDate, deliveryDate: order.deliveryDate }
-      : undefined,
-    { enabled: canOperateOrder },
-  );
+  const plannedDriverId =
+    order?.driverId ?? (dispatch?.status === 'DRAFT' ? dispatch?.driverId ?? null : null);
+  const plannedVehicleId =
+    order?.vehicleId ?? (dispatch?.status === 'DRAFT' ? dispatch?.vehicleId ?? null : null);
 
   const liveFleet = useLiveFleetQuery({
-    enabled: canViewFleet && Boolean(order?.vehicleId),
-    refetchInterval: order?.vehicleId ? 30_000 : undefined,
+    enabled: canViewFleet && Boolean(plannedVehicleId),
+    refetchInterval: plannedVehicleId ? 30_000 : undefined,
   });
   const liveVehicle = useMemo(() => {
-    if (!order?.vehicleId || !liveFleet.data) return null;
-    return liveFleet.data.find((v) => v.vehicleId === order.vehicleId) ?? null;
-  }, [liveFleet.data, order?.vehicleId]);
+    if (!plannedVehicleId || !liveFleet.data) return null;
+    return liveFleet.data.find((v) => v.vehicleId === plannedVehicleId) ?? null;
+  }, [liveFleet.data, plannedVehicleId]);
 
   const [editOpen, setEditOpen] = useState(false);
-  const [showAssign, setShowAssign] = useState(false);
-  const [driverId, setDriverId] = useState('');
-  const [vehicleId, setVehicleId] = useState('');
-  const [assignError, setAssignError] = useState('');
+  const [invoiceSheetId, setInvoiceSheetId] = useState<string | null>(null);
+  const [assignModal, setAssignModal] = useState<{ open: boolean; tab: AssignTab }>({ open: false, tab: 'both' });
   const [showCancel, setShowCancel] = useState(false);
   const [cancelNote, setCancelNote] = useState('');
+  const [pendingConfirmOrder, setPendingConfirmOrder] = useState(false);
   const [pendingDeliverConfirm, setPendingDeliverConfirm] = useState(false);
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const [highlightStatus, setHighlightStatus] = useState<OrderStatus | null>(null);
 
   const { data: customer, loading: customerLoading } = useCustomerDetail(order?.customerId ?? '');
-  const { data: assignedDriver } = useDriver(canViewFleet && order?.driverId ? order.driverId : '');
-  const { data: assignedVehicle } = useVehicle(canViewFleet && order?.vehicleId ? order.vehicleId : '');
+  const { data: assignedDriver } = useDriver(
+    canViewFleet && plannedDriverId ? plannedDriverId : '',
+  );
+  const { data: assignedVehicle } = useVehicle(
+    canViewFleet && plannedVehicleId ? plannedVehicleId : '',
+  );
 
   if (loading) return <LoadingState label="Loading order..." />;
   if (error) return <ErrorState message={error} onRetry={refetch} />;
-  if (!order) return <div className="py-12 text-center text-muted-foreground">Order not found</div>;
+  if (!order) {
+    return (
+      <EmptyState
+        icon={Package}
+        title="Order not found"
+        description="This order may have been deleted, or the link is incorrect."
+        action={
+          <Button onClick={() => navigate({ to: '/app/orders' })} variant="outline">
+            Back to Orders
+          </Button>
+        }
+      />
+    );
+  }
+
+  const { driverId: effectiveDriverId, vehicleId: effectiveVehicleId, isDraftPlan } =
+    resolveEffectiveAssignment(order, dispatch);
+  const displayDriver =
+    assignedDriver ?? driverFromDispatch(dispatch) ?? (effectiveDriverId && !canViewFleet ? { id: effectiveDriverId } as Driver : null);
+  const displayVehicle =
+    assignedVehicle ?? vehicleFromDispatch(dispatch) ?? (effectiveVehicleId && !canViewFleet ? { id: effectiveVehicleId } as Vehicle : null);
 
   const allowedTransitions = order.allowedTransitions.filter(
-    (status) => status !== 'ASSIGNED' || (order.driverId && order.vehicleId),
+    (status) => status !== 'ASSIGNED' || hasEffectiveAssignment(order, dispatch),
   );
-  const canEdit = canWriteOrder && order.status !== 'DELIVERED' && order.status !== 'CANCELLED';
-  const canAssign = canOperateOrder && ['PENDING', 'ASSIGNED'].includes(order.status);
-  const canCancel = canOperateOrder && order.status !== 'DELIVERED' && order.status !== 'CANCELLED';
-  const canAdvanceStatus = canOperateOrder && allowedTransitions.length > 0;
+  const canEdit = canWriteOrder && order.status !== 'DELIVERED' && order.status !== 'CANCELLED' && !order.archivedAt;
+  const canAssign = canOperateOrder && ['PENDING', 'ASSIGNED'].includes(order.status) && !order.archivedAt;
+  const canCancel = canOperateOrder && order.status !== 'DELIVERED' && order.status !== 'CANCELLED' && !order.archivedAt;
+  const canAdvanceStatus = canOperateOrder && allowedTransitions.length > 0 && !order.archivedAt;
+  const canArchive =
+    canOperateOrder &&
+    !order.archivedAt &&
+    (order.status === 'DELIVERED' || order.status === 'CANCELLED');
+  const canRestore = canOperateOrder && Boolean(order.archivedAt);
 
   const customerLabel = customerLoading ? '…' : customer?.companyName ?? '—';
-  const activity = buildActivity(order, invoice, dispatch);
+  const activityEntries = buildOrderActivityTimeline(
+    order,
+    auditQuery.data?.items ?? [],
+    invoice,
+  );
 
   const approvedExpenseTotal = expenses
     .filter((e) => e.status === 'APPROVED')
@@ -352,34 +356,12 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
   const outstanding = invoice ? Number(invoice.balanceDue) : null;
   const collected = invoice ? Number(invoice.paidAmount) : null;
 
-  const openAssign = () => {
-    setShowAssign(true);
-    setAssignError('');
-  };
-
-  const handleAssign = async () => {
-    if (!driverId || !vehicleId) {
-      setAssignError('Driver and vehicle required');
-      return;
-    }
-    try {
-      await assign(orderId, { driverId, vehicleId });
-      toast.success(order.driverId ? 'Reassigned' : 'Assigned');
-      setShowAssign(false);
-      setDriverId('');
-      setVehicleId('');
-      setAssignError('');
-    } catch (err) {
-      setAssignError(err instanceof Error ? err.message : 'Failed to assign');
-    }
-  };
-
   const handleStatusTransition = async (newStatus: OrderStatus) => {
     try {
       await updateStatus(orderId, { status: newStatus });
       toast.success(`Moved to ${newStatus.replace(/_/g, ' ')}`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed');
+      toast.error(describeError(err, 'Failed'));
     }
   };
 
@@ -389,7 +371,27 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
       toast.success('Order cancelled');
       setShowCancel(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed');
+      toast.error(describeError(err, 'Failed'));
+    }
+  };
+
+  const handleArchive = async () => {
+    try {
+      await archive(orderId);
+      toast.success('Order archived');
+      setShowArchiveConfirm(false);
+    } catch (err) {
+      toast.error(describeError(err, 'Failed to archive'));
+    }
+  };
+
+  const handleRestore = async () => {
+    try {
+      await restore(orderId);
+      toast.success('Order restored');
+      setShowRestoreConfirm(false);
+    } catch (err) {
+      toast.error(describeError(err, 'Failed to restore'));
     }
   };
 
@@ -430,9 +432,26 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                   Delayed
                 </Badge>
               )}
-              {order.status === 'PENDING' && !order.driverId && (
+              {order.archivedAt && (
+                <Badge variant="outline" className="gap-1 text-[10px]">
+                  <Archive className="h-3 w-3" />
+                  Archived
+                </Badge>
+              )}
+              {order.status === 'PENDING' && !hasEffectiveAssignment(order, dispatch) && (
                 <Badge className="bg-warning/15 text-[10px] text-warning hover:bg-warning/15">
                   Needs assignment
+                </Badge>
+              )}
+              {dispatch?.status === 'DELIVERY_FAILED' && (
+                <Badge className="gap-1 bg-destructive/15 text-[10px] text-destructive hover:bg-destructive/15">
+                  <XCircle className="h-3 w-3" />
+                  Previous delivery failed
+                  {dispatch.failureReason && (
+                    <span className="opacity-75">
+                      · {FAILURE_REASON_LABELS[dispatch.failureReason] ?? dispatch.failureReason}
+                    </span>
+                  )}
                 </Badge>
               )}
             </div>
@@ -457,9 +476,9 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             {canAssign && (
-              <Button size="sm" onClick={openAssign} data-testid="orders-assign-toggle">
+              <Button size="sm" onClick={() => setAssignModal({ open: true, tab: 'both' })} data-testid="orders-assign-toggle">
                 <UserPlus className="mr-1.5 h-3.5 w-3.5" />
-                {order.driverId ? 'Reassign' : 'Assign'}
+                {hasEffectiveAssignment(order, dispatch) ? 'Reassign' : 'Assign'}
               </Button>
             )}
             {canEdit && (
@@ -478,7 +497,7 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                     await createInvoiceFromOrder(orderId);
                     toast.success('Invoice created');
                   } catch (err) {
-                    toast.error(err instanceof Error ? err.message : 'Failed');
+                    toast.error(describeError(err, 'Failed'));
                   }
                 }}
               >
@@ -501,7 +520,7 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                   </Button>
                 }
                 title={`Cancel ${order.orderNumber}?`}
-                description="This cannot be undone."
+                description="Every open dispatch for this order is cancelled too, releasing its driver and vehicle. The order stays on record but cannot be reopened or edited."
                 confirmLabel={cancelLoading ? 'Cancelling…' : 'Cancel order'}
                 cancelLabel="Keep"
                 onConfirm={handleCancel}
@@ -516,6 +535,38 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                 />
               </ConfirmDialog>
             )}
+            {canArchive && (
+              <ConfirmDialog
+                open={showArchiveConfirm}
+                onOpenChange={setShowArchiveConfirm}
+                trigger={
+                  <Button size="sm" variant="outline" disabled={archiveLoading}>
+                    <Archive className="mr-1.5 h-3.5 w-3.5" />
+                    Archive
+                  </Button>
+                }
+                title={`Archive ${order.orderNumber}?`}
+                description="Archived orders are hidden from the default list but can be restored later."
+                confirmLabel={archiveLoading ? 'Archiving…' : 'Archive order'}
+                onConfirm={handleArchive}
+              />
+            )}
+            {canRestore && (
+              <ConfirmDialog
+                open={showRestoreConfirm}
+                onOpenChange={setShowRestoreConfirm}
+                trigger={
+                  <Button size="sm" variant="outline" disabled={restoreLoading}>
+                    <ArchiveRestore className="mr-1.5 h-3.5 w-3.5" />
+                    Restore
+                  </Button>
+                }
+                title={`Restore ${order.orderNumber}?`}
+                description="This order will reappear in the active orders list."
+                confirmLabel={restoreLoading ? 'Restoring…' : 'Restore order'}
+                onConfirm={handleRestore}
+              />
+            )}
           </div>
         </div>
 
@@ -523,8 +574,8 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
         <div className="border-b border-border/70 px-4 py-3">
           <OrderTimeline
             order={order}
-            driver={assignedDriver}
-            vehicle={assignedVehicle}
+            driver={displayDriver}
+            vehicle={displayVehicle}
             dispatch={dispatch}
             live={liveVehicle}
             onStageClick={jumpToActivity}
@@ -532,84 +583,224 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
         </div>
 
         {/* Body: work surface | ops rail — shared shell, section dividers only */}
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_260px]">
           {/* -------- LEFT WORK SURFACE -------- */}
-          <div className="divide-y divide-border/70 border-r-0 lg:border-r lg:border-border/70">
-            {/* Pickup / Delivery */}
-            <div className="grid grid-cols-1 md:grid-cols-2">
-              <div className="space-y-2 border-b border-border/70 p-4 md:border-b-0 md:border-r md:border-border/70">
-                <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-brand">
-                  <MapPin className="h-3.5 w-3.5" />
-                  Pickup
-                </div>
-                <p className="text-base font-semibold text-foreground">{order.pickupCity}</p>
-                <p className="text-xs text-muted-foreground">{order.pickupAddress}</p>
-                <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 text-xs">
-                  <span>
-                    <span className="text-muted-foreground">Planned </span>
-                    <span className="font-medium tabular-nums">{formatDate(order.pickupDate)}</span>
-                  </span>
-                  {dispatch?.pickupDateActual && (
-                    <span>
-                      <span className="text-muted-foreground">Actual </span>
-                      <span className="font-medium tabular-nums">{formatDate(dispatch.pickupDateActual)}</span>
-                    </span>
-                  )}
-                </div>
-                {(customer?.contactName || customer?.phone) && (
-                  <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
-                    {customer?.contactName && (
-                      <span className="text-muted-foreground">{customer.contactName}</span>
+          <div className="">
+            {/* Route — Map(2fr) + Pickup(1fr) + Delivery(1fr)
+                Mobile: stacked column; Desktop: 4-col grid [2fr 1fr auto 1fr] */}
+            <div className="px-4 pt-4 grid grid-cols-1 gap-2 md:grid-cols-[2fr_1fr_auto_1fr]">
+              {/* Map */}
+              <div className="relative min-h-[230px] overflow-hidden rounded-lg border border-border/70">
+                <OrderRouteMap
+                  pickupCity={order.pickupCity}
+                  pickupCountryCode={order.pickupCountryCode}
+                  pickupLat={order.pickupLat}
+                  pickupLng={order.pickupLng}
+                  deliveryCity={order.deliveryCity}
+                  deliveryCountryCode={order.deliveryCountryCode}
+                  deliveryLat={order.deliveryLat}
+                  deliveryLng={order.deliveryLng}
+                  vehicleId={order.vehicleId}
+                  className="absolute inset-0"
+                />
+              </div>
+
+                {/* Pickup */}
+                <div className="min-w-0 space-y-3 rounded-lg border border-border/70 p-4">
+                  <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-500">
+                    <MapPin className="h-3.5 w-3.5 shrink-0" />
+                    Pickup
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{order.pickupCity}</p>
+                    {order.pickupAddress && (
+                      <p className="mt-0.5 text-xs text-muted-foreground">{order.pickupAddress}</p>
                     )}
-                    {customer?.phone && (
-                      <a href={`tel:${customer.phone}`} className="inline-flex items-center gap-1 font-medium text-brand hover:underline">
-                        <Phone className="h-3 w-3" />
-                        {customer.phone}
-                      </a>
+                    {(order.pickupPostalCode || order.pickupCountryCode) && (
+                      <p className="text-[11px] text-muted-foreground">
+                        {[order.pickupCity, order.pickupPostalCode, order.pickupCountryCode]
+                          .filter(Boolean)
+                          .join(', ')}
+                      </p>
                     )}
                   </div>
-                )}
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-3 w-3 shrink-0 text-muted-foreground" />
+                      <span className="tabular-nums font-medium">{formatDate(order.pickupDate)}</span>
+                    </div>
+                    {dispatch?.pickupDateActual && (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <span>Actual:</span>
+                        <span className="tabular-nums font-medium text-foreground">
+                          {formatDate(dispatch.pickupDateActual)}
+                        </span>
+                      </div>
+                    )}
+                    {order.pickupWindowStart && order.pickupWindowEnd && (
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-3 w-3 shrink-0 text-muted-foreground" />
+                        <span className="tabular-nums">
+                          {formatStopTime(order.pickupWindowStart)} –{' '}
+                          {formatStopTime(order.pickupWindowEnd)}
+                        </span>
+                      </div>
+                    )}
+                    {(order.pickupContactName ||
+                      (customer?.contactName && !order.pickupContactName)) && (
+                      <div className="flex items-center gap-2">
+                        <User className="h-3 w-3 shrink-0 text-muted-foreground" />
+                        <span className="truncate">{order.pickupContactName ?? customer?.contactName}</span>
+                      </div>
+                    )}
+                    {(order.pickupContactPhone || customer?.phone) && (
+                      <div className="flex items-center gap-2">
+                        <Phone className="h-3 w-3 shrink-0 text-muted-foreground" />
+                        <a
+                          href={`tel:${order.pickupContactPhone ?? customer?.phone}`}
+                          className="truncate text-brand hover:underline"
+                        >
+                          {order.pickupContactPhone ?? customer?.phone}
+                        </a>
+                      </div>
+                    )}
+                    {order.pickupInstructions && (
+                      <p className="text-[11px] italic text-muted-foreground">
+                        {order.pickupInstructions}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+              {/* Arrow — visible only on desktop between the two cards */}
+              <div className="hidden md:flex md:items-center md:justify-center">
+                <ArrowRight className="h-4 w-4 text-muted-foreground" />
               </div>
-              <div className="space-y-2 p-4">
-                <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-success">
-                  <MapPin className="h-3.5 w-3.5" />
-                  Delivery
-                  {order.isDelayed && (
-                    <Badge variant="destructive" className="ml-auto h-5 gap-1 px-1.5 text-[10px]">
-                      <AlertTriangle className="h-3 w-3" />
-                      Delayed
-                    </Badge>
-                  )}
-                </div>
-                <p className="text-base font-semibold text-foreground">{order.deliveryCity}</p>
-                <p className="text-xs text-muted-foreground">{order.deliveryAddress}</p>
-                <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 text-xs">
-                  <span>
-                    <span className="text-muted-foreground">Planned </span>
-                    <span className={cn('font-medium tabular-nums', order.isDelayed && 'text-destructive')}>
-                      {formatDate(order.deliveryDate)}
-                    </span>
-                  </span>
-                  {(dispatch?.deliveryDateActual || order.deliveredAt) && (
-                    <span>
-                      <span className="text-muted-foreground">Actual </span>
-                      <span className="font-medium tabular-nums">
-                        {formatDate(dispatch?.deliveryDateActual || order.deliveredAt!)}
+
+              {/* Delivery */}
+              <div className="min-w-0 space-y-3 rounded-lg border border-border/70 p-4">
+                  <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-destructive">
+                    <MapPin className="h-3.5 w-3.5 shrink-0" />
+                    Delivery
+                    {order.isDelayed && (
+                      <Badge variant="destructive" className="ml-auto h-5 gap-1 px-1.5 text-[10px]">
+                        <AlertTriangle className="h-3 w-3" />
+                        Delayed
+                      </Badge>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{order.deliveryCity}</p>
+                    {order.deliveryAddress && (
+                      <p className="mt-0.5 text-xs text-muted-foreground">{order.deliveryAddress}</p>
+                    )}
+                    {(order.deliveryPostalCode || order.deliveryCountryCode) && (
+                      <p className="text-[11px] text-muted-foreground">
+                        {[order.deliveryCity, order.deliveryPostalCode, order.deliveryCountryCode]
+                          .filter(Boolean)
+                          .join(', ')}
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-3 w-3 shrink-0 text-muted-foreground" />
+                      <span
+                        className={cn(
+                          'tabular-nums font-medium',
+                          order.isDelayed && 'text-destructive',
+                        )}
+                      >
+                        {formatDate(order.deliveryDate)}
                       </span>
-                    </span>
-                  )}
-                </div>
+                    </div>
+                    {(dispatch?.deliveryDateActual || order.deliveredAt) && (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <span>Actual:</span>
+                        <span className="tabular-nums font-medium text-foreground">
+                          {formatDate(dispatch?.deliveryDateActual || order.deliveredAt!)}
+                        </span>
+                      </div>
+                    )}
+                    {order.deliveryWindowStart && order.deliveryWindowEnd && (
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-3 w-3 shrink-0 text-muted-foreground" />
+                        <span className="tabular-nums">
+                          {formatStopTime(order.deliveryWindowStart)} –{' '}
+                          {formatStopTime(order.deliveryWindowEnd)}
+                        </span>
+                      </div>
+                    )}
+                    {order.deliveryContactName && (
+                      <div className="flex items-center gap-2">
+                        <User className="h-3 w-3 shrink-0 text-muted-foreground" />
+                        <span className="truncate">{order.deliveryContactName}</span>
+                      </div>
+                    )}
+                    {order.deliveryContactPhone && (
+                      <div className="flex items-center gap-2">
+                        <Phone className="h-3 w-3 shrink-0 text-muted-foreground" />
+                        <a
+                          href={`tel:${order.deliveryContactPhone}`}
+                          className="truncate text-brand hover:underline"
+                        >
+                          {order.deliveryContactPhone}
+                        </a>
+                      </div>
+                    )}
+                    {order.deliveryInstructions && (
+                      <p className="text-[11px] italic text-muted-foreground">
+                        {order.deliveryInstructions}
+                      </p>
+                    )}
+                  </div>
               </div>
             </div>
 
+            {/* Intermediate stops */}
+            {order.orderStops && order.orderStops.length > 0 && (
+              <div className="px-4 py-3">
+                <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <RouteIcon className="h-3.5 w-3.5" />
+                  Intermediate stops ({order.orderStops.length})
+                </div>
+                <div className="space-y-2">
+                  {order.orderStops.map((s) => (
+                    <div key={s.id} className="flex items-start gap-2.5 text-sm">
+                      <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-muted text-[9px] font-bold text-muted-foreground">
+                        {s.stopIndex}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="font-medium text-foreground">{s.city}</p>
+                        <p className="text-xs text-muted-foreground">{s.address}</p>
+                        {(s.contactName || s.contactPhone) && (
+                          <p className="text-xs text-muted-foreground">
+                            {s.contactName}
+                            {s.contactName && s.contactPhone ? ' · ' : ''}
+                            {s.contactPhone}
+                          </p>
+                        )}
+                        {s.instructions && (
+                          <p className="mt-0.5 text-xs italic text-muted-foreground">
+                            {s.instructions}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Cargo — strong layout even when empty */}
             <div className="p-4">
-              <div className="mb-2.5 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                <Package className="h-3.5 w-3.5" />
-                Cargo
-              </div>
-              <p className="mb-3 text-sm text-foreground">{order.cargoDescription}</p>
-              <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+              <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
+                <CargoStat
+                  icon={Package}
+                  label="Cargo"
+                  value={order.cargoDescription || 'Not set'}
+                  empty={!order.cargoDescription}
+                />
                 <CargoStat
                   icon={Scale}
                   label="Weight"
@@ -671,7 +862,7 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                   <div className="flex flex-wrap gap-1.5">
                     {canViewFleet && order.vehicleId && (
                       <Button asChild size="sm" variant="ghost" className="h-7 px-2 text-xs">
-                        <Link to="/app/fleet-tracking">
+                        <Link to="/app/fleet-tracking" search={{ vehicleId: order.vehicleId }}>
                           <Navigation className="mr-1 h-3 w-3" />
                           Map
                         </Link>
@@ -685,7 +876,7 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                       </Button>
                     )}
                     {canAssign && (
-                      <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={openAssign}>
+                      <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setAssignModal({ open: true, tab: 'both' })}>
                         {order.driverId ? 'Replace' : 'Assign'}
                       </Button>
                     )}
@@ -697,130 +888,86 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                 ) : (
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     <AssignmentDriver
-                      driver={assignedDriver}
-                      fallbackAssigned={Boolean(order.driverId && !canViewFleet)}
+                      driver={displayDriver}
+                      fallbackAssigned={Boolean(effectiveDriverId && !canViewFleet)}
+                      draftPlan={isDraftPlan && !order.driverId}
                     />
                     <AssignmentVehicle
-                      vehicle={assignedVehicle}
-                      fallbackAssigned={Boolean(order.vehicleId && !canViewFleet)}
+                      vehicle={displayVehicle}
+                      fallbackAssigned={Boolean(effectiveVehicleId && !canViewFleet)}
+                      draftPlan={isDraftPlan && !order.vehicleId}
                     />
                     <AssignmentDispatch dispatch={canViewDispatch ? dispatch : null} hidden={!canViewDispatch} />
                   </div>
                 )}
 
-                {showAssign && canAssign && (
-                  <div className="mt-3 space-y-2 rounded-lg border border-brand/20 bg-brand/[0.04] p-3">
-                    <p className="text-xs font-semibold text-foreground">
-                      {order.driverId ? 'Replace assignment' : 'Assign driver & vehicle'}
-                    </p>
-                    {availabilityError ? (
-                      <div className="space-y-2">
-                        <p className="text-xs text-destructive">{availabilityError}</p>
-                        <Button size="sm" variant="outline" onClick={() => refetchAvailability()}>
-                          Retry
-                        </Button>
-                      </div>
-                    ) : (
-                      <>
-                        <Select value={driverId} onValueChange={setDriverId} disabled={availabilityLoading}>
-                          <SelectTrigger className="h-9" data-testid="orders-assign-driver-select">
-                            <SelectValue placeholder={availabilityLoading ? 'Loading…' : 'Select driver'} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {availability?.drivers.map((d) => (
-                              <SelectItem key={d.id} value={d.id}>
-                                {d.firstName} {d.lastName} ({d.employeeCode})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Select value={vehicleId} onValueChange={setVehicleId} disabled={availabilityLoading}>
-                          <SelectTrigger className="h-9" data-testid="orders-assign-vehicle-select">
-                            <SelectValue placeholder={availabilityLoading ? 'Loading…' : 'Select vehicle'} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {availability?.vehicles.map((v) => (
-                              <SelectItem key={v.id} value={v.id}>
-                                {v.plateNumber} — {v.type}
-                                {v.capacityKg ? ` · ${v.capacityKg} kg` : ''}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {assignError && <p className="text-xs text-destructive">{assignError}</p>}
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            onClick={handleAssign}
-                            disabled={assignLoading || availabilityLoading || !driverId || !vehicleId}
-                          >
-                            {assignLoading ? 'Assigning…' : 'Confirm'}
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={() => setShowAssign(false)}>
-                            Close
-                          </Button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
               </div>
             )}
 
-            {/* Activity */}
-            <section ref={activityRef} className="p-4">
-              <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                <Clock className="h-3.5 w-3.5" />
-                Shipment activity
-              </div>
-              {activity.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No activity yet.</p>
-              ) : (
-                <div className="space-y-0">
-                  {activity.map((item, index) => {
-                    const style = ACTIVITY_STYLE[item.kind];
-                    const Icon = style.icon;
-                    const lit = item.status && item.status === highlightStatus;
-                    return (
-                      <div
-                        key={item.id}
-                        className={cn(
-                          'relative flex gap-3 rounded-md py-2 pl-1',
-                          lit && 'bg-brand/10 ring-1 ring-brand/25',
-                        )}
-                      >
-                        {index < activity.length - 1 && (
-                          <div className="absolute left-[18px] top-10 h-[calc(100%-12px)] w-px bg-border" />
-                        )}
-                        <span
-                          className={cn(
-                            'relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full',
-                            style.className,
-                          )}
-                        >
-                          <Icon className="h-3.5 w-3.5" />
-                        </span>
-                        <div className="min-w-0 flex-1 pt-0.5">
-                          <div className="flex flex-wrap items-baseline gap-x-2">
-                            <span className="text-sm font-medium text-foreground">{item.title}</span>
-                            <span className="text-[11px] tabular-nums text-muted-foreground">
-                              {formatDateTime(item.at)}
-                            </span>
-                          </div>
-                          {item.detail && (
-                            <p className="mt-0.5 text-xs text-muted-foreground">{item.detail}</p>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+            {/* Documents */}
+            <section className="p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <FileText className="h-3.5 w-3.5" />
+                  Documents
                 </div>
+              </div>
+              <div className="rounded-xl border border-border/60 bg-background/20 p-4">
+                <OrderDocumentsPanel
+                  orderId={orderId}
+                  canWrite={canWriteOrder && !order.archivedAt}
+                  invoice={invoice}
+                  canViewInvoices={canViewInvoices}
+                  orderStatus={order.status}
+                />
+              </div>
+            </section>
+
+            {/* Named for its source: Documents above holds POD files the office
+                uploads, and this is what the driver submitted from the app. Two
+                sections headed "Proof of Delivery" on one page said nothing
+                about which was which. */}
+            {/* Driver's POD + Timeline — side by side */}
+            <div className={canViewDispatch ? 'grid grid-cols-1 gap-0 md:grid-cols-2 md:divide-x md:divide-border/50' : ''}>
+              {canViewDispatch && (
+                <section className="p-4">
+                  <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    <FileText className="h-3.5 w-3.5" />
+                    Driver&rsquo;s proof of delivery
+                  </div>
+                  {dispatchesLoading ? (
+                    <Skeleton className="h-24 w-full rounded-xl" />
+                  ) : (
+                    <ProofOfDeliveryPanel dispatchId={dispatch?.id} />
+                  )}
+                </section>
               )}
+
+              {/* Timeline */}
+              <section ref={activityRef} className="p-4">
+                <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <Clock className="h-3.5 w-3.5" />
+                  Timeline
+                </div>
+                <div className="max-h-[420px] overflow-y-auto pr-1">
+                  <OrderActivityTimeline
+                    entries={activityEntries}
+                    highlightStatus={highlightStatus}
+                  />
+                </div>
+              </section>
+            </div>
+
+            {/* Internal notes */}
+            <section className="p-4">
+              <div className="rounded-xl border border-border/60 bg-background/20 p-4">
+                <OrderNotesPanel orderId={orderId} canWrite={canWriteOrder && !order.archivedAt} />
+              </div>
             </section>
           </div>
 
           {/* -------- RIGHT OPS RAIL -------- */}
-          <aside className="divide-y divide-border/70 bg-muted/10">
+          <aside className="divide-y divide-border/70 bg-muted/10 lg:sticky lg:top-0 lg:self-start lg:max-h-screen lg:overflow-y-auto">
             {/* Customer */}
             <div className="p-3.5">
               <div className="mb-2 flex items-center justify-between">
@@ -872,13 +1019,37 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                   Financial
                 </h3>
                 {canViewInvoices && (
-                  <Link to="/app/finance" className="text-[11px] font-medium text-brand hover:underline">
+                  <Link
+                    to="/app/finance"
+                    search={
+                      invoice
+                        ? { tab: 'invoices' as const, invoiceId: invoice.id }
+                        : { tab: 'invoices' as const }
+                    }
+                    className="text-[11px] font-medium text-brand hover:underline"
+                  >
                     Finance
                   </Link>
                 )}
               </div>
               <div className="grid grid-cols-2 gap-1.5">
                 <MetricBadge label="Revenue" value={formatMoney(order.price, order.currency)} tone="brand" />
+                {canViewExpenses && hasExpenseData ? (
+                  <MetricBadge
+                    label="Cost"
+                    value={formatMoney(approvedExpenseTotal, order.currency)}
+                    tone="default"
+                  />
+                ) : (
+                  <MetricBadge label="Cost" value="—" tone="default" />
+                )}
+                {margin != null && (
+                  <MetricBadge
+                    label="Margin"
+                    value={formatMoney(margin, order.currency)}
+                    tone={margin >= 0 ? 'good' : 'bad'}
+                  />
+                )}
                 {canViewInvoices &&
                   (invoicesLoading ? (
                     <Skeleton className="h-[52px] w-full" />
@@ -893,20 +1064,6 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                       tone={outstanding && outstanding > 0 ? 'warn' : 'good'}
                     />
                   ))}
-                {canViewInvoices && invoice && (
-                  <MetricBadge
-                    label="Collected"
-                    value={formatMoney(collected!, invoice.currency)}
-                    tone="good"
-                  />
-                )}
-                {margin != null && (
-                  <MetricBadge
-                    label="Margin"
-                    value={formatMoney(margin, order.currency)}
-                    tone={margin >= 0 ? 'good' : 'bad'}
-                  />
-                )}
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {canViewInvoices && invoice && (
@@ -938,7 +1095,15 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                   <h3 className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Live tracking
                   </h3>
-                  <Link to="/app/fleet-tracking" className="text-[11px] font-medium text-brand hover:underline">
+                  {/* The map route already deep-links a selection; both links
+                      from here dropped the vehicle, so "Map" landed the
+                      operator on the whole fleet and left them to find the
+                      truck they had just been reading about. */}
+                  <Link
+                    to="/app/fleet-tracking"
+                    search={{ vehicleId: order.vehicleId }}
+                    className="text-[11px] font-medium text-brand hover:underline"
+                  >
                     Map
                   </Link>
                 </div>
@@ -998,21 +1163,24 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                 <div className="grid grid-cols-1 gap-1.5">
                   {canAssign && (
                     <>
-                      <Button size="sm" className="w-full justify-start" onClick={openAssign}>
+                      <Button size="sm" className="w-full justify-start" onClick={() => setAssignModal({ open: true, tab: 'driver' })}>
                         <User className="mr-2 h-3.5 w-3.5" />
-                        Assign driver
+                        {order.driverId ? 'Reassign driver' : 'Assign driver'}
                       </Button>
-                      <Button size="sm" variant="outline" className="w-full justify-start" onClick={openAssign}>
+                      <Button size="sm" variant="outline" className="w-full justify-start" onClick={() => setAssignModal({ open: true, tab: 'vehicle' })}>
                         <Truck className="mr-2 h-3.5 w-3.5" />
-                        Assign vehicle
+                        {order.vehicleId ? 'Reassign vehicle' : 'Assign vehicle'}
                       </Button>
                     </>
                   )}
-                  {canWriteDispatch && !dispatch && order.status !== 'DRAFT' && order.status !== 'CANCELLED' && (
+                  {canWriteDispatch &&
+                    (!dispatch || dispatch.status === 'DELIVERY_FAILED') &&
+                    order.status !== 'DRAFT' &&
+                    order.status !== 'CANCELLED' && (
                     <Button asChild size="sm" variant="outline" className="w-full justify-start">
                       <Link to="/app/dispatches/create" search={{ orderId: order.id }}>
                         <RouteIcon className="mr-2 h-3.5 w-3.5" />
-                        Create dispatch
+                        {dispatch?.status === 'DELIVERY_FAILED' ? 'Re-dispatch' : 'Create dispatch'}
                       </Link>
                     </Button>
                   )}
@@ -1035,7 +1203,7 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                           await createInvoiceFromOrder(orderId);
                           toast.success('Invoice created');
                         } catch (err) {
-                          toast.error(err instanceof Error ? err.message : 'Failed');
+                          toast.error(describeError(err, 'Failed'));
                         }
                       }}
                     >
@@ -1044,11 +1212,14 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                     </Button>
                   )}
                   {canViewInvoices && invoice && (
-                    <Button asChild size="sm" variant="outline" className="w-full justify-start">
-                      <Link to="/app/finance">
-                        <FileText className="mr-2 h-3.5 w-3.5" />
-                        Open invoice
-                      </Link>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full justify-start"
+                      onClick={() => setInvoiceSheetId(invoice.id)}
+                    >
+                      <FileText className="mr-2 h-3.5 w-3.5" />
+                      Open invoice
                     </Button>
                   )}
                   {canEdit && (
@@ -1076,6 +1247,23 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                           cancelLabel="Keep open"
                           onConfirm={() => handleStatusTransition('DELIVERED')}
                         />
+                      ) : nextStatus === 'PENDING' ? (
+                        <ConfirmDialog
+                          key={nextStatus}
+                          open={pendingConfirmOrder}
+                          onOpenChange={setPendingConfirmOrder}
+                          trigger={
+                            <Button size="sm" variant="default" className="w-full justify-start" disabled={statusLoading}>
+                              <CheckCircle2 className="mr-2 h-3.5 w-3.5" />
+                              Confirm order
+                            </Button>
+                          }
+                          title={`Confirm ${order.orderNumber}?`}
+                          description="This activates the order and makes it available for dispatch. You won't be able to undo this step."
+                          confirmLabel={statusLoading ? 'Confirming…' : 'Confirm order'}
+                          cancelLabel="Go back"
+                          onConfirm={() => handleStatusTransition('PENDING')}
+                        />
                       ) : (
                         <Button
                           key={nextStatus}
@@ -1085,7 +1273,7 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
                           onClick={() => handleStatusTransition(nextStatus)}
                           disabled={statusLoading}
                         >
-                          Move to {nextStatus.replace(/_/g, ' ')}
+                          {TRANSITION_LABELS[nextStatus] ?? `Move to ${statusLabel(nextStatus)}`}
                         </Button>
                       ),
                     )}
@@ -1108,6 +1296,105 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
       </div>
 
       {canEdit && <OrdersEditSheet open={editOpen} onOpenChange={setEditOpen} order={order} />}
+      {canViewInvoices && (
+        <InvoiceDetailSheet
+          invoiceId={invoiceSheetId}
+          onOpenChange={(open) => {
+            if (!open) setInvoiceSheetId(null);
+          }}
+        />
+      )}
+      {canAssign && (
+        <AssignModal
+          open={assignModal.open}
+          onOpenChange={(open) => setAssignModal((prev) => ({ ...prev, open }))}
+          orderId={orderId}
+          order={order}
+          dispatch={dispatch}
+          initialTab={assignModal.tab}
+          preselectedDriverId={effectiveDriverId}
+          preselectedVehicleId={effectiveVehicleId}
+        />
+      )}
+    </div>
+  );
+}
+
+/// Read-only display of the optional stop-level fields added in Phase 1 of the
+/// location architecture (TD-TELEMATICS-04). Returns null when none of the
+/// fields carry data so pre-existing orders look unchanged.
+function StopExtraInfo({
+  stopLabel,
+  placeName,
+  postalCode,
+  countryCode,
+  contactName,
+  contactPhone,
+  instructions,
+  windowStart,
+  windowEnd,
+}: {
+  stopLabel: string;
+  placeName: string | null;
+  postalCode: string | null;
+  countryCode: string | null;
+  contactName: string | null;
+  contactPhone: string | null;
+  instructions: string | null;
+  windowStart: string | null;
+  windowEnd: string | null;
+}) {
+  const hasWindow = Boolean(windowStart && windowEnd);
+  const hasContact = Boolean(contactName || contactPhone);
+  const hasAny = Boolean(placeName || postalCode || countryCode || hasWindow || hasContact || instructions);
+  if (!hasAny) return null;
+
+  return (
+    <div className="mt-2 space-y-2 border-t border-border/50 pt-2">
+      {placeName && (
+        <p className="text-xs font-medium text-foreground">{placeName}</p>
+      )}
+      {(postalCode || countryCode) && (
+        <p className="text-[11px] text-muted-foreground">
+          {[postalCode, countryCode].filter(Boolean).join(' · ')}
+        </p>
+      )}
+      {hasWindow && (
+        <div className="flex items-center gap-1.5 text-xs">
+          <Clock className="h-3 w-3 shrink-0 text-muted-foreground" />
+          <span className="text-muted-foreground">{stopLabel} window</span>
+          <span className="font-medium tabular-nums">
+            {formatStopTime(windowStart!)} – {formatStopTime(windowEnd!)}
+          </span>
+        </div>
+      )}
+      {hasContact && (
+        <div className="space-y-0.5">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            {stopLabel} contact
+          </p>
+          {contactName && (
+            <p className="text-xs text-foreground">{contactName}</p>
+          )}
+          {contactPhone && (
+            <a
+              href={`tel:${contactPhone}`}
+              className="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
+            >
+              <Phone className="h-3 w-3" />
+              {contactPhone}
+            </a>
+          )}
+        </div>
+      )}
+      {instructions && (
+        <div className="space-y-0.5">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Instructions
+          </p>
+          <p className="whitespace-pre-wrap text-xs text-muted-foreground">{instructions}</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -1115,9 +1402,11 @@ export function OrdersDetail({ orderId }: OrderDetailProps) {
 function AssignmentDriver({
   driver,
   fallbackAssigned,
+  draftPlan,
 }: {
   driver?: Driver | null;
   fallbackAssigned: boolean;
+  draftPlan?: boolean;
 }) {
   if (!driver && !fallbackAssigned) {
     return (
@@ -1145,8 +1434,13 @@ function AssignmentDriver({
     <div className="rounded-lg border border-border/70 bg-background/40 p-3">
       <div className="flex items-start gap-2.5">
         <Avatar initials={(driver.firstName[0] ?? '') + (driver.lastName[0] ?? '')} />
-        <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Driver</p>
+          {draftPlan ? (
+            <Badge variant="outline" className="mb-1 h-5 text-[10px] text-warning">
+              Draft plan
+            </Badge>
+          ) : null}
           <Link
             to="/app/drivers/$driverId"
             params={{ driverId: driver.id }}
@@ -1193,9 +1487,11 @@ function AssignmentDriver({
 function AssignmentVehicle({
   vehicle,
   fallbackAssigned,
+  draftPlan,
 }: {
   vehicle?: Vehicle | null;
   fallbackAssigned: boolean;
+  draftPlan?: boolean;
 }) {
   if (!vehicle && !fallbackAssigned) {
     return (
@@ -1228,6 +1524,11 @@ function AssignmentVehicle({
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Vehicle</p>
+          {draftPlan ? (
+            <Badge variant="outline" className="mb-1 h-5 text-[10px] text-warning">
+              Draft plan
+            </Badge>
+          ) : null}
           <Link
             to="/app/vehicles/$vehicleId"
             params={{ vehicleId: vehicle.id }}
@@ -1293,11 +1594,20 @@ function AssignmentDispatch({
       </div>
     );
   }
+  const isFailed = dispatch.status === 'DELIVERY_FAILED';
   return (
-    <div className="rounded-lg border border-border/70 bg-background/40 p-3">
+    <div className={cn(
+      'rounded-lg border p-3',
+      isFailed
+        ? 'border-destructive/30 bg-destructive/[0.04]'
+        : 'border-border/70 bg-background/40',
+    )}>
       <div className="flex items-start gap-2.5">
-        <span className="flex h-9 w-9 items-center justify-center rounded-md bg-brand/10 text-brand">
-          <RouteIcon className="h-4 w-4" />
+        <span className={cn(
+          'flex h-9 w-9 items-center justify-center rounded-md',
+          isFailed ? 'bg-destructive/10 text-destructive' : 'bg-brand/10 text-brand',
+        )}>
+          {isFailed ? <XCircle className="h-4 w-4" /> : <RouteIcon className="h-4 w-4" />}
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Dispatch</p>
@@ -1308,12 +1618,23 @@ function AssignmentDispatch({
           >
             {dispatch.dispatchNumber}
           </Link>
-          <Badge variant="outline" className="mt-1 h-5 text-[10px] capitalize">
+          <Badge
+            variant="outline"
+            className={cn('mt-1 h-5 text-[10px] capitalize', isFailed && 'border-destructive/40 text-destructive')}
+          >
             {dispatch.status.toLowerCase().replace(/_/g, ' ')}
           </Badge>
         </div>
       </div>
       <dl className="mt-2.5 space-y-1 text-[11px]">
+        {isFailed && dispatch.failureReason && (
+          <div className="flex justify-between gap-2">
+            <dt className="text-muted-foreground">Reason</dt>
+            <dd className="font-medium text-destructive">
+              {FAILURE_REASON_LABELS[dispatch.failureReason] ?? dispatch.failureReason}
+            </dd>
+          </div>
+        )}
         {dispatch.createdBy && (
           <div className="flex justify-between gap-2">
             <dt className="text-muted-foreground">Dispatcher</dt>

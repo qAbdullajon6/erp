@@ -48,7 +48,7 @@ export type QueueItem =
       id: string;
       target: 'order';
       section: 'needs_assignment';
-      tone: 'warning';
+      tone: 'warning' | 'destructive';
       riskLabel: string;
       dispatchNumber?: undefined;
       route: string;
@@ -75,9 +75,9 @@ export type QueueItem =
       dispatch: ApiDispatch;
     };
 
-const SECTION_META: { key: QueueSection; label: string }[] = [
-  { key: 'critical', label: 'Critical' },
-  { key: 'overdue', label: 'Overdue' },
+const SECTION_META: { key: QueueSection; label: string; urgent?: boolean }[] = [
+  { key: 'critical', label: 'Critical', urgent: true },
+  { key: 'overdue', label: 'Overdue', urgent: true },
   { key: 'waiting_pickup', label: 'Waiting pickup' },
   { key: 'needs_reassignment', label: 'Needs reassignment' },
   { key: 'needs_assignment', label: 'Needs assignment' },
@@ -184,6 +184,27 @@ export function buildWorkQueue(
       });
     });
 
+  // Needs reassignment — rejected by driver
+  dispatches
+    .filter((d) => NON_TERMINAL.has(d.status) && d.driverAcceptanceStatus === 'REJECTED')
+    .forEach((d) => {
+      pushDispatch({
+        id: d.id,
+        target: 'dispatch',
+        section: 'needs_reassignment',
+        tone: 'destructive',
+        riskLabel: 'Driver rejected',
+        dispatchNumber: d.dispatchNumber,
+        route: routeOf(d),
+        customer: d.order?.customer?.companyName ?? '—',
+        driver: driverLabel(d),
+        vehicle: vehicleLabel(d),
+        elapsed: formatElapsed(d.updatedAt),
+        primaryLabel: 'Reassign',
+        dispatch: d,
+      });
+    });
+
   // Needs reassignment — overloaded drivers
   dispatches
     .filter((d) => NON_TERMINAL.has(d.status) && overloaded.has(d.driverId))
@@ -205,16 +226,17 @@ export function buildWorkQueue(
       });
     });
 
-  // Needs assignment — unassigned orders
+  // Needs assignment — unassigned orders (re-dispatch orders surfaced separately)
   [...unassignedOrders]
     .sort((a, b) => new Date(a.pickupDate).getTime() - new Date(b.pickupDate).getTime())
     .forEach((order) => {
+      const failed = order.lastFailedDelivery ?? null;
       out.push({
         id: order.id,
         target: 'order',
         section: 'needs_assignment',
-        tone: 'warning',
-        riskLabel: 'Unassigned',
+        tone: failed ? 'destructive' : 'warning',
+        riskLabel: failed ? 'Re-dispatch needed' : 'Unassigned',
         route: `${order.pickupCity} → ${order.deliveryCity}`,
         customer: order.customerName ?? '—',
         driver: '—',
@@ -441,10 +463,19 @@ export function WorkQueue({
       >
         {bySection.map((section) => (
           <div key={section.key}>
-            <div className="sticky top-0 z-[1] border-b border-border/50 bg-background/95 px-3.5 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-foreground/70">
+            <div className={cn(
+              'sticky top-0 z-[1] border-b border-border/50 bg-background/95 px-3.5 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80',
+              section.urgent && 'border-destructive/20 bg-destructive/5 supports-[backdrop-filter]:bg-destructive/5',
+            )}>
+              <p className={cn(
+                'text-[10px] font-semibold uppercase tracking-wider',
+                section.urgent ? 'text-destructive' : 'text-foreground/70',
+              )}>
                 {section.label}
-                <span className="ml-1 tabular-nums text-muted-foreground">{section.items.length}</span>
+                <span className={cn(
+                  'ml-1 tabular-nums',
+                  section.urgent ? 'text-destructive/70' : 'text-muted-foreground',
+                )}>{section.items.length}</span>
               </p>
             </div>
             {section.items.map((item) => (

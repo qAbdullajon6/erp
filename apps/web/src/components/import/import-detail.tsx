@@ -15,6 +15,7 @@ import {
 } from '@/hooks/use-imports';
 import { importsAPI, downloadBlob } from '@/lib/api/imports';
 import { ArrowLeft, Download, Loader2, XCircle, PlayCircle, RotateCcw } from 'lucide-react';
+import { describeError } from '@/lib/api/describe-error';
 
 export function ImportDetail({ sessionId }: { sessionId: string }) {
   const navigate = useNavigate();
@@ -36,7 +37,7 @@ export function ImportDetail({ sessionId }: { sessionId: string }) {
       await cancelMutation.mutateAsync(sessionId);
       toast.success('Cancellation requested');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to cancel');
+      toast.error(describeError(err, 'Failed to cancel'));
     }
   };
 
@@ -45,7 +46,7 @@ export function ImportDetail({ sessionId }: { sessionId: string }) {
       await resumeMutation.mutateAsync(sessionId);
       toast.success('Import resumed');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to resume');
+      toast.error(describeError(err, 'Failed to resume'));
     }
   };
 
@@ -54,7 +55,7 @@ export function ImportDetail({ sessionId }: { sessionId: string }) {
       const result = await retryMutation.mutateAsync(sessionId);
       toast.success(`Retrying ${result.retriedRows} failed row(s)`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to retry');
+      toast.error(describeError(err, 'Failed to retry'));
     }
   };
 
@@ -71,7 +72,7 @@ export function ImportDetail({ sessionId }: { sessionId: string }) {
     return (
       <div className="space-y-6">
         <PageHeader title="Import Detail" />
-        <ErrorState message={error instanceof Error ? error.message : 'Import not found'} onRetry={() => refetch()} />
+        <ErrorState message={describeError(error, 'Import not found')} onRetry={() => refetch()} />
       </div>
     );
   }

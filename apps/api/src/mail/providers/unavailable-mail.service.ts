@@ -5,7 +5,9 @@ import {
   type DemoConfirmationEmailMessage,
   type InvitationEmailMessage,
   type LeadNotificationEmailMessage,
+  type PasswordResetEmailMessage,
   type RawEmailMessage,
+  type SupportReplyEmailMessage,
 } from "../mail.service";
 import { redactEmail } from "../mail.util";
 
@@ -33,6 +35,13 @@ export class UnavailableMailService extends MailService {
     return Promise.reject(new Error("Email delivery is not configured"));
   }
 
+  sendPasswordResetEmail(message: PasswordResetEmailMessage): Promise<void> {
+    this.logger.error(
+      `Password reset email not sent: no mail transport is configured (recipient ${redactEmail(message.to)})`,
+    );
+    return Promise.reject(new Error("Email delivery is not configured"));
+  }
+
   sendRawEmail(message: RawEmailMessage): Promise<void> {
     this.logger.error(
       `Email not sent: no mail transport is configured (recipient ${redactEmail(message.to)})`,
@@ -52,5 +61,13 @@ export class UnavailableMailService extends MailService {
       `Demo confirmation email not sent: no mail transport is configured (recipient ${redactEmail(message.to)})`,
     );
     return Promise.reject(new Error("Email delivery is not configured"));
+  }
+
+  sendSupportReplyEmail(message: SupportReplyEmailMessage): Promise<void> {
+    this.logger.warn(
+      `Support reply email not sent: no mail transport is configured (recipient ${redactEmail(message.to)})`,
+    );
+    // Warn, not reject — email unavailability must never block the staff reply.
+    return Promise.resolve();
   }
 }

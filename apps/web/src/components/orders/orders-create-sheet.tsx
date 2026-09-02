@@ -2,14 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from '@tanstack/react-router';
-import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Command,
@@ -20,13 +17,6 @@ import {
   CommandList,
 } from '@/components/ui/command';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
   Sheet,
   SheetContent,
   SheetDescription,
@@ -34,7 +24,18 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
-import { useCreateOrder, type CreateOrderInput, type Order } from '@/lib/api/orders';
+import { CountrySelect } from '@/components/shared/country-select';
+import { CitySelect, type CityCoords } from '@/components/shared/city-select';
+import { AddressSearch } from '@/components/shared/address-search';
+import { MapPicker, type MapPickerCoords } from '@/components/shared/map-picker';
+import { CurrencySelect } from '@/components/shared/currency-select';
+import {
+  useCreateOrder,
+  useCheckDuplicateOrder,
+  type CreateOrderInput,
+  type Order,
+} from '@/lib/api/orders';
+import { type PlaceSuggestion } from '@/lib/api/geocoding';
 import { useCustomersList } from '@/lib/api/customers';
 import { useCurrentUser } from '@/lib/api/auth';
 import { CUSTOMER_WRITE_ROLES } from '@/lib/role-access';
@@ -42,30 +43,59 @@ import type { MembershipRole } from '@/lib/api/organizations';
 import { formatMoney } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import {
+  Field,
+  DateField,
+  validateOrderField,
+  validateOrderFields,
+  type OrderSectionKey,
+} from '@/components/orders/order-form-shared';
+import {
+  IntermediateStopsSection,
+  STOP_FIELDS,
+  validateStop,
+  type OrderStopInput,
+} from '@/components/orders/intermediate-stops-section';
+import {
+  AlertTriangle,
   ArrowRight,
   Building2,
-  CalendarIcon,
   Check,
   ChevronsUpDown,
   MapPin,
   Package,
   StickyNote,
+  Truck,
   Wallet,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { describeError } from '@/lib/api/describe-error';
 
-const CURRENCIES = ['USD', 'EUR', 'UZS', 'RUB', 'KZT', 'GBP', 'CNY'] as const;
-
-type SectionKey = 'customer' | 'pickup' | 'delivery' | 'cargo' | 'pricing' | 'notes';
+type SectionKey = OrderSectionKey;
 
 const FIELD_SECTION: Record<string, SectionKey> = {
   customerId: 'customer',
   pickupAddress: 'pickup',
   pickupCity: 'pickup',
   pickupDate: 'pickup',
+  pickupPostalCode: 'pickup',
+  pickupCountryCode: 'pickup',
+  pickupPlaceName: 'pickup',
+  pickupContactName: 'pickup',
+  pickupContactPhone: 'pickup',
+  pickupInstructions: 'pickup',
+  pickupWindowStart: 'pickup',
+  pickupWindowEnd: 'pickup',
   deliveryAddress: 'delivery',
   deliveryCity: 'delivery',
   deliveryDate: 'delivery',
+  deliveryPostalCode: 'delivery',
+  deliveryCountryCode: 'delivery',
+  deliveryPlaceName: 'delivery',
+  deliveryContactName: 'delivery',
+  deliveryContactPhone: 'delivery',
+  deliveryInstructions: 'delivery',
+  deliveryWindowStart: 'delivery',
+  deliveryWindowEnd: 'delivery',
   cargoDescription: 'cargo',
   cargoWeightKg: 'cargo',
   cargoVolumeM3: 'cargo',
@@ -79,75 +109,10 @@ interface Errors {
   [key: string]: string;
 }
 
-/// Mirrors CreateOrderDto (apps/api/src/orders/dto/create-order.dto.ts) exactly:
-/// required strings with max lengths, ISO date strings, non-negative decimals,
-/// 3-letter ISO currency. One field at a time so validation can run live.
-function validateField(field: string, data: CreateOrderInput): string | null {
-  switch (field) {
-    case 'customerId':
-      return data.customerId ? null : 'Select a customer';
-    case 'pickupAddress':
-      if (!data.pickupAddress?.trim()) return 'Pickup address is required';
-      if (data.pickupAddress.length > 300) return 'Max 300 characters';
-      return null;
-    case 'pickupCity':
-      if (!data.pickupCity?.trim()) return 'Pickup city is required';
-      if (data.pickupCity.length > 100) return 'Max 100 characters';
-      return null;
-    case 'pickupDate':
-      return data.pickupDate ? null : 'Pickup date is required';
-    case 'deliveryAddress':
-      if (!data.deliveryAddress?.trim()) return 'Delivery address is required';
-      if (data.deliveryAddress.length > 300) return 'Max 300 characters';
-      return null;
-    case 'deliveryCity':
-      if (!data.deliveryCity?.trim()) return 'Delivery city is required';
-      if (data.deliveryCity.length > 100) return 'Max 100 characters';
-      return null;
-    case 'deliveryDate':
-      if (!data.deliveryDate) return 'Delivery date is required';
-      if (data.pickupDate && new Date(data.deliveryDate) < new Date(data.pickupDate)) {
-        return 'Cannot be before pickup date';
-      }
-      return null;
-    case 'cargoDescription':
-      if (!data.cargoDescription?.trim()) return 'Cargo description is required';
-      if (data.cargoDescription.length > 2000) return 'Max 2000 characters';
-      return null;
-    case 'cargoWeightKg':
-      if (data.cargoWeightKg !== undefined && data.cargoWeightKg < 0) return 'Must be ≥ 0';
-      return null;
-    case 'cargoVolumeM3':
-      if (data.cargoVolumeM3 !== undefined && data.cargoVolumeM3 < 0) return 'Must be ≥ 0';
-      return null;
-    case 'price':
-      if (data.price === undefined || Number.isNaN(data.price) || data.price < 0) {
-        return 'Price must be ≥ 0';
-      }
-      return null;
-    case 'currency':
-      if (data.currency && !/^[A-Z]{3}$/.test(data.currency)) return '3-letter ISO code';
-      return null;
-    case 'notes':
-      if (data.notes && data.notes.length > 2000) return 'Max 2000 characters';
-      return null;
-    case 'deliveryNotes':
-      if (data.deliveryNotes && data.deliveryNotes.length > 2000) return 'Max 2000 characters';
-      return null;
-    default:
-      return null;
-  }
-}
-
 const ALL_FIELDS = Object.keys(FIELD_SECTION);
 
 function validateAll(data: CreateOrderInput): Errors {
-  const errors: Errors = {};
-  for (const field of ALL_FIELDS) {
-    const err = validateField(field, data);
-    if (err) errors[field] = err;
-  }
-  return errors;
+  return validateOrderFields(ALL_FIELDS, data);
 }
 
 const EMPTY_FORM: CreateOrderInput = {
@@ -162,6 +127,11 @@ const EMPTY_FORM: CreateOrderInput = {
   price: 0,
   currency: 'USD',
 };
+
+function toTimeValue(iso: string | undefined): string {
+  if (!iso) return '';
+  return iso.slice(11, 16);
+}
 
 function SectionTitle({
   icon: Icon,
@@ -194,104 +164,394 @@ function SectionTitle({
   );
 }
 
-function Field({
-  id,
-  label,
-  required,
-  error,
-  children,
-  className,
-}: {
-  id: string;
-  label: string;
-  required?: boolean;
-  error?: string;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={cn('space-y-1', className)} data-field={id}>
-      <Label htmlFor={id} className="text-xs font-medium text-muted-foreground">
-        {label}
-        {required && <span className="ml-0.5 text-destructive">*</span>}
-      </Label>
-      {children}
-      {error && (
-        <p className="text-[11px] font-medium text-destructive" role="alert">
-          {error}
-        </p>
-      )}
-    </div>
-  );
+// ─── StopPanel ────────────────────────────────────────────────────────────────
+
+interface StopPanelProps {
+  prefix: 'pickup' | 'delivery';
+  errorCount: number;
+  formData: CreateOrderInput;
+  errors: Errors;
+  onFieldChange: (field: keyof CreateOrderInput, value: string | number | undefined) => void;
+  onFieldsBatch: (updates: Partial<CreateOrderInput>) => void;
+  disabledBefore?: string;
+  addressSuggestion: PlaceSuggestion | null;
+  onAddressSuggestion: (s: PlaceSuggestion | null) => void;
+  mapCoords: MapPickerCoords | null;
+  onMapCoordsChange: (c: MapPickerCoords | null) => void;
+  mapConfirmed: boolean;
+  onMapConfirmedChange: (v: boolean) => void;
+  mapOpen: boolean;
+  onMapOpenChange: (open: boolean) => void;
 }
 
-function DateField({
-  id,
-  label,
-  required,
-  error,
-  value,
-  onChange,
+function StopPanel({
+  prefix,
+  errorCount,
+  formData,
+  errors,
+  onFieldChange,
+  onFieldsBatch,
   disabledBefore,
-}: {
-  id: string;
-  label: string;
-  required?: boolean;
-  error?: string;
-  value: string;
-  onChange: (iso: string) => void;
-  disabledBefore?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const date = value ? new Date(`${value}T00:00:00`) : undefined;
+  addressSuggestion,
+  onAddressSuggestion,
+  mapCoords,
+  onMapCoordsChange,
+  mapConfirmed,
+  onMapConfirmedChange,
+  mapOpen,
+  onMapOpenChange,
+}: StopPanelProps) {
+  const isPickup = prefix === 'pickup';
+  const Icon = isPickup ? MapPin : Truck;
+  const stopLabel = isPickup ? 'Pickup' : 'Delivery';
+
+  // Typed field name — `prefix + PascalSuffix` always matches a key in CreateOrderInput
+  const fn = (suffix: string) => `${prefix}${suffix}` as keyof CreateOrderInput;
+
+  const countryCode = (formData[fn('CountryCode')] as string | undefined) ?? '';
+  const city = (formData[fn('City')] as string) ?? '';
+  const postalCode = (formData[fn('PostalCode')] as string | undefined) ?? '';
+  const placeName = (formData[fn('PlaceName')] as string | undefined) ?? '';
+  const contactName = (formData[fn('ContactName')] as string | undefined) ?? '';
+  const contactPhone = (formData[fn('ContactPhone')] as string | undefined) ?? '';
+  const instructions = (formData[fn('Instructions')] as string | undefined) ?? '';
+  const date = (formData[fn('Date')] as string) ?? '';
+  const windowStart = formData[fn('WindowStart')] as string | undefined;
+  const windowEnd = formData[fn('WindowEnd')] as string | undefined;
+
+  const windowStartTime = toTimeValue(windowStart);
+  const windowEndTime = toTimeValue(windowEnd);
+
+  const handleCountryChange = (code: string | null) => {
+    const u: Record<string, string | undefined> = {
+      [`${prefix}CountryCode`]: code ?? undefined,
+      [`${prefix}City`]: '',
+      [`${prefix}Address`]: '',
+      [`${prefix}PostalCode`]: undefined,
+    };
+    onFieldsBatch(u as Partial<CreateOrderInput>);
+    onAddressSuggestion(null);
+    onMapCoordsChange(null);
+    onMapConfirmedChange(false);
+  };
+
+  const handleCityChange = (cityName: string | null, coords: CityCoords | null) => {
+    const u: Record<string, string | undefined> = {
+      [`${prefix}City`]: cityName ?? '',
+      [`${prefix}Address`]: '',
+      [`${prefix}PostalCode`]: undefined,
+    };
+    onFieldsBatch(u as Partial<CreateOrderInput>);
+    onAddressSuggestion(null);
+    onMapCoordsChange(coords ? { lat: coords.lat, lng: coords.lng } : null);
+    onMapConfirmedChange(false);
+  };
+
+  const handleAddressSuggestion = (s: PlaceSuggestion | null) => {
+    onAddressSuggestion(s);
+    if (s) {
+      const u: Record<string, unknown> = {
+        [`${prefix}Address`]: s.name,
+      };
+      if (s.postalCode) u[`${prefix}PostalCode`] = s.postalCode;
+      if (s.city) u[`${prefix}City`] = s.city;
+      if (s.lat && s.lng) {
+        u[`${prefix}Lat`] = s.lat;
+        u[`${prefix}Lng`] = s.lng;
+      }
+      onFieldsBatch(u as Partial<CreateOrderInput>);
+      onMapCoordsChange({ lat: s.lat, lng: s.lng });
+      onMapConfirmedChange(false);
+    } else {
+      const u: Record<string, unknown> = {
+        [`${prefix}Address`]: '',
+        [`${prefix}PostalCode`]: undefined,
+        [`${prefix}Lat`]: undefined,
+        [`${prefix}Lng`]: undefined,
+      };
+      onFieldsBatch(u as Partial<CreateOrderInput>);
+      onMapCoordsChange(null);
+      onMapConfirmedChange(false);
+    }
+  };
+
+  const handleTimeChange = (which: 'WindowStart' | 'WindowEnd', time: string) => {
+    const field = fn(which);
+    if (!time) {
+      onFieldChange(field, undefined);
+      return;
+    }
+    onFieldChange(field, `${date || '1970-01-01'}T${time}:00`);
+  };
 
   return (
-    <Field id={id} label={label} required={required} error={error}>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
+    <section className="space-y-3">
+      <SectionTitle
+        id={`section-${prefix}`}
+        icon={Icon}
+        title={stopLabel}
+        errorCount={errorCount}
+      />
+
+      {/* Country */}
+      <Field id={fn('CountryCode')} label="Country" error={errors[fn('CountryCode')]}>
+        <CountrySelect
+          id={fn('CountryCode')}
+          value={countryCode || null}
+          onChange={handleCountryChange}
+          hasError={Boolean(errors[fn('CountryCode')])}
+        />
+      </Field>
+
+      {/* City */}
+      <Field id={fn('City')} label="City" required error={errors[fn('City')]}>
+        <div data-testid={isPickup ? 'orders-pickup-city' : 'orders-delivery-city'}>
+          <CitySelect
+            id={fn('City')}
+            countryCode={countryCode || null}
+            value={city || null}
+            onChange={handleCityChange}
+            hasError={Boolean(errors[fn('City')])}
+            placeholder={countryCode ? 'Select city…' : 'Select country first'}
+          />
+        </div>
+      </Field>
+
+      {/* Search address */}
+      <Field id={fn('Address')} label="Search address" required error={errors[fn('Address')]}>
+        <div data-testid={isPickup ? 'orders-pickup-address' : 'orders-delivery-address'}>
+          <AddressSearch
+            id={fn('Address')}
+            countryCode={countryCode || null}
+            value={addressSuggestion}
+            onChange={handleAddressSuggestion}
+            disabled={!city}
+            placeholder={city ? 'Search street address, place, or ZIP…' : 'Select city first'}
+            hasError={Boolean(errors[fn('Address')])}
+          />
+        </div>
+      </Field>
+
+      {/* Selected address confirmation */}
+      {addressSuggestion && (
+        <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2.5">
+          <p className="text-sm font-medium leading-snug text-foreground">
+            {addressSuggestion.name}
+          </p>
+          {(addressSuggestion.city || addressSuggestion.postalCode) && (
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {[addressSuggestion.city, addressSuggestion.postalCode].filter(Boolean).join(', ')}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* ZIP + Coordinates — shown once an address is geocoded */}
+      {mapCoords && (
+        <div className="grid grid-cols-2 gap-3">
+          <Field
+            id={fn('PostalCode')}
+            label="ZIP / Postal code"
+            error={errors[fn('PostalCode')]}
+          >
+            <Input
+              id={fn('PostalCode')}
+              value={postalCode}
+              onChange={(e) => onFieldChange(fn('PostalCode'), e.target.value || undefined)}
+              placeholder="100000"
+              maxLength={20}
+              autoComplete="off"
+              className={cn('h-9', errors[fn('PostalCode')] && 'border-destructive')}
+            />
+          </Field>
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-muted-foreground">Coordinates</p>
+            <div className="flex h-9 items-center rounded-md border border-border/60 bg-muted/30 px-3">
+              <span className="font-mono text-[11px] text-muted-foreground">
+                {mapCoords.lat.toFixed(4)}, {mapCoords.lng.toFixed(4)}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Map verify */}
+      {mapCoords && (
+        <>
           <Button
-            id={id}
             type="button"
             variant="outline"
-            aria-invalid={Boolean(error)}
-            data-testid={`orders-${id}`}
+            size="sm"
+            onClick={() => onMapOpenChange(true)}
             className={cn(
-              'h-9 w-full justify-start px-3 text-left text-sm font-normal',
-              !value && 'text-muted-foreground',
-              error && 'border-destructive',
+              'h-8 gap-1.5 text-xs',
+              mapConfirmed
+                ? 'border-green-700/40 bg-green-950/20 text-green-500 hover:bg-green-950/30'
+                : 'text-muted-foreground hover:text-foreground',
             )}
           >
-            <CalendarIcon className="mr-2 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            {date ? format(date, 'EEE, MMM d, yyyy') : 'Pick a date'}
+            {mapConfirmed ? (
+              <>
+                <Check className="h-3 w-3" />
+                Location confirmed — Move pin
+              </>
+            ) : (
+              <>
+                <MapPin className="h-3 w-3" />
+                Verify location on map
+              </>
+            )}
           </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
-          <Calendar
-            mode="single"
-            selected={date}
-            defaultMonth={date}
-            disabled={
-              disabledBefore ? { before: new Date(`${disabledBefore}T00:00:00`) } : undefined
-            }
-            onSelect={(d) => {
-              if (d) onChange(format(d, 'yyyy-MM-dd'));
-              setOpen(false);
+          <MapPicker
+            open={mapOpen}
+            onClose={() => onMapOpenChange(false)}
+            initialCoords={mapCoords}
+            onConfirm={(coords) => {
+              onMapCoordsChange(coords);
+              onMapConfirmedChange(true);
+              onMapOpenChange(false);
+              const latKey = `${prefix}Lat` as keyof CreateOrderInput;
+              const lngKey = `${prefix}Lng` as keyof CreateOrderInput;
+              onFieldsBatch({ [latKey]: coords.lat, [lngKey]: coords.lng } as Partial<CreateOrderInput>);
             }}
           />
-        </PopoverContent>
-      </Popover>
-    </Field>
+        </>
+      )}
+
+      {/* Place / business name */}
+      <div className="border-t border-border/40 pt-3">
+        <Field
+          id={fn('PlaceName')}
+          label="Place / business name"
+          error={errors[fn('PlaceName')]}
+        >
+          <Input
+            id={fn('PlaceName')}
+            value={placeName}
+            onChange={(e) => onFieldChange(fn('PlaceName'), e.target.value || undefined)}
+            placeholder="Warehouse, depot, terminal…"
+            maxLength={200}
+            autoComplete="off"
+            className={cn('h-9', errors[fn('PlaceName')] && 'border-destructive')}
+          />
+        </Field>
+      </div>
+
+      {/* Contact person + Phone */}
+      <div className="grid grid-cols-2 gap-3">
+        <Field
+          id={fn('ContactName')}
+          label="Contact person"
+          error={errors[fn('ContactName')]}
+        >
+          <Input
+            id={fn('ContactName')}
+            value={contactName}
+            onChange={(e) => onFieldChange(fn('ContactName'), e.target.value || undefined)}
+            placeholder="Full name"
+            maxLength={100}
+            autoComplete="off"
+            className={cn('h-9', errors[fn('ContactName')] && 'border-destructive')}
+          />
+        </Field>
+        <Field id={fn('ContactPhone')} label="Phone" error={errors[fn('ContactPhone')]}>
+          <Input
+            id={fn('ContactPhone')}
+            type="tel"
+            value={contactPhone}
+            onChange={(e) => onFieldChange(fn('ContactPhone'), e.target.value || undefined)}
+            placeholder="+998 90 000 00 00"
+            maxLength={30}
+            autoComplete="off"
+            className={cn('h-9', errors[fn('ContactPhone')] && 'border-destructive')}
+          />
+        </Field>
+      </div>
+
+      {/* Appointment / time window */}
+      <div className="space-y-3 border-t border-border/40 pt-3">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Appointment / time window
+        </p>
+        <DateField
+          id={fn('Date')}
+          testId={isPickup ? 'orders-pickupDate' : 'orders-deliveryDate'}
+          label="Date"
+          required
+          error={errors[fn('Date')]}
+          value={date}
+          onChange={(iso) => onFieldChange(fn('Date'), iso)}
+          disabledBefore={disabledBefore}
+        />
+        <div className="grid grid-cols-2 gap-3">
+          <Field id={fn('WindowStart')} label="From" error={errors[fn('WindowStart')]}>
+            <Input
+              id={fn('WindowStart')}
+              type="time"
+              value={windowStartTime}
+              onChange={(e) => handleTimeChange('WindowStart', e.target.value)}
+              aria-invalid={Boolean(errors[fn('WindowStart')])}
+              className={cn('h-9', errors[fn('WindowStart')] && 'border-destructive')}
+            />
+          </Field>
+          <Field id={fn('WindowEnd')} label="To" error={errors[fn('WindowEnd')]}>
+            <Input
+              id={fn('WindowEnd')}
+              type="time"
+              value={windowEndTime}
+              onChange={(e) => handleTimeChange('WindowEnd', e.target.value)}
+              aria-invalid={Boolean(errors[fn('WindowEnd')])}
+              className={cn('h-9', errors[fn('WindowEnd')] && 'border-destructive')}
+            />
+          </Field>
+        </div>
+      </div>
+
+      {/* Driver instructions */}
+      <Field
+        id={fn('Instructions')}
+        label="Driver instructions"
+        error={errors[fn('Instructions')]}
+      >
+        <Textarea
+          id={fn('Instructions')}
+          value={instructions}
+          onChange={(e) => onFieldChange(fn('Instructions'), e.target.value || undefined)}
+          placeholder={
+            isPickup
+              ? 'Enter through Gate 3. Check in at security. Dock 14.'
+              : 'Call receiver 30 minutes before arrival. Deliver to receiving department.'
+          }
+          maxLength={2000}
+          rows={3}
+          aria-invalid={Boolean(errors[fn('Instructions')])}
+          className={cn(errors[fn('Instructions')] && 'border-destructive')}
+        />
+      </Field>
+    </section>
   );
 }
+
+// ─── OrdersCreateSheet ────────────────────────────────────────────────────────
 
 interface OrdersCreateSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated?: (order: Order) => void;
+  /// Pre-selects a customer when the sheet opens — used when the sheet is
+  /// launched from a customer's own detail page, where re-picking them from
+  /// the dropdown would just repeat what the admin already navigated from.
+  defaultCustomerId?: string;
 }
 
-export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreateSheetProps) {
+export function OrdersCreateSheet({
+  open,
+  onOpenChange,
+  onCreated,
+  defaultCustomerId,
+}: OrdersCreateSheetProps) {
   const { create, loading } = useCreateOrder();
+  const { check, loading: checkingDuplicate } = useCheckDuplicateOrder();
   const { data: currentUser } = useCurrentUser();
   const canCreateCustomer = Boolean(
     currentUser && CUSTOMER_WRITE_ROLES.includes(currentUser.membership.role as MembershipRole),
@@ -305,29 +565,90 @@ export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreat
   const [formData, setFormData] = useState<CreateOrderInput>(EMPTY_FORM);
   const [errors, setErrors] = useState<Errors>({});
   const [touched, setTouched] = useState<Set<string>>(new Set());
+  const [stops, setStops] = useState<OrderStopInput[]>([]);
+  const [stopErrors, setStopErrors] = useState<Record<number, Record<string, string>>>({});
+  const [stopTouched, setStopTouched] = useState<Record<number, Set<string>>>({});
   const [customerOpen, setCustomerOpen] = useState(false);
   const [pastPickupConfirm, setPastPickupConfirm] = useState(false);
+  const [duplicateConfirm, setDuplicateConfirm] = useState(false);
+  const [duplicateMatches, setDuplicateMatches] = useState<Order[]>([]);
+  const acknowledgeDuplicateRef = useRef(false);
   const bodyRef = useRef<HTMLDivElement>(null);
+
+  // Address geocoding state — not sent to API, only used for UI flow
+  const [pickupSuggestion, setPickupSuggestion] = useState<PlaceSuggestion | null>(null);
+  const [deliverySuggestion, setDeliverySuggestion] = useState<PlaceSuggestion | null>(null);
+  const [pickupMapCoords, setPickupMapCoords] = useState<MapPickerCoords | null>(null);
+  const [deliveryMapCoords, setDeliveryMapCoords] = useState<MapPickerCoords | null>(null);
+  const [pickupMapConfirmed, setPickupMapConfirmed] = useState(false);
+  const [deliveryMapConfirmed, setDeliveryMapConfirmed] = useState(false);
+  const [pickupMapOpen, setPickupMapOpen] = useState(false);
+  const [deliveryMapOpen, setDeliveryMapOpen] = useState(false);
 
   useEffect(() => {
     if (!open) {
       setFormData(EMPTY_FORM);
       setErrors({});
       setTouched(new Set());
+      setStops([]);
+      setStopErrors({});
+      setStopTouched({});
+      acknowledgeDuplicateRef.current = false;
+      setPickupSuggestion(null);
+      setDeliverySuggestion(null);
+      setPickupMapCoords(null);
+      setDeliveryMapCoords(null);
+      setPickupMapConfirmed(false);
+      setDeliveryMapConfirmed(false);
+      setPickupMapOpen(false);
+      setDeliveryMapOpen(false);
+    } else if (defaultCustomerId) {
+      setFormData((prev) => ({ ...prev, customerId: defaultCustomerId }));
     }
-  }, [open]);
+  }, [open, defaultCustomerId]);
 
   const setField = (field: keyof CreateOrderInput, value: string | number | undefined) => {
     const next = { ...formData, [field]: value };
     setFormData(next);
     setTouched((prev) => new Set(prev).add(field));
-    // Live validation: re-check this field plus cross-field deps (dates).
+    // Live validation: re-check this field plus cross-field deps (dates, window pairs).
+    const windowPairs: Partial<Record<string, string>> = {
+      pickupWindowStart: 'pickupWindowEnd',
+      pickupWindowEnd: 'pickupWindowStart',
+      deliveryWindowStart: 'deliveryWindowEnd',
+      deliveryWindowEnd: 'deliveryWindowStart',
+    };
+    const extra = windowPairs[field as string];
+    const fieldsToCheck = extra
+      ? ([field, 'deliveryDate', extra] as string[])
+      : ([field, 'deliveryDate'] as string[]);
     setErrors((prev) => {
       const out = { ...prev };
-      for (const f of [field, 'deliveryDate'] as string[]) {
-        const err = validateField(f, next);
+      for (const f of fieldsToCheck) {
+        const err = validateOrderField(f, next);
         if (err && (touched.has(f) || f === field)) out[f] = err;
         else delete out[f];
+      }
+      return out;
+    });
+  };
+
+  // Batch-updates multiple fields atomically — used by StopPanel cascading clears.
+  // Intentionally does NOT add fields to `touched` so programmatic clears (e.g.
+  // clearing city/address when country changes) never show premature errors.
+  const setFields = (updates: Partial<CreateOrderInput>) => {
+    const next = { ...formData, ...updates };
+    setFormData(next);
+    setErrors((prev) => {
+      const out = { ...prev };
+      for (const field of Object.keys(updates)) {
+        if (touched.has(field)) {
+          const err = validateOrderField(field, next);
+          if (err) out[field] = err;
+          else delete out[field];
+        } else {
+          delete out[field];
+        }
       }
       return out;
     });
@@ -353,15 +674,30 @@ export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreat
   const noCustomers = !customersLoading && customers.length === 0;
   const hasRoute = formData.pickupCity && formData.deliveryCity;
 
-  const submitOrder = async () => {
+  const submitOrder = async (acknowledgeDuplicate = false) => {
     try {
-      const result = await create(formData);
+      const payload: CreateOrderInput = {
+        ...(acknowledgeDuplicate ? { ...formData, acknowledgeDuplicate: true } : formData),
+        orderStops: stops.length > 0 ? stops : undefined,
+      };
+      const result = await create(payload);
       toast.success(`Order ${result.orderNumber} created`);
       onOpenChange(false);
       onCreated?.(result);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create order');
+      toast.error(describeError(err, 'Failed to create order'));
     }
+  };
+
+  const proceedAfterDuplicateCheck = async () => {
+    const pickup = new Date(`${formData.pickupDate}T00:00:00`);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (pickup < today) {
+      setPastPickupConfirm(true);
+      return;
+    }
+    await submitOrder(true);
   };
 
   const handleSubmit = async () => {
@@ -369,7 +705,18 @@ export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreat
     setErrors(allErrors);
     setTouched(new Set(ALL_FIELDS));
 
-    if (Object.keys(allErrors).length > 0) {
+    const allStopErrors: Record<number, Record<string, string>> = {};
+    const allStopTouched: Record<number, Set<string>> = {};
+    for (let i = 0; i < stops.length; i++) {
+      allStopErrors[i] = validateStop(stops[i], STOP_FIELDS);
+      allStopTouched[i] = new Set(STOP_FIELDS);
+    }
+    setStopErrors(allStopErrors);
+    setStopTouched(allStopTouched);
+
+    const hasStopErrors = Object.values(allStopErrors).some((e) => Object.keys(e).length > 0);
+
+    if (Object.keys(allErrors).length > 0 || hasStopErrors) {
       const firstField = ALL_FIELDS.find((f) => allErrors[f]);
       toast.error('Fix the highlighted fields');
       requestAnimationFrame(() => {
@@ -380,6 +727,17 @@ export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreat
         (el?.querySelector('input,textarea,button') as HTMLElement | null)?.focus?.();
       });
       return;
+    }
+
+    try {
+      const dup = await check(formData);
+      if (dup.possibleDuplicate && dup.matches.length > 0) {
+        setDuplicateMatches(dup.matches);
+        setDuplicateConfirm(true);
+        return;
+      }
+    } catch {
+      // Non-blocking — proceed if duplicate check fails
     }
 
     const pickup = new Date(`${formData.pickupDate}T00:00:00`);
@@ -396,7 +754,7 @@ export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreat
     <Sheet open={open} onOpenChange={(next) => !loading && onOpenChange(next)}>
       <SheetContent
         side="right"
-        className="flex w-full flex-col gap-0 p-0 sm:max-w-[780px]"
+        className="flex w-full flex-col gap-0 p-0 sm:max-w-[820px]"
         data-testid="orders-create-sheet"
       >
         <SheetHeader className="shrink-0 border-b border-border px-6 py-4">
@@ -408,7 +766,8 @@ export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreat
 
         <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto px-6 py-5 scrollbar-thin">
           <div className="space-y-6">
-            {/* ---------------- Customer ---------------- */}
+
+            {/* ── Customer ──────────────────────────────────────────────── */}
             <section className="space-y-3">
               <SectionTitle
                 id="section-customer"
@@ -458,12 +817,15 @@ export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreat
                             ? 'Loading customers…'
                             : selectedCustomer
                               ? `${selectedCustomer.companyName} (${selectedCustomer.contactName})`
-                              : 'Select a customer'}
+                              : 'Search and select customer…'}
                         </span>
                         <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                    <PopoverContent
+                      className="w-[var(--radix-popover-trigger-width)] p-0"
+                      align="start"
+                    >
                       <Command>
                         <CommandInput placeholder="Search company, contact, code…" />
                         <CommandList>
@@ -504,99 +866,71 @@ export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreat
 
             <Separator />
 
-            {/* ---------------- Pickup + Delivery ---------------- */}
+            {/* ── Pickup + Delivery ─────────────────────────────────────── */}
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-              <section className="space-y-3">
-                <SectionTitle
-                  id="section-pickup"
-                  icon={MapPin}
-                  title="Pickup"
-                  errorCount={errorsBySection.pickup}
-                />
-                <Field id="pickupCity" label="City" required error={errors.pickupCity}>
-                  <Input
-                    id="pickupCity"
-                    value={formData.pickupCity}
-                    onChange={(e) => setField('pickupCity', e.target.value)}
-                    placeholder="Tashkent"
-                    maxLength={100}
-                    autoComplete="off"
-                    aria-invalid={Boolean(errors.pickupCity)}
-                    className={cn('h-9', errors.pickupCity && 'border-destructive')}
-                    data-testid="orders-pickup-city"
-                  />
-                </Field>
-                <Field id="pickupAddress" label="Address" required error={errors.pickupAddress}>
-                  <Input
-                    id="pickupAddress"
-                    value={formData.pickupAddress}
-                    onChange={(e) => setField('pickupAddress', e.target.value)}
-                    placeholder="Street, warehouse, gate…"
-                    maxLength={300}
-                    autoComplete="off"
-                    aria-invalid={Boolean(errors.pickupAddress)}
-                    className={cn('h-9', errors.pickupAddress && 'border-destructive')}
-                    data-testid="orders-pickup-address"
-                  />
-                </Field>
-                <DateField
-                  id="pickupDate"
-                  label="Date"
-                  required
-                  error={errors.pickupDate}
-                  value={formData.pickupDate}
-                  onChange={(iso) => setField('pickupDate', iso)}
-                />
-              </section>
-
-              <section className="space-y-3 border-t border-border/60 pt-4 sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0">
-                <SectionTitle
-                  id="section-delivery"
-                  icon={MapPin}
-                  title="Delivery"
+              <StopPanel
+                prefix="pickup"
+                errorCount={errorsBySection.pickup}
+                formData={formData}
+                errors={errors}
+                onFieldChange={setField}
+                onFieldsBatch={setFields}
+                addressSuggestion={pickupSuggestion}
+                onAddressSuggestion={setPickupSuggestion}
+                mapCoords={pickupMapCoords}
+                onMapCoordsChange={setPickupMapCoords}
+                mapConfirmed={pickupMapConfirmed}
+                onMapConfirmedChange={setPickupMapConfirmed}
+                mapOpen={pickupMapOpen}
+                onMapOpenChange={setPickupMapOpen}
+              />
+              <div className="border-t border-border/60 pt-4 sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0">
+                <StopPanel
+                  prefix="delivery"
                   errorCount={errorsBySection.delivery}
-                />
-                <Field id="deliveryCity" label="City" required error={errors.deliveryCity}>
-                  <Input
-                    id="deliveryCity"
-                    value={formData.deliveryCity}
-                    onChange={(e) => setField('deliveryCity', e.target.value)}
-                    placeholder="Andijan"
-                    maxLength={100}
-                    autoComplete="off"
-                    aria-invalid={Boolean(errors.deliveryCity)}
-                    className={cn('h-9', errors.deliveryCity && 'border-destructive')}
-                    data-testid="orders-delivery-city"
-                  />
-                </Field>
-                <Field id="deliveryAddress" label="Address" required error={errors.deliveryAddress}>
-                  <Input
-                    id="deliveryAddress"
-                    value={formData.deliveryAddress}
-                    onChange={(e) => setField('deliveryAddress', e.target.value)}
-                    placeholder="Street, receiver, dock…"
-                    maxLength={300}
-                    autoComplete="off"
-                    aria-invalid={Boolean(errors.deliveryAddress)}
-                    className={cn('h-9', errors.deliveryAddress && 'border-destructive')}
-                    data-testid="orders-delivery-address"
-                  />
-                </Field>
-                <DateField
-                  id="deliveryDate"
-                  label="Date"
-                  required
-                  error={errors.deliveryDate}
-                  value={formData.deliveryDate}
-                  onChange={(iso) => setField('deliveryDate', iso)}
+                  formData={formData}
+                  errors={errors}
+                  onFieldChange={setField}
+                  onFieldsBatch={setFields}
                   disabledBefore={formData.pickupDate || undefined}
+                  addressSuggestion={deliverySuggestion}
+                  onAddressSuggestion={setDeliverySuggestion}
+                  mapCoords={deliveryMapCoords}
+                  onMapCoordsChange={setDeliveryMapCoords}
+                  mapConfirmed={deliveryMapConfirmed}
+                  onMapConfirmedChange={setDeliveryMapConfirmed}
+                  mapOpen={deliveryMapOpen}
+                  onMapOpenChange={setDeliveryMapOpen}
                 />
-              </section>
+              </div>
             </div>
 
             <Separator />
 
-            {/* ---------------- Cargo ---------------- */}
+            {/* ── Intermediate stops ────────────────────────────────────── */}
+            <IntermediateStopsSection
+              stops={stops}
+              errors={stopErrors}
+              touched={stopTouched}
+              onChange={setStops}
+              onTouch={(index, field) => {
+                setStopTouched((prev) => {
+                  const next = { ...prev };
+                  next[index] = new Set(prev[index] ?? []).add(field);
+                  return next;
+                });
+                setStopErrors((prev) => {
+                  const next = { ...prev };
+                  const errs = validateStop(stops[index], STOP_FIELDS);
+                  next[index] = errs;
+                  return next;
+                });
+              }}
+            />
+
+            <Separator />
+
+            {/* ── Cargo ─────────────────────────────────────────────────── */}
             <section className="space-y-3">
               <SectionTitle
                 id="section-cargo"
@@ -614,7 +948,7 @@ export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreat
                   id="cargoDescription"
                   value={formData.cargoDescription}
                   onChange={(e) => setField('cargoDescription', e.target.value)}
-                  placeholder="What is being transported"
+                  placeholder="What is being transported — e.g. Ceramic tiles, 12 pallets"
                   maxLength={2000}
                   rows={2}
                   aria-invalid={Boolean(errors.cargoDescription)}
@@ -668,7 +1002,7 @@ export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreat
 
             <Separator />
 
-            {/* ---------------- Pricing ---------------- */}
+            {/* ── Pricing ───────────────────────────────────────────────── */}
             <section className="space-y-3">
               <SectionTitle
                 id="section-pricing"
@@ -676,7 +1010,7 @@ export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreat
                 title="Pricing"
                 errorCount={errorsBySection.pricing}
               />
-              <div className="grid max-w-md grid-cols-[1fr_140px] gap-3">
+              <div className="grid max-w-md grid-cols-[1fr_160px] gap-3">
                 <Field id="price" label="Customer price" required error={errors.price}>
                   <Input
                     id="price"
@@ -686,35 +1020,30 @@ export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreat
                     min="0"
                     placeholder="0.00"
                     value={formData.price || ''}
-                    onChange={(e) => setField('price', e.target.value ? parseFloat(e.target.value) : 0)}
+                    onChange={(e) =>
+                      setField('price', e.target.value ? parseFloat(e.target.value) : 0)
+                    }
                     aria-invalid={Boolean(errors.price)}
                     className={cn('h-9', errors.price && 'border-destructive')}
                     data-testid="orders-price"
                   />
                 </Field>
                 <Field id="currency" label="Currency" error={errors.currency}>
-                  <Select
-                    value={formData.currency || 'USD'}
-                    onValueChange={(v) => setField('currency', v)}
-                  >
-                    <SelectTrigger id="currency" className="h-9" data-testid="orders-currency">
-                      <SelectValue placeholder="USD" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CURRENCIES.map((c) => (
-                        <SelectItem key={c} value={c}>
-                          {c}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div data-testid="orders-currency">
+                    <CurrencySelect
+                      id="currency"
+                      value={formData.currency ?? 'USD'}
+                      onChange={(v) => setField('currency', v ?? 'USD')}
+                      hasError={Boolean(errors.currency)}
+                    />
+                  </div>
                 </Field>
               </div>
             </section>
 
             <Separator />
 
-            {/* ---------------- Notes ---------------- */}
+            {/* ── Notes ─────────────────────────────────────────────────── */}
             <section className="space-y-3 pb-2">
               <SectionTitle
                 id="section-notes"
@@ -733,7 +1062,11 @@ export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreat
                   data-testid="orders-notes"
                 />
               </Field>
-              <Field id="deliveryNotes" label="Delivery instructions" error={errors.deliveryNotes}>
+              <Field
+                id="deliveryNotes"
+                label="Delivery instructions"
+                error={errors.deliveryNotes}
+              >
                 <Textarea
                   id="deliveryNotes"
                   value={formData.deliveryNotes ?? ''}
@@ -748,7 +1081,7 @@ export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreat
           </div>
         </div>
 
-        {/* ---------------- Sticky footer ---------------- */}
+        {/* ── Sticky footer ─────────────────────────────────────────────── */}
         <div className="shrink-0 border-t border-border bg-surface/95 px-6 py-3 backdrop-blur">
           <div className="flex items-center justify-between gap-3">
             <Button
@@ -775,11 +1108,11 @@ export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreat
               <Button
                 type="button"
                 onClick={handleSubmit}
-                disabled={loading || noCustomers}
+                disabled={loading || checkingDuplicate || noCustomers}
                 className="bg-gradient-brand text-brand-foreground hover:opacity-90"
                 data-testid="orders-submit-button"
               >
-                {loading ? 'Creating…' : 'Create Order'}
+                {loading || checkingDuplicate ? 'Creating…' : 'Create Order'}
               </Button>
             </div>
           </div>
@@ -793,9 +1126,33 @@ export function OrdersCreateSheet({ open, onOpenChange, onCreated }: OrdersCreat
           confirmLabel="Create anyway"
           onConfirm={() => {
             setPastPickupConfirm(false);
-            void submitOrder();
+            void submitOrder(acknowledgeDuplicateRef.current);
           }}
         />
+
+        <ConfirmDialog
+          open={duplicateConfirm}
+          onOpenChange={setDuplicateConfirm}
+          title="Possible duplicate order detected"
+          description={
+            duplicateMatches.length > 0
+              ? `Similar order${duplicateMatches.length === 1 ? '' : 's'} created recently: ${duplicateMatches.map((m) => m.orderNumber).join(', ')}. You can still proceed.`
+              : 'A similar order was created in the last 24 hours. You can still proceed.'
+          }
+          confirmLabel="Create anyway"
+          onConfirm={() => {
+            setDuplicateConfirm(false);
+            acknowledgeDuplicateRef.current = true;
+            void proceedAfterDuplicateCheck();
+          }}
+        >
+          <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              Possible duplicate order detected — review the matches above before continuing.
+            </span>
+          </div>
+        </ConfirmDialog>
       </SheetContent>
     </Sheet>
   );

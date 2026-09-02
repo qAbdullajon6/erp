@@ -12,6 +12,9 @@ export type DriversSearch = {
 };
 
 export const Route = createFileRoute("/app/drivers/")({
+  head: () => ({
+    meta: [{ title: "Drivers — FlowERP AI" }],
+  }),
   validateSearch: (search: Record<string, unknown>): DriversSearch => {
     const out: DriversSearch = {};
     if (search.page != null && search.page !== "") {

@@ -44,7 +44,7 @@ test('a platform admin can triage leads', async ({ page, request }) => {
   });
   expect(created.status()).toBe(201);
 
-  await page.goto('/app/leads', { waitUntil: 'domcontentloaded' });
+  await page.goto('/platform/leads', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('leads-table')).toBeVisible({ timeout: 60_000 });
 
   await expect(page.getByRole('button', { name: 'Leads', exact: true })).toBeVisible();

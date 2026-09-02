@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,9 +12,12 @@ import {
   type ExpenseStatus,
 } from '@/lib/api/expenses';
 import type { MembershipRole } from '@/lib/api/organizations';
+import { describeError } from '@/lib/api/describe-error';
 import { formatMoney } from '@/lib/format';
 import { EXPENSE_APPROVE_ROLES, EXPENSE_WRITE_ROLES } from '@/lib/role-access';
-import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-states';
+import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
+import { ErrorState, EmptyState, ListSkeleton } from '@/components/shared/list-states';
+import { ListToolbar, FilterSelect } from '@/components/shared/list-toolbar';
 import { PaginationBar } from '@/components/shared/pagination-bar';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
@@ -23,10 +27,13 @@ const STATUS_OPTIONS: ExpenseStatus[] = ['PENDING', 'APPROVED', 'REJECTED'];
 const CATEGORY_OPTIONS: ExpenseCategory[] = ['FUEL', 'TOLL', 'MAINTENANCE', 'DRIVER_ADVANCE', 'PARKING', 'INSURANCE', 'OTHER'];
 
 export function ExpensesList() {
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState<ExpenseStatus | ''>('');
-  const [category, setCategory] = useState<ExpenseCategory | ''>('');
+  const navigate = useNavigate({ from: '/app/finance' });
+  const searchState = useSearch({ from: '/app/finance' });
+  const page = searchState.expensePage || 1;
+  const search = searchState.expenseSearch || '';
+  const status = (searchState.expenseStatus || '') as ExpenseStatus | '';
+  const category = (searchState.expenseCategory || '') as ExpenseCategory | '';
+  const [localSearch, setLocalSearch] = useState(search);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const [approveId, setApproveId] = useState<string | null>(null);
@@ -34,6 +41,41 @@ export function ExpensesList() {
   const role = currentUser?.membership.role as MembershipRole | undefined;
   const canWrite = Boolean(role && EXPENSE_WRITE_ROLES.includes(role));
   const canApprove = Boolean(role && EXPENSE_APPROVE_ROLES.includes(role));
+
+  useEffect(() => {
+    setLocalSearch(search);
+  }, [search]);
+
+  const debouncedSearch = useDebouncedValue(localSearch, 300);
+  useEffect(() => {
+    if (debouncedSearch === search) return;
+    void navigate({
+      to: '/app/finance',
+      search: (prev) => ({ ...prev, expensePage: undefined, expenseSearch: debouncedSearch || undefined }),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch]);
+
+  const setStatus = (next: ExpenseStatus | '') => {
+    void navigate({
+      to: '/app/finance',
+      search: (prev) => ({ ...prev, expensePage: undefined, expenseStatus: next || undefined }),
+    });
+  };
+
+  const setCategory = (next: ExpenseCategory | '') => {
+    void navigate({
+      to: '/app/finance',
+      search: (prev) => ({ ...prev, expensePage: undefined, expenseCategory: next || undefined }),
+    });
+  };
+
+  const setPage = (next: number) => {
+    void navigate({
+      to: '/app/finance',
+      search: (prev) => ({ ...prev, expensePage: next === 1 ? undefined : next }),
+    });
+  };
 
   const { data, isLoading, isError, error, refetch } = useExpensesQuery({
     page,
@@ -52,7 +94,7 @@ export function ExpensesList() {
       toast.success('Expense approved');
       setApproveId(null);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to approve expense');
+      toast.error(describeError(err, 'Failed to approve expense'));
     }
   };
 
@@ -63,12 +105,12 @@ export function ExpensesList() {
       setRejectingId(null);
       setRejectionReason('');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to reject expense');
+      toast.error(describeError(err, 'Failed to reject expense'));
     }
   };
 
-  const selectFocus =
-    'mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
+  const rejectingExpense = data?.items.find((e) => e.id === rejectingId);
+  const approveExpense = data?.items.find((e) => e.id === approveId);
 
   return (
     <div className="space-y-6">
@@ -79,95 +121,83 @@ export function ExpensesList() {
         {canWrite && <ExpenseCreateDialog />}
       </div>
 
-      <div className="grid gap-4 rounded-lg border border-brand/10 bg-surface p-4 sm:grid-cols-3">
-        <div>
-          <label htmlFor="expense-search" className="text-sm font-medium text-foreground">Search</label>
-          <Input
-            id="expense-search"
-            placeholder="Expense number, description..."
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
-            className="mt-1"
-          />
-        </div>
-        <div>
-          <label htmlFor="expense-status" className="text-sm font-medium text-foreground">Status</label>
-          <select
-            id="expense-status"
-            value={status}
-            onChange={(e) => {
-              setStatus(e.target.value as ExpenseStatus | '');
-              setPage(1);
-            }}
-            className={selectFocus}
-          >
-            <option value="">All Statuses</option>
-            {STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="expense-category" className="text-sm font-medium text-foreground">Category</label>
-          <select
-            id="expense-category"
-            value={category}
-            onChange={(e) => {
-              setCategory(e.target.value as ExpenseCategory | '');
-              setPage(1);
-            }}
-            className={selectFocus}
-          >
-            <option value="">All Categories</option>
-            {CATEGORY_OPTIONS.map((c) => (
-              <option key={c} value={c}>
-                {c.replace(/_/g, ' ')}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+      <ListToolbar
+        searchValue={localSearch}
+        onSearchChange={setLocalSearch}
+        searchPlaceholder="Expense number, description..."
+      >
+        <FilterSelect label="Status" value={status} onChange={(next) => setStatus(next as ExpenseStatus | '')}>
+          <option value="">All statuses</option>
+          {STATUS_OPTIONS.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </FilterSelect>
+        <FilterSelect
+          label="Category"
+          value={category}
+          onChange={(next) => setCategory(next as ExpenseCategory | '')}
+        >
+          <option value="">All categories</option>
+          {CATEGORY_OPTIONS.map((c) => (
+            <option key={c} value={c}>
+              {c.replace(/_/g, ' ')}
+            </option>
+          ))}
+        </FilterSelect>
+      </ListToolbar>
 
       <div className="overflow-hidden rounded-lg border border-brand/10">
-        {isLoading && <LoadingState label="Loading expenses..." />}
+        {isLoading && <ListSkeleton rows={6} showAvatar={false} label="Loading expenses" />}
 
         {isError && !isLoading && (
-          <ErrorState
-            message={error instanceof Error ? error.message : 'Failed to load expenses'}
-            onRetry={() => refetch()}
-          />
+          <ErrorState message={describeError(error, 'Failed to load expenses')} onRetry={() => refetch()} />
         )}
 
         {!isLoading && !isError && (data?.items.length ?? 0) === 0 && (
-          <EmptyState title="No expenses found" description="Try adjusting search or filters." />
+          <EmptyState
+            title={search || status || category ? 'No expenses match these filters' : 'No expenses yet'}
+            description={
+              search || status || category
+                ? 'Clear the search box or widen the status and category filters.'
+                : 'Fuel, tolls and driver advances logged against a trip show up here for approval.'
+            }
+          />
         )}
 
         {!isLoading && (data?.items.length ?? 0) > 0 && (
           <div className="divide-y divide-brand/10">
             {data!.items.map((expense) => (
-              <div key={expense.id} className="px-6 py-4">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium text-foreground">{expense.expenseNumber}</span>
-                      <StatusBadge status={expense.status} />
-                      <span className="text-xs text-muted-foreground">{expense.category.replace(/_/g, ' ')}</span>
-                    </div>
-                    <p className="mt-1 truncate text-sm text-muted-foreground">{expense.description}</p>
-                    {expense.status === 'REJECTED' && expense.rejectionReason && (
-                      <p className="mt-1 text-xs text-destructive">Reason: {expense.rejectionReason}</p>
-                    )}
+              <div
+                key={expense.id}
+                // Stacked below sm: the identity line, the money and two action
+                // buttons cannot share one row at 390px without the buttons
+                // being squeezed to a few pixels wide.
+                className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-sm font-medium text-foreground">{expense.expenseNumber}</span>
+                    <StatusBadge status={expense.status} />
+                    <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                      {expense.category.replace(/_/g, ' ')}
+                    </span>
                   </div>
-                  <div className="text-right">
+                  <p className="mt-1 truncate text-sm text-muted-foreground">{expense.description}</p>
+                  {expense.status === 'REJECTED' && expense.rejectionReason && (
+                    <p className="mt-1 text-xs text-destructive">Reason: {expense.rejectionReason}</p>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between gap-4 sm:justify-end">
+                  <div className="sm:text-right">
                     <div className="font-mono text-sm font-semibold text-foreground">
                       {formatMoney(expense.amount, expense.currency)}
                     </div>
-                    <div className="text-xs text-muted-foreground">{new Date(expense.expenseDate).toLocaleDateString()}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {new Date(expense.expenseDate).toLocaleDateString()}
+                    </div>
                   </div>
                   {canApprove && expense.status === 'PENDING' && (
                     <div className="flex shrink-0 gap-2">
@@ -178,7 +208,7 @@ export function ExpensesList() {
                         size="sm"
                         variant="outline"
                         onClick={() => {
-                          setRejectingId(rejectingId === expense.id ? null : expense.id);
+                          setRejectingId(expense.id);
                           setRejectionReason('');
                         }}
                         disabled={rejecting}
@@ -188,22 +218,6 @@ export function ExpensesList() {
                     </div>
                   )}
                 </div>
-                {canApprove && rejectingId === expense.id && (
-                  <div className="mt-3 flex items-center gap-2 rounded-lg bg-background/60 p-3">
-                    <Input
-                      placeholder="Rejection reason (optional)"
-                      value={rejectionReason}
-                      onChange={(e) => setRejectionReason(e.target.value)}
-                      className="flex-1"
-                    />
-                    <Button size="sm" variant="destructive" onClick={() => handleReject(expense.id)} disabled={rejecting}>
-                      {rejecting ? 'Rejecting...' : 'Confirm'}
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => setRejectingId(null)}>
-                      Cancel
-                    </Button>
-                  </div>
-                )}
               </div>
             ))}
           </div>
@@ -223,12 +237,54 @@ export function ExpensesList() {
         open={!!approveId}
         onOpenChange={(open) => !open && setApproveId(null)}
         title="Approve this expense?"
-        description="Approved expenses are locked for payment processing."
-        confirmLabel={approving ? 'Approving...' : 'Approve'}
+        description={
+          approveExpense
+            ? `${approveExpense.expenseNumber} for ${formatMoney(approveExpense.amount, approveExpense.currency)} will be approved and locked for payment processing. Approval cannot be undone from this screen.`
+            : 'Approved expenses are locked for payment processing.'
+        }
+        confirmLabel={approving ? 'Approving...' : 'Approve expense'}
         onConfirm={() => {
           if (approveId) void handleApprove(approveId);
         }}
       />
+
+      {/* Rejection used to happen in an inline strip inside the row, where the
+          only thing naming the expense was the row it had scrolled past. It is
+          the destructive half of the pair, so it gets the same dialog as
+          approval — stating which expense, for how much, and that the reason is
+          shown back to whoever filed it. */}
+      <ConfirmDialog
+        open={!!rejectingId}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRejectingId(null);
+            setRejectionReason('');
+          }
+        }}
+        title="Reject this expense?"
+        description={
+          rejectingExpense
+            ? `${rejectingExpense.expenseNumber} for ${formatMoney(rejectingExpense.amount, rejectingExpense.currency)} will be rejected. The person who filed it can correct and resubmit, so this is reversible by them, not by you.`
+            : 'The person who filed this expense can correct and resubmit it.'
+        }
+        confirmLabel={rejecting ? 'Rejecting...' : 'Reject expense'}
+        destructive
+        onConfirm={() => {
+          if (rejectingId) void handleReject(rejectingId);
+        }}
+      >
+        <div className="space-y-1.5">
+          <label htmlFor="expense-rejection-reason" className="text-sm font-medium text-foreground">
+            Reason <span className="font-normal text-muted-foreground">(optional, shown to the filer)</span>
+          </label>
+          <Input
+            id="expense-rejection-reason"
+            placeholder="e.g. missing fuel receipt"
+            value={rejectionReason}
+            onChange={(e) => setRejectionReason(e.target.value)}
+          />
+        </div>
+      </ConfirmDialog>
     </div>
   );
 }

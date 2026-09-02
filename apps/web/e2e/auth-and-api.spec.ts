@@ -1,8 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { FRONTEND_URL, ROLE_EMAILS, passwordFor } from './helpers';
 
-const FRONTEND_URL = 'http://localhost:3001';
-const TEST_EMAIL = 'admin@flowerp.test';
-const TEST_PASSWORD = 'FlowERP-Test-2026!';
+/// This file used to hardcode `http://localhost:3001` and the admin
+/// credentials. The dev server has not been on 3001 for a while, so every test
+/// here was failing to connect rather than testing anything. Both now come from
+/// the same helpers the rest of the suite uses, so they follow the environment.
+const TEST_EMAIL = ROLE_EMAILS.ADMIN;
+const TEST_PASSWORD = passwordFor('ADMIN');
 
 test.describe('Phase 1.5: Auth & API Integration', () => {
 
@@ -11,14 +15,14 @@ test.describe('Phase 1.5: Auth & API Integration', () => {
 
     for (const route of routes) {
       await page.goto(`${FRONTEND_URL}${route}`);
-      await page.waitForURL(`**/auth/sign-in*`, { timeout: 10000 });
-      expect(page.url()).toContain('/auth/sign-in');
+      await page.waitForURL(`**/login*`, { timeout: 10000 });
+      expect(page.url()).toContain('/login');
     }
   });
 
   test('2. Login flow, authentication, and protected pages', async ({ page }) => {
     // === PART A: LOGIN ===
-    await page.goto(`${FRONTEND_URL}/auth/sign-in`);
+    await page.goto(`${FRONTEND_URL}/login`);
     await page.waitForLoadState('domcontentloaded');
 
     const emailInput = page.locator('input[type="email"]').first();
@@ -73,22 +77,25 @@ test.describe('Phase 1.5: Auth & API Integration', () => {
     }
 
     // === PART D: LOGOUT ===
-    const logoutButton = page.locator('button').filter({ hasText: /sign out|logout/i }).first();
-    await logoutButton.click();
+    // Signing out lives behind the account menu and then a confirmation, rather
+    // than being a bare button in the shell as it was when this was written.
+    await page.getByRole('button', { name: /account menu/i }).click();
+    await page.getByRole('menuitem', { name: /sign out/i }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: /^sign out$/i }).click();
 
-    await page.waitForURL(`**/auth/sign-in*`, { timeout: 5000 });
+    await page.waitForURL(`**/login*`, { timeout: 15000 });
 
     const tokenAfterLogout = await page.evaluate(() => sessionStorage.getItem('flowerp_access_token'));
     expect(tokenAfterLogout).toBeNull();
 
     // === PART E: VERIFY CANNOT ACCESS /app AFTER LOGOUT ===
     await page.goto(`${FRONTEND_URL}/app`);
-    await page.waitForURL(`**/auth/sign-in*`, { timeout: 5000 });
-    expect(page.url()).toContain('/auth/sign-in');
+    await page.waitForURL(`**/login*`, { timeout: 5000 });
+    expect(page.url()).toContain('/login');
   });
 
   test('3. Security configuration', async ({ page }) => {
-    await page.goto(`${FRONTEND_URL}/auth/sign-in`);
+    await page.goto(`${FRONTEND_URL}/login`);
     await page.waitForLoadState('domcontentloaded');
 
     const html = await page.content();

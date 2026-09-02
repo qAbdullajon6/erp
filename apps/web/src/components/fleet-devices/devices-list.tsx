@@ -6,7 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/shared/page-header';
 import { ErrorState, EmptyState } from '@/components/shared/list-states';
+import { FilterSelect } from '@/components/shared/list-toolbar';
+import { SearchInput } from '@/components/shared/search-input';
 import { PaginationBar } from '@/components/shared/pagination-bar';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   TELEMATICS_PROVIDERS,
   useTelematicsDevicesList,
@@ -23,7 +26,7 @@ import {
   providerLabel,
 } from '@/components/fleet-devices/devices-ops';
 import { DevicesCreateSheet } from '@/components/fleet-devices/devices-create-sheet';
-import { Cpu, Plus, Search } from 'lucide-react';
+import { Cpu, Plus } from 'lucide-react';
 
 type DeviceTab = 'active' | 'inactive' | 'archived' | 'all';
 
@@ -106,7 +109,7 @@ export function DevicesList() {
     <div className="space-y-5 p-4 sm:p-6" data-testid="devices-page">
       <PageHeader
         title="Devices"
-        subtitle="GPS unit registration, vehicle binding, and ingest credentials."
+        subtitle="Connect GPS devices, attach vehicles, and verify real signal — not just registration."
         action={
           <Button
             size="sm"
@@ -118,36 +121,32 @@ export function DevicesList() {
             }
           >
             <Plus className="mr-1.5 h-3.5 w-3.5" />
-            Register device
+            Connect GPS device
           </Button>
         }
       />
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[14rem] flex-1">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={localSearch}
-            onChange={(e) => setLocalSearch(e.target.value)}
-            placeholder="Search name or external id…"
-            className="h-9 w-full rounded-md border border-border bg-background pl-8 pr-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
-            aria-label="Search devices"
-          />
-        </div>
-        <select
+        <SearchInput
+          className="min-w-[14rem] flex-1"
+          value={localSearch}
+          onChange={setLocalSearch}
+          placeholder="Search name or IMEI…"
+          label="Search devices"
+        />
+        <FilterSelect
+          label="Provider"
           value={provider ?? ''}
-          onChange={(e) =>
+          onChange={(value) =>
             void navigate({
               to: '/app/devices',
               search: (prev) => ({
                 ...prev,
                 page: 1,
-                provider: e.target.value || undefined,
+                provider: value || undefined,
               }),
             })
           }
-          className="h-9 rounded-md border border-border bg-background px-3 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          aria-label="Filter by provider"
         >
           <option value="">All providers</option>
           {TELEMATICS_PROVIDERS.map((p) => (
@@ -155,7 +154,7 @@ export function DevicesList() {
               {providerLabel(p)}
             </option>
           ))}
-        </select>
+        </FilterSelect>
       </div>
 
       <div className="flex flex-wrap gap-1">
@@ -195,7 +194,7 @@ export function DevicesList() {
           description={
             search || provider
               ? 'Try a different search or provider filter.'
-              : 'Register a GPS device to start ingesting live positions.'
+              : 'Connect a GPS device to start verifying live positions.'
           }
           action={
             !search && !provider ? (
@@ -209,29 +208,29 @@ export function DevicesList() {
                 }
               >
                 <Plus className="mr-1.5 h-3.5 w-3.5" />
-                Register device
+                Connect GPS device
               </Button>
             ) : undefined
           }
         />
       ) : (
         <div className="overflow-hidden rounded-lg border border-border/60 bg-surface">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-border/60 bg-muted/20 text-[11px] uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2.5 font-semibold">Device</th>
-                <th className="hidden px-3 py-2.5 font-semibold sm:table-cell">Provider</th>
-                <th className="hidden px-3 py-2.5 font-semibold md:table-cell">Vehicle</th>
-                <th className="px-3 py-2.5 font-semibold">Status</th>
-                <th className="hidden px-3 py-2.5 font-semibold lg:table-cell">Last seen</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/50">
+          <Table aria-label="GPS devices">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Device</TableHead>
+                <TableHead className="hidden sm:table-cell">Provider</TableHead>
+                <TableHead className="hidden md:table-cell">Vehicle</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="hidden lg:table-cell">Last seen</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {rows.map((device) => {
                 const status = deviceLifecycleStatus(device);
                 return (
-                  <tr key={device.id} className="hover:bg-muted/20">
-                    <td className="px-3 py-2.5">
+                  <TableRow key={device.id}>
+                    <TableCell>
                       <Link
                         to="/app/devices/$deviceId"
                         params={{ deviceId: device.id }}
@@ -242,11 +241,11 @@ export function DevicesList() {
                           {device.externalId}
                         </p>
                       </Link>
-                    </td>
-                    <td className="hidden px-3 py-2.5 sm:table-cell">
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
                       <span className="text-muted-foreground">{providerLabel(device.provider)}</span>
-                    </td>
-                    <td className="hidden px-3 py-2.5 md:table-cell">
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
                       {device.vehicleId ? (
                         <Link
                           to="/app/vehicles/$vehicleId"
@@ -259,8 +258,8 @@ export function DevicesList() {
                       ) : (
                         <span className="text-muted-foreground">Unassigned</span>
                       )}
-                    </td>
-                    <td className="px-3 py-2.5">
+                    </TableCell>
+                    <TableCell>
                       <span
                         className={cn(
                           'inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
@@ -269,15 +268,15 @@ export function DevicesList() {
                       >
                         {deviceStatusLabel(status)}
                       </span>
-                    </td>
-                    <td className="hidden px-3 py-2.5 text-muted-foreground lg:table-cell">
+                    </TableCell>
+                    <TableCell className="hidden text-muted-foreground lg:table-cell">
                       {device.lastSeenAt ? formatRelativeTime(device.lastSeenAt) : 'Never'}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 );
               })}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
 
@@ -297,10 +296,17 @@ export function DevicesList() {
 
       <DevicesCreateSheet
         open={createOpen}
+        defaultVehicleId={
+          typeof searchState.vehicleId === 'string' ? searchState.vehicleId : undefined
+        }
         onOpenChange={(open) =>
           void navigate({
             to: '/app/devices',
-            search: (prev) => ({ ...prev, create: open || undefined }),
+            search: (prev) => ({
+              ...prev,
+              create: open || undefined,
+              vehicleId: open ? prev.vehicleId : undefined,
+            }),
           })
         }
         onCreated={(deviceId) =>

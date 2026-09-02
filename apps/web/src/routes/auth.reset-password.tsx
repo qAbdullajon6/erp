@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { z } from 'zod';
 import { AlertTriangle, Ban, CheckCircle2, Clock } from 'lucide-react';
@@ -9,13 +9,7 @@ import { AuthStatusCard } from '@/components/auth/AuthStatusCard';
 import { PasswordField } from '@/components/auth/PasswordField';
 import { SubmitButton } from '@/components/auth/SubmitButton';
 import { Button } from '@/components/ui/button';
-
-/**
- * UI-ONLY SCREEN — there is no reset-password API endpoint yet (see the
- * comment on ForgotPasswordPage). This route renders every visual state the
- * flow will need, but does not call, mock, or simulate a backend. Wiring
- * points are marked TODO(backend) below.
- */
+import { authAPI } from '@/lib/api/auth';
 
 const searchSchema = z.object({ token: z.string().catch('') });
 
@@ -24,6 +18,7 @@ export const Route = createFileRoute('/auth/reset-password')({
     meta: [
       { title: 'Reset Password — FlowERP AI' },
       { name: 'robots', content: 'noindex' },
+      { name: 'referrer', content: 'no-referrer' },
     ],
   }),
   validateSearch: searchSchema,
@@ -33,23 +28,46 @@ export const Route = createFileRoute('/auth/reset-password')({
 type FieldErrors = { password?: string; confirmPassword?: string };
 
 function ResetPasswordPage() {
-  // TODO(backend): once a reset-password API exists, validate `token` on
-  // mount (e.g. useValidateResetToken(token)) and drive `view` from the
-  // response instead — showing 'loading' while pending, then routing to
-  // ResetPasswordExpiredView / ResetPasswordInvalidView / the form below,
-  // and ResetPasswordSuccessView / ResetPasswordErrorView after submit.
-  // Today the only real signal available client-side is whether a token is
-  // present at all — an empty token can never be valid, so that case is
-  // handled for real; a present token goes straight to the form.
   const { token } = Route.useSearch();
-  const view: 'form' | 'invalid' = token ? 'form' : 'invalid';
-
+  const [view, setView] = useState<'loading' | 'form' | 'invalid' | 'success' | 'error'>(
+    token ? 'loading' : 'invalid',
+  );
+  const [formError, setFormError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const passwordRef = useRef<HTMLInputElement>(null);
   const confirmRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    if (!token) return;
+    let active = true;
+    // Keep the capability in component memory only after first render so it
+    // does not remain in browser history or leak through a copied URL.
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete('token');
+    window.history.replaceState(window.history.state, '', cleanUrl.toString());
+    authAPI
+      .validateResetToken(token)
+      .then(() => {
+        if (active) setView('form');
+      })
+      .catch(() => {
+        if (active) setView('invalid');
+      });
+    return () => {
+      active = false;
+    };
+  }, [token]);
+
+  if (view === 'loading') {
+    return (
+      <AuthShell title="Reset your password">
+        <ResetPasswordLoadingView />
+      </AuthShell>
+    );
+  }
   if (view === 'invalid') {
     return (
       <AuthShell title="Reset your password">
@@ -57,8 +75,22 @@ function ResetPasswordPage() {
       </AuthShell>
     );
   }
+  if (view === 'success') {
+    return (
+      <AuthShell title="Password updated">
+        <ResetPasswordSuccessView />
+      </AuthShell>
+    );
+  }
+  if (view === 'error') {
+    return (
+      <AuthShell title="Reset your password">
+        <ResetPasswordErrorView message={formError} onRetry={() => setView('form')} />
+      </AuthShell>
+    );
+  }
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const errors: FieldErrors = {};
@@ -71,15 +103,16 @@ function ResetPasswordPage() {
       return;
     }
 
-    // TODO(backend): this is where the real submission belongs, e.g.
-    //   try {
-    //     await resetPassword({ token, password });
-    //     setView('success');
-    //   } catch (err) {
-    //     setFormError(err instanceof Error ? err.message : 'This link may have expired.');
-    //   }
-    // No endpoint exists yet, so submitting only performs the client-side
-    // checks above — it intentionally does not fake a successful reset.
+    setSubmitting(true);
+    try {
+      await authAPI.resetPassword(token, password);
+      setView('success');
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'This link may have expired.');
+      setView('error');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -89,7 +122,7 @@ function ResetPasswordPage() {
       footer={
         <>
           Remembered it?{' '}
-          <Link to="/auth/sign-in" className="font-medium text-brand hover:underline">
+          <Link to="/login" className="font-medium text-brand hover:underline">
             Sign in
           </Link>
         </>
@@ -123,19 +156,11 @@ function ResetPasswordPage() {
           error={fieldErrors.confirmPassword}
         />
 
-        <SubmitButton>Reset password</SubmitButton>
+        <SubmitButton loading={submitting}>Reset password</SubmitButton>
       </form>
     </AuthShell>
   );
 }
-
-/* --------------------------------------------------------------------
-   Fully-designed states not yet reachable from the live flow above —
-   there is no backend to trigger them from. Kept as complete, exported
-   components so the visual design is finished and ready to wire in:
-   drop a `setView('expired' | 'loading' | 'error')` call at the
-   TODO(backend) points once the API exists.
-   -------------------------------------------------------------------- */
 
 function ResetPasswordInvalidView() {
   return (
@@ -150,25 +175,9 @@ function ResetPasswordInvalidView() {
         </Button>
       }
       secondary={
-        <Link to="/auth/sign-in" className="font-medium text-brand hover:underline">
+        <Link to="/login" className="font-medium text-brand hover:underline">
           Back to sign in
         </Link>
-      }
-    />
-  );
-}
-
-function ResetPasswordExpiredView() {
-  return (
-    <AuthStatusCard
-      icon={Clock}
-      tone="warning"
-      title="This link has expired"
-      description="Password reset links are only valid for a limited time. Request a new one to continue."
-      action={
-        <Button asChild className="h-11 w-full rounded-xl bg-gradient-brand text-brand-foreground hover:opacity-90">
-          <Link to="/auth/forgot-password">Request a new link</Link>
-        </Button>
       }
     />
   );
@@ -197,7 +206,7 @@ function ResetPasswordSuccessView() {
       description="Your password has been changed. You can now sign in with your new password."
       action={
         <Button asChild className="h-11 w-full rounded-xl bg-gradient-brand text-brand-foreground hover:opacity-90">
-          <Link to="/auth/sign-in">Go to Sign In</Link>
+          <Link to="/login">Go to Sign In</Link>
         </Button>
       }
     />

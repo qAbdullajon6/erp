@@ -24,8 +24,11 @@ export const BOARD_COLUMNS: readonly BoardColumn[] = [
   { status: 'EN_ROUTE_TO_PICKUP', title: 'En Route to Pickup', shortTitle: 'To Pickup', terminal: false },
   { status: 'AT_PICKUP', title: 'At Pickup', shortTitle: 'At Pickup', terminal: false },
   { status: 'IN_TRANSIT', title: 'In Transit', shortTitle: 'In Transit', terminal: false },
+  { status: 'AT_STOP', title: 'At Stop', shortTitle: 'At Stop', terminal: false },
+  { status: 'ARRIVED_AT_DELIVERY', title: 'Arrived at Delivery', shortTitle: 'Arrived', terminal: false },
   { status: 'DELIVERED', title: 'Delivered', shortTitle: 'Done', terminal: true },
   { status: 'CANCELLED', title: 'Cancelled', shortTitle: 'Cancelled', terminal: true },
+  { status: 'DELIVERY_FAILED', title: 'Delivery Failed', shortTitle: 'Failed', terminal: true },
 ] as const;
 
 /// Buckets the dispatches by the status the API gave them.

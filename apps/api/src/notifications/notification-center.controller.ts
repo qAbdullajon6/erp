@@ -56,6 +56,8 @@ export class NotificationCenterController {
     const page = query.page || 1;
     const limit = query.limit || 20;
     const skip = (page - 1) * limit;
+    const sortBy = query.sortBy || 'createdAt';
+    const sortOrder = query.sortOrder || 'desc';
 
     const where: Prisma.NotificationWhereInput = {
       organizationId: user.organizationId,
@@ -86,7 +88,7 @@ export class NotificationCenterController {
     const [notifications, total] = await Promise.all([
       this.prisma.notification.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { [sortBy]: sortOrder },
         skip,
         take: limit,
       }),
@@ -153,9 +155,13 @@ export class NotificationCenterController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     await this.findVisibleOrThrow(user.organizationId, user.role, id);
+    // dismissedAt (not just isArchived) tells the reconcile loop this was a
+    // user dismissal, not a resolved condition — see NotificationsService's
+    // reconcileRule. Without it, archiving a still-qualifying rule-based
+    // notification gets undone by the very next refresh.
     await this.prisma.notification.update({
       where: { id },
-      data: { isArchived: true, archivedAt: new Date() },
+      data: { isArchived: true, archivedAt: new Date(), dismissedAt: new Date() },
     });
     return { success: true };
   }
@@ -199,7 +205,7 @@ export class NotificationCenterController {
         organizationId: user.organizationId,
         category: { in: allowedCategories },
       },
-      data: { isArchived: true, archivedAt: new Date() },
+      data: { isArchived: true, archivedAt: new Date(), dismissedAt: new Date() },
     });
     return { success: true };
   }

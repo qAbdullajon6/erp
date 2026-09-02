@@ -1,100 +1,91 @@
 import { useState } from "react";
-import { Plus } from "lucide-react";
-import { useSectionVisibility } from "@/lib/analytics/hooks";
+import { Plus, Minus } from "lucide-react";
 import { analytics } from "@/lib/analytics";
+import { useSectionVisibility } from "@/lib/analytics/hooks";
 import { Section, SectionHeading } from "./primitives";
 import { Reveal } from "./motion";
-import { cn } from "@/lib/utils";
 
-export const FAQS = [
+const FAQS = [
   {
-    q: "How long does implementation take?",
-    a: "Most teams are fully live in about 18 days. Week one we import your data or connect existing systems; week two you run FlowERP alongside your current process; week three you go live, and we stay close for two weeks after launch.",
+    q: "How long does it take to get started?",
+    a: "Most teams are live within a week. Setup takes about an hour — company details, inviting your team, importing customers, vehicles and drivers. After that you can take your first order.",
   },
   {
-    q: "Do I need to train my entire team?",
-    a: "Rarely. Because the copilot answers in plain language, most people never touch complex screens. Operations managers and dispatchers get a 2–3 hour onboarding, and drivers need about 15 minutes with the mobile app.",
+    q: "Do I need to install anything?",
+    a: "No. FlowERP runs in any modern browser. Drivers use the mobile-optimised web app on their phones — no app store downloads required.",
   },
   {
-    q: "What if our operation is too unique for software?",
-    a: "We've yet to meet one we couldn't handle. FlowERP is built for real logistics complexity — custom delivery windows, multi-stop routes, COD, proof of delivery, temperature-controlled cargo — and we'll configure or integrate for genuine edge cases.",
+    q: "Does it work without GPS devices?",
+    a: "Yes. GPS tracking is optional. You can run the full order, dispatch and finance workflow without any hardware. If you later add GPS devices, the tracking layer turns on automatically.",
   },
   {
-    q: "Can we try it before committing?",
-    a: "Yes. Every plan includes a 14-day trial with no credit card. We'll help load sample data that mirrors your workflow, and if it isn't a fit you keep your data and can export it anytime.",
+    q: "Can I import my existing customer and vehicle data?",
+    a: "Yes. FlowERP accepts standard CSV and Excel files. The import tool guides you through mapping your columns to our fields, and you can review and correct records before they go live.",
   },
   {
-    q: "How does the AI actually work?",
-    a: "The copilot is grounded in your live data — orders, fleet, drivers, invoices. Ask a question and it queries your real operation, reasons over the constraints, and responds with specific, actionable answers. It can also take actions like reassigning routes or drafting notifications, with your approval.",
+    q: "How does billing work?",
+    a: "You choose a plan when you set up your account. Pricing is per company per month — not per seat — so you can add as many users as your plan allows without extra charges.",
   },
   {
-    q: "What happens to our data if we cancel?",
-    a: "You own your data, always. Export everything in CSV or JSON on your way out. We retain it for 30 days in case you return, then permanently delete it. No lock-in and no export fees.",
+    q: "Is my data secure?",
+    a: "All data is encrypted in transit and at rest. We use industry-standard security practices and host on infrastructure that is compliant with international data protection standards.",
   },
   {
-    q: "Do you integrate with our existing tools?",
-    a: "Yes — Google Maps for routing, WhatsApp and Telegram for notifications, Stripe and QuickBooks for finance, plus a REST API and webhooks for anything custom. Enterprise plans include dedicated integration support.",
+    q: "What languages does FlowERP support?",
+    a: "The platform interface is in English. The AI assistant understands queries in Uzbek, Russian and English and responds in the same language you write in.",
   },
   {
-    q: "Is this built for our region?",
-    a: "FlowERP is built for logistics operators in Central Asia, with local payment methods and English, Russian, and Uzbek interfaces. That said, it works globally — customers run on it from Tashkent to Singapore.",
+    q: "Can I try it before paying?",
+    a: "Yes — every plan includes a 14-day free trial. No credit card is required to start. If you need more time to evaluate, contact us.",
   },
-];
+] as const;
 
-export function Faq() {
+export function FAQ() {
   const sectionRef = useSectionVisibility("faq");
-  const [open, setOpen] = useState<number | null>(0);
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
 
-  const toggle = (i: number) => {
-    const next = open === i ? null : i;
-    setOpen(next);
-    if (next !== null) analytics.track({ name: "faq_opened", params: { question: FAQS[i].q } });
+  const toggle = (i: number, q: string) => {
+    const next = openIndex === i ? null : i;
+    setOpenIndex(next);
+    if (next !== null) {
+      analytics.track({ name: "faq_question_click", params: { question: q } });
+    }
   };
 
   return (
-    <Section id="faq" sectionRef={sectionRef} width="narrow">
-      <SectionHeading eyebrow="FAQ" title="Questions, answered" />
+    <Section id="faq" sectionRef={sectionRef} className="scroll-mt-16">
+      <SectionHeading
+        eyebrow="FAQ"
+        title="Common questions"
+        lead="Everything you need to know about getting started with FlowERP."
+      />
 
-      <div className="mx-auto mt-14 max-w-3xl divide-y divide-border/70 border-y border-border/70">
-        {FAQS.map((item, i) => {
-          const isOpen = open === i;
-          return (
-            <Reveal key={item.q} delay={i * 40}>
-              <div>
-                <h3>
-                  <button
-                    type="button"
-                    onClick={() => toggle(i)}
-                    aria-expanded={isOpen}
-                    aria-controls={`faq-panel-${i}`}
-                    className="flex w-full items-center justify-between gap-4 py-5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <span className="text-base font-semibold text-foreground">{item.q}</span>
-                    <span
-                      className={cn(
-                        "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground transition-all duration-300",
-                        isOpen && "rotate-45 border-brand/40 text-brand",
-                      )}
-                    >
-                      <Plus className="h-4 w-4" />
-                    </span>
-                  </button>
-                </h3>
-                <div
-                  id={`faq-panel-${i}`}
-                  className={cn(
-                    "grid transition-[grid-template-rows] duration-300 ease-out",
-                    isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+      <div className="mx-auto mt-12 max-w-3xl divide-y divide-border">
+        {FAQS.map((item, i) => (
+          <Reveal key={item.q} delay={i * 30}>
+            <div>
+              <button
+                className="flex w-full items-start justify-between gap-4 py-5 text-left text-sm font-semibold text-foreground transition-colors hover:text-brand"
+                onClick={() => toggle(i, item.q)}
+                aria-expanded={openIndex === i}
+              >
+                <span>{item.q}</span>
+                <span className="mt-0.5 shrink-0 text-brand">
+                  {openIndex === i ? (
+                    <Minus className="h-4 w-4" />
+                  ) : (
+                    <Plus className="h-4 w-4" />
                   )}
-                >
-                  <div className="overflow-hidden">
-                    <p className="pb-5 pr-11 text-sm leading-relaxed text-muted-foreground">{item.a}</p>
-                  </div>
+                </span>
+              </button>
+              {openIndex === i && (
+                <div className="pb-5 text-sm leading-relaxed text-muted-foreground">
+                  {item.a}
                 </div>
-              </div>
-            </Reveal>
-          );
-        })}
+              )}
+            </div>
+          </Reveal>
+        ))}
       </div>
     </Section>
   );

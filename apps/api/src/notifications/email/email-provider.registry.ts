@@ -1,12 +1,30 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { EmailProviderType } from '@prisma/client';
+import { EmailProvider as EmailProviderModel, EmailProviderType } from '@prisma/client';
 import { EmailProvider } from './providers/email-provider.interface';
 import { SmtpEmailProvider } from './providers/smtp.provider';
 import { ResendEmailProvider } from './providers/resend.provider';
 import { SendGridEmailProvider } from './providers/sendgrid.provider';
 import { SesEmailProvider } from './providers/ses.provider';
 import { createDecipheriv } from 'crypto';
+
+interface SmtpDecryptedConfig {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  password: string;
+}
+
+interface ApiKeyDecryptedConfig {
+  apiKey: string;
+}
+
+interface SesDecryptedConfig {
+  region: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+}
 
 @Injectable()
 export class EmailProviderRegistry {
@@ -51,8 +69,7 @@ export class EmailProviderRegistry {
     return provider;
   }
 
-  private createProvider(dbProvider: any): EmailProvider {
-    const config = this.decryptConfig(dbProvider.config);
+  private createProvider(dbProvider: EmailProviderModel): EmailProvider {
     const baseConfig = {
       fromEmail: dbProvider.fromEmail,
       fromName: dbProvider.fromName,
@@ -60,7 +77,8 @@ export class EmailProviderRegistry {
     };
 
     switch (dbProvider.providerType) {
-      case EmailProviderType.SMTP:
+      case EmailProviderType.SMTP: {
+        const config = this.decryptConfig(dbProvider.config) as unknown as SmtpDecryptedConfig;
         return new SmtpEmailProvider({
           ...baseConfig,
           host: config.host,
@@ -69,35 +87,42 @@ export class EmailProviderRegistry {
           user: config.user,
           password: config.password,
         });
+      }
 
-      case EmailProviderType.RESEND:
+      case EmailProviderType.RESEND: {
+        const config = this.decryptConfig(dbProvider.config) as unknown as ApiKeyDecryptedConfig;
         return new ResendEmailProvider({
           ...baseConfig,
           apiKey: config.apiKey,
         });
+      }
 
-      case EmailProviderType.SENDGRID:
+      case EmailProviderType.SENDGRID: {
+        const config = this.decryptConfig(dbProvider.config) as unknown as ApiKeyDecryptedConfig;
         return new SendGridEmailProvider({
           ...baseConfig,
           apiKey: config.apiKey,
         });
+      }
 
-      case EmailProviderType.AWS_SES:
+      case EmailProviderType.AWS_SES: {
+        const config = this.decryptConfig(dbProvider.config) as unknown as SesDecryptedConfig;
         return new SesEmailProvider({
           ...baseConfig,
           region: config.region,
           accessKeyId: config.accessKeyId,
           secretAccessKey: config.secretAccessKey,
         });
+      }
 
       default:
         throw new Error(
-          `Unsupported email provider type: ${dbProvider.providerType}`,
+          `Unsupported email provider type: ${String(dbProvider.providerType)}`,
         );
     }
   }
 
-  private decryptConfig(encryptedConfig: string): any {
+  private decryptConfig(encryptedConfig: string): Record<string, unknown> {
     const secret = process.env.APP_SECRET;
     if (!secret) {
       throw new Error('APP_SECRET not configured');
@@ -112,7 +137,7 @@ export class EmailProviderRegistry {
     let decrypted = decipher.update(encrypted);
     decrypted = Buffer.concat([decrypted, decipher.final()]);
 
-    return JSON.parse(decrypted.toString());
+    return JSON.parse(decrypted.toString()) as Record<string, unknown>;
   }
 
   clearCache(organizationId?: string) {

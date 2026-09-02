@@ -1,4 +1,4 @@
-import { unwrapResponse } from './error';
+import { ApiError, unwrapResponse } from './error';
 import { apiFetch } from './fetch';
 
 export type DispatchStatus =
@@ -7,8 +7,34 @@ export type DispatchStatus =
   | "EN_ROUTE_TO_PICKUP"
   | "AT_PICKUP"
   | "IN_TRANSIT"
+  | "AT_STOP"
+  | "ARRIVED_AT_DELIVERY"
   | "DELIVERED"
-  | "CANCELLED";
+  | "CANCELLED"
+  | "DELIVERY_FAILED";
+
+export interface ApiDispatchStop {
+  id: string;
+  stopIndex: number;
+  stopType: 'PICKUP' | 'INTERMEDIATE' | 'DELIVERY';
+  address: string;
+  city: string;
+  postalCode: string | null;
+  countryCode: string | null;
+  lat: string | null;
+  lng: string | null;
+  placeName: string | null;
+  contactName: string | null;
+  contactPhone: string | null;
+  instructions: string | null;
+  windowStart: string | null;
+  windowEnd: string | null;
+  arrivedAt: string | null;
+  completedAt: string | null;
+  failedAt: string | null;
+  failureReason: string | null;
+  failureNotes: string | null;
+}
 
 export interface ApiDispatch {
   id: string;
@@ -52,6 +78,7 @@ export interface ApiDispatch {
     lastName: string;
   };
   status: DispatchStatus;
+  driverAcceptanceStatus?: 'PENDING' | 'ACCEPTED' | 'REJECTED';
   /// Which statuses this dispatch may legally move to, straight from the server's
   /// own transition table (R13). The UI does not decide this and must never try:
   /// three separate frontend copies of that table used to exist, and every one of
@@ -64,11 +91,33 @@ export interface ApiDispatch {
   notes?: string;
   deliveryNotes?: string;
   deliveryProofCount?: number;
+  failureReason?: string;
+  failureNotes?: string | null;
+  failedAt?: string | null;
+  deliveryAttempts?: Array<{
+    id: string;
+    failureReason: string;
+    notes: string | null;
+    lat: string | null;
+    lng: string | null;
+    occurredAt: string;
+    createdAt: string;
+    driverId: string | null;
+  }>;
   statusHistory?: Array<{
     id: string;
     status: string;
     note?: string;
     createdAt: string;
+  }>;
+  stops?: ApiDispatchStop[];
+  routeContext: Array<{
+    routeStopId: string;
+    routeId: string;
+    routeNumber: string;
+    routeStatus: string;
+    plannedDate: string;
+    sequence: number;
   }>;
   createdAt: string;
   updatedAt: string;
@@ -106,6 +155,40 @@ export interface ListDispatchesResponse {
   };
 }
 
+export interface ProofOfDeliveryFile {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  uploadedAt: string;
+  uploadedByUserId: string;
+}
+
+export interface ProofOfDeliveryResponse {
+  dispatchId: string;
+  orderId: string | null;
+  status: DispatchStatus;
+  deliveryDateScheduled: string;
+  deliveryDateActual: string | null;
+  driver: {
+    id: string;
+    employeeCode: string;
+    firstName: string;
+    lastName: string;
+    phone: string;
+  } | null;
+  receiverName: string | null;
+  receiverPhone: string | null;
+  notes: string | null;
+  odometerKm: string | null;
+  /// Only GPS this flow captures — recorded on the AT_PICKUP transition, not a
+  /// delivery-point reading. Label is server-supplied so the UI never implies
+  /// it's the drop-off location.
+  arrivalLocation: { label: string; lat: string; lng: string } | null;
+  photos: ProofOfDeliveryFile[];
+  signatures: ProofOfDeliveryFile[];
+}
+
 class DispatchesAPI {
   async list(
     page = 1,
@@ -117,6 +200,11 @@ class DispatchesAPI {
       orderId?: string;
       driverId?: string;
       vehicleId?: string;
+      customerId?: string;
+      fromDate?: string;
+      toDate?: string;
+      sortBy?: 'createdAt' | 'pickupDateScheduled' | 'deliveryDateScheduled' | 'status';
+      sortOrder?: 'asc' | 'desc';
     },
   ): Promise<ListDispatchesResponse> {
     const query = new URLSearchParams();
@@ -128,6 +216,11 @@ class DispatchesAPI {
     if (params?.orderId) query.append('orderId', params.orderId);
     if (params?.driverId) query.append('driverId', params.driverId);
     if (params?.vehicleId) query.append('vehicleId', params.vehicleId);
+    if (params?.customerId) query.append('customerId', params.customerId);
+    if (params?.fromDate) query.append('fromDate', params.fromDate);
+    if (params?.toDate) query.append('toDate', params.toDate);
+    if (params?.sortBy) query.append('sortBy', params.sortBy);
+    if (params?.sortOrder) query.append('sortOrder', params.sortOrder);
 
     const response = await apiFetch(
       `/api/dispatches${query.size > 0 ? `?${query.toString()}` : ''}`,
@@ -168,6 +261,29 @@ class DispatchesAPI {
     return unwrapResponse(response, 'Failed to update dispatch status');
   }
 
+  /// Calendar drag / resize — moves scheduled pickup (+ delivery window).
+  async reschedule(
+    id: string,
+    data: { pickupDateScheduled: string; deliveryDateScheduled?: string },
+  ): Promise<ApiDispatch> {
+    const response = await apiFetch(`/api/dispatches/${id}/reschedule`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return unwrapResponse(response, 'Failed to reschedule dispatch');
+  }
+
+  /// Board toast Undo — reverts the latest status history step (server window ~2 min).
+  async undoStatus(id: string): Promise<ApiDispatch> {
+    const response = await apiFetch(`/api/dispatches/${id}/undo-status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    return unwrapResponse(response, 'Failed to undo dispatch status');
+  }
+
   async cancel(id: string): Promise<ApiDispatch> {
     const response = await apiFetch(`/api/dispatches/${id}/cancel`, {
       method: 'POST',
@@ -175,6 +291,25 @@ class DispatchesAPI {
       body: JSON.stringify({}),
     });
     return unwrapResponse(response, 'Failed to cancel dispatch');
+  }
+
+  async getProofOfDelivery(id: string): Promise<ProofOfDeliveryResponse> {
+    const response = await apiFetch(`/api/dispatches/${id}/proof-of-delivery`, { method: 'GET' });
+    return unwrapResponse(response, 'Failed to fetch proof of delivery');
+  }
+
+  /// Authenticated blob download — `<img src>` / bare `<a href>` cannot send JWT.
+  async fetchProofOfDeliveryFileBlob(dispatchId: string, proofId: string): Promise<Blob> {
+    const response = await apiFetch(
+      `/api/dispatches/${dispatchId}/proof-of-delivery/${proofId}/file`,
+      { method: 'GET' },
+    );
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      const message = body?.error?.message ?? body?.message ?? 'Failed to download file';
+      throw new ApiError(Array.isArray(message) ? message[0] : message, response.status);
+    }
+    return response.blob();
   }
 }
 

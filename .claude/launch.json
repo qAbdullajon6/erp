@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "FlowERP Web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000,
+      "url": "http://localhost:3000",
+      "autoPort": false
+    },
+    {
+      "name": "FlowERP API",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:api"],
+      "port": 4000
+    }
+  ]
+}

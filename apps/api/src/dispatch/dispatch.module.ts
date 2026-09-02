@@ -1,34 +1,49 @@
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { OrderStateModule } from "../order-state/order-state.module";
+import { ReportsModule } from "../reports/reports.module";
 import { TelematicsModule } from "../telematics/telematics.module";
 import { WorkflowsModule } from "../workflows/workflows.module";
 import { AssignmentPolicy } from "./assignment/assignment.policy";
 import { AssignmentQueries } from "./assignment/assignment.queries";
+import { DispatchConflictsController } from "./conflicts/dispatch-conflicts.controller";
+import { DispatchConflictsService } from "./conflicts/dispatch-conflicts.service";
+import { DispatchAnalyticsService } from "./dispatch-analytics.service";
 import { DispatchController } from "./dispatch.controller";
 import { DispatchService } from "./dispatch.service";
 import { DispatchesController } from "./dispatches.controller";
 import { DispatchesService } from "./dispatches.service";
+import { DriverActionEventsService } from "./driver/driver-action-events.service";
 import { DriverDispatchController } from "./driver/driver-dispatch.controller";
 import { DriverDispatchService } from "./driver/driver-dispatch.service";
+import { DriverWorkspaceService } from "./driver/driver-workspace.service";
 
 @Module({
-  imports: [AuditModule, OrderStateModule, WorkflowsModule, TelematicsModule],
-  // DriverDispatchController MUST come before DispatchesController: they share the
-  // `dispatches` prefix, and DispatchesController has a `@Get(":id")` that would
-  // otherwise swallow `/dispatches/my` as a dispatch whose id is "my". Nest matches
-  // in registration order. See driver-dispatch.controller.ts, and the test that
-  // pins this.
-  controllers: [DriverDispatchController, DispatchController, DispatchesController],
+  imports: [AuditModule, OrderStateModule, WorkflowsModule, TelematicsModule, ReportsModule],
+  controllers: [
+    DriverDispatchController,
+    DispatchConflictsController,
+    DispatchController,
+    DispatchesController,
+  ],
   providers: [
     DispatchService,
+    DispatchAnalyticsService,
     DispatchesService,
     DriverDispatchService,
+    DriverWorkspaceService,
+    DriverActionEventsService,
+    DispatchConflictsService,
     AssignmentPolicy,
     AssignmentQueries,
   ],
-  // Exported so Task 8.7 can make the Orders endpoints wrappers that call the
-  // policy instead of carrying their own copy of these rules.
-  exports: [AssignmentPolicy, AssignmentQueries, DispatchesService],
+  exports: [
+    AssignmentPolicy,
+    AssignmentQueries,
+    DispatchesService,
+    DispatchConflictsService,
+    DriverWorkspaceService,
+    DriverActionEventsService,
+  ],
 })
 export class DispatchModule {}

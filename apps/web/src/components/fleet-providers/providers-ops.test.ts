@@ -29,8 +29,15 @@ describe('providers-ops', () => {
   it('derives communication status from backend fields only', () => {
     expect(deviceCommStatus(device({}))).toBe('waiting');
     expect(
-      deviceCommStatus(device({ lastSeenAt: '2026-01-02T00:00:00.000Z' })),
+      deviceCommStatus(device({ lastSeenAt: '2026-01-02T00:00:00.000Z' }), {
+        now: new Date('2026-01-02T00:05:00.000Z').getTime(),
+      }),
     ).toBe('connected');
+    expect(
+      deviceCommStatus(device({ lastSeenAt: '2026-01-02T00:00:00.000Z' }), {
+        now: new Date('2026-01-02T00:15:00.000Z').getTime(),
+      }),
+    ).toBe('stale');
     expect(deviceCommStatus(device({ active: false }))).toBe('disconnected');
     expect(
       deviceCommStatus(device({ archivedAt: '2026-01-03T00:00:00.000Z' })),

@@ -1,74 +1,46 @@
-import { useEffect } from 'react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Button } from '@/components/ui/button';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useCurrentUser } from '@/lib/api/auth';
+import type { SettingsTab } from '@/routes/app.settings';
+import { CompanyGeneralSection } from './company-general-section';
+import { CompanyIdentitySection } from './company-identity-section';
+import { MembersSection } from './members-section';
 import { ProfileTab } from './profile-tab';
-import { OrganizationTab } from './organization-tab';
-import { MembersTab } from './members-tab';
+import { SettingsLayout } from './settings-layout';
 
 export function SettingsView() {
-  const { data: currentUser, loading, error, refetch } = useCurrentUser();
+  const { data: currentUser } = useCurrentUser();
+  const navigate = useNavigate({ from: '/app/settings' });
+  const search = useSearch({ from: '/app/settings' });
 
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
+  const role = currentUser?.membership.role;
+  const isAdmin = role === 'ADMIN';
+  const isDriver = role === 'DRIVER';
 
-  if (loading) {
-    return <Skeleton className="h-96 rounded-lg" />;
-  }
+  /// A non-admin who follows a link to ?tab=members — or keeps a bookmark from
+  /// before their role changed — would otherwise land on a section that renders
+  /// nothing at all.
+  const requested = search.tab;
+  const activeSection: SettingsTab =
+    requested === 'members' && !isAdmin
+      ? 'general'
+      : (requested as SettingsTab) || 'general';
 
-  if (error || !currentUser) {
-    return (
-      <div className="rounded-lg bg-destructive/10 p-6 text-sm text-destructive">
-        {error || 'Failed to load your account'}
-        <Button onClick={() => refetch()} variant="ghost" size="sm" className="ml-4">
-          Retry
-        </Button>
-      </div>
-    );
-  }
-
-  const isAdmin = currentUser.membership.role === 'ADMIN';
-  const isDriver = currentUser.membership.role === 'DRIVER';
-
-  if (isDriver) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="font-display text-2xl font-bold text-foreground">Account</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Your profile for the driver portal</p>
-        </div>
-        <ProfileTab />
-      </div>
-    );
-  }
+  const selectSection = (id: SettingsTab | string) => {
+    void navigate({
+      to: '/app/settings',
+      search: () => (id === 'general' ? {} : { tab: id as SettingsTab }),
+    });
+  };
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="font-display text-3xl font-bold text-foreground">Settings</h1>
-        <p className="mt-2 text-muted-foreground">Manage your account, organization, and team</p>
-      </div>
-
-      <Tabs defaultValue="profile">
-        <TabsList>
-          <TabsTrigger value="profile">Profile</TabsTrigger>
-          <TabsTrigger value="organization">Organization</TabsTrigger>
-          {isAdmin && <TabsTrigger value="members">Members</TabsTrigger>}
-        </TabsList>
-        <TabsContent value="profile" className="pt-4">
-          <ProfileTab />
-        </TabsContent>
-        <TabsContent value="organization" className="pt-4">
-          <OrganizationTab isAdmin={isAdmin} />
-        </TabsContent>
-        {isAdmin && (
-          <TabsContent value="members" className="pt-4">
-            <MembersTab />
-          </TabsContent>
-        )}
-      </Tabs>
-    </div>
+    <SettingsLayout
+      activeSection={activeSection}
+      onSelectSection={selectSection}
+    >
+      {activeSection === 'general' && <CompanyGeneralSection isAdmin={isAdmin} />}
+      {activeSection === 'identity' && <CompanyIdentitySection isAdmin={isAdmin} />}
+      {activeSection === 'members' && <MembersSection />}
+      {activeSection === 'profile' && <ProfileTab />}
+    </SettingsLayout>
   );
 }

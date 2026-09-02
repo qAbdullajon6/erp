@@ -11,6 +11,14 @@
 // organization's data, the same guarantee every other tenant relies on.
 // Test user emails use the IANA-reserved `.test` TLD (RFC 2606) so they can
 // never collide with or accidentally email a real address.
+//
+// Run:
+//   npm run seed:test-org
+//
+// Reset (wipe the org and all its data, then re-seed):
+//   psql $DATABASE_URL -c "DELETE FROM organizations WHERE slug='flowerp-test-logistics';"
+//   psql $DATABASE_URL -c "DELETE FROM users WHERE email LIKE '%@flowerp.test';"
+//   npm run seed:test-org
 
 import { PrismaClient } from "@prisma/client";
 import * as argon2 from "argon2";
@@ -18,21 +26,22 @@ import * as argon2 from "argon2";
 const prisma = new PrismaClient();
 
 const TEST_ORG_SLUG = "flowerp-test-logistics";
-const TEST_ORG_NAME = "FlowERP Test Logistics";
+const TEST_ORG_NAME = "Trans Logistik Uzbekistan";
 const TEST_PASSWORD = "FlowERP-Test-2026!";
+const PORTAL_EMAIL = "ali@silkroadtraders.test";
 
 async function hashPassword(password: string): Promise<string> {
   return argon2.hash(password, { type: argon2.argon2id });
 }
 
 async function main() {
-  const existing = await prisma.organization.findUnique({ where: { slug: TEST_ORG_SLUG } });
+  const existing = await prisma.organization.findUnique({
+    where: { slug: TEST_ORG_SLUG },
+  });
   if (existing) {
     console.log(
       `Test organization "${TEST_ORG_NAME}" already exists (id=${existing.id}). ` +
-        "Refusing to create a duplicate. To reseed from scratch, delete it AND its users first " +
-        "(deleting the organization alone cascades its memberships/drivers/vehicles/customers/" +
-        "orders, but NOT the User rows themselves — a User isn't owned by one Organization):\n" +
+        "Refusing to create a duplicate. To reseed from scratch, delete it AND its users first:\n" +
         `  DELETE FROM organizations WHERE slug = '${TEST_ORG_SLUG}';\n` +
         "  DELETE FROM users WHERE email LIKE '%@flowerp.test';\n" +
         "then re-run: npm run seed:test-org",
@@ -51,11 +60,6 @@ async function main() {
     },
   });
 
-  /// `isPlatformAdmin` is FlowERP staff, and is deliberately NOT given to
-  /// admin@flowerp.test. MembershipRole.ADMIN means "admin of one customer
-  /// organization"; that person must never see another company's demo request.
-  /// Keeping them as separate accounts is what lets role-nav.spec.ts prove a
-  /// tenant admin cannot reach Leads.
   const roleUsers: {
     email: string;
     firstName: string;
@@ -63,19 +67,49 @@ async function main() {
     role: string;
     isPlatformAdmin?: boolean;
   }[] = [
-    { email: "admin@flowerp.test", firstName: "Test", lastName: "Admin", role: "ADMIN" },
+    {
+      email: "admin@flowerp.test",
+      firstName: "Aziz",
+      lastName: "Karimov",
+      role: "ADMIN",
+    },
     {
       email: "platform@flowerp.test",
       firstName: "FlowERP",
-      lastName: "Staff",
+      lastName: "Support",
       role: "PLATFORM_ADMIN",
       isPlatformAdmin: true,
     },
-    { email: "ops-manager@flowerp.test", firstName: "Test", lastName: "OpsManager", role: "OPERATIONS_MANAGER" },
-    { email: "dispatcher@flowerp.test", firstName: "Test", lastName: "Dispatcher", role: "DISPATCHER" },
-    { email: "accountant@flowerp.test", firstName: "Test", lastName: "Accountant", role: "ACCOUNTANT" },
-    { email: "sales@flowerp.test", firstName: "Test", lastName: "SalesManager", role: "SALES_CRM_MANAGER" },
-    { email: "driver@flowerp.test", firstName: "Test", lastName: "Driver", role: "DRIVER" },
+    {
+      email: "ops-manager@flowerp.test",
+      firstName: "Nodir",
+      lastName: "Mirzayev",
+      role: "OPERATIONS_MANAGER",
+    },
+    {
+      email: "dispatcher@flowerp.test",
+      firstName: "Sarvar",
+      lastName: "Umarov",
+      role: "DISPATCHER",
+    },
+    {
+      email: "accountant@flowerp.test",
+      firstName: "Dilnoza",
+      lastName: "Yusupova",
+      role: "ACCOUNTANT",
+    },
+    {
+      email: "sales@flowerp.test",
+      firstName: "Jasur",
+      lastName: "Toshmatov",
+      role: "SALES_CRM_MANAGER",
+    },
+    {
+      email: "driver@flowerp.test",
+      firstName: "Bekzod",
+      lastName: "Yusupov",
+      role: "DRIVER",
+    },
   ];
 
   const usersByRole = new Map<string, { id: string }>();
@@ -93,22 +127,18 @@ async function main() {
     await prisma.membership.create({
       data: {
         organizationId: organization.id,
-        // "PLATFORM_ADMIN" is not a MembershipRole — the staff account still
-        // needs an ordinary membership to hold a session, so it joins the test
-        // organization as an ADMIN. Its access to Leads comes from the flag,
-        // never from this role.
         userId: user.id,
-        role: (roleUser.role === "PLATFORM_ADMIN" ? "ADMIN" : roleUser.role) as never,
+        role: (roleUser.role === "PLATFORM_ADMIN"
+          ? "ADMIN"
+          : roleUser.role) as never,
       },
     });
   }
   const adminUser = usersByRole.get("ADMIN")!;
+  const dispatcherUser = usersByRole.get("DISPATCHER")!;
 
-  // drivers[0] (Bekzod) is deliberately linked to the driver@flowerp.test
-  // login account (Driver.userId) so the My Deliveries phase has a real,
-  // non-empty demo: it's the driver with the most seed orders assigned
-  // below. The other two seed drivers intentionally have no linked login —
-  // most Driver rows never do, only ones an admin has explicitly linked.
+  // drivers[0] (Bekzod) is linked to driver@flowerp.test so the driver workspace
+  // has a real, non-empty demo. Other drivers intentionally have no linked login.
   const drivers = await Promise.all(
     [
       {
@@ -117,219 +147,440 @@ async function main() {
         lastName: "Yusupov",
         phone: "+998901110001",
         licenseNumber: "AA1234567",
+        licenseExpiry: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days — triggers expiry warning
         userId: usersByRole.get("DRIVER")!.id,
       },
-      { employeeCode: "EMP-0002", firstName: "Shohruh", lastName: "Toshmatov", phone: "+998901110002", licenseNumber: "AA2345678" },
-      { employeeCode: "EMP-0003", firstName: "Dilnoza", lastName: "Ergasheva", phone: "+998901110003", licenseNumber: "AA3456789" },
-    ].map((d) => prisma.driver.create({ data: { organizationId: organization.id, ...d } })),
+      {
+        employeeCode: "EMP-0002",
+        firstName: "Shohruh",
+        lastName: "Toshmatov",
+        phone: "+998901110002",
+        licenseNumber: "AA2345678",
+      },
+      {
+        employeeCode: "EMP-0003",
+        firstName: "Dilnoza",
+        lastName: "Ergasheva",
+        phone: "+998901110003",
+        licenseNumber: "AA3456789",
+      },
+    ].map((d) =>
+      prisma.driver.create({ data: { organizationId: organization.id, ...d } }),
+    ),
   );
 
   const vehicles = await Promise.all(
     [
-      { vehicleCode: "VEH-0001", plateNumber: "01A111AA", type: "truck", capacityKg: 5000, capacityM3: 25, make: "Isuzu", model: "NPR", year: 2021 },
-      { vehicleCode: "VEH-0002", plateNumber: "01A222BB", type: "van", capacityKg: 1200, capacityM3: 8, make: "Ford", model: "Transit", year: 2022 },
-      { vehicleCode: "VEH-0003", plateNumber: "01A333CC", type: "refrigerated truck", capacityKg: 3000, capacityM3: 15, make: "Hyundai", model: "Mighty", year: 2020 },
-    ].map((v) => prisma.vehicle.create({ data: { organizationId: organization.id, ...v } })),
+      {
+        vehicleCode: "VEH-0001",
+        plateNumber: "01A111AA",
+        type: "truck",
+        capacityKg: 5000,
+        capacityM3: 25,
+        make: "Isuzu",
+        model: "NPR",
+        year: 2021,
+        insuranceExpiry: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 14 days — triggers insurance warning
+      },
+      {
+        vehicleCode: "VEH-0002",
+        plateNumber: "01A222BB",
+        type: "van",
+        capacityKg: 1200,
+        capacityM3: 8,
+        make: "Ford",
+        model: "Transit",
+        year: 2022,
+        inspectionExpiry: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000), // 1 day — triggers inspection warning
+      },
+      {
+        vehicleCode: "VEH-0003",
+        plateNumber: "01A333CC",
+        type: "refrigerated truck",
+        capacityKg: 3000,
+        capacityM3: 15,
+        make: "Hyundai",
+        model: "Mighty",
+        year: 2020,
+      },
+    ].map((v) =>
+      prisma.vehicle.create({
+        data: { organizationId: organization.id, ...v },
+      }),
+    ),
   );
+
+  // --- GPS position for the live in-transit vehicle (VEH-0002, Ford Transit)
+  // Midpoint on Tashkent → Bukhara highway (near Navoi, roughly halfway)
+  await prisma.gpsPosition.create({
+    data: {
+      organizationId: organization.id,
+      vehicleId: vehicles[1].id,
+      driverId: drivers[1].id,
+      recordedAt: new Date(),
+      receivedAt: new Date(),
+      latitude: 40.0842,
+      longitude: 65.3791,
+      speedKph: 87,
+      heading: 270, // heading west (Tashkent → Bukhara)
+    },
+  });
 
   const customers = await Promise.all(
     [
       {
         customerCode: "CUS-0001",
-        companyName: "Silk Road Traders (Test)",
+        companyName: "Silk Road Traders",
         contactName: "Ali Rahimov",
-        email: "ali@silkroadtraders.test",
+        email: PORTAL_EMAIL,
         phone: "+998901220001",
         city: "Tashkent",
         country: "Uzbekistan",
+        address: "Amir Temur ko'chasi 108, Tashkent",
         creditLimit: 20000,
+        paymentTerms: "NET_30" as const,
       },
       {
         customerCode: "CUS-0002",
-        companyName: "Bukhara Foods (Test)",
+        companyName: "Bukhara Foods",
         contactName: "Malika Yusupova",
         email: "malika@bukharafoods.test",
         phone: "+998901220002",
         city: "Bukhara",
         country: "Uzbekistan",
+        address: "Lyabi-Hauz ko'chasi 3, Bukhara",
         creditLimit: 12000,
+        paymentTerms: "NET_15" as const,
       },
       {
         customerCode: "CUS-0003",
-        companyName: "Andijan Textiles (Test)",
+        companyName: "Andijan Textiles",
         contactName: "Farrukh Islomov",
         email: "farrukh@andijantextiles.test",
         phone: "+998901220003",
         city: "Andijan",
         country: "Uzbekistan",
+        address: "Mustaqillik ko'chasi 7, Andijan",
         creditLimit: 8000,
+        paymentTerms: "NET_45" as const,
       },
-    ].map((c) => prisma.customer.create({ data: { organizationId: organization.id, ...c } })),
+    ].map((c) =>
+      prisma.customer.create({
+        data: { organizationId: organization.id, ...c },
+      }),
+    ),
   );
+
+  // Customer portal account for CUS-0001 (Silk Road Traders) so the customer
+  // portal login can be demonstrated: ali@silkroadtraders.test / FlowERP-Test-2026!
+  await prisma.customerPortalAccount.create({
+    data: {
+      organizationId: organization.id,
+      customerId: customers[0].id,
+      email: PORTAL_EMAIL,
+      passwordHash,
+      status: "ACTIVE",
+      language: "en",
+      timezone: "Asia/Tashkent",
+    },
+  });
 
   const now = Date.now();
   const days = (n: number) => new Date(now + n * 24 * 60 * 60 * 1000);
+  const currentMonthLabel = new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  const prevMonthLabel = new Date(now - 30 * 24 * 60 * 60 * 1000).toLocaleString('en-US', { month: 'long' });
 
   type SeedOrder = {
     orderNumber: string;
     customerId: string;
+    pickupAddress: string;
     pickupCity: string;
+    deliveryAddress: string;
     deliveryCity: string;
     pickupDate: Date;
     deliveryDate: Date;
     cargoDescription: string;
+    cargoWeightKg: number;
+    cargoVolumeM3: number;
     price: number;
-    status: "DRAFT" | "PENDING" | "ASSIGNED" | "PICKED_UP" | "IN_TRANSIT" | "DELIVERED" | "CANCELLED";
+    freightCharge?: number;
+    fuelSurcharge?: number;
+    otherCharges?: number;
+    status:
+      | "DRAFT"
+      | "PENDING"
+      | "ASSIGNED"
+      | "PICKED_UP"
+      | "IN_TRANSIT"
+      | "DELIVERED"
+      | "CANCELLED";
     driverId?: string;
     vehicleId?: string;
     deliveredAt?: Date;
     cancelledAt?: Date;
+    deliveryInstructions?: string;
     history: { status: string; note: string }[];
   };
 
+  const year = new Date().getUTCFullYear();
+
   const seedOrders: SeedOrder[] = [
     {
-      orderNumber: `ORD-${new Date().getUTCFullYear()}-0001`,
+      orderNumber: `ORD-${year}-0001`,
       customerId: customers[0].id,
+      pickupAddress: "Amir Temur ko'chasi 108, Tashkent",
       pickupCity: "Tashkent",
+      deliveryAddress: "Registon ko'chasi 15, Samarkand",
       deliveryCity: "Samarkand",
       pickupDate: days(5),
       deliveryDate: days(6),
-      cargoDescription: "[TEST DATA] General cargo, still being drafted",
+      cargoDescription: "General cargo — consumer electronics, 48 cartons",
+      cargoWeightKg: 620,
+      cargoVolumeM3: 4.2,
       price: 450,
+      freightCharge: 400,
+      fuelSurcharge: 35,
+      otherCharges: 15,
       status: "DRAFT",
-      history: [{ status: "DRAFT", note: "Order created (seed)" }],
+      history: [{ status: "DRAFT", note: "Order created" }],
     },
     {
-      orderNumber: `ORD-${new Date().getUTCFullYear()}-0002`,
+      orderNumber: `ORD-${year}-0002`,
       customerId: customers[1].id,
+      pickupAddress: "Lyabi-Hauz ko'chasi 3, Bukhara",
       pickupCity: "Bukhara",
+      deliveryAddress: "Yunusobod ko'chasi 55, Tashkent",
       deliveryCity: "Tashkent",
       pickupDate: days(3),
       deliveryDate: days(4),
-      cargoDescription: "[TEST DATA] Packaged food goods, ready for dispatch",
+      cargoDescription:
+        "Packaged food goods — dried fruit, 240 kg, temperature-stable",
+      cargoWeightKg: 240,
+      cargoVolumeM3: 1.8,
       price: 620,
+      freightCharge: 550,
+      fuelSurcharge: 45,
+      otherCharges: 25,
       status: "PENDING",
       history: [
-        { status: "DRAFT", note: "Order created (seed)" },
-        { status: "PENDING", note: "Ready for dispatch (seed)" },
+        { status: "DRAFT", note: "Order created" },
+        { status: "PENDING", note: "Ready for dispatch" },
       ],
     },
     {
-      orderNumber: `ORD-${new Date().getUTCFullYear()}-0003`,
+      orderNumber: `ORD-${year}-0003`,
       customerId: customers[2].id,
+      pickupAddress: "Mustaqillik ko'chasi 7, Andijan",
       pickupCity: "Andijan",
+      deliveryAddress: "Amir Temur ko'chasi 1, Tashkent",
       deliveryCity: "Tashkent",
       pickupDate: days(2),
       deliveryDate: days(3),
-      cargoDescription: "[TEST DATA] Textile rolls, driver and vehicle assigned",
+      cargoDescription: "Textile rolls — cotton fabric, 18 rolls, 480 kg",
+      cargoWeightKg: 480,
+      cargoVolumeM3: 6.0,
       price: 800,
       status: "ASSIGNED",
       driverId: drivers[0].id,
       vehicleId: vehicles[0].id,
+      deliveryInstructions:
+        "Call warehouse manager 30 minutes before arrival. Gate code: 4821.",
       history: [
-        { status: "DRAFT", note: "Order created (seed)" },
-        { status: "PENDING", note: "Ready for dispatch (seed)" },
-        { status: "ASSIGNED", note: "Driver and vehicle assigned (seed)" },
+        { status: "DRAFT", note: "Order created" },
+        { status: "PENDING", note: "Ready for dispatch" },
+        {
+          status: "ASSIGNED",
+          note: "Driver Bekzod Yusupov assigned — awaiting acceptance",
+        },
       ],
     },
     {
-      orderNumber: `ORD-${new Date().getUTCFullYear()}-0004`,
+      // This is the demo "live" shipment — Silk Road Traders can track it in the portal
+      orderNumber: `ORD-${year}-0004`,
       customerId: customers[0].id,
+      pickupAddress: "Amir Temur ko'chasi 108, Tashkent",
       pickupCity: "Tashkent",
+      deliveryAddress: "Hamza ko'chasi 22, Bukhara",
       deliveryCity: "Bukhara",
       pickupDate: days(-1),
       deliveryDate: days(1),
-      cargoDescription: "[TEST DATA] Currently on the road",
+      cargoDescription: "Industrial spare parts — 3 pallets, steel components",
+      cargoWeightKg: 1400,
+      cargoVolumeM3: 7.5,
       price: 950,
       status: "IN_TRANSIT",
       driverId: drivers[1].id,
       vehicleId: vehicles[1].id,
+      deliveryInstructions:
+        "Unload at Dock B. Forklift available. Contact: +998901880022.",
       history: [
-        { status: "DRAFT", note: "Order created (seed)" },
-        { status: "PENDING", note: "Ready for dispatch (seed)" },
-        { status: "ASSIGNED", note: "Driver and vehicle assigned (seed)" },
-        { status: "PICKED_UP", note: "Cargo picked up (seed)" },
-        { status: "IN_TRANSIT", note: "En route (seed)" },
+        { status: "DRAFT", note: "Order created" },
+        { status: "PENDING", note: "Ready for dispatch" },
+        { status: "ASSIGNED", note: "Driver Shohruh Toshmatov assigned" },
+        { status: "PICKED_UP", note: "Cargo picked up at Tashkent warehouse" },
+        { status: "IN_TRANSIT", note: "En route to Bukhara via Navoi" },
       ],
     },
     {
-      orderNumber: `ORD-${new Date().getUTCFullYear()}-0005`,
+      orderNumber: `ORD-${year}-0005`,
       customerId: customers[1].id,
+      pickupAddress: "Lyabi-Hauz ko'chasi 3, Bukhara",
       pickupCity: "Bukhara",
+      deliveryAddress: "Mustaqillik ko'chasi 7, Andijan",
       deliveryCity: "Andijan",
       pickupDate: days(-10),
       deliveryDate: days(-8),
-      cargoDescription: "[TEST DATA] Completed delivery, for reporting/history demos",
+      cargoDescription: "Packaged spices and condiments — 120 boxes",
+      cargoWeightKg: 360,
+      cargoVolumeM3: 2.8,
       price: 1100,
       status: "DELIVERED",
       driverId: drivers[2].id,
       vehicleId: vehicles[2].id,
       deliveredAt: days(-8),
       history: [
-        { status: "DRAFT", note: "Order created (seed)" },
-        { status: "PENDING", note: "Ready for dispatch (seed)" },
-        { status: "ASSIGNED", note: "Driver and vehicle assigned (seed)" },
-        { status: "PICKED_UP", note: "Cargo picked up (seed)" },
-        { status: "IN_TRANSIT", note: "En route (seed)" },
-        { status: "DELIVERED", note: "Delivered on time (seed)" },
+        { status: "DRAFT", note: "Order created" },
+        { status: "PENDING", note: "Ready for dispatch" },
+        { status: "ASSIGNED", note: "Driver Dilnoza Ergasheva assigned" },
+        { status: "PICKED_UP", note: "Cargo picked up" },
+        { status: "IN_TRANSIT", note: "En route" },
+        { status: "DELIVERED", note: "Delivered and POD collected" },
       ],
     },
     {
-      orderNumber: `ORD-${new Date().getUTCFullYear()}-0006`,
+      orderNumber: `ORD-${year}-0006`,
       customerId: customers[2].id,
+      pickupAddress: "Mustaqillik ko'chasi 7, Andijan",
       pickupCity: "Andijan",
+      deliveryAddress: "Registon ko'chasi 15, Samarkand",
       deliveryCity: "Samarkand",
       pickupDate: days(-5),
       deliveryDate: days(-3),
-      cargoDescription: "[TEST DATA] Cancelled by customer, for cancellation-flow demos",
+      cargoDescription: "Machinery parts — cancelled by customer request",
+      cargoWeightKg: 850,
+      cargoVolumeM3: 5.5,
       price: 500,
       status: "CANCELLED",
       cancelledAt: days(-4),
       history: [
-        { status: "DRAFT", note: "Order created (seed)" },
-        { status: "PENDING", note: "Ready for dispatch (seed)" },
-        { status: "CANCELLED", note: "Customer cancelled the shipment (seed)" },
+        { status: "DRAFT", note: "Order created" },
+        { status: "PENDING", note: "Ready for dispatch" },
+        {
+          status: "CANCELLED",
+          note: "Customer cancelled — equipment no longer needed",
+        },
       ],
     },
     {
-      orderNumber: `ORD-${new Date().getUTCFullYear()}-0007`,
+      // Deliberately overdue and unassigned — shows up in the dispatcher's work queue
+      orderNumber: `ORD-${year}-0007`,
       customerId: customers[0].id,
+      pickupAddress: "Amir Temur ko'chasi 108, Tashkent",
       pickupCity: "Tashkent",
+      deliveryAddress: "Ferghana ko'chasi 45, Andijan",
       deliveryCity: "Andijan",
       pickupDate: days(-6),
       deliveryDate: days(-2),
-      cargoDescription: "[TEST DATA] Deliberately overdue — for the delayed-order demo (isDelayed: true)",
+      cargoDescription: "Retail merchandise — 6 pallets, mixed goods",
+      cargoWeightKg: 2100,
+      cargoVolumeM3: 12.0,
       price: 700,
       status: "PENDING",
       history: [
-        { status: "DRAFT", note: "Order created (seed)" },
-        { status: "PENDING", note: "Ready for dispatch, still unassigned and now overdue (seed)" },
+        { status: "DRAFT", note: "Order created" },
+        {
+          status: "PENDING",
+          note: "Ready for dispatch — awaiting driver assignment",
+        },
+      ],
+    },
+    {
+      // Re-dispatch scenario: initial delivery failed; order is back to PENDING
+      // The failed dispatch (DSP-000004) is created separately below
+      orderNumber: `ORD-${year}-0008`,
+      customerId: customers[1].id,
+      pickupAddress: "Navoi ko'chasi 18, Navoi",
+      pickupCity: "Navoi",
+      deliveryAddress: "Hamza ko'chasi 22, Bukhara",
+      deliveryCity: "Bukhara",
+      pickupDate: days(-3),
+      deliveryDate: days(-1),
+      cargoDescription: "Pharmaceutical supplies — refrigerated, 40 boxes",
+      cargoWeightKg: 180,
+      cargoVolumeM3: 1.2,
+      price: 820,
+      status: "PENDING", // back to PENDING after failed delivery
+      history: [
+        { status: "DRAFT", note: "Order created" },
+        { status: "PENDING", note: "Ready for dispatch" },
+        { status: "ASSIGNED", note: "Driver assigned" },
+        { status: "IN_TRANSIT", note: "En route to delivery" },
+        {
+          status: "PENDING",
+          note: "Delivery failed — recipient unavailable. Awaiting re-dispatch.",
+        },
+      ],
+    },
+    {
+      // Low-margin order for negative profit demo
+      orderNumber: `ORD-${year}-0009`,
+      customerId: customers[1].id,
+      pickupAddress: "Registon ko'chasi 15, Samarkand",
+      pickupCity: "Samarkand",
+      deliveryAddress: "Hamza ko'chasi 22, Bukhara",
+      deliveryCity: "Bukhara",
+      pickupDate: days(-8),
+      deliveryDate: days(-7),
+      cargoDescription: "Miscellaneous shipment — low revenue run",
+      cargoWeightKg: 90,
+      cargoVolumeM3: 0.8,
+      price: 100,
+      status: "DELIVERED",
+      driverId: drivers[0].id,
+      vehicleId: vehicles[1].id,
+      deliveredAt: days(-7),
+      history: [
+        { status: "DRAFT", note: "Order created" },
+        { status: "PENDING", note: "Ready for dispatch" },
+        { status: "ASSIGNED", note: "Driver assigned" },
+        { status: "IN_TRANSIT", note: "En route" },
+        { status: "DELIVERED", note: "Delivered" },
       ],
     },
   ];
 
-  const orders: { id: string; orderNumber: string; pickupDate: Date; deliveryDate: Date }[] = [];
+  const orders: {
+    id: string;
+    orderNumber: string;
+    pickupDate: Date;
+    deliveryDate: Date;
+  }[] = [];
   for (const seedOrder of seedOrders) {
     const order = await prisma.order.create({
       data: {
         organizationId: organization.id,
         orderNumber: seedOrder.orderNumber,
         customerId: seedOrder.customerId,
-        pickupAddress: "Test pickup address",
+        pickupAddress: seedOrder.pickupAddress,
         pickupCity: seedOrder.pickupCity,
         pickupDate: seedOrder.pickupDate,
-        deliveryAddress: "Test delivery address",
+        deliveryAddress: seedOrder.deliveryAddress,
         deliveryCity: seedOrder.deliveryCity,
         deliveryDate: seedOrder.deliveryDate,
         cargoDescription: seedOrder.cargoDescription,
+        cargoWeightKg: seedOrder.cargoWeightKg,
+        cargoVolumeM3: seedOrder.cargoVolumeM3,
         price: seedOrder.price,
+        freightCharge: seedOrder.freightCharge ?? null,
+        fuelSurcharge: seedOrder.fuelSurcharge ?? null,
+        otherCharges: seedOrder.otherCharges ?? null,
         currency: "USD",
         status: seedOrder.status,
-        driverId: seedOrder.driverId,
-        vehicleId: seedOrder.vehicleId,
-        deliveredAt: seedOrder.deliveredAt,
-        cancelledAt: seedOrder.cancelledAt,
+        driverId: seedOrder.driverId ?? null,
+        vehicleId: seedOrder.vehicleId ?? null,
+        deliveredAt: seedOrder.deliveredAt ?? null,
+        cancelledAt: seedOrder.cancelledAt ?? null,
+        deliveryInstructions: seedOrder.deliveryInstructions ?? null,
       },
     });
     orders.push(order);
@@ -340,118 +591,507 @@ async function main() {
           organizationId: organization.id,
           orderId: order.id,
           status: entry.status as never,
+          changedByUserId: adminUser.id,
           note: entry.note,
         },
       });
     }
   }
-  const deliveredOrder = orders[4]; // ORD-...-0005, the DELIVERED one
-  const invoiceYear = new Date().getUTCFullYear();
 
-  // --- Add a negative-profit delivered order for testing
-  // NEGATIVE_PROFIT notification (order revenue < approved expenses)
-  const negativeProfitOrder = await prisma.order.create({
+  // orders[3] = IN_TRANSIT order (ORD-...-0004, Tashkent→Bukhara)
+  // Add an intermediate OrderStop at Navoi (halfway on the route)
+  await prisma.orderStop.create({
     data: {
       organizationId: organization.id,
-      orderNumber: `ORD-${new Date().getUTCFullYear()}-0008`,
-      customerId: customers[1].id,
-      pickupAddress: "Test pickup address",
-      pickupCity: "Samarkand",
-      pickupDate: days(-8),
-      deliveryAddress: "Test delivery address",
-      deliveryCity: "Bukhara",
-      deliveryDate: days(-7),
-      cargoDescription: "[TEST DATA] Low-margin order for negative profit demo",
-      price: 100, // Very low price
-      currency: "USD",
-      status: "DELIVERED",
+      orderId: orders[3].id,
+      stopIndex: 1,
+      address: "Navoi ko'chasi 18, Navoi",
+      city: "Navoi",
+      countryCode: "UZ",
+      placeName: "Navoi Distribution Center",
+      contactName: "Asliddin Nazarov",
+      contactPhone: "+998901990033",
+      instructions:
+        "Drop off 2 pallets, receive signed waybill. 30-minute stop.",
+      windowStart: days(0),
+      windowEnd: days(0),
+    },
+  });
+
+  // --- Dispatches ---
+
+  // DSP-000001: ASSIGNED (ORD-...-0003, Bekzod, Andijan→Tashkent)
+  // driverAcceptanceStatus defaults to PENDING — driver sees this and can accept in the demo
+  const assignedDispatch = await prisma.dispatch.create({
+    data: {
+      organizationId: organization.id,
+      dispatchNumber: "DSP-000001",
+      orderId: orders[2].id,
       driverId: drivers[0].id,
-      vehicleId: vehicles[1].id,
-      deliveredAt: days(-7),
+      vehicleId: vehicles[0].id,
+      createdByUserId: dispatcherUser.id,
+      pickupDateScheduled: orders[2].pickupDate,
+      deliveryDateScheduled: orders[2].deliveryDate,
+      status: "ASSIGNED",
+      notes:
+        "Standard assignment — driver to confirm pickup window with warehouse.",
     },
   });
-  await prisma.orderStatusHistory.create({
+  await prisma.dispatchStatusHistory.createMany({
+    data: [
+      {
+        organizationId: organization.id,
+        dispatchId: assignedDispatch.id,
+        status: "DRAFT",
+        changedByUserId: dispatcherUser.id,
+        note: "Dispatch created",
+      },
+      {
+        organizationId: organization.id,
+        dispatchId: assignedDispatch.id,
+        status: "ASSIGNED",
+        changedByUserId: dispatcherUser.id,
+        note: "Driver and vehicle assigned",
+      },
+    ],
+  });
+  // DispatchStops for DSP-000001
+  await prisma.dispatchStop.createMany({
+    data: [
+      {
+        organizationId: organization.id,
+        dispatchId: assignedDispatch.id,
+        stopIndex: 0,
+        stopType: "PICKUP",
+        address: "Mustaqillik ko'chasi 7, Andijan",
+        city: "Andijan",
+        countryCode: "UZ",
+        contactName: "Farrukh Islomov",
+        contactPhone: "+998901220003",
+        instructions: "Loading dock open 08:00–18:00.",
+      },
+      {
+        organizationId: organization.id,
+        dispatchId: assignedDispatch.id,
+        stopIndex: 1,
+        stopType: "DELIVERY",
+        address: "Amir Temur ko'chasi 1, Tashkent",
+        city: "Tashkent",
+        countryCode: "UZ",
+        instructions:
+          "Call warehouse manager 30 minutes before arrival. Gate code: 4821.",
+      },
+    ],
+  });
+
+  // DSP-000002: IN_TRANSIT (ORD-...-0004, Shohruh, Tashkent→Bukhara via Navoi)
+  const transitDispatch = await prisma.dispatch.create({
     data: {
       organizationId: organization.id,
-      orderId: negativeProfitOrder.id,
-      status: "DELIVERED",
-      note: "Negative profit order for demo (seed)",
+      dispatchNumber: "DSP-000002",
+      orderId: orders[3].id,
+      driverId: drivers[1].id,
+      vehicleId: vehicles[1].id,
+      createdByUserId: dispatcherUser.id,
+      pickupDateScheduled: orders[3].pickupDate,
+      deliveryDateScheduled: orders[3].deliveryDate,
+      status: "IN_TRANSIT",
+      driverAcceptanceStatus: "ACCEPTED",
+      driverAcceptedAt: days(-1),
+      pickupDateActual: days(-1),
+      notes:
+        "Priority shipment — customer confirmed receipt window 14:00–18:00 on delivery date.",
+    },
+  });
+  await prisma.dispatchStatusHistory.createMany({
+    data: [
+      {
+        organizationId: organization.id,
+        dispatchId: transitDispatch.id,
+        status: "DRAFT",
+        changedByUserId: dispatcherUser.id,
+        note: "Dispatch created",
+      },
+      {
+        organizationId: organization.id,
+        dispatchId: transitDispatch.id,
+        status: "ASSIGNED",
+        changedByUserId: dispatcherUser.id,
+        note: "Driver Shohruh Toshmatov assigned",
+      },
+      {
+        organizationId: organization.id,
+        dispatchId: transitDispatch.id,
+        status: "EN_ROUTE_TO_PICKUP",
+        changedByUserId: dispatcherUser.id,
+        note: "Driver en route to Tashkent warehouse",
+      },
+      {
+        organizationId: organization.id,
+        dispatchId: transitDispatch.id,
+        status: "AT_PICKUP",
+        changedByUserId: dispatcherUser.id,
+        note: "Arrived at pickup",
+      },
+      {
+        organizationId: organization.id,
+        dispatchId: transitDispatch.id,
+        status: "IN_TRANSIT",
+        changedByUserId: dispatcherUser.id,
+        note: "Cargo loaded — en route to Bukhara via Navoi",
+      },
+    ],
+  });
+  // DispatchStops for DSP-000002 (pickup + intermediate + delivery)
+  await prisma.dispatchStop.createMany({
+    data: [
+      {
+        organizationId: organization.id,
+        dispatchId: transitDispatch.id,
+        stopIndex: 0,
+        stopType: "PICKUP",
+        address: "Amir Temur ko'chasi 108, Tashkent",
+        city: "Tashkent",
+        countryCode: "UZ",
+        contactName: "Ali Rahimov",
+        contactPhone: "+998901220001",
+        instructions: "Gate 3, dock level. Forklift provided.",
+        completedAt: days(-1),
+      },
+      {
+        organizationId: organization.id,
+        dispatchId: transitDispatch.id,
+        stopIndex: 1,
+        stopType: "INTERMEDIATE",
+        address: "Navoi ko'chasi 18, Navoi",
+        city: "Navoi",
+        countryCode: "UZ",
+        placeName: "Navoi Distribution Center",
+        contactName: "Asliddin Nazarov",
+        contactPhone: "+998901990033",
+        instructions:
+          "Drop off 2 pallets, collect signed waybill. ~30 min stop.",
+      },
+      {
+        organizationId: organization.id,
+        dispatchId: transitDispatch.id,
+        stopIndex: 2,
+        stopType: "DELIVERY",
+        address: "Hamza ko'chasi 22, Bukhara",
+        city: "Bukhara",
+        countryCode: "UZ",
+        instructions:
+          "Unload at Dock B. Forklift available. Contact: +998901880022.",
+      },
+    ],
+  });
+
+  // RTE-0001: the presenter-facing execution view for the live shipment.
+  // It mirrors DSP-000002's Tashkent → Navoi → Bukhara journey and places
+  // the seeded GPS position at the current (Navoi) stop. The route is already
+  // in progress so recording never requires planning or state changes first.
+  await prisma.route.create({
+    data: {
+      organizationId: organization.id,
+      routeNumber: "RTE-0001",
+      status: "IN_PROGRESS",
+      driverId: drivers[1].id,
+      vehicleId: vehicles[1].id,
+      plannedDate: days(0),
+      startTime: days(-1),
+      notes: "Priority freight run — Tashkent to Bukhara via Navoi Distribution Center.",
+      createdByUserId: dispatcherUser.id,
+      stops: {
+        create: [
+          {
+            organizationId: organization.id,
+            sequence: 1,
+            orderId: orders[3].id,
+            label: "Pickup — Silk Road Traders",
+            address: "Amir Temur ko'chasi 108, Tashkent",
+            city: "Tashkent",
+            lat: 41.3111,
+            lng: 69.2797,
+            status: "COMPLETED",
+            notes: "Cargo loaded for DSP-000002.",
+          },
+          {
+            organizationId: organization.id,
+            sequence: 2,
+            orderId: orders[3].id,
+            dispatchId: transitDispatch.id,
+            label: "Navoi Distribution Center",
+            address: "Navoi ko'chasi 18, Navoi",
+            city: "Navoi",
+            lat: 40.0842,
+            lng: 65.3791,
+            status: "PENDING",
+            notes: "Intermediate drop-off and signed-waybill collection.",
+          },
+          {
+            organizationId: organization.id,
+            sequence: 3,
+            orderId: orders[3].id,
+            label: "Delivery — Bukhara",
+            address: "Hamza ko'chasi 22, Bukhara",
+            city: "Bukhara",
+            lat: 39.7681,
+            lng: 64.4556,
+            status: "PENDING",
+            notes: "Final delivery window: 14:00–18:00.",
+          },
+        ],
+      },
     },
   });
 
-  // --- Add expiry-warning driver and vehicles for FLEET notifications ---
-
-  // Update driver to have expiry warning (license expires in 7 days)
-  await prisma.driver.update({
-    where: { id: drivers[0].id },
-    data: { licenseExpiry: days(7) },
+  // DSP-000003: DELIVERED (ORD-...-0005, Dilnoza, Bukhara→Andijan)
+  const deliveredDispatch = await prisma.dispatch.create({
+    data: {
+      organizationId: organization.id,
+      dispatchNumber: "DSP-000003",
+      orderId: orders[4].id,
+      driverId: drivers[2].id,
+      vehicleId: vehicles[2].id,
+      createdByUserId: dispatcherUser.id,
+      pickupDateScheduled: orders[4].pickupDate,
+      deliveryDateScheduled: orders[4].deliveryDate,
+      status: "DELIVERED",
+      driverAcceptanceStatus: "ACCEPTED",
+      driverAcceptedAt: days(-10),
+      pickupDateActual: days(-10),
+      deliveryDateActual: days(-8),
+      notes: "Delivered on schedule.",
+    },
+  });
+  await prisma.dispatchStatusHistory.createMany({
+    data: [
+      {
+        organizationId: organization.id,
+        dispatchId: deliveredDispatch.id,
+        status: "DRAFT",
+        changedByUserId: dispatcherUser.id,
+        note: "Dispatch created",
+      },
+      {
+        organizationId: organization.id,
+        dispatchId: deliveredDispatch.id,
+        status: "ASSIGNED",
+        changedByUserId: dispatcherUser.id,
+        note: "Driver Dilnoza Ergasheva assigned",
+      },
+      {
+        organizationId: organization.id,
+        dispatchId: deliveredDispatch.id,
+        status: "EN_ROUTE_TO_PICKUP",
+        changedByUserId: dispatcherUser.id,
+        note: "En route to Bukhara",
+      },
+      {
+        organizationId: organization.id,
+        dispatchId: deliveredDispatch.id,
+        status: "AT_PICKUP",
+        changedByUserId: dispatcherUser.id,
+        note: "At pickup location",
+      },
+      {
+        organizationId: organization.id,
+        dispatchId: deliveredDispatch.id,
+        status: "IN_TRANSIT",
+        changedByUserId: dispatcherUser.id,
+        note: "En route to Andijan",
+      },
+      {
+        organizationId: organization.id,
+        dispatchId: deliveredDispatch.id,
+        status: "ARRIVED_AT_DELIVERY",
+        changedByUserId: dispatcherUser.id,
+        note: "Arrived at Andijan",
+      },
+      {
+        organizationId: organization.id,
+        dispatchId: deliveredDispatch.id,
+        status: "DELIVERED",
+        changedByUserId: dispatcherUser.id,
+        note: "Delivered. POD collected.",
+      },
+    ],
+  });
+  // DispatchStops for DSP-000003
+  await prisma.dispatchStop.createMany({
+    data: [
+      {
+        organizationId: organization.id,
+        dispatchId: deliveredDispatch.id,
+        stopIndex: 0,
+        stopType: "PICKUP",
+        address: "Lyabi-Hauz ko'chasi 3, Bukhara",
+        city: "Bukhara",
+        countryCode: "UZ",
+        completedAt: days(-10),
+      },
+      {
+        organizationId: organization.id,
+        dispatchId: deliveredDispatch.id,
+        stopIndex: 1,
+        stopType: "DELIVERY",
+        address: "Mustaqillik ko'chasi 7, Andijan",
+        city: "Andijan",
+        countryCode: "UZ",
+        completedAt: days(-8),
+      },
+    ],
   });
 
-  // Update vehicle to have insurance expiry warning (expires in 14 days)
-  await prisma.vehicle.update({
-    where: { id: vehicles[0].id },
-    data: { insuranceExpiry: days(14) },
+  // POD proof for the DELIVERED dispatch
+  await prisma.dispatchDeliveryProof.create({
+    data: {
+      organizationId: organization.id,
+      dispatchId: deliveredDispatch.id,
+      orderId: orders[4].id,
+      uploadedByUserId: adminUser.id,
+      driverId: drivers[2].id,
+      type: "PHOTO",
+      fileName: "pod-delivery-confirmation.jpg",
+      mimeType: "image/jpeg",
+      fileSizeBytes: 142_400,
+      storagePath: "demo/pod/dsp-000003/pod-delivery-confirmation.jpg",
+      receiverName: "Farrukh Islomov",
+      receiverPhone: "+998901220003",
+      notes: "Package in good condition. Signed by warehouse manager.",
+    },
   });
 
-  // Update another vehicle to have inspection expiry warning (expires in 1 day)
-  await prisma.vehicle.update({
-    where: { id: vehicles[1].id },
-    data: { inspectionExpiry: days(1) },
+  // DSP-000004: DELIVERY_FAILED (ORD-...-0008, re-dispatch scenario)
+  // This dispatch shows the full re-dispatch flow in the work queue
+  const failedDispatch = await prisma.dispatch.create({
+    data: {
+      organizationId: organization.id,
+      dispatchNumber: "DSP-000004",
+      orderId: orders[7].id, // ORD-...-0008
+      driverId: drivers[2].id,
+      vehicleId: vehicles[2].id,
+      createdByUserId: dispatcherUser.id,
+      pickupDateScheduled: orders[7].pickupDate,
+      deliveryDateScheduled: orders[7].deliveryDate,
+      status: "DELIVERY_FAILED",
+      driverAcceptanceStatus: "ACCEPTED",
+      driverAcceptedAt: days(-3),
+      pickupDateActual: days(-3),
+      failureReason: "CUSTOMER_UNAVAILABLE",
+      failureNotes:
+        "Recipient not present at delivery address. No answer on phone. Left notice.",
+      failedAt: days(-1),
+      notes:
+        "First delivery attempt failed. Order returned to queue for re-dispatch.",
+    },
+  });
+  await prisma.dispatchStatusHistory.createMany({
+    data: [
+      {
+        organizationId: organization.id,
+        dispatchId: failedDispatch.id,
+        status: "DRAFT",
+        changedByUserId: dispatcherUser.id,
+        note: "Dispatch created",
+      },
+      {
+        organizationId: organization.id,
+        dispatchId: failedDispatch.id,
+        status: "ASSIGNED",
+        changedByUserId: dispatcherUser.id,
+        note: "Driver Dilnoza Ergasheva assigned",
+      },
+      {
+        organizationId: organization.id,
+        dispatchId: failedDispatch.id,
+        status: "EN_ROUTE_TO_PICKUP",
+        changedByUserId: dispatcherUser.id,
+        note: "En route to Navoi",
+      },
+      {
+        organizationId: organization.id,
+        dispatchId: failedDispatch.id,
+        status: "AT_PICKUP",
+        changedByUserId: dispatcherUser.id,
+        note: "At Navoi pickup",
+      },
+      {
+        organizationId: organization.id,
+        dispatchId: failedDispatch.id,
+        status: "IN_TRANSIT",
+        changedByUserId: dispatcherUser.id,
+        note: "En route to Bukhara",
+      },
+      {
+        organizationId: organization.id,
+        dispatchId: failedDispatch.id,
+        status: "ARRIVED_AT_DELIVERY",
+        changedByUserId: dispatcherUser.id,
+        note: "Arrived at delivery address",
+      },
+      {
+        organizationId: organization.id,
+        dispatchId: failedDispatch.id,
+        status: "DELIVERY_FAILED",
+        changedByUserId: dispatcherUser.id,
+        note: "Delivery failed — recipient unavailable",
+      },
+    ],
+  });
+  await prisma.dispatchStop.createMany({
+    data: [
+      {
+        organizationId: organization.id,
+        dispatchId: failedDispatch.id,
+        stopIndex: 0,
+        stopType: "PICKUP",
+        address: "Navoi ko'chasi 18, Navoi",
+        city: "Navoi",
+        countryCode: "UZ",
+        completedAt: days(-3),
+      },
+      {
+        organizationId: organization.id,
+        dispatchId: failedDispatch.id,
+        stopIndex: 1,
+        stopType: "DELIVERY",
+        address: "Hamza ko'chasi 22, Bukhara",
+        city: "Bukhara",
+        countryCode: "UZ",
+        failedAt: days(-1),
+        failureReason: "Recipient unavailable — no answer on phone or doorbell",
+        failureNotes: "Left notice. Cargo returned to van.",
+      },
+    ],
   });
 
-  // --- Add customer credit-limit scenarios ---
+  // --- Finance ---
 
-  // Customer 0: near credit limit (80% utilization triggers NEAR warning)
-  // creditLimit = 20000, create invoice for 16000 (80% of limit)
-  const creditNearInvoice = await createInvoice({
-    invoiceNumber: `INV-${invoiceYear}-0006`,
-    customerId: customers[0].id,
-    dueDate: days(15),
-    status: "SENT",
-    lineItems: [{ description: "[TEST DATA] Large order, near credit limit", quantity: 1, unitPrice: 16000 }],
-  });
-
-  // Customer 2: credit limit exceeded
-  // creditLimit = 8000, create invoice for 10000 (125% of limit)
-  const creditExceededInvoice = await createInvoice({
-    invoiceNumber: `INV-${invoiceYear}-0007`,
-    customerId: customers[2].id,
-    dueDate: days(15),
-    status: "SENT",
-    lineItems: [{ description: "[TEST DATA] Exceeds credit limit", quantity: 1, unitPrice: 10000 }],
-  });
-
-  // --- Add invoice due soon for INVOICE_DUE_SOON notification (due in 2 days, threshold is 3) ---
-
-  const invoiceDueSoon = await createInvoice({
-    invoiceNumber: `INV-${invoiceYear}-0008`,
-    customerId: customers[1].id,
-    dueDate: days(2),
-    status: "SENT",
-    lineItems: [{ description: "[TEST DATA] Invoice due soon", quantity: 1, unitPrice: 500 }],
-  });
-
-  // --- Finance: invoices, payments, expenses — all clearly labelled test
-  // data, covering every invoice status and both expense decisions. ---
+  const invoiceYear = new Date().getUTCFullYear();
 
   async function createInvoice(params: {
     invoiceNumber: string;
     customerId: string;
     orderId?: string;
     dueDate?: Date;
-    status: "DRAFT" | "SENT" | "PARTIALLY_PAID" | "PAID" | "OVERDUE" | "CANCELLED";
+    status:
+      "DRAFT" | "SENT" | "PARTIALLY_PAID" | "PAID" | "OVERDUE" | "CANCELLED";
     lineItems: { description: string; quantity: number; unitPrice: number }[];
     discountAmount?: number;
     taxAmount?: number;
     paidAmount?: number;
     cancelledAt?: Date;
   }) {
-    const subtotal = params.lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
+    const subtotal = params.lineItems.reduce(
+      (sum, li) => sum + li.quantity * li.unitPrice,
+      0,
+    );
     const discountAmount = params.discountAmount ?? 0;
     const taxAmount = params.taxAmount ?? 0;
     const totalAmount = subtotal - discountAmount + taxAmount;
     const paidAmount = params.paidAmount ?? 0;
-    const invoice = await prisma.invoice.create({
+    return prisma.invoice.create({
       data: {
         organizationId: organization.id,
         invoiceNumber: params.invoiceNumber,
@@ -477,15 +1117,22 @@ async function main() {
         },
       },
     });
-    return invoice;
   }
 
+  // INV-0001: PAID for the DELIVERED order
+  const deliveredOrder = orders[4]; // ORD-...-0005
   const paidInvoice = await createInvoice({
     invoiceNumber: `INV-${invoiceYear}-0001`,
     customerId: customers[1].id,
     orderId: deliveredOrder.id,
     status: "PAID",
-    lineItems: [{ description: `Order ${deliveredOrder.orderNumber}`, quantity: 1, unitPrice: 1100 }],
+    lineItems: [
+      {
+        description: `Freight — ${deliveredOrder.orderNumber}`,
+        quantity: 1,
+        unitPrice: 1100,
+      },
+    ],
     paidAmount: 1100,
   });
   await prisma.payment.create({
@@ -494,64 +1141,142 @@ async function main() {
       invoiceId: paidInvoice.id,
       amount: 1100,
       method: "BANK_TRANSFER",
-      reference: "TEST-WIRE-0001",
-      notes: "[TEST DATA] Paid in full (seed)",
+      reference: "WIRE-20260801-001",
+      notes: "Payment received in full",
     },
   });
 
-  const partiallyPaidInvoice = await createInvoice({
+  // INV-0002: PARTIALLY_PAID
+  const partialInvoice = await createInvoice({
     invoiceNumber: `INV-${invoiceYear}-0002`,
     customerId: customers[0].id,
     dueDate: days(10),
     status: "PARTIALLY_PAID",
-    lineItems: [{ description: "[TEST DATA] Monthly logistics retainer", quantity: 1, unitPrice: 900 }],
+    lineItems: [
+      {
+        description: `Monthly logistics retainer — ${currentMonthLabel}`,
+        quantity: 1,
+        unitPrice: 900,
+      },
+    ],
     paidAmount: 400,
   });
   await prisma.payment.create({
     data: {
       organizationId: organization.id,
-      invoiceId: partiallyPaidInvoice.id,
+      invoiceId: partialInvoice.id,
       amount: 400,
       method: "CARD",
-      notes: "[TEST DATA] Partial payment (seed)",
+      notes: "Partial payment — remainder pending",
     },
   });
 
+  // INV-0003: OVERDUE
   await createInvoice({
     invoiceNumber: `INV-${invoiceYear}-0003`,
     customerId: customers[2].id,
     dueDate: days(-15),
     status: "OVERDUE",
-    lineItems: [{ description: "[TEST DATA] Overdue invoice — for the overdue-status demo", quantity: 1, unitPrice: 640 }],
+    lineItems: [
+      {
+        description: `Freight — Andijan Textiles, ${prevMonthLabel} runs`,
+        quantity: 1,
+        unitPrice: 640,
+      },
+    ],
   });
 
+  // INV-0004: DRAFT
   await createInvoice({
     invoiceNumber: `INV-${invoiceYear}-0004`,
     customerId: customers[0].id,
     status: "DRAFT",
-    lineItems: [{ description: "[TEST DATA] Draft invoice, still editable", quantity: 2, unitPrice: 175 }],
+    lineItems: [
+      {
+        description: `Freight — ${orders[3].orderNumber} (in transit)`,
+        quantity: 1,
+        unitPrice: 950,
+      },
+      {
+        description: "Surcharge — priority handling",
+        quantity: 1,
+        unitPrice: 50,
+      },
+    ],
     discountAmount: 20,
   });
 
+  // INV-0005: CANCELLED
   await createInvoice({
     invoiceNumber: `INV-${invoiceYear}-0005`,
     customerId: customers[1].id,
     status: "CANCELLED",
-    lineItems: [{ description: "[TEST DATA] Cancelled invoice — for the cancellation-flow demo", quantity: 1, unitPrice: 300 }],
+    lineItems: [
+      {
+        description: `Freight — cancelled order ${orders[5].orderNumber}`,
+        quantity: 1,
+        unitPrice: 300,
+      },
+    ],
     cancelledAt: days(-2),
   });
 
-  const expenseYear = new Date().getUTCFullYear();
+  // INV-0006: SENT — near credit limit for customer[0]
+  await createInvoice({
+    invoiceNumber: `INV-${invoiceYear}-0006`,
+    customerId: customers[0].id,
+    dueDate: days(15),
+    status: "SENT",
+    lineItems: [
+      {
+        description: "Freight — bulk quarterly contract",
+        quantity: 1,
+        unitPrice: 16000,
+      },
+    ],
+  });
+
+  // INV-0007: SENT — exceeds credit limit for customer[2]
+  await createInvoice({
+    invoiceNumber: `INV-${invoiceYear}-0007`,
+    customerId: customers[2].id,
+    dueDate: days(15),
+    status: "SENT",
+    lineItems: [
+      {
+        description: "Freight — large textile shipment",
+        quantity: 1,
+        unitPrice: 10000,
+      },
+    ],
+  });
+
+  // INV-0008: SENT — due soon (2 days)
+  await createInvoice({
+    invoiceNumber: `INV-${invoiceYear}-0008`,
+    customerId: customers[1].id,
+    dueDate: days(2),
+    status: "SENT",
+    lineItems: [
+      {
+        description: "Freight — Bukhara Foods express delivery",
+        quantity: 1,
+        unitPrice: 500,
+      },
+    ],
+  });
+
+  // --- Expenses ---
   await prisma.expense.createMany({
     data: [
       {
         organizationId: organization.id,
-        expenseNumber: `EXP-${expenseYear}-0001`,
+        expenseNumber: `EXP-${invoiceYear}-0001`,
         orderId: deliveredOrder.id,
         vehicleId: vehicles[2].id,
         driverId: drivers[2].id,
         category: "FUEL",
-        description: "[TEST DATA] Diesel for delivered order (seed)",
+        description: "Diesel — Bukhara→Andijan run",
         amount: 150,
         status: "APPROVED",
         approvedByUserId: adminUser.id,
@@ -559,19 +1284,19 @@ async function main() {
       },
       {
         organizationId: organization.id,
-        expenseNumber: `EXP-${expenseYear}-0002`,
+        expenseNumber: `EXP-${invoiceYear}-0002`,
         orderId: deliveredOrder.id,
         category: "TOLL",
-        description: "[TEST DATA] Toll fees, awaiting approval (seed)",
+        description: "Highway tolls — Bukhara→Andijan",
         amount: 40,
         status: "PENDING",
       },
       {
         organizationId: organization.id,
-        expenseNumber: `EXP-${expenseYear}-0003`,
+        expenseNumber: `EXP-${invoiceYear}-0003`,
         vehicleId: vehicles[0].id,
         category: "MAINTENANCE",
-        description: "[TEST DATA] Scheduled maintenance, not tied to a specific order (seed)",
+        description: "Scheduled service — Isuzu NPR 50,000 km",
         amount: 300,
         status: "APPROVED",
         approvedByUserId: adminUser.id,
@@ -579,33 +1304,33 @@ async function main() {
       },
       {
         organizationId: organization.id,
-        expenseNumber: `EXP-${expenseYear}-0004`,
+        expenseNumber: `EXP-${invoiceYear}-0004`,
         driverId: drivers[1].id,
         category: "DRIVER_ADVANCE",
-        description: "[TEST DATA] Driver cash advance, awaiting approval (seed)",
+        description: "Cash advance — Shohruh Toshmatov (in-transit trip)",
         amount: 200,
         status: "PENDING",
       },
       {
         organizationId: organization.id,
-        expenseNumber: `EXP-${expenseYear}-0005`,
+        expenseNumber: `EXP-${invoiceYear}-0005`,
         vehicleId: vehicles[2].id,
         category: "INSURANCE",
-        description: "[TEST DATA] Rejected duplicate insurance submission (seed)",
+        description: "Annual insurance renewal — rejected duplicate",
         amount: 500,
         status: "REJECTED",
         approvedByUserId: adminUser.id,
         approvedAt: new Date(),
-        rejectionReason: "Duplicate submission (seed)",
+        rejectionReason: "Duplicate submission",
       },
       {
         organizationId: organization.id,
-        expenseNumber: `EXP-${expenseYear}-0006`,
-        orderId: negativeProfitOrder.id,
+        expenseNumber: `EXP-${invoiceYear}-0006`,
+        orderId: orders[8].id, // ORD-...-0009, negative profit
         vehicleId: vehicles[1].id,
         driverId: drivers[0].id,
         category: "FUEL",
-        description: "[TEST DATA] High fuel cost for negative-profit order (seed)",
+        description: "Fuel — low-margin Samarkand→Bukhara run",
         amount: 80,
         status: "APPROVED",
         approvedByUserId: adminUser.id,
@@ -613,10 +1338,10 @@ async function main() {
       },
       {
         organizationId: organization.id,
-        expenseNumber: `EXP-${expenseYear}-0007`,
-        orderId: negativeProfitOrder.id,
+        expenseNumber: `EXP-${invoiceYear}-0007`,
+        orderId: orders[8].id,
         category: "TOLL",
-        description: "[TEST DATA] Toll for negative-profit order (seed)",
+        description: "Tolls — Samarkand→Bukhara",
         amount: 50,
         status: "APPROVED",
         approvedByUserId: adminUser.id,
@@ -625,110 +1350,38 @@ async function main() {
     ],
   });
 
-  // --- Add dispatches for operational workflow demos
-  const dispatcherUser = usersByRole.get("DISPATCHER")!;
-
-  // Dispatch for ASSIGNED order (ORD-...-0003)
-  await prisma.dispatch.create({
-    data: {
-      organizationId: organization.id,
-      dispatchNumber: "DSP-000001",
-      orderId: orders[2].id,
-      driverId: drivers[0].id,
-      vehicleId: vehicles[0].id,
-      createdByUserId: dispatcherUser.id,
-      pickupDateScheduled: orders[2].pickupDate,
-      deliveryDateScheduled: orders[2].deliveryDate,
-      status: "ASSIGNED",
-      notes: "[TEST DATA] Dispatch created for demo (seed)",
-    },
-  });
-
-  // Dispatch for IN_TRANSIT order (ORD-...-0004)
-  const transitDispatch = await prisma.dispatch.create({
-    data: {
-      organizationId: organization.id,
-      dispatchNumber: "DSP-000002",
-      orderId: orders[3].id,
-      driverId: drivers[1].id,
-      vehicleId: vehicles[1].id,
-      createdByUserId: dispatcherUser.id,
-      pickupDateScheduled: orders[3].pickupDate,
-      deliveryDateScheduled: orders[3].deliveryDate,
-      status: "IN_TRANSIT",
-      pickupDateActual: days(-1),
-      notes: "[TEST DATA] Currently en route (seed)",
-    },
-  });
-
-  // Dispatch for DELIVERED order (ORD-...-0005)
-  await prisma.dispatch.create({
-    data: {
-      organizationId: organization.id,
-      dispatchNumber: "DSP-000003",
-      orderId: orders[4].id,
-      driverId: drivers[2].id,
-      vehicleId: vehicles[2].id,
-      createdByUserId: dispatcherUser.id,
-      pickupDateScheduled: orders[4].pickupDate,
-      deliveryDateScheduled: orders[4].deliveryDate,
-      status: "DELIVERED",
-      pickupDateActual: days(-10),
-      deliveryDateActual: days(-8),
-      notes: "[TEST DATA] Delivered on time (seed)",
-    },
-  });
-
-  // Add status history for the IN_TRANSIT dispatch
-  await Promise.all([
-    prisma.dispatchStatusHistory.create({
-      data: {
-        organizationId: organization.id,
-        dispatchId: transitDispatch.id,
-        status: "DRAFT",
-        note: "Dispatch created (seed)",
-      },
-    }),
-    prisma.dispatchStatusHistory.create({
-      data: {
-        organizationId: organization.id,
-        dispatchId: transitDispatch.id,
-        status: "ASSIGNED",
-        note: "Driver and vehicle assigned (seed)",
-      },
-    }),
-    prisma.dispatchStatusHistory.create({
-      data: {
-        organizationId: organization.id,
-        dispatchId: transitDispatch.id,
-        status: "EN_ROUTE_TO_PICKUP",
-        note: "En route to pickup location (seed)",
-      },
-    }),
-    prisma.dispatchStatusHistory.create({
-      data: {
-        organizationId: organization.id,
-        dispatchId: transitDispatch.id,
-        status: "AT_PICKUP",
-        note: "Arrived at pickup location (seed)",
-      },
-    }),
-    prisma.dispatchStatusHistory.create({
-      data: {
-        organizationId: organization.id,
-        dispatchId: transitDispatch.id,
-        status: "IN_TRANSIT",
-        note: "Cargo picked up, now in transit (seed)",
-      },
-    }),
-  ]);
-
-  console.log(`Created test organization "${TEST_ORG_NAME}" (slug: ${TEST_ORG_SLUG}).`);
-  console.log(`All test accounts share the password: ${TEST_PASSWORD}`);
-  console.log("Sign in at /auth/login with any of:");
+  // --- Print demo credentials ---
+  console.log(
+    `\n✓ Created demo organization "${TEST_ORG_NAME}" (slug: ${TEST_ORG_SLUG})\n`,
+  );
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log(" DEMO ACCOUNTS — all share password: " + TEST_PASSWORD);
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log(" Staff portal (/auth/login):");
   for (const roleUser of roleUsers) {
-    console.log(`  ${roleUser.email}  (${roleUser.role})`);
+    console.log(`   ${roleUser.email.padEnd(35)} ${roleUser.role}`);
   }
+  console.log("");
+  console.log(" Customer portal (/portal/login):");
+  console.log(`   ${PORTAL_EMAIL.padEnd(35)} CUSTOMER  (Silk Road Traders)`);
+  console.log("");
+  console.log(" Demo scenario:");
+  console.log(
+    "   DSP-000001  ASSIGNED       Bekzod Yusupov  | Andijan→Tashkent (awaiting driver acceptance)",
+  );
+  console.log(
+    "   DSP-000002  IN_TRANSIT     Shohruh Toshmatov | Tashkent→Bukhara via Navoi (live GPS)",
+  );
+  console.log(
+    "   RTE-0001     IN_PROGRESS    Ford Transit 01A222BB | Tashkent→Navoi→Bukhara (route execution)",
+  );
+  console.log(
+    "   DSP-000003  DELIVERED      Dilnoza Ergasheva | Bukhara→Andijan (POD collected)",
+  );
+  console.log(
+    "   DSP-000004  DELIVERY_FAILED  ORD-2026-0008   | Navoi→Bukhara (in re-dispatch queue)",
+  );
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 }
 
 main()

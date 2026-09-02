@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from './fetch';
+import { unwrapResponse } from './error';
 import { dashboardKeys, financeSummaryKeys, reportKeys } from './query-keys';
 
 export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PARTIALLY_PAID' | 'PAID' | 'OVERDUE' | 'CANCELLED';
@@ -106,12 +107,7 @@ function buildQuery(params: object): string {
 }
 
 async function unwrap<T>(response: Response, fallbackMessage: string): Promise<T> {
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.message || fallbackMessage);
-  }
-  const result = await response.json();
-  return (result.data ?? result) as T;
+  return unwrapResponse<T>(response, fallbackMessage);
 }
 
 class InvoicesAPI {

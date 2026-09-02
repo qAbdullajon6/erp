@@ -63,10 +63,12 @@ services:
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET is required}
       JWT_ACCESS_EXPIRES_IN_SECONDS: ${JWT_ACCESS_EXPIRES_IN_SECONDS:-900}
       REFRESH_TOKEN_EXPIRES_IN_DAYS: ${REFRESH_TOKEN_EXPIRES_IN_DAYS:-30}
+      PASSWORD_RESET_EXPIRES_IN_MINUTES: ${PASSWORD_RESET_EXPIRES_IN_MINUTES:-60}
       APP_PUBLIC_URL: ${APP_PUBLIC_URL:?APP_PUBLIC_URL is required, e.g. https://flowerp.uz}
       INVITATION_EXPIRES_IN_DAYS: ${INVITATION_EXPIRES_IN_DAYS:-7}
       SMTP_URL: ${SMTP_URL:-}
       MAIL_FROM: ${MAIL_FROM:-}
+      SMTP_CONNECT_HOST: ${SMTP_CONNECT_HOST:-}
       LEADS_NOTIFY_EMAIL: ${LEADS_NOTIFY_EMAIL:-}
       APP_SECRET: ${APP_SECRET:-}
       AI_PROVIDER: ${AI_PROVIDER:-}
@@ -137,6 +139,46 @@ services:
     entrypoint: ["sh", "-c"]
     command: ["echo 'pass a command, e.g. npx ts-node prisma/seed-test-org.ts'"]
 
+  # Traccar — the GPS protocol gateway (see docker-compose.local.yml and
+  # docs/TRACCAR_SETUP.md for the full architecture). It owns the raw
+  # device-facing TCP ports below; FlowERP never speaks a GPS wire protocol
+  # itself, only Traccar's webhook POST to the existing
+  # /telematics/ingest/:deviceId pipeline. Its own H2 database only holds
+  # Traccar's device/notification config, never GPS positions — those live in
+  # FlowERP's Postgres (gps_positions), so losing this volume loses Traccar's
+  # UI setup, not any tracking history.
+  #
+  # Deliberately not on Caddy: raw GPS TCP is not HTTP, so the protocol ports
+  # are published directly. The admin web UI/REST API (8082) stays internal
+  # (`expose`, not `ports`) — reach it for setup via an SSH tunnel
+  # (`ssh -L 8082:localhost:8082 <vps>`), never over the public internet.
+  traccar:
+    image: traccar/traccar:6.4-alpine
+    container_name: flowerp-traccar
+    restart: unless-stopped
+    expose:
+      - "8082"
+    ports:
+      # Teltonika (FMB920 and similar) — verified default via
+      # https://www.traccar.org/devices/.
+      - "${TRACCAR_TELTONIKA_PORT:-5027}:5027/tcp"
+      # Navtelecom (NTCB/FLEX) — the S-2423's protocol. Not published in any
+      # Traccar docs/default.xml; verified directly from this exact
+      # traccar/traccar:6.4-alpine image's compiled port table (see
+      # docker-compose.local.yml for how). Re-verify before ever changing the
+      # image tag.
+      - "${TRACCAR_NAVTELECOM_PORT:-5221}:5221/tcp"
+    volumes:
+      - traccar_data:/opt/traccar/data
+      - traccar_logs:/opt/traccar/logs
+    healthcheck:
+      # 127.0.0.1, not localhost — see docker-compose.local.yml for why.
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8082/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
   caddy:
     image: caddy:2-alpine
     container_name: flowerp-caddy
@@ -161,3 +203,5 @@ volumes:
   postgres_data:
   caddy_data:
   caddy_config:
+  traccar_data:
+  traccar_logs:

@@ -1,9 +1,9 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { describeError } from './describe-error';
-import { unwrapResponse } from './error';
+import { ApiError, unwrapResponse } from './error';
 import { apiFetch } from './fetch';
 import { useInvalidateOperationalState } from './invalidate';
-import { orderKeys } from './query-keys';
+import { orderKeys, auditLogKeys } from './query-keys';
 
 export type OrderStatus = 'DRAFT' | 'PENDING' | 'ASSIGNED' | 'PICKED_UP' | 'IN_TRANSIT' | 'DELIVERED' | 'CANCELLED';
 
@@ -15,13 +15,36 @@ export interface Order {
   pickupAddress: string;
   pickupCity: string;
   pickupDate: string; // ISO date
+  pickupPostalCode: string | null;
+  pickupCountryCode: string | null;
+  pickupLat: number | null;
+  pickupLng: number | null;
+  pickupPlaceName: string | null;
+  pickupContactName: string | null;
+  pickupContactPhone: string | null;
+  pickupInstructions: string | null;
+  pickupWindowStart: string | null; // ISO datetime
+  pickupWindowEnd: string | null;   // ISO datetime
   deliveryAddress: string;
   deliveryCity: string;
   deliveryDate: string; // ISO date
+  deliveryPostalCode: string | null;
+  deliveryCountryCode: string | null;
+  deliveryLat: number | null;
+  deliveryLng: number | null;
+  deliveryPlaceName: string | null;
+  deliveryContactName: string | null;
+  deliveryContactPhone: string | null;
+  deliveryInstructions: string | null;
+  deliveryWindowStart: string | null; // ISO datetime
+  deliveryWindowEnd: string | null;   // ISO datetime
   cargoDescription: string;
   cargoWeightKg: string | null;
   cargoVolumeM3: string | null;
   price: string; // decimal as string
+  freightCharge: string | null;
+  fuelSurcharge: string | null;
+  otherCharges: string | null;
   currency: string;
   status: OrderStatus;
   /// Which statuses this order may legally move to, straight from the server's own
@@ -37,7 +60,13 @@ export interface Order {
   updatedAt: string;
   cancelledAt: string | null;
   deliveredAt: string | null;
+  archivedAt?: string | null;
   statusHistory?: OrderStatusHistoryEntry[];
+  orderStops?: OrderStop[];
+  customer?: { id: string; companyName: string; phone: string | null };
+  plannedDriver?: { id: string; firstName: string; lastName: string; employeeCode: string } | null;
+  plannedVehicle?: { id: string; plateNumber: string; vehicleCode: string; type: string } | null;
+  activeDispatch?: { id: string; status: string; driverId: string; vehicleId: string } | null;
 }
 
 export interface OrderStatusHistoryEntry {
@@ -46,6 +75,38 @@ export interface OrderStatusHistoryEntry {
   changedByUserId: string | null;
   note: string | null;
   createdAt: string;
+}
+
+export interface OrderStop {
+  id: string;
+  stopIndex: number;
+  address: string;
+  city: string;
+  postalCode: string | null;
+  countryCode: string | null;
+  placeName: string | null;
+  contactName: string | null;
+  contactPhone: string | null;
+  instructions: string | null;
+  windowStart: string | null;
+  windowEnd: string | null;
+  lat: number | null;
+  lng: number | null;
+}
+
+export interface OrderStopInput {
+  address: string;
+  city: string;
+  postalCode?: string;
+  countryCode?: string;
+  placeName?: string;
+  contactName?: string;
+  contactPhone?: string;
+  instructions?: string;
+  windowStart?: string;
+  windowEnd?: string;
+  lat?: number;
+  lng?: number;
 }
 
 export interface ListOrdersResponse {
@@ -64,9 +125,29 @@ export interface CreateOrderInput {
   pickupAddress: string;
   pickupCity: string;
   pickupDate: string;
+  pickupPostalCode?: string;
+  pickupCountryCode?: string;
+  pickupLat?: number;
+  pickupLng?: number;
+  pickupPlaceName?: string;
+  pickupContactName?: string;
+  pickupContactPhone?: string;
+  pickupInstructions?: string;
+  pickupWindowStart?: string;
+  pickupWindowEnd?: string;
   deliveryAddress: string;
   deliveryCity: string;
   deliveryDate: string;
+  deliveryPostalCode?: string;
+  deliveryCountryCode?: string;
+  deliveryLat?: number;
+  deliveryLng?: number;
+  deliveryPlaceName?: string;
+  deliveryContactName?: string;
+  deliveryContactPhone?: string;
+  deliveryInstructions?: string;
+  deliveryWindowStart?: string;
+  deliveryWindowEnd?: string;
   cargoDescription: string;
   cargoWeightKg?: number;
   cargoVolumeM3?: number;
@@ -74,6 +155,8 @@ export interface CreateOrderInput {
   currency?: string;
   notes?: string;
   deliveryNotes?: string;
+  acknowledgeDuplicate?: boolean;
+  orderStops?: OrderStopInput[];
 }
 
 export interface UpdateOrderInput {
@@ -82,9 +165,29 @@ export interface UpdateOrderInput {
   pickupAddress?: string;
   pickupCity?: string;
   pickupDate?: string;
+  pickupPostalCode?: string;
+  pickupCountryCode?: string;
+  pickupLat?: number;
+  pickupLng?: number;
+  pickupPlaceName?: string;
+  pickupContactName?: string;
+  pickupContactPhone?: string;
+  pickupInstructions?: string;
+  pickupWindowStart?: string;
+  pickupWindowEnd?: string;
   deliveryAddress?: string;
   deliveryCity?: string;
   deliveryDate?: string;
+  deliveryPostalCode?: string;
+  deliveryCountryCode?: string;
+  deliveryLat?: number;
+  deliveryLng?: number;
+  deliveryPlaceName?: string;
+  deliveryContactName?: string;
+  deliveryContactPhone?: string;
+  deliveryInstructions?: string;
+  deliveryWindowStart?: string;
+  deliveryWindowEnd?: string;
   cargoDescription?: string;
   cargoWeightKg?: number;
   cargoVolumeM3?: number;
@@ -92,6 +195,7 @@ export interface UpdateOrderInput {
   currency?: string;
   notes?: string;
   deliveryNotes?: string;
+  orderStops?: OrderStopInput[];
 }
 
 export interface AssignOrderInput {
@@ -108,18 +212,72 @@ export interface CancelOrderInput {
   note?: string;
 }
 
+export type OrderPaymentStatus = 'UNPAID' | 'PARTIAL' | 'PAID' | 'NO_INVOICE';
+
 export interface ListOrdersQuery {
   page?: number;
   limit?: number;
   search?: string;
   status?: OrderStatus;
-  /// Prefer over multiple parallel single-status fetches for multi-status tabs.
   statuses?: OrderStatus[];
   customerId?: string;
   driverId?: string;
   vehicleId?: string;
+  dispatcherId?: string;
+  pickupDateFrom?: string;
+  pickupDateTo?: string;
+  deliveryDateFrom?: string;
+  deliveryDateTo?: string;
+  createdFrom?: string;
+  createdTo?: string;
+  priceMin?: number;
+  priceMax?: number;
+  paymentStatus?: OrderPaymentStatus;
+  archivedOnly?: boolean;
+  includeArchived?: boolean;
   sortBy?: 'orderNumber' | 'pickupDate' | 'deliveryDate' | 'price' | 'status' | 'createdAt';
   sortOrder?: 'asc' | 'desc';
+}
+
+export interface DuplicateCheckResult {
+  possibleDuplicate: boolean;
+  matches: Order[];
+}
+
+export type OrderDocumentKind = 'POD' | 'ATTACHMENT' | 'OTHER';
+
+export interface OrderDocument {
+  id: string;
+  organizationId: string;
+  orderId: string;
+  kind: OrderDocumentKind;
+  fileName: string;
+  mimeType: string;
+  fileSizeBytes: number | null;
+  uploadedByUserId: string | null;
+  createdAt: string;
+  uploadedBy?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+  } | null;
+}
+
+export interface OrderNote {
+  id: string;
+  organizationId: string;
+  orderId: string;
+  body: string;
+  authorUserId: string;
+  createdAt: string;
+  updatedAt: string;
+  author: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+  } | null;
 }
 
 class OrdersAPI {
@@ -135,6 +293,18 @@ class OrdersAPI {
     if (query.customerId) params.append('customerId', query.customerId);
     if (query.driverId) params.append('driverId', query.driverId);
     if (query.vehicleId) params.append('vehicleId', query.vehicleId);
+    if (query.dispatcherId) params.append('dispatcherId', query.dispatcherId);
+    if (query.pickupDateFrom) params.append('pickupDateFrom', query.pickupDateFrom);
+    if (query.pickupDateTo) params.append('pickupDateTo', query.pickupDateTo);
+    if (query.deliveryDateFrom) params.append('deliveryDateFrom', query.deliveryDateFrom);
+    if (query.deliveryDateTo) params.append('deliveryDateTo', query.deliveryDateTo);
+    if (query.createdFrom) params.append('createdFrom', query.createdFrom);
+    if (query.createdTo) params.append('createdTo', query.createdTo);
+    if (query.priceMin !== undefined) params.append('priceMin', String(query.priceMin));
+    if (query.priceMax !== undefined) params.append('priceMax', String(query.priceMax));
+    if (query.paymentStatus) params.append('paymentStatus', query.paymentStatus);
+    if (query.archivedOnly) params.append('archivedOnly', 'true');
+    if (query.includeArchived) params.append('includeArchived', 'true');
     if (query.sortBy) params.append('sortBy', query.sortBy);
     if (query.sortOrder) params.append('sortOrder', query.sortOrder);
 
@@ -148,17 +318,7 @@ class OrdersAPI {
 
   async getOrder(id: string): Promise<Order> {
     const response = await apiFetch(`${this.baseUrl}/orders/${id}`, { method: 'GET' });
-
-    if (!response.ok) {
-      if (response.status === 404) {
-        throw new Error('Order not found');
-      }
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || `Failed to fetch order: ${response.statusText}`);
-    }
-
-    const result = await response.json();
-    return result.data;
+    return unwrapResponse(response, 'Order not found');
   }
 
   async createOrder(input: CreateOrderInput): Promise<Order> {
@@ -204,6 +364,111 @@ class OrdersAPI {
     });
 
     return unwrapResponse(response, 'Failed to cancel order');
+  }
+
+  async archiveOrder(id: string): Promise<Order> {
+    const response = await apiFetch(`${this.baseUrl}/orders/${id}/archive`, { method: 'POST' });
+    return unwrapResponse(response, 'Failed to archive order');
+  }
+
+  async restoreOrder(id: string): Promise<Order> {
+    const response = await apiFetch(`${this.baseUrl}/orders/${id}/restore`, { method: 'POST' });
+    return unwrapResponse(response, 'Failed to restore order');
+  }
+
+  async checkDuplicate(input: CreateOrderInput): Promise<DuplicateCheckResult> {
+    const response = await apiFetch(`${this.baseUrl}/orders/check-duplicate`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return unwrapResponse(response, 'Failed to check duplicate');
+  }
+
+  async listNotes(orderId: string): Promise<{ items: OrderNote[] }> {
+    const response = await apiFetch(`${this.baseUrl}/orders/${orderId}/notes`, { method: 'GET' });
+    const data = await unwrapResponse<{ items: OrderNote[] } | OrderNote[]>(
+      response,
+      'Failed to fetch order notes',
+    );
+    if (Array.isArray(data)) return { items: data };
+    return { items: Array.isArray(data?.items) ? data.items : [] };
+  }
+
+  async listDocuments(orderId: string): Promise<{ items: OrderDocument[] }> {
+    const response = await apiFetch(`${this.baseUrl}/orders/${orderId}/documents`, { method: 'GET' });
+    const data = await unwrapResponse<{ items: OrderDocument[] } | OrderDocument[]>(
+      response,
+      'Failed to fetch order documents',
+    );
+    if (Array.isArray(data)) return { items: data };
+    return { items: Array.isArray(data?.items) ? data.items : [] };
+  }
+
+  async uploadDocument(orderId: string, file: File, kind?: OrderDocumentKind): Promise<OrderDocument> {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (kind) formData.append('kind', kind);
+    const response = await apiFetch(`${this.baseUrl}/orders/${orderId}/documents`, {
+      method: 'POST',
+      body: formData,
+    });
+    return unwrapResponse(response, 'Failed to upload document');
+  }
+
+  async deleteDocument(orderId: string, documentId: string): Promise<void> {
+    const response = await apiFetch(`${this.baseUrl}/orders/${orderId}/documents/${documentId}`, {
+      method: 'DELETE',
+    });
+    await unwrapResponse(response, 'Failed to delete document');
+  }
+
+  async renameDocument(orderId: string, documentId: string, fileName: string): Promise<OrderDocument> {
+    const response = await apiFetch(`${this.baseUrl}/orders/${orderId}/documents/${documentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ fileName }),
+    });
+    return unwrapResponse(response, 'Failed to rename document');
+  }
+
+  /// Authenticated blob download — `<img src>` / bare `<a href>` cannot send JWT.
+  async fetchDocumentBlob(orderId: string, documentId: string): Promise<Blob> {
+    const response = await apiFetch(
+      `${this.baseUrl}/orders/${orderId}/documents/${documentId}/file`,
+      { method: 'GET' },
+    );
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      const message = body?.error?.message ?? body?.message ?? 'Failed to download document';
+      throw new ApiError(Array.isArray(message) ? message[0] : message, response.status);
+    }
+    return response.blob();
+  }
+
+  getDocumentFileUrl(orderId: string, documentId: string): string {
+    return `${this.baseUrl}/orders/${orderId}/documents/${documentId}/file`;
+  }
+
+  async createNote(orderId: string, body: string): Promise<OrderNote> {
+    const response = await apiFetch(`${this.baseUrl}/orders/${orderId}/notes`, {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+    });
+    return unwrapResponse(response, 'Failed to create note');
+  }
+
+  async updateNote(orderId: string, noteId: string, body: string): Promise<OrderNote> {
+    const response = await apiFetch(`${this.baseUrl}/orders/${orderId}/notes/${noteId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ body }),
+    });
+    return unwrapResponse(response, 'Failed to update note');
+  }
+
+  async deleteNote(orderId: string, noteId: string): Promise<void> {
+    const response = await apiFetch(`${this.baseUrl}/orders/${orderId}/notes/${noteId}`, {
+      method: 'DELETE',
+    });
+    await unwrapResponse(response, 'Failed to delete note');
   }
 }
 
@@ -264,11 +529,17 @@ export function useCreateOrder() {
 }
 
 export function useUpdateOrder() {
+  const queryClient = useQueryClient();
   const invalidate = useInvalidateOperationalState();
   const mutation = useMutation({
     mutationFn: ({ id, input }: { id: string; input: UpdateOrderInput }) =>
       ordersAPI.updateOrder(id, input),
-    onSuccess: invalidate,
+    onSuccess: async (_data, vars) => {
+      await invalidate();
+      await queryClient.invalidateQueries({
+        queryKey: auditLogKeys.list({ entityType: 'Order', entityId: vars.id }),
+      });
+    },
   });
 
   return {
@@ -278,15 +549,18 @@ export function useUpdateOrder() {
   };
 }
 
-/// Assigning an order creates or reassigns a DISPATCH (ADR-001, Task 8.7), which
-/// moves the order projection and takes a driver and a vehicle out of the pool. All
-/// three views are invalidated by the shared helper — no screen refetches another.
 export function useAssignOrder() {
+  const queryClient = useQueryClient();
   const invalidate = useInvalidateOperationalState();
   const mutation = useMutation({
     mutationFn: ({ id, input }: { id: string; input: AssignOrderInput }) =>
       ordersAPI.assignOrder(id, input),
-    onSuccess: invalidate,
+    onSuccess: async (_data, vars) => {
+      await invalidate();
+      await queryClient.invalidateQueries({
+        queryKey: auditLogKeys.list({ entityType: 'Order', entityId: vars.id }),
+      });
+    },
   });
 
   return {
@@ -296,12 +570,21 @@ export function useAssignOrder() {
   };
 }
 
+/// Assigning an order creates or reassigns a DISPATCH (ADR-001, Task 8.7), which
+/// moves the order projection and takes a driver and a vehicle out of the pool. All
+/// three views are invalidated by the shared helper — no screen refetches another.
 export function useUpdateOrderStatus() {
+  const queryClient = useQueryClient();
   const invalidate = useInvalidateOperationalState();
   const mutation = useMutation({
     mutationFn: ({ id, input }: { id: string; input: UpdateOrderStatusInput }) =>
       ordersAPI.updateOrderStatus(id, input),
-    onSuccess: invalidate,
+    onSuccess: async (_data, vars) => {
+      await invalidate();
+      await queryClient.invalidateQueries({
+        queryKey: auditLogKeys.list({ entityType: 'Order', entityId: vars.id }),
+      });
+    },
   });
 
   return {
@@ -313,16 +596,214 @@ export function useUpdateOrderStatus() {
 }
 
 export function useCancelOrder() {
+  const queryClient = useQueryClient();
   const invalidate = useInvalidateOperationalState();
   const mutation = useMutation({
     mutationFn: ({ id, input }: { id: string; input: CancelOrderInput }) =>
       ordersAPI.cancelOrder(id, input),
-    onSuccess: invalidate,
+    onSuccess: async (_data, vars) => {
+      await invalidate();
+      await queryClient.invalidateQueries({
+        queryKey: auditLogKeys.list({ entityType: 'Order', entityId: vars.id }),
+      });
+    },
   });
 
   return {
     cancel: (id: string, input: CancelOrderInput = {}) => mutation.mutateAsync({ id, input }),
     loading: mutation.isPending,
     error: mutation.error ? describeError(mutation.error, 'Failed to cancel order') : null,
+  };
+}
+
+export function useArchiveOrder() {
+  const queryClient = useQueryClient();
+  const invalidate = useInvalidateOperationalState();
+  const mutation = useMutation({
+    mutationFn: (id: string) => ordersAPI.archiveOrder(id),
+    onSuccess: async (_data, id) => {
+      await invalidate();
+      await queryClient.invalidateQueries({
+        queryKey: auditLogKeys.list({ entityType: 'Order', entityId: id }),
+      });
+    },
+  });
+
+  return {
+    archive: mutation.mutateAsync,
+    loading: mutation.isPending,
+    error: mutation.error ? describeError(mutation.error, 'Failed to archive order') : null,
+  };
+}
+
+export function useRestoreOrder() {
+  const queryClient = useQueryClient();
+  const invalidate = useInvalidateOperationalState();
+  const mutation = useMutation({
+    mutationFn: (id: string) => ordersAPI.restoreOrder(id),
+    onSuccess: async (_data, id) => {
+      await invalidate();
+      await queryClient.invalidateQueries({
+        queryKey: auditLogKeys.list({ entityType: 'Order', entityId: id }),
+      });
+    },
+  });
+
+  return {
+    restore: mutation.mutateAsync,
+    loading: mutation.isPending,
+    error: mutation.error ? describeError(mutation.error, 'Failed to restore order') : null,
+  };
+}
+
+export function useCheckDuplicateOrder() {
+  const mutation = useMutation({
+    mutationFn: (input: CreateOrderInput) => ordersAPI.checkDuplicate(input),
+  });
+
+  return {
+    check: mutation.mutateAsync,
+    loading: mutation.isPending,
+  };
+}
+
+export function useOrderDocuments(orderId: string) {
+  const result = useQuery({
+    queryKey: [...orderKeys.detail(orderId), 'documents'],
+    queryFn: () => ordersAPI.listDocuments(orderId),
+    enabled: Boolean(orderId),
+  });
+
+  return {
+    data: result.data?.items ?? [],
+    loading: result.isPending,
+    error: result.error ? describeError(result.error, 'Failed to load documents') : null,
+    refetch: result.refetch,
+  };
+}
+
+export function useUploadOrderDocument(orderId: string) {
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: ({ file, kind }: { file: File; kind?: OrderDocumentKind }) =>
+      ordersAPI.uploadDocument(orderId, file, kind),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: [...orderKeys.detail(orderId), 'documents'] });
+      await queryClient.invalidateQueries({
+        queryKey: auditLogKeys.list({ entityType: 'Order', entityId: orderId }),
+      });
+    },
+  });
+
+  return {
+    upload: (file: File, kind?: OrderDocumentKind) => mutation.mutateAsync({ file, kind }),
+    loading: mutation.isPending,
+  };
+}
+
+export function useDeleteOrderDocument(orderId: string) {
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (documentId: string) => ordersAPI.deleteDocument(orderId, documentId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: [...orderKeys.detail(orderId), 'documents'] });
+      await queryClient.invalidateQueries({
+        queryKey: auditLogKeys.list({ entityType: 'Order', entityId: orderId }),
+      });
+    },
+  });
+
+  return {
+    remove: mutation.mutateAsync,
+    loading: mutation.isPending,
+  };
+}
+
+export function useRenameOrderDocument(orderId: string) {
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: ({ documentId, fileName }: { documentId: string; fileName: string }) =>
+      ordersAPI.renameDocument(orderId, documentId, fileName),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: [...orderKeys.detail(orderId), 'documents'] });
+      await queryClient.invalidateQueries({
+        queryKey: auditLogKeys.list({ entityType: 'Order', entityId: orderId }),
+      });
+    },
+  });
+
+  return {
+    rename: (documentId: string, fileName: string) => mutation.mutateAsync({ documentId, fileName }),
+    loading: mutation.isPending,
+  };
+}
+
+export function useOrderNotes(orderId: string) {
+  const result = useQuery({
+    queryKey: [...orderKeys.detail(orderId), 'notes'],
+    queryFn: () => ordersAPI.listNotes(orderId),
+    enabled: Boolean(orderId),
+  });
+
+  return {
+    data: result.data?.items ?? [],
+    loading: result.isPending,
+    error: result.error ? describeError(result.error, 'Failed to load notes') : null,
+    refetch: result.refetch,
+  };
+}
+
+export function useCreateOrderNote(orderId: string) {
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (body: string) => ordersAPI.createNote(orderId, body),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: [...orderKeys.detail(orderId), 'notes'] });
+      await queryClient.invalidateQueries({
+        queryKey: auditLogKeys.list({ entityType: 'Order', entityId: orderId }),
+      });
+    },
+  });
+
+  return {
+    create: mutation.mutateAsync,
+    loading: mutation.isPending,
+  };
+}
+
+export function useUpdateOrderNote(orderId: string) {
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: ({ noteId, body }: { noteId: string; body: string }) =>
+      ordersAPI.updateNote(orderId, noteId, body),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: [...orderKeys.detail(orderId), 'notes'] });
+      await queryClient.invalidateQueries({
+        queryKey: auditLogKeys.list({ entityType: 'Order', entityId: orderId }),
+      });
+    },
+  });
+
+  return {
+    update: (noteId: string, body: string) => mutation.mutateAsync({ noteId, body }),
+    loading: mutation.isPending,
+  };
+}
+
+export function useDeleteOrderNote(orderId: string) {
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (noteId: string) => ordersAPI.deleteNote(orderId, noteId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: [...orderKeys.detail(orderId), 'notes'] });
+      await queryClient.invalidateQueries({
+        queryKey: auditLogKeys.list({ entityType: 'Order', entityId: orderId }),
+      });
+    },
+  });
+
+  return {
+    remove: mutation.mutateAsync,
+    loading: mutation.isPending,
   };
 }

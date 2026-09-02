@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { PageHeader } from '@/components/shared/page-header';
 import { ErrorState, EmptyState } from '@/components/shared/list-states';
+import { SearchInput } from '@/components/shared/search-input';
 import { PaginationBar } from '@/components/shared/pagination-bar';
 import {
   useTelematicsDevice,
@@ -29,7 +29,6 @@ import {
   ArrowLeft,
   Plus,
   RefreshCw,
-  Search,
   ShieldAlert,
 } from 'lucide-react';
 
@@ -238,23 +237,21 @@ export function ProvidersDetail() {
                 }
               />
               <OverviewStat
-                label="Connection"
-                value="Not available"
-                hint="No provider connection API"
+                label="Reporting"
+                value={summary.total > 0 ? `${summary.active} of ${summary.total}` : 'No devices'}
+                hint="Devices currently enabled for this provider"
               />
             </section>
 
             <div className="flex flex-wrap items-center gap-2 border-b border-border/50 px-4 py-2.5">
-              <div className="relative min-w-[12rem] flex-1">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={localSearch}
-                  onChange={(e) => setLocalSearch(e.target.value)}
-                  placeholder="Search name or external ID…"
-                  className="h-8 pl-8 text-sm"
-                  aria-label="Search devices"
-                />
-              </div>
+              <SearchInput
+                className="min-w-[12rem] flex-1"
+                size="sm"
+                value={localSearch}
+                onChange={setLocalSearch}
+                placeholder="Search name or external ID…"
+                label="Search devices"
+              />
               <div className="flex flex-wrap gap-1" role="tablist">
                 {TABS.map((t) => (
                   <button

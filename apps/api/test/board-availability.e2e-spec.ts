@@ -21,9 +21,29 @@ const queries = new AssignmentQueries(prisma);
 const policy = new AssignmentPolicy(prisma, queries);
 const writer = new OrderWriter();
 const audit = { log: jest.fn().mockResolvedValue(undefined) } as unknown as AuditService;
-const wfEvents = { emit: () => {} } as any;
-const dispatches = new DispatchesService(prisma, audit, policy, writer, wfEvents, { endSessionsForDispatch: async () => 0, endSessionsOnVehicleReassign: async () => 0, endSessionsForUser: async () => 0 } as any);
-const orders = new OrdersService(prisma, audit, writer, dispatches, policy, wfEvents);
+const wfEvents = {
+  emit: jest.fn(),
+} as unknown as ConstructorParameters<typeof DispatchesService>[4];
+const usageMetering = {
+  enforceLimit: jest.fn().mockResolvedValue(undefined),
+} as unknown as ConstructorParameters<typeof OrdersService>[6];
+const tracking = {
+  endSessionsForDispatch: jest.fn().mockResolvedValue(0),
+  endSessionsOnVehicleReassign: jest.fn().mockResolvedValue(0),
+  endSessionsForUser: jest.fn().mockResolvedValue(0),
+} as unknown as ConstructorParameters<typeof DispatchesService>[5];
+const geocoding = {
+  geocodeOrderLocations: jest.fn().mockResolvedValue(undefined),
+} as unknown as ConstructorParameters<typeof OrdersService>[7];
+const geofences = {
+  createForDispatch: jest.fn().mockResolvedValue(undefined),
+  archiveForDispatch: jest.fn().mockResolvedValue(undefined),
+  archiveIntermediateStopForDispatch: jest.fn().mockResolvedValue(undefined),
+  createForNextIntermediateStop: jest.fn().mockResolvedValue(undefined),
+  rotateIntermediateStopFence: jest.fn().mockResolvedValue(undefined),
+} as unknown as ConstructorParameters<typeof DispatchesService>[6];
+const dispatches = new DispatchesService(prisma, audit, policy, writer, wfEvents, tracking, geofences);
+const orders = new OrdersService(prisma, audit, writer, dispatches, policy, wfEvents, usageMetering, geocoding);
 const board = new DispatchService(prisma, queries);
 
 const PICKUP = new Date("2037-03-01T08:00:00.000Z");
@@ -205,7 +225,7 @@ describe("availability and the board move together", () => {
   it("a COMPLETED dispatch releases the driver and the vehicle (R7)", async () => {
     const order = await makeOrder();
     await assign(order.id, driverA, vehicleA);
-    for (const status of ["EN_ROUTE_TO_PICKUP", "AT_PICKUP", "IN_TRANSIT", "DELIVERED"] as const) {
+    for (const status of ["EN_ROUTE_TO_PICKUP", "AT_PICKUP", "IN_TRANSIT", "AT_STOP", "ARRIVED_AT_DELIVERY", "DELIVERED"] as const) {
       const dispatch = await liveDispatch(order.id);
       await dispatches.updateStatus(organizationId, dispatch.id, { status }, actor);
     }
@@ -220,7 +240,7 @@ describe("availability and the board move together", () => {
     const order = await makeOrder();
     await assign(order.id, driverA, vehicleA);
 
-    for (const status of ["EN_ROUTE_TO_PICKUP", "AT_PICKUP", "IN_TRANSIT"] as const) {
+    for (const status of ["EN_ROUTE_TO_PICKUP", "AT_PICKUP", "IN_TRANSIT", "AT_STOP"] as const) {
       const dispatch = await liveDispatch(order.id);
       await dispatches.updateStatus(organizationId, dispatch.id, { status }, actor);
 

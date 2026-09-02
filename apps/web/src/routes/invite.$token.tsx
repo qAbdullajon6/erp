@@ -35,7 +35,7 @@ function InvitePage() {
       footer={
         <>
           Already have an account?{' '}
-          <Link to="/auth/sign-in" className="font-medium text-brand hover:underline">
+          <Link to="/login" className="font-medium text-brand hover:underline">
             Sign in
           </Link>
         </>

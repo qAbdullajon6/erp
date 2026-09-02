@@ -1,12 +1,24 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { openDemoModal } from "@/components/site/DemoModal";
 import { analytics } from "@/lib/analytics";
+import {
+  getConsentBannerOnScreen,
+  subscribeConsentBanner,
+} from "@/lib/analytics/consent";
 import { cn } from "@/lib/utils";
 
 /** Sticky demo CTA that appears on mobile after the hero scrolls away. */
 export function MobileCTA() {
-  const [visible, setVisible] = useState(false);
+  const [scrolledPast, setScrolledPast] = useState(false);
+  // The consent banner is pinned to the same corner and paints above this, so
+  // on a first visit the button was there but invisible.
+  const consentBanner = useSyncExternalStore(
+    subscribeConsentBanner,
+    getConsentBannerOnScreen,
+    () => false,
+  );
+  const visible = scrolledPast && !consentBanner;
 
   useEffect(() => {
     const threshold = () => window.innerHeight * 0.7;
@@ -15,7 +27,7 @@ export function MobileCTA() {
       if (ticking) return;
       ticking = true;
       requestAnimationFrame(() => {
-        setVisible(window.scrollY > threshold());
+        setScrolledPast(window.scrollY > threshold());
         ticking = false;
       });
     };
@@ -44,7 +56,7 @@ export function MobileCTA() {
           className="h-12 w-full bg-brand font-semibold text-brand-foreground hover:bg-brand/90"
           tabIndex={visible ? 0 : -1}
         >
-          Request a personalized demo
+          Get started
         </Button>
       </div>
     </div>

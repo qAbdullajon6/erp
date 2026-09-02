@@ -19,27 +19,8 @@ export interface AuthResponse {
     email: string;
     firstName: string;
     lastName: string;
-  };
-  organization: {
-    id: string;
-    name: string;
-    slug: string;
-  };
-  membership: {
-    id: string;
-    role: string;
-  };
-}
-
-export interface CurrentUser {
-  user: {
-    id: string;
-    email: string;
-    firstName: string;
-    lastName: string;
-    /// FlowERP staff rather than a customer. Used only to decide whether to
-    /// render the Leads screen — the API's PlatformAdminGuard is what actually
-    /// protects the data.
+    /// FlowERP staff rather than a customer. Login uses this to land
+    /// platform admins on /platform instead of /app.
     isPlatformAdmin: boolean;
   };
   organization: {
@@ -53,8 +34,58 @@ export interface CurrentUser {
   };
 }
 
+export interface SupportSession {
+  id: string;
+  organizationId: string;
+  organizationName: string;
+  organizationSlug: string;
+  organizationStatus?: 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
+  startedAt: string;
+}
+
+export interface CurrentUser {
+  user: {
+    id: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    /// FlowERP staff rather than a customer. Used only to decide whether to
+    /// render platform surfaces — the API's PlatformAdminGuard is what actually
+    /// protects the data.
+    isPlatformAdmin: boolean;
+  };
+  organization: {
+    id: string;
+    name: string;
+    slug: string;
+    status?: 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
+  };
+  membership: {
+    id: string;
+    role: string;
+  };
+  /// Present while a platform admin has entered a customer org via Open ERP.
+  supportSession?: SupportSession | null;
+}
+
 class AuthAPI {
   private baseUrl = '/api';
+
+  private async publicAuthRequest(path: string, body: object): Promise<unknown> {
+    const response = await fetch(`${this.baseUrl}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const message = payload?.error?.message ?? payload?.message;
+      throw new Error(
+        Array.isArray(message) ? message[0] : message || 'Authentication request failed',
+      );
+    }
+    return payload?.data;
+  }
 
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
     try {
@@ -131,8 +162,20 @@ class AuthAPI {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || 'Failed to change password');
+      throw new Error(error?.error?.message ?? error.message ?? 'Failed to change password');
     }
+  }
+
+  async forgotPassword(email: string): Promise<void> {
+    await this.publicAuthRequest('/auth/forgot-password', { email });
+  }
+
+  async validateResetToken(token: string): Promise<void> {
+    await this.publicAuthRequest('/auth/reset-password/validate', { token });
+  }
+
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    await this.publicAuthRequest('/auth/reset-password', { token, newPassword });
   }
 }
 

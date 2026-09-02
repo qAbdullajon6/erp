@@ -1,0 +1,13 @@
+import { createFileRoute } from '@tanstack/react-router';
+import { DriverWorkspaceDashboard } from '@/components/driver-workspace/driver-workspace-dashboard';
+
+export const Route = createFileRoute('/app/driver/')({
+  head: () => ({
+    meta: [{ title: "My Deliveries — FlowERP AI" }],
+  }),
+  component: DriverWorkspaceIndexPage,
+});
+
+function DriverWorkspaceIndexPage() {
+  return <DriverWorkspaceDashboard />;
+}

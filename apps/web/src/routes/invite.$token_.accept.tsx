@@ -60,7 +60,7 @@ function AcceptInvitationPage() {
           description="You can now sign in using your email and the password you just set."
           action={
             <Button asChild className="h-11 w-full rounded-xl bg-gradient-brand text-brand-foreground hover:opacity-90">
-              <Link to="/auth/sign-in">Go to Sign In</Link>
+              <Link to="/login">Go to Sign In</Link>
             </Button>
           }
         />

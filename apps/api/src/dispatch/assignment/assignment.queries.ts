@@ -42,6 +42,7 @@ export const ACTIVE_DISPATCH_STATUSES: DispatchStatus[] = [
   "EN_ROUTE_TO_PICKUP",
   "AT_PICKUP",
   "IN_TRANSIT",
+  "AT_STOP",
 ];
 
 /// The scheduled trip window a resource is being held for.
@@ -97,11 +98,21 @@ export class AssignmentQueries {
   /// boundary: a trip ending exactly when another begins counts as a conflict. It
   /// matches the tsrange '[]' bounds of the database constraints exactly, so the
   /// pre-check and the guarantee cannot disagree about an endpoint.
+  ///
+  /// An ACTIVE dispatch has no real end until it is actually delivered — its
+  /// deliveryDateScheduled is only a plan, and a late trip is still holding its
+  /// driver and vehicle right now regardless of what that plan said. So when the
+  /// candidate window itself starts at or before now (assigning something today,
+  /// most commonly an overdue order), the deliveryDateScheduled upper bound is
+  /// not applied: every currently-active dispatch counts as still occupying its
+  /// resources through the present moment. A window entirely in the future is
+  /// unaffected — the plan is all there is to go on for pre-assigning ahead.
   async reservationsIn(
     organizationId: string,
     window?: TimeWindow,
     exclude: ReservationExclusions = {},
   ): Promise<Reservation[]> {
+    const now = new Date();
     const dispatches = await this.prisma.dispatch.findMany({
       where: {
         organizationId,
@@ -113,7 +124,7 @@ export class AssignmentQueries {
         ...(window
           ? {
               pickupDateScheduled: { lte: window.deliveryDate },
-              deliveryDateScheduled: { gte: window.pickupDate },
+              ...(window.pickupDate > now ? { deliveryDateScheduled: { gte: window.pickupDate } } : {}),
             }
           : {}),
       },

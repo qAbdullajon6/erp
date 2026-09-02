@@ -71,7 +71,7 @@ export class WriteTools {
             city: str(args.city),
             country: str(args.country),
             address: str(args.address),
-          } as never,
+          },
           actor,
         );
         return {
@@ -128,7 +128,7 @@ export class WriteTools {
             price: requireNumber(args.price, "price"),
             currency: str(args.currency),
             notes: str(args.notes),
-          } as never,
+          },
           actor,
         );
         return {
@@ -261,7 +261,7 @@ export class WriteTools {
             // Never active on creation. An AI that silently switches on
             // automation which emails customers is not a feature.
             active: false,
-          } as never,
+          },
         );
         return {
           id: created.id,

@@ -29,7 +29,13 @@ export class TelematicsService {
     const vehicleIds = states.map((s) => s.vehicleId);
     const driverIds = states.map((s) => s.driverId).filter((id): id is string => !!id);
     const [vehicles, drivers] = await Promise.all([
-      this.prisma.vehicle.findMany({ where: { id: { in: vehicleIds }, organizationId }, select: { id: true, vehicleCode: true, plateNumber: true, type: true, status: true } }),
+      // archivedAt: null — this feeds the AI Copilot, the public API, and the
+      // customer portal; an archived vehicle's VehicleTelematicsState row
+      // outlives the archive (it's a last-known-state cache, never deleted),
+      // so without this an archived vehicle's live position would otherwise
+      // still be exposed externally. See TrackingService.fleetLatest, which
+      // has the same fix for the staff-facing fleet map.
+      this.prisma.vehicle.findMany({ where: { id: { in: vehicleIds }, organizationId, archivedAt: null }, select: { id: true, vehicleCode: true, plateNumber: true, type: true, status: true } }),
       driverIds.length > 0
         ? this.prisma.driver.findMany({ where: { id: { in: driverIds }, organizationId }, select: { id: true, firstName: true, lastName: true } })
         : Promise.resolve([]),
@@ -41,7 +47,7 @@ export class TelematicsService {
 
     return {
       generatedAt: new Date(),
-      vehicles: states.map((s) => {
+      vehicles: states.filter((s) => vehicleById.has(s.vehicleId)).map((s) => {
         const v = vehicleById.get(s.vehicleId);
         const d = s.driverId ? driverById.get(s.driverId) : null;
         const isStale = !s.lastReceivedAt || now - s.lastReceivedAt.getTime() > staleMs;
@@ -68,7 +74,13 @@ export class TelematicsService {
 
   async liveVehicle(organizationId: string, vehicleId: string, trailLimit = 50) {
     const state = await this.prisma.vehicleTelematicsState.findFirst({ where: { organizationId, vehicleId } });
-    const vehicle = await this.prisma.vehicle.findFirst({ where: { id: vehicleId, organizationId }, select: { id: true, vehicleCode: true, plateNumber: true, type: true } });
+    // Match /tracking/live fleet membership: archived vehicles are 404, same
+    // message as unknown IDs (no existence leak). History trail queries below
+    // only run after this gate.
+    const vehicle = await this.prisma.vehicle.findFirst({
+      where: { id: vehicleId, organizationId, archivedAt: null },
+      select: { id: true, vehicleCode: true, plateNumber: true, type: true },
+    });
     if (!vehicle) throw new NotFoundException("Vehicle not found");
 
     const [trail, activeTrip] = await Promise.all([
@@ -170,19 +182,47 @@ export class TelematicsService {
   /// Customer-facing tracking for a single order. The caller (customer-portal
   /// controller) is responsible for proving the order belongs to the customer;
   /// this returns the minimal position/ETA payload with no driver PII.
+  ///
+  /// When Order.deliveryLat/Lng are present (geocoded during order creation or
+  /// update), ETA is computed automatically from the vehicle's live position.
   async trackForOrder(organizationId: string, orderId: string) {
     const order = await this.prisma.order.findFirst({
       where: { id: orderId, organizationId },
-      select: { id: true, status: true, vehicleId: true, deliveryCity: true },
+      select: { id: true, status: true, vehicleId: true, deliveryCity: true, deliveryLat: true, deliveryLng: true },
     });
     if (!order) throw new NotFoundException("Order not found");
     if (!order.vehicleId) {
-      return { orderId, status: order.status, tracking: null, message: "No vehicle assigned yet" };
+      return { orderId, status: order.status, tracking: null, eta: null, message: "No vehicle assigned yet" };
     }
     const state = await this.prisma.vehicleTelematicsState.findFirst({ where: { organizationId, vehicleId: order.vehicleId } });
     if (!state || state.latitude == null || state.longitude == null) {
-      return { orderId, status: order.status, tracking: null, message: "Live tracking not available yet" };
+      return { orderId, status: order.status, tracking: null, eta: null, message: "Live tracking not available yet" };
     }
+
+    const deliveryLat = order.deliveryLat != null ? order.deliveryLat.toNumber() : null;
+    const deliveryLng = order.deliveryLng != null ? order.deliveryLng.toNumber() : null;
+
+    let eta: { remainingKm: number; etaSeconds: number; etaMinutes: number; etaAt: Date } | null = null;
+    if (deliveryLat !== null && deliveryLng !== null) {
+      const activeTrip = await this.prisma.trip.findFirst({
+        where: { organizationId, vehicleId: order.vehicleId, status: "ACTIVE" },
+        orderBy: { startedAt: "desc" },
+        select: { avgSpeedKph: true },
+      });
+      const etaResult = computeEta({
+        current: { latitude: state.latitude, longitude: state.longitude },
+        destination: { latitude: deliveryLat, longitude: deliveryLng },
+        recentSpeedKph: state.speedKph,
+        avgSpeedKph: activeTrip?.avgSpeedKph ?? null,
+      });
+      eta = {
+        remainingKm: Math.round(etaResult.remainingKm * 100) / 100,
+        etaSeconds: etaResult.etaSeconds,
+        etaMinutes: Math.round(etaResult.etaSeconds / 60),
+        etaAt: etaResult.etaAt,
+      };
+    }
+
     return {
       orderId,
       status: order.status,
@@ -194,6 +234,7 @@ export class TelematicsService {
         movementState: state.movementState,
         lastUpdatedAt: state.lastRecordedAt,
       },
+      eta,
     };
   }
 }

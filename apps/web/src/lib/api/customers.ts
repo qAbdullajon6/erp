@@ -6,23 +6,73 @@ import { customerKeys } from './query-keys';
 
 // Types matching backend contract exactly
 export type CustomerStatus = 'ACTIVE' | 'AT_RISK' | 'INACTIVE' | 'ARCHIVED';
-export type CustomerPaymentTerms = 'DUE_ON_RECEIPT' | 'NET_15' | 'NET_30' | 'NET_45';
+export type CustomerPaymentTerms =
+  | 'DUE_ON_RECEIPT'
+  | 'NET_7'
+  | 'NET_15'
+  | 'NET_30'
+  | 'NET_45'
+  | 'NET_60'
+  | 'NET_90'
+  | 'CUSTOM';
 export type CustomerSortField = 'customerCode' | 'companyName' | 'createdAt' | 'updatedAt' | 'creditLimit' | 'status';
+
+/**
+ * Returns "Unlimited" for null, "No credit" for 0, or null for positive values
+ * (caller should format the amount with their currency context).
+ * Used in Customer detail, list, and portal.
+ */
+export function creditLimitLabel(
+  creditLimit: string | null | undefined,
+): 'Unlimited' | 'No credit' | null {
+  if (creditLimit == null) return 'Unlimited';
+  const n = parseFloat(creditLimit as string);
+  if (!Number.isFinite(n)) return 'Unlimited';
+  if (n === 0) return 'No credit';
+  return null; // positive — caller formats with currency
+}
+
+/**
+ * Human-readable label for a payment terms value.
+ * Used in Customer create/edit forms, detail view, list, and customer portal.
+ */
+export function formatPaymentTerms(
+  terms: string | null | undefined,
+  days?: number | null,
+): string {
+  switch (terms) {
+    case 'DUE_ON_RECEIPT': return 'Due on receipt';
+    case 'NET_7':  return 'Net 7 days';
+    case 'NET_15': return 'Net 15 days';
+    case 'NET_30': return 'Net 30 days';
+    case 'NET_45': return 'Net 45 days';
+    case 'NET_60': return 'Net 60 days';
+    case 'NET_90': return 'Net 90 days';
+    case 'CUSTOM': return days != null ? `Custom — ${days} days` : 'Custom';
+    default: return terms ?? '—';
+  }
+}
 
 export interface Customer {
   id: string;
   organizationId: string;
   customerCode: string;
   companyName: string;
-  contactName: string;
+  contactName?: string | null;
   email?: string | null;
   phone?: string | null;
   country?: string | null;
   city?: string | null;
+  lat?: number | null; // WGS-84 — set when city was selected from a Mapbox suggestion
+  lng?: number | null;
   address?: string | null;
+  postalCode?: string | null;
   taxId?: string | null;
   paymentTerms: CustomerPaymentTerms;
-  creditLimit: string; // Decimal as string from API (e.g. "25000.00")
+  /** Only present when paymentTerms = CUSTOM. Integer ≥ 0. */
+  paymentTermsDays?: number | null;
+  creditLimit: string | null; // Decimal as string (e.g. "25000.00"); null = no credit limit
+  currency?: string | null; // ISO 4217 — null means use org defaultCurrency
   status: CustomerStatus;
   deliveryNotes?: string | null;
   internalNotes?: string | null;
@@ -54,15 +104,22 @@ export interface ListCustomersParams {
 export interface CreateCustomerInput {
   customerCode?: string;
   companyName: string;
-  contactName: string;
+  contactName?: string;
   email?: string;
   phone?: string;
   country?: string;
   city?: string;
+  cityLat?: number; // from Mapbox suggestion; omit for free-text city
+  cityLng?: number;
   address?: string;
+  postalCode?: string;
   taxId?: string;
   paymentTerms?: CustomerPaymentTerms;
-  creditLimit?: number;
+  /** Required when paymentTerms = CUSTOM; ignored for preset terms. */
+  paymentTermsDays?: number | null;
+  /** null = no credit limit; 0 = $0 credit; positive = credit cap */
+  creditLimit?: number | null;
+  currency?: string;
   deliveryNotes?: string;
   internalNotes?: string;
 }
@@ -70,15 +127,22 @@ export interface CreateCustomerInput {
 export interface UpdateCustomerInput {
   customerCode?: string;
   companyName?: string;
-  contactName?: string;
+  contactName?: string | null;
   email?: string | null;
   phone?: string | null;
   country?: string | null;
   city?: string | null;
+  cityLat?: number | null; // null clears stored coordinates
+  cityLng?: number | null;
   address?: string | null;
+  postalCode?: string | null;
   taxId?: string | null;
   paymentTerms?: CustomerPaymentTerms;
-  creditLimit?: number;
+  /** Required when paymentTerms = CUSTOM; null clears it (sent when switching away from CUSTOM). */
+  paymentTermsDays?: number | null;
+  /** null = no credit limit; 0 = $0 credit; positive = credit cap */
+  creditLimit?: number | null;
+  currency?: string | null;
   status?: Exclude<CustomerStatus, 'ARCHIVED'>;
   deliveryNotes?: string | null;
   internalNotes?: string | null;

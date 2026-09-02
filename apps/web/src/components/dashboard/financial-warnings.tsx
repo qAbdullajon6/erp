@@ -50,6 +50,7 @@ export function FinancialWarnings({ finance, loading }: FinancialWarningsProps) 
           {overdue > 0 ? (
             <Link
               to="/app/finance"
+              search={{ tab: "invoices" }}
               className="flex items-center gap-2 rounded-md bg-warning/10 px-2.5 py-2 text-xs font-semibold text-warning hover:bg-warning/15"
             >
               <FileText className="h-3.5 w-3.5" />
@@ -64,6 +65,7 @@ export function FinancialWarnings({ finance, loading }: FinancialWarningsProps) 
           {pending > 0 && (
             <Link
               to="/app/finance"
+              search={{ tab: "expenses" }}
               className="flex items-center gap-2 rounded-md bg-brand/10 px-2.5 py-2 text-xs font-semibold text-brand hover:bg-brand/15"
             >
               {pending} expenses to approve

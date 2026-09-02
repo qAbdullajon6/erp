@@ -1,0 +1,11 @@
+-- Add resolution-confirmation request timestamp to support tickets.
+--
+-- Purely additive: staff sets it when asking the tenant "did this solve it?";
+-- the tenant-side confirmation prompt keys off this column instead of firing
+-- on every staff reply. Cleared on confirm (→ RESOLVED), decline, or a new
+-- tenant reply. The `priority` column is intentionally left in place — the UI
+-- no longer uses it, but dropping it is staged for a later release cycle
+-- (see docs/RELEASE_PROCESS.md additive-migration rule).
+--
+-- AlterTable
+ALTER TABLE "support_tickets" ADD COLUMN "resolutionRequestedAt" TIMESTAMP(3);

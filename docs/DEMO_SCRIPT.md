@@ -1,91 +1,116 @@
-# FlowERP AI — 3–5 Minute Client Demo Script
+# FlowERP — Prospect Demo Checklist
 
-## Before the demo
+This is a local/demo-only runbook. It documents seeded `.test` accounts with a
+known password; never use them or this seed in production.
 
-Open the landing page in one tab and the application in another. If needed, use **Demo Guide → Reset demo data** before starting so the scenario is clean and consistent.
+## Pre-demo
 
-## 1. Landing Page — 30 seconds
+- Start PostgreSQL, apply migrations, then run `npm run seed:test-org` from the
+  repository root.
+- Start the API (`npm run dev:api`) and web app (`npm run dev:web`). The web app
+  proxies API requests to `http://localhost:4000`.
+- Sign in as `dispatcher@flowerp.test` with `FlowERP-Test-2026!` for the
+  operations story. Use `driver@flowerp.test` with the same password only when
+  showing the driver acceptance workspace. Use
+  `ali@silkroadtraders.test` with the same password at `/portal/login` for the
+  customer view.
+- These credentials are **DEMO ONLY**. The test organization is
+  `FlowERP Test Logistics` (`flowerp-test-logistics`).
+- For the Fleet Tracking map, set `VITE_MAPBOX_ACCESS_TOKEN` to a public Mapbox
+  token before starting the web app. `MAPBOX_SECRET_TOKEN` is only needed for
+  API-powered directions/reverse geocoding; the core demo still works without
+  it. GPS data is seeded locally, so a Traccar service is not required for this
+  recorded flow.
 
-"FlowERP AI is an intelligent logistics operations platform designed to bring orders, dispatching, fleet operations, customer management, finance, and reporting into one workspace.
+## Demo — 3–5 minutes
 
-Many logistics teams still manage daily work across spreadsheets, calls, Telegram, and separate finance tools. FlowERP AI gives the operations team and management one connected view of the business."
+1. **Today’s operation — `/app` (dispatcher).** Point out the live operations
+   summary and the active Tashkent → Bukhara shipment. Say: “Dispatch, fleet,
+   delivery risk, and financial indicators start from one operating view.”
+   Expected: the dashboard has live operational data and dispatch links.
 
-Scroll briefly through the problems, features, and workflow sections.
+2. **Active multi-stop shipment — `/app/dispatches`, then open `DSP-000002`.**
+   Say: “This priority shipment is accepted, in transit, and has a completed
+   pickup, an intermediate Navoi stop, and final delivery in Bukhara.” Show
+   Shohruh Toshmatov, Ford Transit `01A222BB`, the 87 km/h live state, and the
+   Navoi intermediate-stop card. Expected: `IN TRANSIT`, accepted driver,
+   three stops, and live vehicle state.
 
-"Let me show you how this works in practice."
+3. **Driver acceptance — sign in as `driver@flowerp.test`, open
+   `/app/my-deliveries`, then select `DSP-000001`.** Say: “Drivers receive an
+   action-focused job view and explicitly accept work before execution begins.”
+   Expected: Bekzod Yusupov’s assigned Andijan → Tashkent delivery is waiting
+   for acceptance and exposes the existing accept/decline workflow. Do not
+   submit the action during a recorded pass; reset if you do.
 
-Click **Explore Live Demo**.
+4. **Route execution and vehicle position — sign back in as dispatcher; open
+   `/app/routes`, open `RTE-0001`,
+   then `/app/fleet-tracking`.** Say: “The route execution view puts the
+   current stop and vehicle on the same operational plan; fleet tracking
+   confirms the vehicle is moving near Navoi.” Expected: `RTE-0001` is `IN
+   PROGRESS`, has Tashkent → Navoi → Bukhara stops, and the Fleet Tracking map
+   shows Ford Transit `01A222BB` near Navoi. Select that vehicle in the existing
+   Fleet Tracking list rather than typing an identifier.
 
-## 2. Operations Dashboard — 30 seconds
+5. **Customer visibility and ETA — log out, then `/portal/login`; open
+   `ORD-<current year>-0004`.** Say: “The customer sees the same shipment in a
+   customer-safe view: status, vehicle, current location, remaining distance,
+   and ETA—without internal dispatcher data.” Expected: `DSP-000002`, `IN
+   TRANSIT`, tracking/ETA, and the map action are visible.
 
-"This is the live operations dashboard. A manager can immediately see today's orders, active deliveries, delayed deliveries, fleet availability, revenue, receivables, and important operational alerts.
+6. **Completion, proof, and recovery — sign back in as dispatcher; open
+   `DSP-000003`, then return to the dispatch board’s Operations Queue and open
+   `ORD-<current year>-0008`.** Say: “Completed work retains delivery proof;
+   exceptions do not disappear. A failed delivery is captured with its reason,
+   then returned to the dispatcher as a re-dispatch decision.” Expected:
+   `DSP-000003` is `DELIVERED` with one proof on file; `DSP-000004` shows
+   `DELIVERY FAILED`, customer unavailable, and the queue marks the order
+   `Re-dispatch needed` with the normal Assign workflow.
 
-The key point is that these numbers are not isolated widgets. They are connected to the same orders, customers, vehicles, invoices, payments, and expenses used throughout the platform."
+7. **Financial outcome — `/app/reports?tab=financial`.** Say: “The same
+   operational records feed revenue, receivables, expense, and profitability
+   views. The delivered Bukhara → Andijan shipment has a paid invoice and
+   approved trip expenses.” Expected: financial report data is populated;
+   `ORD-<current year>-0005` is the delivered, paid shipment.
 
-## 3. Orders and Dispatch — 60 seconds
+## Direct handoffs
 
-Open **Orders** and select an order.
+- Dashboard/dispatch list → dispatch detail: click `DSP-000002`.
+- Dispatch detail → customer/order/fleet: use the existing customer, shipment,
+  vehicle, and driver links.
+- Route → dispatch/order: use the linked stop actions on `RTE-0001`.
+- Portal orders → shipment detail: open `ORD-<current year>-0004` from the
+  customer order list.
+- Failed delivery → recovery: use the dispatch board’s Operations Queue entry
+  for `ORD-<current year>-0008`; select **Assign** to start re-dispatch.
 
-"Every delivery starts as an order. Here we keep the customer, cargo, route, schedule, price, assigned driver and vehicle, status history, and delivery notes in one place."
+## Reset
 
-Show the status timeline.
+Stop the API first. In PowerShell, from the repository root, run the following
+against the **local demo database only**, then reseed:
 
-"An order follows a controlled workflow: Draft, Pending, Assigned, Picked Up, In Transit, and Delivered. Delays are calculated automatically from the delivery deadline rather than being manually maintained."
+```powershell
+psql $env:DATABASE_URL -c "DELETE FROM organizations WHERE slug = 'flowerp-test-logistics';"
+psql $env:DATABASE_URL -c "DELETE FROM users WHERE email LIKE '%@flowerp.test';"
+npm run seed:test-org
+```
 
-Open **Dispatch Board**.
+The organization delete cascades through the seeded operational records,
+including routes, dispatches, stops, proofs, invoices, and GPS positions. User
+rows require the second statement because users can belong to more than one
+organization.
 
-"This is where a dispatcher matches an order with an available driver and vehicle. The system checks capacity and prevents the same driver or vehicle from being assigned twice at the same time."
+## Troubleshooting
 
-Assign an unassigned order if one is available.
-
-## 4. Customer CRM — 30 seconds
-
-Open **Customers** and select a customer profile.
-
-"Customer information is not just a contact list. Each profile combines order history, revenue, invoices, outstanding balance, credit limit, payment activity, and internal notes.
-
-This helps sales, operations, and finance work from the same customer record instead of maintaining separate spreadsheets."
-
-## 5. Finance and Profitability — 45 seconds
-
-Open **Finance**.
-
-"Finance is connected directly to operations. We can create invoices from delivered orders, record full or partial payments, track overdue receivables, approve expenses, and calculate estimated gross profit per order or route."
-
-Show an invoice, payment, or expense workflow.
-
-"This lets management see not only revenue, but whether a delivery is actually profitable after fuel, driver advances, road fees, maintenance, and other approved expenses."
-
-## 6. Reports and Notifications — 30 seconds
-
-Open **Reports**, then **Notifications**.
-
-"Reports give management an executive view of delivery performance, revenue, expenses, receivables, profitability, customer performance, driver performance, vehicle utilization, and route performance.
-
-Notifications are generated from live business conditions. For example: delayed deliveries, overdue invoices, customers near their credit limit, vehicles needing maintenance, or delivered orders that still need an invoice."
-
-## 7. AI Operations Assistant — 45 seconds
-
-Open **AI Assistant** and select: **What should I focus on first?**
-
-"This assistant analyzes the same live ERP data used across the product. It can identify operational risks, overdue invoices, unassigned orders, negative-profit deliveries, available drivers, and other management priorities.
-
-For this demo, it uses a deterministic local intelligence engine, so its answers are explainable and consistent with the platform data. The architecture is ready for a real LLM or AI API in a production version."
-
-## 8. Role-Based Workspaces — 30 seconds
-
-Switch to the **Driver** role.
-
-"The interface changes based on the user's role. A driver sees only assigned deliveries, delivery details, and allowed status updates. Financial data, customer internal notes, and management controls are hidden."
-
-Open **My Deliveries** and update an allowed status if appropriate.
-
-"An accountant, dispatcher, sales manager, and owner each see the tools and data relevant to their work."
-
-Switch back to **Admin / Owner**.
-
-## Closing — 15 seconds
-
-"Everything shown here runs in the browser as an interactive product demo. A production rollout would add secure authentication, a database, real integrations, and potentially GPS or messaging workflows.
-
-But the core operational workflow is already visible: create an order, dispatch it, track the delivery, manage the customer and money, monitor risks, and make decisions from one system."
+- **Map is blank:** confirm `VITE_MAPBOX_ACCESS_TOKEN` was present when the web
+  app started; restart the web app after changing it. The route and portal
+  views remain usable without a map token.
+- **GPS is missing:** reset and reseed, then open `DSP-000002`; the matching
+  vehicle is Ford Transit `01A222BB`. Check Fleet Tracking as dispatcher or
+  admin—those roles can view telematics.
+- **Portal cannot sign in or shows no shipment:** use the customer account
+  above, clear the portal session/cookies, and confirm that the test
+  organization was seeded successfully.
+- **Staff session looks wrong after role switching:** sign out before logging
+  in as the next demo persona. Do not mutate dispatch status during recording;
+  reset instead.

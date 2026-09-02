@@ -1,6 +1,8 @@
 import {
+  Body,
   Controller,
   Get,
+  Patch,
   Post,
   Param,
   Query,
@@ -10,6 +12,7 @@ import { CustomerJwtAuthGuard } from "../auth/guards/customer-jwt-auth.guard";
 import { CurrentCustomer } from "../auth/decorators/current-customer.decorator";
 import type { CurrentCustomerPayload } from "../auth/interfaces/current-customer.interface";
 import { CustomerNotificationsService } from "./customer-notifications.service";
+import { UpdateNotificationPreferencesDto } from "./dto/update-notification-preferences.dto";
 
 @Controller("customer-portal/notifications")
 @UseGuards(CustomerJwtAuthGuard)
@@ -24,6 +27,19 @@ export class CustomerNotificationsController {
   @Get("unread-count")
   unreadCount(@CurrentCustomer() customer: CurrentCustomerPayload) {
     return this.svc.unreadCount(customer);
+  }
+
+  @Get("preferences")
+  getPreferences(@CurrentCustomer() customer: CurrentCustomerPayload) {
+    return this.svc.getPreferences(customer);
+  }
+
+  @Patch("preferences")
+  updatePreferences(
+    @CurrentCustomer() customer: CurrentCustomerPayload,
+    @Body() dto: UpdateNotificationPreferencesDto,
+  ) {
+    return this.svc.updatePreferences(customer, dto);
   }
 
   @Post(":key/read")

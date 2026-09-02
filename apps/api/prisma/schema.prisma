@@ -72,9 +72,15 @@ enum CustomerPortalAccountStatus {
 
 enum CustomerPaymentTerms {
   DUE_ON_RECEIPT
+  NET_7
   NET_15
   NET_30
   NET_45
+  NET_60
+  NET_90
+  /// CUSTOM terms: the number of days is stored in Customer.paymentTermsDays.
+  /// CUSTOM with a null paymentTermsDays is rejected by DTO validation.
+  CUSTOM
 }
 
 enum CustomerStatus {
@@ -88,6 +94,67 @@ enum DriverStatus {
   ACTIVE
   INACTIVE
   ON_LEAVE
+}
+
+/// Live shift state — distinct from HR DriverStatus (employment eligibility).
+enum DriverOperationalStatus {
+  AVAILABLE
+  BUSY
+  DRIVING
+  LOADING
+  BREAK
+  OFFLINE
+}
+
+/// Driver response to an ASSIGNED dispatch (side-channel — not a DispatchStatus).
+enum DriverAcceptanceStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum DriverRejectReason {
+  VEHICLE_ISSUE
+  SICK
+  PERSONAL_EMERGENCY
+  ALREADY_BUSY
+  OTHER
+}
+
+enum DriverLicenseClass {
+  CLASS_A
+  CLASS_B
+  CLASS_C
+  CLASS_D
+  CLASS_E
+  CE
+  OTHER
+}
+
+enum DriverDocumentType {
+  DRIVER_LICENSE
+  PASSPORT_ID
+  MEDICAL_CERTIFICATE
+  ADR_CERTIFICATE
+  BACKGROUND_CHECK
+  OTHER
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACTOR
+}
+
+enum WorkShift {
+  DAY
+  NIGHT
+  FLEXIBLE
+}
+
+enum DeliveryProofType {
+  PHOTO
+  SIGNATURE
 }
 
 enum VehicleStatus {
@@ -153,16 +220,56 @@ enum ExpenseStatus {
 
 /// Dispatch status lifecycle — represents the operational execution of an order.
 /// Forward-only progression: DRAFT -> ASSIGNED -> EN_ROUTE_TO_PICKUP -> AT_PICKUP ->
-/// IN_TRANSIT -> DELIVERED. CANCELLED is reachable from any non-terminal state.
-/// Actual pickup/delivery times are captured when transitioning to IN_TRANSIT/DELIVERED.
+/// IN_TRANSIT -> AT_STOP -> ARRIVED_AT_DELIVERY -> DELIVERED. AT_STOP -> IN_TRANSIT
+/// is also legal (driver resumes transit after a stop). CANCELLED is reachable from
+/// any non-terminal state.
 enum DispatchStatus {
   DRAFT
   ASSIGNED
   EN_ROUTE_TO_PICKUP
   AT_PICKUP
   IN_TRANSIT
+  AT_STOP
+  ARRIVED_AT_DELIVERY
   DELIVERED
   CANCELLED
+  DELIVERY_FAILED
+}
+
+enum DeliveryFailureReason {
+  CUSTOMER_UNAVAILABLE
+  CUSTOMER_REFUSED
+  WRONG_ADDRESS
+  ACCESS_PROBLEM
+  DAMAGED_CARGO
+  VEHICLE_PROBLEM
+  OTHER
+}
+
+/// Distinguishes the role of a stop within a dispatch.
+/// PICKUP — the cargo collection point (stopIndex 0).
+/// INTERMEDIATE — an en-route intermediate stop (stopIndex 1..N-1, not used in Phase 5B).
+/// DELIVERY — the final drop-off point (last stopIndex).
+enum StopType {
+  PICKUP
+  INTERMEDIATE
+  DELIVERY
+}
+
+/// Planning-level route status — distinct from dispatch execution status.
+enum RouteStatus {
+  DRAFT
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+/// Status of a single stop within a planned route.
+enum RouteStopStatus {
+  PENDING
+  COMPLETED
+  SKIPPED
 }
 
 enum NotificationSeverity {
@@ -182,17 +289,51 @@ enum NotificationCategory {
   CUSTOMERS
   FLEET
   BILLING
+  SUPPORT
 }
 
 /// A tenant. Every other business entity in the system will eventually hang
 /// off an Organization, directly or indirectly.
 model Organization {
   id              String             @id @default(uuid())
+  /// Trading name — what the app shows in nav, headers and emails.
   name            String
   slug            String             @unique
   status          OrganizationStatus @default(ACTIVE)
   defaultCurrency String             @default("USD")
   timezone        String             @default("UTC")
+
+  /// Company identity, all optional because an organization is created (by
+  /// self-registration or lead conversion) long before an admin fills any of
+  /// this in. Every field here exists to be printed on customer-facing
+  /// documents — invoices in particular, which legally need the issuing
+  /// entity's registered name, tax identity and address, not just a trading
+  /// name. Deliberately mirrors Customer's flat address shape
+  /// (address/city/country) so both parties on an invoice are modelled the
+  /// same way, rather than introducing a second address convention.
+  ///
+  /// The registered entity name, when it differs from the trading `name`
+  /// (e.g. "FlowERP Logistics LLC" vs "FlowERP"). Invoices prefer this and
+  /// fall back to `name`.
+  legalName          String?
+  /// State company-registration identifier. Naming and format vary by
+  /// jurisdiction, so it is stored as an opaque string and never parsed.
+  registrationNumber String?
+  /// VAT / TIN, same role as Customer.taxId on the other side of an invoice.
+  taxId              String?
+  /// Where customers reply — not any individual member's email.
+  email              String?
+  phone              String?
+  website            String?
+  address            String?
+  city               String?
+  postalCode         String?
+  country            String?
+  /// Absolute http(s) URL to a logo, rendered on printed documents. A URL
+  /// rather than an upload because this codebase has no blob storage; the
+  /// field is honest about being a reference to an externally hosted image.
+  logoUrl            String?
+
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
   /// Soft-delete marker — an archived organization is never hard-deleted.
@@ -203,8 +344,12 @@ model Organization {
   refreshTokens             RefreshToken[]
   customers                 Customer[]
   drivers                   Driver[]
+  driverDocuments           DriverDocument[]
+  driverEmergencyContacts   DriverEmergencyContact[]
   vehicles                  Vehicle[]
   orders                    Order[]
+  orderNotes                OrderNote[]
+  orderDocuments            OrderDocument[]
   orderStatusHistories      OrderStatusHistory[]
   invoices                  Invoice[]
   payments                  Payment[]
@@ -212,6 +357,8 @@ model Organization {
   dispatches                Dispatch[]
   dispatchStatusHistories   DispatchStatusHistory[]
   dispatchAssignments       DispatchAssignment[]
+  dispatchConflictStates    DispatchConflictState[]
+  dispatchStops             DispatchStop[]
   notifications             Notification[]
   notificationSettings      NotificationSettings?
   onboardingProgress        OnboardingProgress?
@@ -252,6 +399,21 @@ model Organization {
   usageRecords              UsageRecord[]
   usageSnapshots            UsageSnapshot[]
   paymentProviderConfigs    PaymentProviderConfig[]
+  supportTickets            SupportTicket[]
+  featureFlagOverrides      FeatureFlagOverride[]
+  platformSupportSessions   PlatformSupportSession[]
+  /// Reverse of Lead.convertedOrganizationId — at most one lead converts into
+  /// a given organization.
+  convertedFromLead         Lead?
+  driverSettings            OrganizationDriverSettings?
+  driverBreaks              DriverBreak[]
+  driverActionEvents        DriverActionEvent[]
+  vehicleInspections        VehicleInspection[]
+  dispatchDeliveryProofs    DispatchDeliveryProof[]
+  deliveryAttempts          DeliveryAttempt[]
+  orderStops                OrderStop[]
+  routes                    Route[]
+  routeStops                RouteStop[]
 
   @@map("organizations")
 }
@@ -269,6 +431,9 @@ model User {
   /// organization by an admin) before ever setting a password.
   passwordHash    String?
   status          UserStatus @default(ACTIVE)
+  /// Incremented whenever credentials are reset or changed. Access JWTs carry
+  /// the value and are rejected immediately when it no longer matches.
+  sessionVersion  Int        @default(0)
   /// FlowERP staff, not a customer. Grants access to platform-wide data that
   /// belongs to no organization — currently the Lead pipeline captured from
   /// the marketing site. Deliberately separate from MembershipRole.ADMIN,
@@ -283,12 +448,15 @@ model User {
 
   memberships                   Membership[]
   refreshTokens                 RefreshToken[]
+  passwordResetTokens           PasswordResetToken[]
   auditLogEntries               AuditLog[]                 @relation("AuditLogActor")
   orderStatusChanges            OrderStatusHistory[]       @relation("OrderStatusChangedBy")
   dispatchStatusChanges         DispatchStatusHistory[]    @relation("DispatchStatusChangedBy")
   approvedExpenses              Expense[]                  @relation("ExpenseApprovedBy")
   createdDispatches             Dispatch[]                 @relation("CreatedDispatches")
   dispatchAssignmentChanges     DispatchAssignment[]       @relation("DispatchAssignmentChangedBy")
+  dispatchConflictsIgnored      DispatchConflictState[]    @relation("DispatchConflictIgnoredBy")
+  dispatchConflictsResolved     DispatchConflictState[]    @relation("DispatchConflictResolvedBy")
   /// Set when this login account belongs to a fleet driver, letting a
   /// DRIVER-role membership resolve "my deliveries" without ever accepting
   /// a client-supplied driverId. Most Users have no linked Driver at all
@@ -313,6 +481,15 @@ model User {
   telematicsAlertsAcknowledged  TelematicsAlert[]          @relation("TelematicsAlertAckBy")
   telematicsAlertsResolved      TelematicsAlert[]          @relation("TelematicsAlertResolvedBy")
   notificationPreferences       NotificationPreferences?
+  supportTicketsAssigned        SupportTicket[]            @relation("SupportTicketAssignee")
+  supportTicketsCreated         SupportTicket[]            @relation("SupportTicketCreatedBy")
+  supportMessages               SupportTicketMessage[]     @relation("SupportTicketMessageAuthor")
+  supportTicketReads            SupportTicketUserRead[]    @relation("SupportTicketUserReads")
+  platformSupportSessions       PlatformSupportSession[]   @relation("PlatformSupportSessionUser")
+  featureFlagsUpdated           FeatureFlag[]              @relation("FeatureFlagUpdatedBy")
+  orderNotesAuthored            OrderNote[]                @relation("OrderNoteAuthor")
+  orderDocumentsUploaded        OrderDocument[]            @relation("OrderDocumentUploader")
+  createdRoutes                 Route[]                    @relation("CreatedRoutes")
 
   @@map("users")
 }
@@ -351,6 +528,9 @@ model RefreshToken {
   id             String    @id @default(uuid())
   userId         String
   organizationId String
+  /// Rotated refresh tokens remain in one family. Reuse of any revoked member
+  /// revokes every still-active token in that family.
+  familyId       String
   tokenHash      String    @unique
   expiresAt      DateTime
   revokedAt      DateTime?
@@ -362,7 +542,25 @@ model RefreshToken {
 
   @@index([userId])
   @@index([organizationId])
+  @@index([familyId])
   @@map("refresh_tokens")
+}
+
+/// One-time staff password recovery capability. The raw token only exists in
+/// the emailed link; the database stores its SHA-256 hash.
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, usedAt])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
 }
 
 /// A pending invitation for a person to join one Organization with a given
@@ -450,6 +648,13 @@ model CustomerPortalAccount {
   passwordHash   String
   status         CustomerPortalAccountStatus @default(ACTIVE)
   lastLoginAt    DateTime?
+  /// Which synthesized feed categories the portal contact wants to see.
+  /// Shape: { shipmentAssigned, shipmentDelayed, shipmentDelivered,
+  /// invoiceCreated, invoiceOverdue, paymentReceived, documentsAvailable }
+  /// — all default true when null.
+  notificationPreferences Json?
+  language       String?                     @default("en")
+  timezone       String?                     @default("UTC")
   createdAt      DateTime                    @default(now())
   updatedAt      DateTime                    @updatedAt
 
@@ -541,18 +746,34 @@ model Customer {
   organizationId String
   customerCode   String
   companyName    String
-  contactName    String
+  /// Optional — can be set after initial creation once the contact person is known.
+  contactName    String?
   email          String?
   phone          String?
   country        String?
   city           String?
   address        String?
+  postalCode     String?
+  /// Geocoded from address/city — null until geocoding runs.
+  lat            Decimal?  @db.Decimal(10, 7)
+  lng            Decimal?  @db.Decimal(10, 7)
+  geocodedAt     DateTime?
   taxId          String?
   paymentTerms   CustomerPaymentTerms @default(NET_30)
+  /// Days until invoice due for CUSTOM payment terms.
+  /// Only relevant when paymentTerms = CUSTOM; ignored (and should be null) otherwise.
+  /// Enforced by DTO validation: CUSTOM requires a non-null, non-negative integer here.
+  paymentTermsDays Int?
   /// Serialized as a decimal STRING in API responses (e.g. "25000.00"), not
   /// a JS number, to avoid floating-point precision loss on monetary
   /// values — see docs/CUSTOMERS_API.md.
-  creditLimit    Decimal              @default(0) @db.Decimal(14, 2)
+  /// NULL = no configured credit ceiling ("No credit limit").
+  /// 0    = explicitly $0 credit (no credit allowed).
+  /// >0   = credit is capped at this amount.
+  creditLimit    Decimal?             @db.Decimal(14, 2)
+  /// ISO 4217 currency code override for this customer (e.g. "USD", "UZS").
+  /// When null the organization's defaultCurrency applies.
+  currency       String?              @db.VarChar(3)
   status         CustomerStatus       @default(ACTIVE)
   deliveryNotes  String?
   internalNotes  String?
@@ -578,6 +799,9 @@ model Customer {
   @@unique([organizationId, customerCode])
   @@index([organizationId])
   @@index([organizationId, status])
+  /// The list's default sort (and the "new this month" / recent-customers
+  /// reads on the Customers page) is createdAt desc.
+  @@index([organizationId, createdAt])
   @@map("customers")
 }
 
@@ -594,12 +818,27 @@ model Driver {
   phone          String
   email          String?
   status         DriverStatus @default(ACTIVE)
-  licenseNumber  String?
-  licenseExpiry  DateTime?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  /// Live shift state for Board / driver workspace (P3.3.4A). Separate from HR `status`.
+  operationalStatus DriverOperationalStatus @default(AVAILABLE)
+  profilePhotoUrl String?
+  licenseNumber   String?
+  licenseClass    DriverLicenseClass?
+  licenseIssueDate DateTime?
+  licenseExpiry   DateTime?
+  licenseEndorsements String?
+  employmentType  EmploymentType?
+  hireDate        DateTime?
+  department      String?
+  baseLocation    String?
+  workShift       WorkShift?
+  preferredRegions String?
+  availableDays   Json?
+  driverNotes     String?
+  internalNotes   String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
   /// Soft-archive marker — there is no hard-delete endpoint for drivers.
-  archivedAt     DateTime?
+  archivedAt      DateTime?
   /// Optional link to the login account (User) this driver signs in as, so
   /// a DRIVER-role membership can resolve "my deliveries" server-side —
   /// never set by drivers themselves, only by ADMIN/OPS/DISPATCHER when
@@ -608,6 +847,8 @@ model Driver {
 
   organization            Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user                    User?                    @relation(fields: [userId], references: [id])
+  driverDocuments         DriverDocument[]
+  emergencyContact        DriverEmergencyContact?
   orders                  Order[]
   dispatches              Dispatch[]
   dispatchAssignments     DispatchAssignment[]
@@ -618,14 +859,79 @@ model Driver {
   geofenceEvents          GeofenceEvent[]
   telematicsAlerts        TelematicsAlert[]
   trackingSessions        TrackingSession[]
+  breaks                  DriverBreak[]
+  actionEvents            DriverActionEvent[]
+  vehicleInspections      VehicleInspection[]
+  deliveryProofs          DispatchDeliveryProof[]
+  deliveryAttempts        DeliveryAttempt[]
+  routes                  Route[]
 
   @@unique([organizationId, employeeCode])
   @@index([organizationId])
   @@index([organizationId, status])
+  @@index([organizationId, operationalStatus])
   /// Default fleet list filters archivedAt IS NULL — this index keeps that
   /// path from scanning every driver row in large orgs.
   @@index([organizationId, archivedAt])
   @@map("drivers")
+}
+
+/// Compliance and HR documents attached to a driver profile.
+model DriverDocument {
+  id               String              @id @default(uuid())
+  organizationId   String
+  driverId         String
+  type             DriverDocumentType  @default(OTHER)
+  documentNumber   String?
+  issueDate        DateTime?
+  expiryDate       DateTime?
+  fileName         String?
+  storagePath      String?             // disk path, never exposed in API
+  mimeType         String?
+  fileSizeBytes    Int?
+  /// DRIVER_LICENSE only — mirrors Driver.licenseClass for file-linked records
+  licenseClass     DriverLicenseClass?
+  /// DRIVER_LICENSE only — endorsements / restrictions text
+  endorsements     String?
+  uploadedByUserId String?
+  verifiedAt       DateTime?
+  verifiedByUserId String?
+  rejectedAt       DateTime?
+  rejectedByUserId String?
+  rejectionReason  String?
+  notes            String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  driver       Driver       @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([driverId])
+  @@index([organizationId])
+  @@index([organizationId, driverId])
+  @@index([organizationId, expiryDate])
+  @@map("driver_documents")
+}
+
+/// One primary emergency contact per driver.
+model DriverEmergencyContact {
+  id             String   @id @default(uuid())
+  driverId       String   @unique
+  organizationId String
+  name           String
+  relationship   String
+  phone          String
+  alternatePhone String?
+  email          String?
+  address        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  driver       Driver       @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("driver_emergency_contacts")
 }
 
 model Vehicle {
@@ -644,6 +950,13 @@ model Vehicle {
   year             Int?
   insuranceExpiry  DateTime?
   inspectionExpiry DateTime?
+  vin              String?
+  engineNumber     String?
+  odometer         Int?
+  fuelType         String?
+  transmission     String?
+  axles            Int?
+  notes            String?
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
   /// Soft-archive marker — there is no hard-delete endpoint for vehicles.
@@ -662,6 +975,8 @@ model Vehicle {
   telematicsAlerts    TelematicsAlert[]
   healthSnapshots     VehicleHealthSnapshot[]
   trackingSessions    TrackingSession[]
+  vehicleInspections  VehicleInspection[]
+  routes              Route[]
 
   @@unique([organizationId, vehicleCode])
   @@index([organizationId])
@@ -694,39 +1009,137 @@ model Order {
   cargoVolumeM3    Decimal?    @db.Decimal(10, 2)
   /// Serialized as a decimal STRING in API responses — see Customer.creditLimit.
   price            Decimal     @db.Decimal(14, 2)
+  /// Optional price breakdown — null means not specified (not $0).
+  freightCharge    Decimal?    @db.Decimal(14, 2)
+  fuelSurcharge    Decimal?    @db.Decimal(14, 2)
+  otherCharges     Decimal?    @db.Decimal(14, 2)
   currency         String      @default("USD")
   status           OrderStatus @default(DRAFT)
   driverId         String?
   vehicleId        String?
   notes            String?
   deliveryNotes    String?
+
+  /// ── Stop-level location fields (Phase 1 — all nullable, additive) ─────────
+  /// Existing pickupAddress/pickupCity/deliveryAddress/deliveryCity are preserved.
+  /// These extend each stop with geocoded coordinates, postal code, place name,
+  /// on-site contact, driver instructions, and a delivery time window.
+
+  pickupPostalCode    String?
+  pickupCountryCode   String?
+  pickupLat           Decimal?  @db.Decimal(10, 7)
+  pickupLng           Decimal?  @db.Decimal(10, 7)
+  pickupPlaceName     String?
+  pickupContactName   String?
+  pickupContactPhone  String?
+  pickupInstructions  String?   @db.Text
+  pickupWindowStart   DateTime?
+  pickupWindowEnd     DateTime?
+
+  deliveryPostalCode   String?
+  deliveryCountryCode  String?
+  deliveryLat          Decimal?  @db.Decimal(10, 7)
+  deliveryLng          Decimal?  @db.Decimal(10, 7)
+  deliveryPlaceName    String?
+  deliveryContactName  String?
+  deliveryContactPhone String?
+  deliveryInstructions String?   @db.Text
+  deliveryWindowStart  DateTime?
+  deliveryWindowEnd    DateTime?
+
+  /// Geocoding metadata — records when/how coordinates were obtained.
+  /// "mapbox" = auto-geocoded via Mapbox API; "manual" = set directly by staff;
+  /// "driver_arrival" = captured from driver GPS on arrival.
+  pickupGeocodedAt    DateTime?
+  deliveryGeocodedAt  DateTime?
+  geocodeSource       String?
+
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
   cancelledAt      DateTime?
   deliveredAt      DateTime?
+  archivedAt       DateTime?
 
   organization  Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   customer      Customer             @relation(fields: [customerId], references: [id], onDelete: Restrict)
   driver        Driver?              @relation(fields: [driverId], references: [id], onDelete: SetNull)
   vehicle       Vehicle?             @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   statusHistory OrderStatusHistory[]
-  dispatches    Dispatch[]
-  invoices      Invoice[]
-  expenses      Expense[]
-  trips         Trip[]
+  dispatches       Dispatch[]
+  invoices         Invoice[]
+  expenses         Expense[]
+  trips            Trip[]
+  internalNotes    OrderNote[]
+  documents        OrderDocument[]
+  deliveryAttempts DeliveryAttempt[]
+  orderStops       OrderStop[]
+  routeStops       RouteStop[]
 
   @@unique([organizationId, orderNumber])
   @@index([organizationId])
   @@index([organizationId, status])
+  @@index([organizationId, archivedAt])
   /// Every report/dashboard query date-filters on deliveryDate within an
   /// organization (see report-filters.util.ts buildOrderWhere) — without
   /// this, that scan falls back to the plain organizationId index and
   /// filters deliveryDate row-by-row.
   @@index([organizationId, deliveryDate])
+  /// createdAt is the Orders list's default sort column (list-orders-query.dto.ts)
+  /// — without this, the default view sorts unindexed at scale.
+  @@index([organizationId, createdAt])
+  /// pickupDate is both a list filter and sort option, same reasoning as deliveryDate above.
+  @@index([organizationId, pickupDate])
   @@index([driverId])
   @@index([vehicleId])
   @@index([customerId])
+  /// Supports delivery-coordinate spatial queries (ETA, proximity checks).
+  @@index([organizationId, deliveryLat, deliveryLng])
   @@map("orders")
+}
+
+enum OrderDocumentKind {
+  POD
+  ATTACHMENT
+  OTHER
+}
+
+/// Internal operator notes on an order — not visible to customers.
+model OrderNote {
+  id             String   @id @default(uuid())
+  organizationId String
+  orderId        String
+  body           String
+  authorUserId   String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order        Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  author       User         @relation("OrderNoteAuthor", fields: [authorUserId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, orderId])
+  @@map("order_notes")
+}
+
+/// POD and file attachments linked to an order.
+model OrderDocument {
+  id               String            @id @default(uuid())
+  organizationId   String
+  orderId          String
+  kind             OrderDocumentKind @default(ATTACHMENT)
+  fileName         String
+  mimeType         String
+  fileSizeBytes    Int?
+  storagePath      String
+  uploadedByUserId String?
+  createdAt        DateTime          @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order        Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  uploadedBy   User?        @relation("OrderDocumentUploader", fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, orderId])
+  @@map("order_documents")
 }
 
 /// Append-only per-order status trail, written alongside every status
@@ -774,6 +1187,19 @@ model Dispatch {
   deliveryDateScheduled DateTime
   deliveryDateActual    DateTime?
   notes                 String?
+  /// Driver accept/reject of assignment (P3.3.4A). Defaults PENDING on assign.
+  driverAcceptanceStatus DriverAcceptanceStatus @default(PENDING)
+  driverAcceptedAt       DateTime?
+  driverRejectedAt       DateTime?
+  driverRejectReason     DriverRejectReason?
+  driverRejectNote       String?
+  /// Soft GPS capture when Arrived Pickup (nullable until GPS provider exists).
+  arrivalLat             Decimal?               @db.Decimal(10, 7)
+  arrivalLng             Decimal?               @db.Decimal(10, 7)
+  /// Set when driver reports a failed delivery attempt (DELIVERY_FAILED).
+  failureReason          DeliveryFailureReason?
+  failureNotes           String?
+  failedAt               DateTime?
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
 
@@ -786,17 +1212,31 @@ model Dispatch {
   assignments   DispatchAssignment[]
   trips         Trip[]
   trackingSessions TrackingSession[]
+  conflictStates DispatchConflictState[]
+  deliveryProofs DispatchDeliveryProof[]
+  deliveryAttempts DeliveryAttempt[]
+  stops         DispatchStop[]
+  routeStops    RouteStop[]
 
   @@unique([organizationId, dispatchNumber])
   @@index([organizationId])
   @@index([organizationId, status])
+  @@index([organizationId, driverAcceptanceStatus])
   @@index([orderId])
   @@index([driverId])
   @@index([vehicleId])
+  /// Dispatch Analytics date-range aggregation (period counts, groupBy driver/
+  /// vehicle workload, dispatches-by-day) filters on createdAt within an
+  /// organization — same reasoning as Order.createdAt above.
+  @@index([organizationId, createdAt])
+  /// Dispatches-by-day charting buckets on the scheduled pickup date.
+  @@index([organizationId, pickupDateScheduled])
   /// R2 — one live dispatch per order is enforced by the partial unique index
-  /// `dispatches_one_live_per_order` (WHERE status NOT IN CANCELLED/DELIVERED).
-  /// Prisma cannot express partial uniques in schema; see migration
-  /// 20260725153000_one_live_dispatch_per_order.
+  /// `dispatches_one_live_per_order` (WHERE status NOT IN CANCELLED/DELIVERED/DELIVERY_FAILED).
+  /// DELIVERY_FAILED was added to the exclusion in migration
+  /// 20260819200001_add_delivery_attempt_model so a failed dispatch does not
+  /// block re-dispatch. Prisma cannot express partial uniques in schema; see
+  /// migration 20260725153000_one_live_dispatch_per_order for the original.
   @@map("dispatches")
 }
 
@@ -867,7 +1307,135 @@ model DispatchStatusHistory {
 
   @@index([organizationId])
   @@index([dispatchId])
+  /// Dispatch Analytics reads true DRAFT->ASSIGNED elapsed time from this
+  /// table, filtered by organization + status + a createdAt window.
+  @@index([organizationId, status, createdAt])
   @@map("dispatch_status_histories")
+}
+
+/// Immutable snapshot of one stop's location and contact data at the moment a
+/// Dispatch is created. Decoupled from Order — editing the Order or Customer after
+/// dispatch creation must NOT alter these rows. Two stops per new dispatch:
+/// stopIndex 0 (PICKUP) and stopIndex 1 (DELIVERY), both copied in the same
+/// transaction as Dispatch creation. Old dispatches (pre-Phase 5B) have no rows;
+/// all new dispatches have exactly two.
+model DispatchStop {
+  id             String    @id @default(uuid())
+  organizationId String
+  dispatchId     String
+  /// Zero-based position within the dispatch. 0 = pickup, last = delivery.
+  stopIndex      Int
+  stopType       StopType
+
+  /// Snapshot of stop location — copied from Order at dispatch creation time.
+  address        String
+  city           String
+  postalCode     String?
+  countryCode    String?
+  lat            Decimal?  @db.Decimal(10, 7)
+  lng            Decimal?  @db.Decimal(10, 7)
+  placeName      String?
+  contactName    String?
+  contactPhone   String?
+  instructions   String?   @db.Text
+  windowStart    DateTime?
+  windowEnd      DateTime?
+
+  /// Stop-level execution timestamps — populated by dispatch transitions.
+  /// Null until the relevant event occurs; never written by snapshot creation.
+  arrivedAt      DateTime?
+  completedAt    DateTime?
+  failedAt       DateTime?
+  failureReason  String?
+  failureNotes   String?
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  dispatch     Dispatch     @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+
+  @@unique([dispatchId, stopIndex])
+  @@index([organizationId])
+  @@index([dispatchId])
+  @@index([dispatchId, stopIndex])
+  @@index([organizationId, stopType])
+  @@map("dispatch_stops")
+}
+
+/// Planned intermediate stops on an order — the dispatcher's intended route
+/// between pickup and delivery. These rows own the PLAN; DispatchStop rows are
+/// immutable snapshots of this plan captured at dispatch creation time.
+///
+/// stopIndex is 1-based and covers intermediate stops ONLY:
+///   1 = first intermediate, 2 = second, etc.
+/// Pickup (index 0) and delivery (last index) are implicit on the Order itself
+/// and are never stored here.
+///
+/// Deleting an Order cascades into this table (same as OrderNote/OrderDocument).
+model OrderStop {
+  id             String   @id @default(uuid())
+  organizationId String
+  orderId        String
+
+  /// 1-based position among intermediate stops. Dense: 1, 2, 3, ...
+  stopIndex      Int
+
+  address        String
+  city           String
+  postalCode     String?
+  countryCode    String?
+  placeName      String?
+
+  lat            Decimal?  @db.Decimal(10, 7)
+  lng            Decimal?  @db.Decimal(10, 7)
+
+  contactName    String?
+  contactPhone   String?
+
+  instructions   String?  @db.Text
+
+  windowStart    DateTime?
+  windowEnd      DateTime?
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order        Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, stopIndex])
+  @@index([organizationId, orderId])
+  @@map("order_stops")
+}
+
+/// Persisted ignore/resolve state for dispatch conflict engine (P3.3.2E).
+/// Detection is computed on read; this table only stores dispatcher decisions.
+model DispatchConflictState {
+  id               String    @id @default(uuid())
+  organizationId   String
+  dispatchId       String
+  /// Stable key from the conflict engine — matches DispatchConflict.id in API.
+  conflictKey      String
+  type             String
+  severity         String
+  ignoredAt        DateTime?
+  ignoredByUserId  String?
+  resolvedAt       DateTime?
+  resolvedByUserId String?
+  firstDetectedAt  DateTime  @default(now())
+  lastDetectedAt   DateTime  @default(now())
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  dispatch     Dispatch     @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+  ignoredBy    User?        @relation("DispatchConflictIgnoredBy", fields: [ignoredByUserId], references: [id], onDelete: SetNull)
+  resolvedBy   User?        @relation("DispatchConflictResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([dispatchId, conflictKey])
+  @@index([organizationId, dispatchId])
+  @@map("dispatch_conflict_states")
 }
 
 /// The Finance foundation phase. `invoiceNumber` is unique per organization
@@ -990,6 +1558,10 @@ model Expense {
   approvedAt       DateTime?
   rejectionReason  String?
   notes            String?
+  /// Optional receipt file path under uploads/expenses (DRIVER uploads).
+  receiptPath      String?
+  /// Optional odometer reading at expense time (fuel / maintenance foreshadow).
+  odometerKm       Decimal?        @db.Decimal(12, 1)
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
@@ -1033,6 +1605,15 @@ model Notification {
   readAt         DateTime?
   isArchived     Boolean              @default(false)
   archivedAt     DateTime?
+  /// Set only when a USER archives/deletes this rule-based notification —
+  /// never by the reconcile loop's own auto-resolve. Distinguishes "the
+  /// condition went away" (system-archived, dismissedAt null — eligible to
+  /// re-fire if the entity qualifies again later, e.g. a renewed expiry)
+  /// from "a person dismissed this while it was still true" (dismissedAt
+  /// set — must not be recreated for as long as this row exists, or every
+  /// Archive click on a still-open condition would be silently undone by
+  /// the very next reconcile pass).
+  dismissedAt    DateTime?
   createdAt      DateTime             @default(now())
   metadata       Json?
 
@@ -1114,12 +1695,40 @@ model Lead {
   referrer    String?
   landingPath String?
   status    LeadStatus @default(NEW)
+  /// Set once when Convert Wizard finishes — prevents duplicate orgs from the
+  /// same lead and powers "Already Converted → Organization" navigation.
+  convertedOrganizationId String? @unique
+  convertedOrganization   Organization? @relation(fields: [convertedOrganizationId], references: [id], onDelete: SetNull)
+  /// Pending admin invitation created at convert time (for resend / copy link).
+  convertedInvitationId String?
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
+  timelineEvents LeadTimelineEvent[]
 
   @@index([status])
   @@index([createdAt])
   @@map("leads")
+}
+
+/// Chronological sales/ops trail for a marketing lead — demo → contact →
+/// qualify → convert → invite → accept → activate. Platform staff read this
+/// to answer "where is this customer?" without digging through audit logs.
+model LeadTimelineEvent {
+  id          String   @id @default(uuid())
+  leadId      String
+  /// Stable machine key: DEMO_REQUESTED | SALES_CONTACTED | QUALIFIED |
+  /// CONVERTED | INVITATION_SENT | INVITATION_ACCEPTED | ORGANIZATION_ACTIVATED
+  type        String
+  title       String
+  body        String?
+  metadata    Json?
+  actorUserId String?
+  createdAt   DateTime @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, createdAt])
+  @@map("lead_timeline_events")
 }
 
 enum LeadStatus {
@@ -1221,6 +1830,7 @@ model SubscriptionPlan {
   organizationSubscriptions OrganizationSubscription[]
   historyAsFromPlan         SubscriptionHistory[]      @relation("HistoryFromPlan")
   historyAsToPlan           SubscriptionHistory[]      @relation("HistoryToPlan")
+  featureFlagOverrides      FeatureFlagOverride[]
 
   @@map("subscription_plans")
 }
@@ -2467,6 +3077,17 @@ model Geofence {
   /// Free-form classification: "DEPOT" | "CUSTOMER" | "RESTRICTED" | ...
   category          String?
   linkedCustomerId  String?
+  /// Soft link to the dispatch this geofence was auto-created for. No FK so
+  /// archiving the dispatch does not cascade-delete the geofence audit trail.
+  linkedDispatchId     String?
+  /// Soft link to the specific DispatchStop this intermediate-stop geofence was
+  /// created for. No FK — same rationale as linkedDispatchId. Null for PICKUP /
+  /// DELIVERY fences; set for AUTO_ARRIVAL_STOP fences so handleAutoArrivalEnter
+  /// can stamp exactly the right stop and verify the fence is for the current one.
+  linkedDispatchStopId String?
+  autoCreated          Boolean      @default(false)
+  /// Auto-created fences expire after this timestamp; the sweeper archives them.
+  expiresAt         DateTime?
   alertOnEnter      Boolean      @default(false)
   alertOnExit       Boolean      @default(false)
   /// Seconds a vehicle may dwell inside before a DWELL event/alert fires. Null
@@ -2629,6 +3250,10 @@ model TelematicsSettings {
   harshDrivingAlertsEnabled Boolean  @default(true)
   offlineAlertsEnabled      Boolean  @default(true)
   healthAlertsEnabled       Boolean  @default(true)
+  /// Auto-arrival geofence radius placed around the stop coordinate (metres).
+  arrivalGeofenceRadiusM    Int      @default(150)
+  /// Master switch for auto-arrival geofence creation on dispatch activation.
+  arrivalGeofenceEnabled    Boolean  @default(true)
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
 
@@ -2862,3 +3487,387 @@ model EmailTracking {
   @@index([deliveryQueueId])
   @@map("email_tracking")
 }
+
+// ---------------------------------------------------------------------------
+// Platform Console — multi-tenant ops surface (not tenant ERP).
+// ---------------------------------------------------------------------------
+
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum SupportTicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum PlatformNotificationSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum FeatureFlagScope {
+  ALL
+  PLAN
+  ORG
+}
+
+/// Cross-tenant inbox for FlowERP staff (payment failed, org suspended, …).
+/// Deliberately separate from tenant Notification (which requires organizationId).
+model PlatformNotification {
+  id         String                       @id @default(uuid())
+  type       String
+  severity   PlatformNotificationSeverity @default(INFO)
+  title      String
+  body       String
+  entityType String?
+  entityId   String?
+  isRead     Boolean                      @default(false)
+  readAt     DateTime?
+  metadata   Json?
+  createdAt  DateTime                     @default(now())
+  updatedAt  DateTime                     @updatedAt
+
+  @@index([isRead, createdAt])
+  @@index([type, createdAt])
+  @@map("platform_notifications")
+}
+
+model SupportTicket {
+  id             String                @id @default(uuid())
+  organizationId String?
+  subject        String
+  body           String
+  status         SupportTicketStatus   @default(OPEN)
+  priority       SupportTicketPriority @default(MEDIUM)
+  assigneeUserId String?
+  createdById    String?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+  resolvedAt             DateTime?
+  /// Set when staff asks "did this solve it?" — the tenant-side confirmation
+  /// prompt keys off this timestamp, not off message arrivals. Cleared when
+  /// the user confirms (→ RESOLVED), declines, or simply replies again.
+  resolutionRequestedAt  DateTime?
+
+  organization Organization?          @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  assignee     User?                  @relation("SupportTicketAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
+  createdBy    User?                  @relation("SupportTicketCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  messages     SupportTicketMessage[]
+  userReads    SupportTicketUserRead[]
+
+  @@index([status, createdAt])
+  @@index([organizationId])
+  @@index([assigneeUserId])
+  @@map("support_tickets")
+}
+
+/// A message (user reply or staff response) on a support ticket.
+/// The first message is the ticket's initial body; subsequent ones are replies.
+model SupportTicketMessage {
+  id        String   @id @default(uuid())
+  ticketId  String
+  authorId  String?
+  /// true when the message was posted by FlowERP staff (platform admin).
+  isStaff   Boolean  @default(false)
+  body      String
+  createdAt DateTime @default(now())
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author User?         @relation("SupportTicketMessageAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, createdAt])
+  @@map("support_ticket_messages")
+}
+
+/// Per-user read state for support tickets. Used to compute unread staff
+/// message counts without putting a per-user boolean on each message row.
+/// A message is "unread" for a user when message.createdAt > lastReadAt
+/// (or when no row exists yet for that user+ticket pair).
+model SupportTicketUserRead {
+  id         String   @id @default(uuid())
+  userId     String
+  ticketId   String
+  lastReadAt DateTime @default(now())
+
+  user   User          @relation("SupportTicketUserReads", fields: [userId], references: [id], onDelete: Cascade)
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, ticketId])
+  @@index([userId])
+  @@map("support_ticket_user_reads")
+}
+
+model FeatureFlag {
+  id             String           @id @default(uuid())
+  key            String           @unique
+  name           String
+  description    String?
+  enabledGlobal  Boolean          @default(false)
+  scope          FeatureFlagScope @default(ALL)
+  updatedById    String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  updatedBy User?                 @relation("FeatureFlagUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  overrides FeatureFlagOverride[]
+
+  @@map("feature_flags")
+}
+
+model FeatureFlagOverride {
+  id             String   @id @default(uuid())
+  featureFlagId  String
+  /// When set, applies to every org on this plan.
+  planId         String?
+  /// When set, applies to one organization.
+  organizationId String?
+  enabled        Boolean
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  featureFlag  FeatureFlag       @relation(fields: [featureFlagId], references: [id], onDelete: Cascade)
+  plan         SubscriptionPlan? @relation(fields: [planId], references: [id], onDelete: Cascade)
+  organization Organization?     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([featureFlagId])
+  @@index([planId])
+  @@index([organizationId])
+  @@map("feature_flag_overrides")
+}
+
+/// Active "Open ERP" support session for a platform admin.
+model PlatformSupportSession {
+  id                   String    @id @default(uuid())
+  userId               String
+  homeMembershipId     String
+  targetOrganizationId String
+  targetMembershipId   String
+  startedAt            DateTime  @default(now())
+  endedAt              DateTime?
+
+  user               User         @relation("PlatformSupportSessionUser", fields: [userId], references: [id], onDelete: Cascade)
+  targetOrganization Organization @relation(fields: [targetOrganizationId], references: [id], onDelete: Cascade)
+
+  @@index([userId, endedAt])
+  @@index([targetOrganizationId])
+  @@map("platform_support_sessions")
+}
+
+/// Per-org driver workspace settings (POD checklist gates before DELIVERED).
+model OrganizationDriverSettings {
+  id                    String   @id @default(uuid())
+  organizationId        String   @unique
+  requirePhotos         Boolean  @default(true)
+  requireSignature      Boolean  @default(true)
+  requireReceiverName   Boolean  @default(true)
+  requireReceiverPhone  Boolean  @default(false)
+  requireNotes          Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("organization_driver_settings")
+}
+
+/// Driver break sessions (Start Break / End Break).
+model DriverBreak {
+  id             String    @id @default(uuid())
+  organizationId String
+  driverId       String
+  startedAt      DateTime  @default(now())
+  endedAt        DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  driver       Driver       @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, driverId])
+  @@index([driverId, endedAt])
+  @@map("driver_breaks")
+}
+
+/// Append-only driver action stream for future AI / productivity analytics.
+model DriverActionEvent {
+  id             String   @id @default(uuid())
+  organizationId String
+  driverId       String
+  dispatchId     String?
+  type           String
+  payload        Json?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  driver       Driver       @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, driverId, createdAt])
+  @@index([organizationId, type, createdAt])
+  @@index([dispatchId])
+  @@map("driver_action_events")
+}
+
+/// Pre-departure vehicle inspection checklist.
+model VehicleInspection {
+  id             String   @id @default(uuid())
+  organizationId String
+  driverId       String
+  vehicleId      String
+  dispatchId     String?
+  /// Checklist flags: tyres, lights, brakes, oil, coolant, documents, etc.
+  checklist      Json
+  /// Optional photo storage paths (JSON string array).
+  photos         Json?
+  odometerKm     Decimal? @db.Decimal(12, 1)
+  notes          String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  driver       Driver       @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  vehicle      Vehicle      @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, driverId])
+  @@index([organizationId, vehicleId])
+  @@map("vehicle_inspections")
+}
+
+/// POD files + delivery proof metadata (photos, signature, receiver info).
+model DispatchDeliveryProof {
+  id               String            @id @default(uuid())
+  organizationId   String
+  dispatchId       String
+  orderId          String?
+  uploadedByUserId String
+  driverId         String?
+  type             DeliveryProofType
+  fileName         String
+  mimeType         String
+  fileSizeBytes    Int?
+  storagePath      String
+  receiverName     String?
+  receiverPhone    String?
+  notes            String?
+  odometerKm       Decimal?          @db.Decimal(12, 1)
+  metadata         Json?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  dispatch     Dispatch     @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+  driver       Driver?      @relation(fields: [driverId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, dispatchId])
+  @@index([dispatchId, type])
+  @@map("dispatch_delivery_proofs")
+}
+
+/// Append-only record of every failed delivery attempt on a dispatch.
+/// A dispatch may accumulate multiple rows if ops creates a new dispatch
+/// for the same order after the first failure.
+model DeliveryAttempt {
+  id             String                @id @default(uuid())
+  organizationId String
+  dispatchId     String
+  orderId        String
+  driverId       String?
+  failureReason  DeliveryFailureReason
+  notes          String?
+  lat            Decimal?              @db.Decimal(10, 7)
+  lng            Decimal?              @db.Decimal(10, 7)
+  occurredAt     DateTime
+  createdAt      DateTime              @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  dispatch     Dispatch     @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+  order        Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  driver       Driver?      @relation(fields: [driverId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([dispatchId])
+  @@index([orderId])
+  @@map("delivery_attempts")
+}
+
+/// A planned delivery route — a planning shell that organises multiple stops
+/// into an ordered sequence for a driver/vehicle pair on a given day.
+/// The existing Dispatch lifecycle is not replaced; RouteStops may link to
+/// existing Dispatches for execution tracking without coupling to their status.
+model Route {
+  id              String      @id @default(uuid())
+  organizationId  String
+  routeNumber     String
+  status          RouteStatus @default(DRAFT)
+  driverId        String?
+  vehicleId       String?
+  plannedDate     DateTime    @db.Date
+  startTime       DateTime?
+  endTime         DateTime?
+  totalDistanceM    Int?
+  totalDurationSec  Int?
+  calculatedAt      DateTime?
+  calculationStatus String?
+  geometry          String?   @db.Text
+  notes             String?
+  createdByUserId   String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  driver       Driver?      @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  vehicle      Vehicle?     @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  createdBy    User?        @relation("CreatedRoutes", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  stops        RouteStop[]
+
+  @@unique([organizationId, routeNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, plannedDate])
+  @@index([driverId])
+  @@index([vehicleId])
+  @@map("routes")
+}
+
+/// One ordered stop in a planned route. References the underlying Order and
+/// optional Dispatch without copying the full stop model. Address/city are
+/// snapshotted at stop-creation time so the route display stays stable even if
+/// the order is subsequently edited.
+model RouteStop {
+  id                  String          @id @default(uuid())
+  organizationId      String
+  routeId             String
+  sequence            Int
+  orderId             String?
+  dispatchId          String?
+  label               String?
+  address             String
+  city                String
+  lat                 Decimal?        @db.Decimal(10, 7)
+  lng                 Decimal?        @db.Decimal(10, 7)
+  plannedArrival        DateTime?
+  plannedDeparture      DateTime?
+  distanceFromPrevM     Int?
+  durationFromPrevSec   Int?
+  status                RouteStopStatus @default(PENDING)
+  optimizationLocked    Boolean         @default(false)
+  notes                 String?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  route        Route        @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  order        Order?       @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  dispatch     Dispatch?    @relation(fields: [dispatchId], references: [id], onDelete: SetNull)
+
+  @@unique([routeId, sequence])
+  @@index([organizationId, routeId])
+  @@index([orderId])
+  @@index([dispatchId])
+  @@map("route_stops")
+}
+

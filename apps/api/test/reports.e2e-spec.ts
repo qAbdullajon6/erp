@@ -181,12 +181,16 @@ describe("Reports (e2e)", () => {
         .expect(400);
     });
 
-    it("rejects an unknown query parameter", async () => {
+    /// Unknown parameters are dropped rather than rejected — see the
+    /// forbidNonWhitelisted note in configureApp. An invalid *known* parameter
+    /// still fails validation, which the test above covers; this one only
+    /// proves an unrecognised name cannot break an otherwise valid request.
+    it("ignores an unknown query parameter", async () => {
       const admin = await registerAdmin(`Reports Allowlist Org ${randomUUID()}`);
       await request(app.getHttpServer())
         .get("/reports/executive-overview?somethingUnknown=1")
         .set("Authorization", `Bearer ${admin.accessToken}`)
-        .expect(400);
+        .expect(200);
     });
   });
 

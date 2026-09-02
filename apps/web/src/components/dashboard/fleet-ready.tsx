@@ -11,24 +11,20 @@ interface FleetReadyProps {
   canDispatch?: boolean;
 }
 
-function licenseNote(expiry: string | null | undefined): { text: string; bad: boolean } | null {
+function licenseWarning(expiry: string | null | undefined): string | null {
   if (!expiry) return null;
   const days = Math.ceil((new Date(expiry).getTime() - Date.now()) / 86_400_000);
-  if (days < 0) return { text: "Expired", bad: true };
-  if (days <= 30) return { text: `${days}d left`, bad: true };
-  return {
-    text: new Date(expiry).toLocaleDateString(undefined, { month: "short", year: "2-digit" }),
-    bad: false,
-  };
+  if (days < 0) return "License expired";
+  if (days <= 30) return `License ${days}d`;
+  return null;
 }
 
-/// Ready pool — only fields the board actually returns. Hours-today / last
-/// assignment are omitted until the API exposes them (no invented metrics).
+/// Ready pool — compact scannable rows, not a detailed data table.
 export function FleetReady({ board, loading, canDispatch }: FleetReadyProps) {
-  if (loading) return <Skeleton className="h-56 rounded-xl" />;
+  if (loading) return <Skeleton className="h-48 rounded-xl" />;
   if (!board) {
     return (
-      <SurfaceCard className="p-3">
+      <SurfaceCard className="p-4">
         <p className="text-sm text-muted-foreground">Fleet not available for your role.</p>
       </SurfaceCard>
     );
@@ -39,16 +35,20 @@ export function FleetReady({ board, loading, canDispatch }: FleetReadyProps) {
   const busyCount = board.drivers.busy.length;
   const onLeave = board.drivers.onLeave.length;
 
-  const ordersPerDriver = new Map<
-    string,
-    { driver: (typeof board.drivers.busy)[0]["driver"]; count: number; orderId: string }
-  >();
-  for (const b of board.drivers.busy) {
-    const prev = ordersPerDriver.get(b.driver.id);
-    if (prev) prev.count += 1;
-    else ordersPerDriver.set(b.driver.id, { driver: b.driver, count: 1, orderId: b.currentOrder.id });
-  }
-  const overloaded = [...ordersPerDriver.values()].filter((d) => d.count > 1);
+  const overloaded = (() => {
+    const counts = new Map<string, { driver: (typeof board.drivers.busy)[0]["driver"]; orderId: string }>();
+    for (const b of board.drivers.busy) {
+      if (!counts.has(b.driver.id)) counts.set(b.driver.id, { driver: b.driver, orderId: b.currentOrder.id });
+    }
+    const dupes = new Map<string, number>();
+    for (const b of board.drivers.busy) {
+      dupes.set(b.driver.id, (dupes.get(b.driver.id) ?? 0) + 1);
+    }
+    return [...dupes.entries()]
+      .filter(([, n]) => n > 1)
+      .map(([id]) => counts.get(id)!)
+      .filter(Boolean);
+  })();
 
   return (
     <SurfaceCard className="flex h-full flex-col">
@@ -56,7 +56,8 @@ export function FleetReady({ board, loading, canDispatch }: FleetReadyProps) {
         <div>
           <h3 className="text-sm font-semibold text-foreground">Ready to assign</h3>
           <p className="text-[11px] text-muted-foreground">
-            {freeDrivers.length} free · {busyCount} busy · {onLeave} leave
+            {freeDrivers.length} free · {busyCount} busy
+            {onLeave > 0 ? ` · ${onLeave} leave` : ""}
           </p>
         </div>
         <span className="rounded-md bg-success/15 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-success">
@@ -65,10 +66,10 @@ export function FleetReady({ board, loading, canDispatch }: FleetReadyProps) {
       </SurfaceCardHeader>
 
       {overloaded.length > 0 && (
-        <div className="border-b border-warning/20 bg-warning/5 px-3 py-1.5">
-          {overloaded.map(({ driver, count, orderId }) => (
+        <div className="border-b border-warning/15 bg-warning/5 px-3 py-1.5">
+          {overloaded.map(({ driver, orderId }) => (
             <div key={driver.id} className="flex items-center gap-2 text-[11px]">
-              <AlertTriangle className="h-3 w-3 text-warning" />
+              <AlertTriangle className="h-3 w-3 shrink-0 text-warning" />
               <Link
                 to="/app/drivers/$driverId"
                 params={{ driverId: driver.id }}
@@ -76,20 +77,11 @@ export function FleetReady({ board, loading, canDispatch }: FleetReadyProps) {
               >
                 {driver.firstName} {driver.lastName}
               </Link>
-              <span className="text-warning">{count} jobs</span>
-              {driver.phone && (
-                <a
-                  href={`tel:${driver.phone}`}
-                  className="ml-auto text-brand"
-                  aria-label={`Call ${driver.firstName}`}
-                >
-                  <Phone className="h-3 w-3" />
-                </a>
-              )}
+              <span className="text-warning">overloaded</span>
               <Link
                 to="/app/orders/$orderId"
                 params={{ orderId }}
-                className="text-muted-foreground hover:text-brand"
+                className="ml-auto text-[10px] text-muted-foreground hover:text-brand"
               >
                 View
               </Link>
@@ -98,128 +90,101 @@ export function FleetReady({ board, loading, canDispatch }: FleetReadyProps) {
         </div>
       )}
 
-      <div className="grid flex-1 grid-cols-1 divide-y divide-border/60 sm:grid-cols-2 sm:divide-x sm:divide-y-0">
-        <div className="max-h-64 overflow-y-auto scrollbar-thin">
-          <p className="px-3 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+      <div className="grid flex-1 grid-cols-1 divide-y divide-border/50 sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+        {/* Drivers */}
+        <div className="overflow-y-auto scrollbar-thin">
+          <p className="px-3 pt-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Drivers
           </p>
           {freeDrivers.length === 0 ? (
             <p className="px-3 py-3 text-xs text-muted-foreground">None free</p>
           ) : (
-            freeDrivers.map((d) => {
-              const lic = licenseNote(d.licenseExpiry);
-              return (
-                <div key={d.id} className="flex items-start gap-2 px-3 py-2">
-                  <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-success/15 text-[10px] font-bold text-success">
-                    {(d.firstName[0] ?? "") + (d.lastName[0] ?? "")}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <Link
-                      to="/app/drivers/$driverId"
-                      params={{ driverId: d.id }}
-                      className="block truncate text-[13px] font-medium text-foreground hover:underline"
-                    >
-                      {d.firstName} {d.lastName}
-                    </Link>
-                    <dl className="mt-1 grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px]">
-                      <div>
-                        <dt className="text-muted-foreground">Load</dt>
-                        <dd className="font-medium text-foreground">0 jobs · Idle</dd>
-                      </div>
-                      <div>
-                        <dt className="text-muted-foreground">Truck</dt>
-                        <dd className="font-medium text-foreground">Unassigned</dd>
-                      </div>
-                      <div className={cn(lic?.bad && "text-warning")}>
-                        <dt className="text-muted-foreground">License</dt>
-                        <dd className={cn("font-medium", lic?.bad ? "text-warning" : "text-foreground")}>
-                          {lic?.text ?? "—"}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt className="text-muted-foreground">Phone</dt>
-                        <dd className="truncate font-medium text-foreground">{d.phone || "—"}</dd>
-                      </div>
-                      <div className="col-span-2">
-                        <dt className="text-muted-foreground">Code</dt>
-                        <dd className="font-mono text-foreground">{d.employeeCode}</dd>
-                      </div>
-                    </dl>
-                  </div>
-                  <div className="flex shrink-0 flex-col items-end gap-1">
-                    {d.phone && (
-                      <a
-                        href={`tel:${d.phone}`}
-                        aria-label={`Call ${d.firstName}`}
-                        className="rounded p-1 text-brand hover:bg-brand/10"
-                      >
-                        <Phone className="h-3.5 w-3.5" />
-                      </a>
-                    )}
-                    {canDispatch && (
+            <ul className="pb-1">
+              {freeDrivers.map((d) => {
+                const warn = licenseWarning(d.licenseExpiry);
+                return (
+                  <li key={d.id} className="flex items-center gap-2 px-3 py-2">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-success/15 text-[10px] font-bold text-success">
+                      {(d.firstName[0] ?? "") + (d.lastName[0] ?? "")}
+                    </span>
+                    <div className="min-w-0 flex-1">
                       <Link
-                        to="/app/dispatches/create"
-                        className="rounded border border-border px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground hover:border-brand hover:text-brand"
+                        to="/app/drivers/$driverId"
+                        params={{ driverId: d.id }}
+                        className="block truncate text-[13px] font-medium text-foreground hover:underline"
                       >
-                        Use
+                        {d.firstName} {d.lastName}
                       </Link>
-                    )}
-                  </div>
-                </div>
-              );
-            })
+                      {warn ? (
+                        <p className="text-[10px] font-medium text-warning">{warn}</p>
+                      ) : (
+                        <p className="text-[10px] text-muted-foreground">{d.employeeCode}</p>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      {d.phone && (
+                        <a
+                          href={`tel:${d.phone}`}
+                          aria-label={`Call ${d.firstName}`}
+                          className="rounded p-1 text-muted-foreground hover:bg-brand/10 hover:text-brand"
+                        >
+                          <Phone className="h-3.5 w-3.5" />
+                        </a>
+                      )}
+                      {canDispatch && (
+                        <Link
+                          to="/app/dispatches/create"
+                          className="rounded border border-border/60 px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground hover:border-brand/40 hover:text-brand"
+                        >
+                          Use
+                        </Link>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </div>
 
-        <div className="max-h-64 overflow-y-auto scrollbar-thin">
-          <p className="px-3 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        {/* Vehicles */}
+        <div className="overflow-y-auto scrollbar-thin">
+          <p className="px-3 pt-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Vehicles
           </p>
           {freeVehicles.length === 0 ? (
             <p className="px-3 py-3 text-xs text-muted-foreground">All in use</p>
           ) : (
-            freeVehicles.map((v) => (
-              <div key={v.id} className="flex items-start gap-2 px-3 py-2">
-                <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-brand/10 text-brand">
-                  <Truck className="h-3.5 w-3.5" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <Link
-                    to="/app/vehicles/$vehicleId"
-                    params={{ vehicleId: v.id }}
-                    className="block truncate font-mono text-[13px] font-semibold text-foreground hover:underline"
-                  >
-                    {v.plateNumber}
-                  </Link>
-                  <dl className="mt-1 grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px]">
-                    <div>
-                      <dt className="text-muted-foreground">Type</dt>
-                      <dd className="capitalize text-foreground">
-                        {v.type.toLowerCase().replace(/_/g, " ")}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-muted-foreground">Capacity</dt>
-                      <dd className="font-medium text-foreground">
-                        {v.capacityKg ? `${v.capacityKg} kg` : "—"}
-                      </dd>
-                    </div>
-                    <div className="col-span-2">
-                      <dt className="text-muted-foreground">Code</dt>
-                      <dd className="font-mono text-foreground">{v.vehicleCode}</dd>
-                    </div>
-                  </dl>
-                </div>
-                {canDispatch && (
-                  <Link
-                    to="/app/dispatches/create"
-                    className="rounded border border-border px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground hover:border-brand hover:text-brand"
-                  >
-                    Use
-                  </Link>
-                )}
-              </div>
-            ))
+            <ul className="pb-1">
+              {freeVehicles.map((v) => (
+                <li key={v.id} className="flex items-center gap-2 px-3 py-2">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted/50">
+                    <Truck className="h-3.5 w-3.5 text-muted-foreground" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <Link
+                      to="/app/vehicles/$vehicleId"
+                      params={{ vehicleId: v.id }}
+                      className="block truncate font-mono text-[13px] font-semibold text-foreground hover:underline"
+                    >
+                      {v.plateNumber}
+                    </Link>
+                    <p className="truncate text-[10px] capitalize text-muted-foreground">
+                      {v.type.toLowerCase().replace(/_/g, " ")}
+                      {v.capacityKg ? ` · ${v.capacityKg} kg` : ""}
+                    </p>
+                  </div>
+                  {canDispatch && (
+                    <Link
+                      to="/app/dispatches/create"
+                      className="shrink-0 rounded border border-border/60 px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground hover:border-brand/40 hover:text-brand"
+                    >
+                      Use
+                    </Link>
+                  )}
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       </div>

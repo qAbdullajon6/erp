@@ -1,11 +1,12 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { Prisma } from "@prisma/client";
+import { Prisma, UsageMetricType } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import type { WebhookConfig } from "../../config/configuration";
+import { UsageMeteringService } from "../../billing/usage-metering.service";
 import { signWebhookPayload } from "./webhook-signature.util";
 import { assertSafeWebhookUrl, WebhookUrlError } from "./webhook-url.util";
-import { WebhookCircuitBreaker, CircuitState } from "./webhook-circuit-breaker";
+import { WebhookCircuitBreaker } from "./webhook-circuit-breaker";
 
 /// How often the drain loop looks for due work.
 const POLL_INTERVAL_MS = 5_000;
@@ -42,6 +43,7 @@ export class WebhookDispatcherService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly usageMetering: UsageMeteringService,
   ) {
     const webhookConfig = this.config.getOrThrow<WebhookConfig>("webhook");
     this.circuitBreaker = new WebhookCircuitBreaker({
@@ -95,6 +97,14 @@ export class WebhookDispatcherService implements OnModuleInit, OnModuleDestroy {
       });
       if (existing) return existing;
     }
+
+    // Single choke point for all delivery creation (real fan-out, manual
+    // test-send, and replay). A direct user action (test-send/replay) sees
+    // this as a blocking error; the real fan-out path in WebhookEventService
+    // already wraps its entire call in try/catch and just logs, so a thrown
+    // ConflictException here is automatically swallowed there rather than
+    // failing the domain operation that triggered the event.
+    await this.usageMetering.enforceLimit(params.organizationId, UsageMetricType.WEBHOOKS, 1);
 
     let delivery;
     try {
@@ -193,6 +203,13 @@ export class WebhookDispatcherService implements OnModuleInit, OnModuleDestroy {
   /// outcome rather than trust a background loop to have gotten to it.
   async deliverNow(deliveryId: string): Promise<void> {
     await this.attemptDelivery(deliveryId);
+  }
+
+  /// An operator-triggered retry is an explicit recovery probe. Let it reach
+  /// the endpoint immediately instead of having the still-open circuit consume
+  /// another attempt without sending anything.
+  resetCircuitForManualRetry(endpointId: string): void {
+    this.circuitBreaker.reset(endpointId);
   }
 
   private async attemptDelivery(deliveryId: string): Promise<void> {

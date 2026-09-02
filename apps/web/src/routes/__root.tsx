@@ -13,6 +13,7 @@ import appCss from "../styles.css?url";
 import { captureError } from "@/lib/monitoring";
 import { Toaster } from "@/components/ui/sonner";
 import { AnalyticsProvider } from "@/components/analytics/AnalyticsProvider";
+import { initTheme } from "@/lib/theme";
 
 function NotFoundComponent() {
   return (
@@ -79,18 +80,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
-      { title: "FlowERP AI — Intelligent Logistics Command Center" },
+      { title: "FlowERP AI — Logistics operations platform" },
       {
         name: "description",
         content:
-          "The AI-native ERP for logistics teams. Unify orders, dispatch, tracking, fleet, and finance in one intelligent command center.",
+          "Run your entire logistics operation in one place: orders, dispatch, fleet, tracking and finance, with an AI assistant across all of it.",
       },
       { name: "author", content: "FlowERP AI" },
-      { property: "og:title", content: "FlowERP AI — Intelligent Logistics Command Center" },
+      { property: "og:title", content: "FlowERP AI — Logistics operations platform" },
       {
         property: "og:description",
         content:
-          "Run every delivery from one intelligent command center. Ask your operations. Get answers in seconds.",
+          "Orders, dispatch, fleet, tracking and finance in one workspace for logistics companies.",
       },
       { property: "og:type", content: "website" },
       { property: "og:image", content: "/og-image.png" },
@@ -106,8 +107,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     ],
     links: [
       { rel: "stylesheet", href: appCss },
-      { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
-      { rel: "icon", type: "image/x-icon", href: "/favicon.ico" },
+      { rel: "icon", type: "image/svg+xml", href: "/favicon.svg?v=2" },
       { rel: "apple-touch-icon", sizes: "180x180", href: "/apple-touch-icon.png" },
       { rel: "manifest", href: "/site.webmanifest" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -115,16 +115,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       // Preloading the font CSS (in addition to loading it as a stylesheet
       // below) lets the browser start fetching it immediately instead of
       // discovering it only after the render-blocking <link rel="stylesheet">
-      // cascade reaches it — shortens the window before Manrope/Inter are
+      // cascade reaches it — shortens the window before fonts are
       // available, reducing FOUT-driven shift on the above-the-fold H1.
       {
         rel: "preload",
         as: "style",
-        href: "https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap",
       },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap",
       },
     ],
   }),
@@ -159,6 +159,10 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
+  useEffect(() => {
+    initTheme();
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>

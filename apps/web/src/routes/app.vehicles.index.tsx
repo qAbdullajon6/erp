@@ -12,6 +12,9 @@ export type VehiclesSearch = {
 };
 
 export const Route = createFileRoute("/app/vehicles/")({
+  head: () => ({
+    meta: [{ title: "Vehicles — FlowERP AI" }],
+  }),
   validateSearch: (search: Record<string, unknown>): VehiclesSearch => {
     const out: VehiclesSearch = {};
     if (search.page != null && search.page !== "") {

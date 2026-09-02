@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { ArrowRight, Bell, BellOff, CheckCheck } from 'lucide-react';
 import { toast } from 'sonner';
-import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -17,6 +17,7 @@ import {
   useMarkAllReadMutation,
 } from '@/lib/api/notifications';
 import { NotificationItem } from './notification-item';
+import { describeError } from '@/lib/api/describe-error';
 
 /// DRIVER has no @Roles entry on NotificationsController at all — every
 /// route 403s for it. The bell must not fire any notification request for
@@ -69,28 +70,37 @@ export function NotificationBell() {
 
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        className="relative rounded-lg p-2 text-muted-foreground transition-colors hover:bg-brand/10 hover:text-brand"
-        aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
-      >
-        <Bell className="h-5 w-5" />
-        {unreadCount > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
-            {unreadCount > 99 ? '99+' : unreadCount}
-          </span>
-        )}
-      </button>
+      {/* Dropdown, not a slide-over: the bell anchors a popover directly
+          beneath it (GitHub-style), so the inbox is one glance away from the
+          topbar instead of covering the working surface. Radix handles
+          outside-click and Escape dismissal; state stays controlled so item
+          navigation can close it. */}
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button
+            className="relative rounded-lg p-2 text-muted-foreground transition-colors hover:bg-brand/10 hover:text-brand"
+            aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+          >
+            <Bell className="h-5 w-5" />
+            {unreadCount > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </button>
+        </PopoverTrigger>
 
-      {/* p-0 so the scroll region can run edge to edge; the header and footer
-          keep their own padding and stay pinned while the list scrolls. */}
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-lg">
-          {/* pr-14 keeps "Mark all read" clear of SheetContent's own close
-              button, which is absolutely positioned at right-4 top-4. */}
-          <div className="flex items-center justify-between gap-4 border-b border-brand/10 py-5 pl-6 pr-14">
+        <PopoverContent
+          side="bottom"
+          align="end"
+          sideOffset={8}
+          className="flex max-h-[70vh] w-[calc(100vw-1.5rem)] flex-col gap-0 overflow-hidden border-brand/10 p-0 sm:w-96"
+        >
+          <div className="flex items-center justify-between gap-3 border-b border-brand/10 py-3 pl-4 pr-3">
             <div className="flex items-center gap-2.5">
-              <SheetTitle className="text-lg font-semibold">Notifications</SheetTitle>
+              <p id="notifications-panel-title" className="text-base font-semibold">
+                Notifications
+              </p>
               {unreadCount > 0 && <Badge variant="danger">{unreadCount} unread</Badge>}
             </div>
 
@@ -103,18 +113,18 @@ export function NotificationBell() {
                 className="gap-1.5 text-muted-foreground hover:text-foreground"
               >
                 <CheckCheck className="h-4 w-4" />
-                {markingAll ? 'Marking…' : 'Mark all read'}
+                {markingAll ? 'Marking…' : 'Mark all'}
               </Button>
             )}
           </div>
 
-          <div className="flex-1 space-y-2 overflow-y-auto scrollbar-thin px-4 py-4">
+          <div aria-labelledby="notifications-panel-title" className="flex-1 space-y-2 overflow-y-auto scrollbar-thin px-3 py-3">
             {isLoading &&
               Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
 
             {isError && !isLoading && (
               <ErrorState
-                message={error instanceof Error ? error.message : 'Failed to load notifications'}
+                message={describeError(error, 'Failed to load notifications')}
                 onRetry={() => refetch()}
               />
             )}
@@ -146,18 +156,18 @@ export function NotificationBell() {
               ))}
           </div>
 
-          <div className="border-t border-brand/10 px-6 py-4">
+          <div className="border-t border-brand/10 px-3 py-2.5">
             <Link
               to="/app/notifications"
               onClick={() => setOpen(false)}
-              className="flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium text-brand transition-colors hover:bg-brand/10"
+              className="flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-sm font-medium text-brand transition-colors hover:bg-brand/10"
             >
               View all notifications
               <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
-        </SheetContent>
-      </Sheet>
+        </PopoverContent>
+      </Popover>
     </>
   );
 }

@@ -14,6 +14,34 @@ export class CustomerPortalInvitationNotFoundError extends NotFoundException {
   }
 }
 
+/// The referenced customer does not exist (or is not visible in this scope).
+/// Distinct from CustomerPortalInvitationNotFoundError — this is thrown before
+/// any invitation is involved, so "Invitation not found" would be misleading.
+export class CustomerPortalCustomerNotFoundError extends NotFoundException {
+  constructor() {
+    super("Customer not found");
+  }
+}
+
+/// The customer exists and is eligible, but has no email address on file to
+/// send the invitation to. This is a staff-facing action on a customer the
+/// caller is already looking at — naming the precondition is more useful
+/// than the generic "not found" it used to reuse, and leaks nothing an
+/// enumeration attacker could use (unlike the token-validation errors above).
+export class CustomerPortalCustomerEmailMissingError extends ConflictException {
+  constructor() {
+    super("This customer has no email address on file — add one before inviting them to the portal");
+  }
+}
+
+/// The customer has no portal account to suspend/reactivate. Distinct from
+/// CustomerPortalInvitationNotFoundError — no invitation is involved here.
+export class CustomerPortalAccountNotFoundError extends NotFoundException {
+  constructor() {
+    super("This customer does not have a portal account");
+  }
+}
+
 /// The invitation exists but its validity window has passed. 410 Gone: the
 /// resource was valid once and is no longer.
 export class CustomerPortalInvitationExpiredError extends GoneException {

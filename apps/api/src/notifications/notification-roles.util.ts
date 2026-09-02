@@ -10,12 +10,15 @@ const ALL_CATEGORIES: NotificationCategory[] = ["OPERATIONS", "FINANCE", "CUSTOM
 /// outside the caller's allowed categories. DRIVER has no entry — matched
 /// against `[]`, so every route the guard doesn't already block also
 /// resolves to zero visible rows/actions for it.
+///
+/// SUPPORT is appended to every non-DRIVER role so staff-reply notifications
+/// are visible in every team member's notification bell.
 const ROLE_CATEGORIES: Record<MembershipRole, NotificationCategory[]> = {
-  ADMIN: ALL_CATEGORIES,
-  OPERATIONS_MANAGER: ["OPERATIONS", "FLEET"],
-  DISPATCHER: ["OPERATIONS", "FLEET"],
-  ACCOUNTANT: ["FINANCE"],
-  SALES_CRM_MANAGER: ["CUSTOMERS"],
+  ADMIN: [...ALL_CATEGORIES, "SUPPORT"],
+  OPERATIONS_MANAGER: ["OPERATIONS", "FLEET", "SUPPORT"],
+  DISPATCHER: ["OPERATIONS", "FLEET", "SUPPORT"],
+  ACCOUNTANT: ["FINANCE", "SUPPORT"],
+  SALES_CRM_MANAGER: ["CUSTOMERS", "SUPPORT"],
   DRIVER: [],
 };
 

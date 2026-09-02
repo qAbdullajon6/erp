@@ -31,7 +31,11 @@ import { PublicApiModule } from "./public-api/public-api.module";
 import { ImportModule } from "./import/import.module";
 import { AiModule } from "./ai/ai.module";
 import { TelematicsModule } from "./telematics/telematics.module";
+import { GeocodingModule } from "./geocoding/geocoding.module";
 import { BillingModule } from "./billing/billing.module";
+import { PlatformModule } from "./platform/platform.module";
+import { RoutesModule } from "./routes/routes.module";
+import { SupportModule } from "./support/support.module";
 import { testSupportImports } from "./test-support/test-support.module";
 import { LoggingMiddleware } from "./common/middleware/logging.middleware";
 
@@ -87,8 +91,12 @@ import { LoggingMiddleware } from "./common/middleware/logging.middleware";
     PublicApiModule,
     ImportModule,
     TelematicsModule,
+    GeocodingModule,
+    RoutesModule,
     AiModule,
     BillingModule,
+    PlatformModule,
+    SupportModule,
     // TEST-ONLY. Yields TestSupportModule under NODE_ENV=test and an empty list
     // everywhere else, so a production build registers zero extra routes and
     // zero extra providers. The e2e suite needs it because a raw invitation

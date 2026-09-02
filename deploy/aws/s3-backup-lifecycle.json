@@ -1,0 +1,20 @@
+{
+  "Rules": [
+    {
+      "ID": "ExpireFlowERPBackups",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": "backups/"
+      },
+      "Expiration": {
+        "Days": 90
+      },
+      "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 30
+      },
+      "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 7
+      }
+    }
+  ]
+}

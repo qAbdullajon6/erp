@@ -28,6 +28,8 @@ const STATUS_VARIANTS: Record<string, BadgeVariant> = {
   // Dispatch
   EN_ROUTE_TO_PICKUP: 'brand',
   AT_PICKUP: 'brand',
+  ARRIVED_AT_DELIVERY: 'warning',
+  DELIVERY_FAILED: 'danger',
 
   // Drivers
   ON_LEAVE: 'warning',
@@ -64,17 +66,28 @@ const STATUS_VARIANTS: Record<string, BadgeVariant> = {
   TRIAL: 'brand',
   SUSPENDED: 'warning',
   EXPIRED: 'danger',
+
+  // Workflow executions — CANCELLED already covered above under lifecycle.
+  QUEUED: 'warning',
+  RUNNING: 'brand',
+  COMPLETED: 'success',
+  FAILED: 'danger',
+  TIMED_OUT: 'danger',
 };
 
 export function statusVariant(status: string): BadgeVariant {
   return STATUS_VARIANTS[status] ?? 'muted';
 }
 
-/** Renders `IN_TRANSIT` as `In Transit`. */
+/// Title-casing every word turns an acronym into a word: SALES_CRM_MANAGER
+/// read as "Sales Crm Manager" in the role picker and on every member row.
+const ACRONYMS = new Set(['API', 'CRM', 'ETA', 'GPS', 'ID', 'KPI', 'POD', 'SMS', 'VAT']);
+
+/** Renders `IN_TRANSIT` as `In Transit`, and `SALES_CRM_MANAGER` as `Sales CRM Manager`. */
 export function statusLabel(status: string): string {
   return status
     .split('_')
-    .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
+    .map((word) => (ACRONYMS.has(word) ? word : word.charAt(0) + word.slice(1).toLowerCase()))
     .join(' ');
 }
 

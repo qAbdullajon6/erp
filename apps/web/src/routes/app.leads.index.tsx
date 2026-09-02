@@ -1,16 +1,11 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { LeadsList } from "@/components/leads/leads-list";
-import { ProtectedApiRoute } from "@/components/layout/protected-api-route";
+import { createFileRoute, redirect } from '@tanstack/react-router';
 
-export const Route = createFileRoute("/app/leads/")({
-  head: () => ({ meta: [{ title: "Leads — FlowERP AI" }] }),
-  component: LeadsPage,
+/// Leads moved to the Platform Console — keep the old URL working.
+export const Route = createFileRoute('/app/leads/')({
+  head: () => ({
+    meta: [{ title: "Leads — FlowERP AI" }],
+  }),
+  beforeLoad: () => {
+    throw redirect({ to: '/platform/leads' });
+  },
 });
-
-function LeadsPage() {
-  return (
-    <ProtectedApiRoute>
-      <LeadsList />
-    </ProtectedApiRoute>
-  );
-}

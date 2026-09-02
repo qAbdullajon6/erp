@@ -1,4 +1,6 @@
 import { PaymentProviderRegistry } from "./payment-provider.registry";
+import { PrismaService } from "../prisma/prisma.service";
+import { asDependency } from "./test-support/billing-spec.helpers";
 import { createCipheriv, randomBytes } from "crypto";
 
 function encryptConfig(config: object, secret: string): string {
@@ -12,18 +14,28 @@ function encryptConfig(config: object, secret: string): string {
 
 const APP_SECRET = "test-secret-key-for-encryption-32";
 
-function makePrisma(orgProvider: any = null, systemProvider: any = null) {
+interface MockProviderConfig {
+  providerType: string;
+  config: string;
+  isActive: boolean;
+  isPrimary: boolean;
+  organizationId: string | null;
+}
+
+function makePrisma(orgProvider: MockProviderConfig | null = null, systemProvider: MockProviderConfig | null = null) {
   return {
     paymentProviderConfig: {
-      findFirst: jest.fn().mockImplementation(({ where }) => {
+      findFirst: jest.fn().mockImplementation(({ where }: { where: { organizationId: string | null } }) => {
         if (where.organizationId === null) return Promise.resolve(systemProvider);
         return Promise.resolve(orgProvider);
       }),
       findMany: jest.fn().mockResolvedValue(
-        [orgProvider, systemProvider].filter(Boolean).map((p) => ({ providerType: p?.providerType })),
+        [orgProvider, systemProvider]
+          .filter((p): p is MockProviderConfig => p !== null)
+          .map((p) => ({ providerType: p.providerType })),
       ),
     },
-  } as any;
+  };
 }
 
 describe("PaymentProviderRegistry", () => {
@@ -47,7 +59,7 @@ describe("PaymentProviderRegistry", () => {
         isPrimary: true,
         organizationId: "org-1",
       });
-      const registry = new PaymentProviderRegistry(prisma);
+      const registry = new PaymentProviderRegistry(asDependency<PrismaService>(prisma));
 
       const provider = await registry.getProvider("org-1");
       expect(provider).not.toBeNull();
@@ -62,7 +74,7 @@ describe("PaymentProviderRegistry", () => {
         isPrimary: true,
         organizationId: null,
       });
-      const registry = new PaymentProviderRegistry(prisma);
+      const registry = new PaymentProviderRegistry(asDependency<PrismaService>(prisma));
 
       const provider = await registry.getProvider("org-1");
       expect(provider).not.toBeNull();
@@ -70,7 +82,7 @@ describe("PaymentProviderRegistry", () => {
 
     it("returns null when no provider configured at any level", async () => {
       const prisma = makePrisma(null, null);
-      const registry = new PaymentProviderRegistry(prisma);
+      const registry = new PaymentProviderRegistry(asDependency<PrismaService>(prisma));
 
       const provider = await registry.getProvider("org-1");
       expect(provider).toBeNull();
@@ -85,7 +97,7 @@ describe("PaymentProviderRegistry", () => {
         isPrimary: true,
         organizationId: "org-1",
       });
-      const registry = new PaymentProviderRegistry(prisma);
+      const registry = new PaymentProviderRegistry(asDependency<PrismaService>(prisma));
 
       await registry.getProvider("org-1");
       await registry.getProvider("org-1");
@@ -94,12 +106,15 @@ describe("PaymentProviderRegistry", () => {
     });
 
     it("creates Click provider for CLICK type", async () => {
-      const config = encryptConfig({
-        merchantId: "m123",
-        serviceId: "s456",
-        secretKey: "sk_click",
-        merchantUserId: "mu789",
-      }, APP_SECRET);
+      const config = encryptConfig(
+        {
+          merchantId: "m123",
+          serviceId: "s456",
+          secretKey: "sk_click",
+          merchantUserId: "mu789",
+        },
+        APP_SECRET,
+      );
       const prisma = makePrisma({
         providerType: "CLICK",
         config,
@@ -107,17 +122,20 @@ describe("PaymentProviderRegistry", () => {
         isPrimary: true,
         organizationId: "org-1",
       });
-      const registry = new PaymentProviderRegistry(prisma);
+      const registry = new PaymentProviderRegistry(asDependency<PrismaService>(prisma));
 
       const provider = await registry.getProvider("org-1");
       expect(provider).not.toBeNull();
     });
 
     it("creates Payme provider for PAYME type", async () => {
-      const config = encryptConfig({
-        merchantId: "pm123",
-        secretKey: "sk_payme",
-      }, APP_SECRET);
+      const config = encryptConfig(
+        {
+          merchantId: "pm123",
+          secretKey: "sk_payme",
+        },
+        APP_SECRET,
+      );
       const prisma = makePrisma({
         providerType: "PAYME",
         config,
@@ -125,7 +143,7 @@ describe("PaymentProviderRegistry", () => {
         isPrimary: true,
         organizationId: "org-1",
       });
-      const registry = new PaymentProviderRegistry(prisma);
+      const registry = new PaymentProviderRegistry(asDependency<PrismaService>(prisma));
 
       const provider = await registry.getProvider("org-1");
       expect(provider).not.toBeNull();
@@ -140,7 +158,7 @@ describe("PaymentProviderRegistry", () => {
         isPrimary: true,
         organizationId: "org-1",
       });
-      const registry = new PaymentProviderRegistry(prisma);
+      const registry = new PaymentProviderRegistry(asDependency<PrismaService>(prisma));
 
       await expect(registry.getProvider("org-1")).rejects.toThrow(/Unsupported payment provider/);
     });
@@ -156,7 +174,7 @@ describe("PaymentProviderRegistry", () => {
         isPrimary: true,
         organizationId: "org-1",
       });
-      const registry = new PaymentProviderRegistry(prisma);
+      const registry = new PaymentProviderRegistry(asDependency<PrismaService>(prisma));
 
       await expect(registry.getProvider("org-1")).rejects.toThrow(/APP_SECRET not configured/);
     });
@@ -169,7 +187,7 @@ describe("PaymentProviderRegistry", () => {
         isPrimary: true,
         organizationId: "org-1",
       });
-      const registry = new PaymentProviderRegistry(prisma);
+      const registry = new PaymentProviderRegistry(asDependency<PrismaService>(prisma));
 
       await expect(registry.getProvider("org-1")).rejects.toThrow(/Failed to decrypt/);
     });
@@ -185,7 +203,7 @@ describe("PaymentProviderRegistry", () => {
         isPrimary: true,
         organizationId: "org-1",
       });
-      const registry = new PaymentProviderRegistry(prisma);
+      const registry = new PaymentProviderRegistry(asDependency<PrismaService>(prisma));
 
       await registry.getProvider("org-1");
       registry.clearCache("org-1");
@@ -203,7 +221,7 @@ describe("PaymentProviderRegistry", () => {
         isPrimary: true,
         organizationId: "org-1",
       });
-      const registry = new PaymentProviderRegistry(prisma);
+      const registry = new PaymentProviderRegistry(asDependency<PrismaService>(prisma));
 
       await registry.getProvider("org-1");
       registry.clearCache();
@@ -220,7 +238,7 @@ describe("PaymentProviderRegistry", () => {
         { providerType: "STRIPE", config, isActive: true, isPrimary: true, organizationId: "org-1" },
         { providerType: "CLICK", config, isActive: true, isPrimary: true, organizationId: null },
       );
-      const registry = new PaymentProviderRegistry(prisma);
+      const registry = new PaymentProviderRegistry(asDependency<PrismaService>(prisma));
 
       const types = await registry.listProviders("org-1");
       expect(types).toContain("STRIPE");

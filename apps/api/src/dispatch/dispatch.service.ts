@@ -4,7 +4,10 @@ import { PrismaService } from "../prisma/prisma.service";
 import { AssignmentQueries, TripSummary } from "./assignment/assignment.queries";
 import { DispatchAvailabilityQueryDto } from "./dto/dispatch-availability-query.dto";
 
-function toDriverSummary(driver: Driver) {
+function toDriverSummary(
+  driver: Driver,
+  extras: { onBreak?: boolean } = {},
+) {
   return {
     id: driver.id,
     employeeCode: driver.employeeCode,
@@ -12,6 +15,8 @@ function toDriverSummary(driver: Driver) {
     lastName: driver.lastName,
     phone: driver.phone,
     status: driver.status,
+    operationalStatus: driver.operationalStatus,
+    onBreak: extras.onBreak ?? driver.operationalStatus === "BREAK",
     licenseExpiry: driver.licenseExpiry?.toISOString() ?? null,
   };
 }
@@ -56,6 +61,7 @@ function toBoardUnassignedOrder(order: {
   createdAt: Date;
   cargoWeightKg: { toString(): string } | null;
   customer: { companyName: string };
+  dispatches: Array<{ failureReason: string | null }>;
 }) {
   return {
     id: order.id,
@@ -70,6 +76,9 @@ function toBoardUnassignedOrder(order: {
     currency: order.currency,
     createdAt: order.createdAt.toISOString(),
     cargoWeightKg: order.cargoWeightKg?.toString() ?? null,
+    lastFailedDelivery: order.dispatches[0]
+      ? { failureReason: order.dispatches[0].failureReason }
+      : null,
   };
 }
 
@@ -90,9 +99,9 @@ export class DispatchService {
   /// assignment checks. It used to derive busy-ness from orders alone, so a
   /// driver held by a dispatch showed up as free.
   async board(organizationId: string) {
-    const [unassignedOrders, drivers, vehicles, reservations] = await Promise.all([
+    const [unassignedOrders, drivers, vehicles, reservations, openBreaks] = await Promise.all([
       this.prisma.order.findMany({
-        where: { organizationId, status: "PENDING" },
+        where: { organizationId, archivedAt: null, status: "PENDING" },
         orderBy: { pickupDate: "asc" },
         select: {
           id: true,
@@ -107,14 +116,26 @@ export class DispatchService {
           createdAt: true,
           cargoWeightKg: true,
           customer: { select: { companyName: true } },
+          dispatches: {
+            where: { status: "DELIVERY_FAILED" },
+            select: { failureReason: true },
+            orderBy: { createdAt: "desc" as const },
+            take: 1,
+          },
         },
       }),
       this.prisma.driver.findMany({ where: { organizationId, archivedAt: null } }),
       this.prisma.vehicle.findMany({ where: { organizationId, archivedAt: null } }),
-      // No window: the board asks "who is committed at all", not "who is free
-      // between these dates".
       this.assignmentQueries.reservationsIn(organizationId),
+      this.prisma.driverBreak.findMany({
+        where: { organizationId, endedAt: null },
+        select: { driverId: true },
+      }),
     ]);
+
+    const onBreakIds = new Set(openBreaks.map((b) => b.driverId));
+    const summarize = (d: (typeof drivers)[number]) =>
+      toDriverSummary(d, { onBreak: onBreakIds.has(d.id) || d.operationalStatus === "BREAK" });
 
     const heldDriver = (id: string) =>
       AssignmentQueries.reservationFor(reservations, "driverId", id);
@@ -125,16 +146,19 @@ export class DispatchService {
       unassignedOrders: unassignedOrders.map(toBoardUnassignedOrder),
       drivers: {
         available: drivers
-          .filter((d) => d.status === "ACTIVE" && !heldDriver(d.id))
-          .map(toDriverSummary),
+          .filter((d) => d.status === "ACTIVE" && !heldDriver(d.id) && d.operationalStatus !== "BREAK")
+          .map(summarize),
         busy: drivers
           .filter((d) => d.status === "ACTIVE" && heldDriver(d.id))
           .map((d) => ({
-            driver: toDriverSummary(d),
+            driver: summarize(d),
             currentOrder: toOrderSummary(heldDriver(d.id)!.trip),
           })),
-        onLeave: drivers.filter((d) => d.status === "ON_LEAVE").map(toDriverSummary),
-        inactive: drivers.filter((d) => d.status === "INACTIVE").map(toDriverSummary),
+        onBreak: drivers
+          .filter((d) => d.status === "ACTIVE" && (onBreakIds.has(d.id) || d.operationalStatus === "BREAK"))
+          .map(summarize),
+        onLeave: drivers.filter((d) => d.status === "ON_LEAVE").map(summarize),
+        inactive: drivers.filter((d) => d.status === "INACTIVE").map(summarize),
       },
       vehicles: {
         available: vehicles
@@ -171,7 +195,7 @@ export class DispatchService {
 
     if (!query.pickupDate || !query.deliveryDate) {
       return {
-        drivers: drivers.map(toDriverSummary),
+        drivers: drivers.map((d) => toDriverSummary(d)),
         vehicles: vehicles.map(toVehicleSummary),
       };
     }
@@ -183,7 +207,7 @@ export class DispatchService {
     const busy = AssignmentQueries.busyResourceIds(reservations);
 
     return {
-      drivers: drivers.filter((d) => !busy.driverIds.has(d.id)).map(toDriverSummary),
+      drivers: drivers.filter((d) => !busy.driverIds.has(d.id)).map((d) => toDriverSummary(d)),
       vehicles: vehicles.filter((v) => !busy.vehicleIds.has(v.id)).map(toVehicleSummary),
     };
   }

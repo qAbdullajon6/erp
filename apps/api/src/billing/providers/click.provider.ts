@@ -9,6 +9,7 @@ import {
   type CreateCustomerRequest,
   type CreateCustomerResponse,
 } from "./payment-provider.interface";
+import type { ClickApiResponse, ClickWebhookPayload } from "../types/click-api.types";
 
 /// Click payment provider (Uzbekistan payment gateway).
 ///
@@ -73,22 +74,22 @@ export class ClickPaymentProvider extends PaymentProvider {
         body: JSON.stringify(payload),
       });
 
-      const data = await response.json();
+      const data = (await response.json()) as ClickApiResponse;
 
       if (data.error_code === 0) {
         return {
           success: true,
-          chargeId: data.invoice_id.toString(),
+          chargeId: data.invoice_id?.toString() ?? "",
           createdAt: new Date(),
         };
-      } else {
-        return {
-          success: false,
-          error: data.error_note ?? "Payment failed",
-          errorCode: data.error_code?.toString(),
-        };
       }
-    } catch (error: any) {
+
+      return {
+        success: false,
+        error: data.error_note ?? "Payment failed",
+        errorCode: data.error_code?.toString(),
+      };
+    } catch (error: unknown) {
       this.logger.error(`Click charge failed:`, error);
       throw error;
     }
@@ -116,7 +117,7 @@ export class ClickPaymentProvider extends PaymentProvider {
         body: JSON.stringify(payload),
       });
 
-      const data = await response.json();
+      const data = (await response.json()) as ClickApiResponse;
 
       if (data.error_code === 0) {
         return {
@@ -125,31 +126,31 @@ export class ClickPaymentProvider extends PaymentProvider {
           refundedAmount: request.amount,
           createdAt: new Date(),
         };
-      } else {
-        return {
-          success: false,
-          error: data.error_note ?? "Refund failed",
-          errorCode: data.error_code?.toString(),
-        };
       }
-    } catch (error: any) {
+
+      return {
+        success: false,
+        error: data.error_note ?? "Refund failed",
+        errorCode: data.error_code?.toString(),
+      };
+    } catch (error: unknown) {
       this.logger.error(`Click refund failed:`, error);
       throw error;
     }
   }
 
-  async createCustomer(_request: CreateCustomerRequest): Promise<CreateCustomerResponse> {
+  createCustomer(_request: CreateCustomerRequest): Promise<CreateCustomerResponse> {
     // Click does not have customer management API
     // Return phone number as "customer ID" for transaction tagging
-    return {
+    return Promise.resolve({
       success: true,
       customerId: _request.phone ?? _request.email,
-    };
+    });
   }
 
   verifyWebhookSignature(payload: string, _signature: string, webhookSecret: string): boolean {
     try {
-      const data = JSON.parse(payload);
+      const data = JSON.parse(payload) as ClickWebhookPayload;
 
       // Click webhook signature verification
       // sign_string = click_trans_id + service_id + secret_key + merchant_trans_id + amount + action + sign_time
@@ -171,9 +172,11 @@ export class ClickPaymentProvider extends PaymentProvider {
     }
   }
 
-  async getCustomerPortalUrl(_customerId: string, _returnUrl?: string): Promise<string | null> {
+  getCustomerPortalUrl(customerId: string, returnUrl?: string): Promise<string | null> {
+    void customerId;
+    void returnUrl;
     // Click does not have customer portal
-    return null;
+    return Promise.resolve(null);
   }
 
   /// Generate MD5 hash for Click API signature.

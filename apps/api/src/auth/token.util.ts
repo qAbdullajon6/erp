@@ -12,3 +12,13 @@ export function generateRefreshToken(): string {
 export function hashRefreshToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
+
+/// Password reset tokens are shorter lived than refresh tokens but use the
+/// same opaque-capability pattern: high entropy in the link, hash only at rest.
+export function generatePasswordResetToken(): string {
+  return randomBytes(32).toString("base64url");
+}
+
+export function hashPasswordResetToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}

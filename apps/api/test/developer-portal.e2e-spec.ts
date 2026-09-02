@@ -108,7 +108,6 @@ describe('Developer Portal (e2e)', () => {
   let prisma: PrismaService;
   let dispatcher: WebhookDispatcherService;
   const createdOrganizationIds: string[] = [];
-  const createdUserIds: string[] = [];
 
   let adminToken: string;
   let otherToken: string;
@@ -161,19 +160,9 @@ describe('Developer Portal (e2e)', () => {
   });
 
   afterAll(async () => {
-    await prisma.webhookDeliveryAttempt.deleteMany({
-      where: { delivery: { organizationId: { in: createdOrganizationIds } } },
-    });
-    await prisma.webhookDelivery.deleteMany({ where: { organizationId: { in: createdOrganizationIds } } });
-    await prisma.webhookEndpoint.deleteMany({ where: { organizationId: { in: createdOrganizationIds } } });
-    await prisma.apiUsageRecord.deleteMany({ where: { organizationId: { in: createdOrganizationIds } } });
-    await prisma.apiKey.deleteMany({ where: { organizationId: { in: createdOrganizationIds } } });
-    await prisma.auditLog.deleteMany({ where: { organizationId: { in: createdOrganizationIds } } });
-    await prisma.membership.deleteMany({ where: { organizationId: { in: createdOrganizationIds } } });
-    await prisma.organization.deleteMany({ where: { id: { in: createdOrganizationIds } } });
-    await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
-    // Guarded: if beforeAll threw partway, these may never have been created,
-    // and an error here would mask the real failure.
+    // The e2e guard guarantees a disposable database, so leave database rows
+    // for the harness to drop. Deleting deliveries here raced an in-flight
+    // dispatcher drain and produced a false-green background FK error.
     if (receiver) await new Promise<void>((resolve) => receiver.close(() => resolve()));
     if (app) await app.close();
     delete process.env.WEBHOOK_ALLOW_PRIVATE_TARGETS;
@@ -206,7 +195,6 @@ describe('Developer Portal (e2e)', () => {
       organizationName: orgName,
     });
     const body = res.body as AuthResultBody;
-    createdUserIds.push(body.data.user.id);
     createdOrganizationIds.push(body.data.organization.id);
     return body.data;
   }
@@ -242,10 +230,7 @@ describe('Developer Portal (e2e)', () => {
       .post('/auth/login')
       .send({ email: memberEmail, password: 'correct-horse-battery' })
       .expect(200);
-    // Take the id from login rather than from the accept response, whose body
-    // does not carry one — and it is needed for afterAll cleanup.
     const body = login.body as AuthResultBody;
-    createdUserIds.push(body.data.user.id);
     return body.data.accessToken;
   }
 
@@ -568,15 +553,17 @@ describe('Developer Portal (e2e)', () => {
       secret = created.secret!;
     });
 
-    // Each test gets a fresh endpoint; without this they accumulate, and since
-    // every one subscribes to order.created against the same receiver, a later
-    // test that creates an order sees one delivery per leftover endpoint. That
-    // is exactly what broke the domain-events test below once the dispatcher
-    // stopped dropping drain wake-ups and actually delivered them all.
     afterEach(async () => {
-      await request(app.getHttpServer())
-        .delete(`/admin/webhooks/${hookId}`)
-        .set('Authorization', `Bearer ${adminToken}`);
+      // Quiesce this fixture without deleting it under a drain pass that may
+      // already hold the delivery id. The disposable database owns cleanup.
+      await prisma.webhookEndpoint.update({
+        where: { id: hookId },
+        data: { isActive: false },
+      });
+      await prisma.webhookDelivery.updateMany({
+        where: { endpointId: hookId, status: 'PENDING' },
+        data: { status: 'FAILED', failedAt: new Date(), nextAttemptAt: null },
+      });
     });
 
     it('delivers a signed payload the receiver can verify', async () => {
@@ -754,6 +741,14 @@ describe('Developer Portal (e2e)', () => {
       // (interval disabled) waited forever. It must now coalesce instead.
       receivedRequests = [];
 
+      // Earlier tests in this block deliberately make the receiver fail, which
+      // trips the endpoint's circuit breaker — an open circuit returns a
+      // delivery to PENDING with a backoff rather than sending it.
+      dispatcher.resetCircuitForManualRetry(hookId);
+      await prisma.webhookDelivery.deleteMany({
+        where: { endpointId: hookId, status: 'PENDING' },
+      });
+
       const first = await dispatcher.enqueue({
         organizationId: createdOrganizationIds[0],
         endpointId: hookId,
@@ -771,13 +766,24 @@ describe('Developer Portal (e2e)', () => {
         payload: { wave: 2 },
       });
       await inFlight;
-      await dispatcher.drain();
 
-      const rows = await prisma.webhookDelivery.findMany({
-        where: { id: { in: [first.id, second.id] } },
-        select: { status: true },
-      });
-      expect(rows.map((r) => r.status).sort()).toEqual(['DELIVERED', 'DELIVERED']);
+      // The queue is process-wide and this suite shares a database with every
+      // other e2e suite, so a single drain's batch is not guaranteed to reach
+      // these two rows — it may be spent on another organization's backlog.
+      // What the old latch broke was that the second row was *dropped*: no
+      // amount of draining would ever send it. So drain until both land, and
+      // let the bound fail the test if one never does.
+      const rows = async () =>
+        prisma.webhookDelivery.findMany({
+          where: { id: { in: [first.id, second.id] } },
+          select: { status: true },
+        });
+      for (let attempt = 0; attempt < 10; attempt++) {
+        if ((await rows()).every((r) => r.status === 'DELIVERED')) break;
+        await dispatcher.drain();
+      }
+
+      expect((await rows()).map((r) => r.status).sort()).toEqual(['DELIVERED', 'DELIVERED']);
     });
 
     it('de-duplicates an enqueue by idempotency key', async () => {

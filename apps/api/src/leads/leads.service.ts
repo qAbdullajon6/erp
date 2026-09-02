@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { Injectable, Logger, NotFoundException, BadRequestException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
@@ -7,6 +7,8 @@ import type { LeadsConfig } from "../config/configuration";
 import { CreateLeadDto } from "./dto/create-lead.dto";
 import { ListLeadsQueryDto } from "./dto/list-leads-query.dto";
 import { UpdateLeadStatusDto } from "./dto/update-lead-status.dto";
+import { PlatformNotificationsService } from "../platform/platform-notifications.service";
+import { LeadTimelineService } from "./lead-timeline.service";
 
 @Injectable()
 export class LeadsService {
@@ -16,6 +18,8 @@ export class LeadsService {
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
     private readonly config: ConfigService,
+    private readonly platformNotifications: PlatformNotificationsService,
+    private readonly timeline: LeadTimelineService,
   ) {}
 
   /// Returns only an acknowledgement, never the stored row: the endpoint is
@@ -40,12 +44,29 @@ export class LeadsService {
         referrer: clean(dto.referrer),
         landingPath: clean(dto.landingPath),
       },
-      select: { id: true, createdAt: true },
+      select: { id: true, createdAt: true, company: true },
     });
+
+    await this.timeline.appendDemoRequested(lead.id, lead.company);
 
     this.logger.log(
       `New demo request ${lead.id} from ${dto.company} (source: ${dto.source ?? "landing_demo_modal"})`,
     );
+
+    void this.platformNotifications
+      .create({
+        type: "lead.new",
+        severity: "INFO",
+        title: "New Lead",
+        body: `${dto.company} — ${dto.name} (${dto.email})`,
+        entityType: "Lead",
+        entityId: lead.id,
+      })
+      .catch((error) =>
+        this.logger.warn(
+          `Lead saved but platform notification failed: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      );
 
     // Best-effort notifications. A failed/absent mail transport must never
     // fail the visitor's submission — the lead is already safely persisted.
@@ -147,14 +168,30 @@ export class LeadsService {
   }
 
   async getById(id: string) {
-    const lead = await this.prisma.lead.findUnique({ where: { id } });
+    const lead = await this.prisma.lead.findUnique({
+      where: { id },
+      include: {
+        timelineEvents: { orderBy: { createdAt: "asc" } },
+        convertedOrganization: { select: { id: true, name: true, slug: true, status: true } },
+      },
+    });
     if (!lead) throw new NotFoundException("Lead not found");
     return lead;
   }
 
   async updateStatus(id: string, dto: UpdateLeadStatusDto) {
-    await this.getById(id);
-    return this.prisma.lead.update({ where: { id }, data: { status: dto.status } });
+    const existing = await this.getById(id);
+    if (existing.convertedOrganizationId && dto.status !== "CLOSED") {
+      throw new BadRequestException("Converted leads stay CLOSED");
+    }
+    const updated = await this.prisma.lead.update({
+      where: { id },
+      data: { status: dto.status },
+    });
+    if (existing.status !== dto.status) {
+      await this.timeline.appendForStatusChange(id, dto.status);
+    }
+    return updated;
   }
 
   /// Powers the pipeline counters above the list, so filtering to one status

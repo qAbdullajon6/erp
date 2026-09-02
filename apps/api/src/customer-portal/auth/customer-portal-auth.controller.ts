@@ -1,5 +1,6 @@
 import { Controller, Get, HttpCode, Post, Body, UseGuards } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
+import { AUTH_THROTTLE } from "../../auth/auth-throttle";
 import { CustomerJwtAuthGuard } from "./guards/customer-jwt-auth.guard";
 import { CurrentCustomer } from "./decorators/current-customer.decorator";
 import type { CurrentCustomerPayload } from "./interfaces/current-customer.interface";
@@ -8,9 +9,7 @@ import { CustomerPortalChangePasswordDto } from "./dto/change-password.dto";
 import { CustomerPortalLoginDto } from "./dto/login.dto";
 import { CustomerPortalRefreshDto } from "./dto/refresh.dto";
 
-/// Same limit as the staff AuthController's login throttle: the only
-/// unauthenticated, credential-checking route in this controller.
-const LOGIN_THROTTLE = { default: { limit: 5, ttl: 60_000 } };
+/// Same env-driven throttle as staff AuthController login.
 
 /// HttpCode(200) on every route here matches the staff AuthController's own
 /// convention exactly (login/refresh/logout/change-password are all 200, not
@@ -21,13 +20,14 @@ export class CustomerPortalAuthController {
   constructor(private readonly authService: CustomerPortalAuthService) {}
 
   @Post("login")
-  @Throttle(LOGIN_THROTTLE)
+  @Throttle(AUTH_THROTTLE)
   @HttpCode(200)
   login(@Body() dto: CustomerPortalLoginDto) {
     return this.authService.login(dto);
   }
 
   @Post("refresh")
+  @Throttle(AUTH_THROTTLE)
   @HttpCode(200)
   refresh(@Body() dto: CustomerPortalRefreshDto) {
     return this.authService.refresh(dto);
@@ -51,6 +51,7 @@ export class CustomerPortalAuthController {
 
   @UseGuards(CustomerJwtAuthGuard)
   @Post("change-password")
+  @Throttle(AUTH_THROTTLE)
   @HttpCode(200)
   changePassword(
     @CurrentCustomer() customer: CurrentCustomerPayload,

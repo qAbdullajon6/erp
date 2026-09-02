@@ -1,8 +1,25 @@
 import { SubscriptionRenewalWorker } from "./subscription-renewal.worker";
+import { SubscriptionLifecycleService } from "./subscription-lifecycle.service";
+import { AuditService } from "../audit/audit.service";
+import { PrismaService } from "../prisma/prisma.service";
+import { asDependency } from "./test-support/billing-spec.helpers";
 
 const NOW = new Date("2026-07-15T00:00:00Z");
 
-function makeSubscription(overrides: Partial<any> = {}) {
+interface MockSubscription {
+  id: string;
+  organizationId: string;
+  planId: string;
+  status: string;
+  autoRenew: boolean;
+  paymentCustomerId: string | null;
+  currentPeriodEnd: Date;
+  trialEndsAt: Date | null;
+  cancelAt: Date | null;
+  plan: { name: string; price: number };
+}
+
+function makeSubscription(overrides: Partial<MockSubscription> = {}): MockSubscription {
   return {
     id: "sub-1",
     organizationId: "org-1",
@@ -19,14 +36,17 @@ function makeSubscription(overrides: Partial<any> = {}) {
 }
 
 function makePrisma({
-  trialExpired = [] as any[],
-  dueForRenewal = [] as any[],
-  gracePeriodExpired = [] as any[],
-  scheduledCancellations = [] as any[],
+  trialExpired = [] as MockSubscription[],
+  dueForRenewal = [] as MockSubscription[],
+  gracePeriodExpired = [] as MockSubscription[],
+  scheduledCancellations = [] as MockSubscription[],
 } = {}) {
   return {
     organizationSubscription: {
-      findMany: jest.fn().mockImplementation(({ where }) => {
+      findMany: jest.fn().mockImplementation((args: {
+        where?: { status?: string; autoRenew?: boolean; cancelAt?: unknown };
+      }) => {
+        const where = args.where ?? {};
         if (where.status === "TRIAL") return Promise.resolve(trialExpired);
         if (where.status === "ACTIVE" && where.autoRenew) return Promise.resolve(dueForRenewal);
         if (where.status === "SUSPENDED") return Promise.resolve(gracePeriodExpired);
@@ -34,7 +54,7 @@ function makePrisma({
         return Promise.resolve([]);
       }),
     },
-  } as any;
+  };
 }
 
 function makeLifecycle() {
@@ -43,23 +63,27 @@ function makeLifecycle() {
     suspendSubscription: jest.fn().mockResolvedValue({}),
     expireSubscription: jest.fn().mockResolvedValue({}),
     cancelSubscription: jest.fn().mockResolvedValue({}),
-  } as any;
+  };
 }
 
 function makeAuditService() {
-  return { log: jest.fn().mockResolvedValue(undefined) } as any;
+  return { log: jest.fn().mockResolvedValue(undefined) };
 }
 
 describe("SubscriptionRenewalWorker", () => {
   let worker: SubscriptionRenewalWorker;
-  let prisma: any;
-  let lifecycle: any;
+  let prisma: ReturnType<typeof makePrisma>;
+  let lifecycle: ReturnType<typeof makeLifecycle>;
 
   beforeEach(() => {
     jest.useFakeTimers().setSystemTime(NOW);
     prisma = makePrisma();
     lifecycle = makeLifecycle();
-    worker = new SubscriptionRenewalWorker(prisma, lifecycle, makeAuditService());
+    worker = new SubscriptionRenewalWorker(
+      asDependency<PrismaService>(prisma),
+      asDependency<SubscriptionLifecycleService>(lifecycle),
+      asDependency<AuditService>(makeAuditService()),
+    );
   });
 
   afterEach(() => {
@@ -68,9 +92,18 @@ describe("SubscriptionRenewalWorker", () => {
 
   describe("trial expiration", () => {
     it("renews subscription when trial ends with payment method and autoRenew", async () => {
-      const sub = makeSubscription({ status: "TRIAL", trialEndsAt: new Date("2026-07-14"), autoRenew: true, paymentCustomerId: "cus_123" });
+      const sub = makeSubscription({
+        status: "TRIAL",
+        trialEndsAt: new Date("2026-07-14"),
+        autoRenew: true,
+        paymentCustomerId: "cus_123",
+      });
       prisma = makePrisma({ trialExpired: [sub] });
-      worker = new SubscriptionRenewalWorker(prisma, lifecycle, makeAuditService());
+      worker = new SubscriptionRenewalWorker(
+        asDependency<PrismaService>(prisma),
+        asDependency<SubscriptionLifecycleService>(lifecycle),
+        asDependency<AuditService>(makeAuditService()),
+      );
 
       await worker.handleSubscriptionRenewals();
 
@@ -78,9 +111,18 @@ describe("SubscriptionRenewalWorker", () => {
     });
 
     it("suspends subscription when trial ends without payment method", async () => {
-      const sub = makeSubscription({ status: "TRIAL", trialEndsAt: new Date("2026-07-14"), autoRenew: false, paymentCustomerId: null });
+      const sub = makeSubscription({
+        status: "TRIAL",
+        trialEndsAt: new Date("2026-07-14"),
+        autoRenew: false,
+        paymentCustomerId: null,
+      });
       prisma = makePrisma({ trialExpired: [sub] });
-      worker = new SubscriptionRenewalWorker(prisma, lifecycle, makeAuditService());
+      worker = new SubscriptionRenewalWorker(
+        asDependency<PrismaService>(prisma),
+        asDependency<SubscriptionLifecycleService>(lifecycle),
+        asDependency<AuditService>(makeAuditService()),
+      );
 
       await worker.handleSubscriptionRenewals();
 
@@ -90,9 +132,17 @@ describe("SubscriptionRenewalWorker", () => {
 
   describe("automatic renewal", () => {
     it("renews subscriptions with expired period and autoRenew=true", async () => {
-      const sub = makeSubscription({ status: "ACTIVE", autoRenew: true, currentPeriodEnd: new Date("2026-07-14") });
+      const sub = makeSubscription({
+        status: "ACTIVE",
+        autoRenew: true,
+        currentPeriodEnd: new Date("2026-07-14"),
+      });
       prisma = makePrisma({ dueForRenewal: [sub] });
-      worker = new SubscriptionRenewalWorker(prisma, lifecycle, makeAuditService());
+      worker = new SubscriptionRenewalWorker(
+        asDependency<PrismaService>(prisma),
+        asDependency<SubscriptionLifecycleService>(lifecycle),
+        asDependency<AuditService>(makeAuditService()),
+      );
 
       await worker.handleSubscriptionRenewals();
 
@@ -107,7 +157,11 @@ describe("SubscriptionRenewalWorker", () => {
       lifecycle.renewSubscription
         .mockRejectedValueOnce(new Error("Payment failed"))
         .mockResolvedValueOnce({});
-      worker = new SubscriptionRenewalWorker(prisma, lifecycle, makeAuditService());
+      worker = new SubscriptionRenewalWorker(
+        asDependency<PrismaService>(prisma),
+        asDependency<SubscriptionLifecycleService>(lifecycle),
+        asDependency<AuditService>(makeAuditService()),
+      );
 
       await worker.handleSubscriptionRenewals();
 
@@ -119,10 +173,14 @@ describe("SubscriptionRenewalWorker", () => {
     it("expires SUSPENDED subscriptions after 7-day grace period", async () => {
       const sub = makeSubscription({
         status: "SUSPENDED",
-        currentPeriodEnd: new Date("2026-07-01"), // 14 days ago, past 7-day grace
+        currentPeriodEnd: new Date("2026-07-01"),
       });
       prisma = makePrisma({ gracePeriodExpired: [sub] });
-      worker = new SubscriptionRenewalWorker(prisma, lifecycle, makeAuditService());
+      worker = new SubscriptionRenewalWorker(
+        asDependency<PrismaService>(prisma),
+        asDependency<SubscriptionLifecycleService>(lifecycle),
+        asDependency<AuditService>(makeAuditService()),
+      );
 
       await worker.handleSubscriptionRenewals();
 
@@ -134,7 +192,11 @@ describe("SubscriptionRenewalWorker", () => {
     it("cancels subscriptions where cancelAt has passed", async () => {
       const sub = makeSubscription({ cancelAt: new Date("2026-07-14"), status: "ACTIVE" });
       prisma = makePrisma({ scheduledCancellations: [sub] });
-      worker = new SubscriptionRenewalWorker(prisma, lifecycle, makeAuditService());
+      worker = new SubscriptionRenewalWorker(
+        asDependency<PrismaService>(prisma),
+        asDependency<SubscriptionLifecycleService>(lifecycle),
+        asDependency<AuditService>(makeAuditService()),
+      );
 
       await worker.handleSubscriptionRenewals();
 
@@ -148,10 +210,19 @@ describe("SubscriptionRenewalWorker", () => {
 
   describe("error isolation", () => {
     it("does not throw when individual subscription processing fails", async () => {
-      const sub = makeSubscription({ status: "TRIAL", trialEndsAt: new Date("2026-07-14"), autoRenew: true, paymentCustomerId: "cus_123" });
+      const sub = makeSubscription({
+        status: "TRIAL",
+        trialEndsAt: new Date("2026-07-14"),
+        autoRenew: true,
+        paymentCustomerId: "cus_123",
+      });
       prisma = makePrisma({ trialExpired: [sub] });
       lifecycle.renewSubscription.mockRejectedValue(new Error("API error"));
-      worker = new SubscriptionRenewalWorker(prisma, lifecycle, makeAuditService());
+      worker = new SubscriptionRenewalWorker(
+        asDependency<PrismaService>(prisma),
+        asDependency<SubscriptionLifecycleService>(lifecycle),
+        asDependency<AuditService>(makeAuditService()),
+      );
 
       await expect(worker.handleSubscriptionRenewals()).resolves.not.toThrow();
     });

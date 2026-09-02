@@ -4,9 +4,12 @@ import { AuditService } from "../../audit/audit.service";
 import { MailService } from "../../mail/mail.service";
 import { PasswordService } from "../../auth/password.service";
 import { PrismaService } from "../../prisma/prisma.service";
+import { asDependency } from "../test-support/portal-spec.helpers";
 import { CustomerPortalProvisioningService } from "./customer-portal-provisioning.service";
 import {
   CustomerPortalAccountAlreadyExistsError,
+  CustomerPortalAccountNotFoundError,
+  CustomerPortalCustomerEmailMissingError,
   CustomerPortalCustomerInactiveError,
   CustomerPortalInvitationAlreadyExistsError,
   CustomerPortalInvitationExpiredError,
@@ -14,12 +17,49 @@ import {
   CustomerPortalInvitationRevokedError,
 } from "./customer-portal-invitation.errors";
 
+function makePrisma() {
+  const prisma = {
+    customer: { findFirst: jest.fn(), findUnique: jest.fn() },
+    organization: { findUnique: jest.fn() },
+    customerPortalInvitation: {
+      findFirst: jest.fn(),
+      findUnique: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
+      create: jest.fn(),
+      updateMany: jest.fn(),
+    },
+    customerPortalAccount: {
+      create: jest.fn(),
+      findFirst: jest.fn(),
+      updateMany: jest.fn(),
+    },
+    $transaction: jest.fn(),
+  };
+  prisma.$transaction.mockImplementation((cb: (tx: typeof prisma) => unknown) => cb(prisma));
+  return prisma;
+}
+
+function makeMailService() {
+  return {
+    sendCustomerPortalInvitationEmail: jest.fn().mockResolvedValue(undefined),
+    sendRawEmail: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
+function makeAuditService() {
+  return { log: jest.fn().mockResolvedValue(undefined) };
+}
+
+function makePasswordService() {
+  return { hash: jest.fn().mockResolvedValue("hashed-pw") };
+}
+
 describe("CustomerPortalProvisioningService", () => {
   let svc: CustomerPortalProvisioningService;
-  let prisma: any;
-  let mail: any;
-  let audit: any;
-  let passwordService: any;
+  let prisma: ReturnType<typeof makePrisma>;
+  let mail: ReturnType<typeof makeMailService>;
+  let audit: ReturnType<typeof makeAuditService>;
+  let passwordService: ReturnType<typeof makePasswordService>;
 
   const customer = {
     email: "buyer@acme.test",
@@ -44,36 +84,18 @@ describe("CustomerPortalProvisioningService", () => {
   };
 
   beforeEach(async () => {
-    prisma = {
-      customer: { findFirst: jest.fn(), findUnique: jest.fn() },
-      organization: { findUnique: jest.fn() },
-      customerPortalInvitation: {
-        findFirst: jest.fn(),
-        findUnique: jest.fn(),
-        create: jest.fn(),
-        updateMany: jest.fn(),
-      },
-      customerPortalAccount: {
-        create: jest.fn(),
-        findFirst: jest.fn(),
-        updateMany: jest.fn(),
-      },
-      $transaction: jest.fn((cb) => cb(prisma)),
-    };
-    mail = {
-      sendCustomerPortalInvitationEmail: jest.fn().mockResolvedValue(undefined),
-      sendRawEmail: jest.fn().mockResolvedValue(undefined),
-    };
-    audit = { log: jest.fn().mockResolvedValue(undefined) };
-    passwordService = { hash: jest.fn().mockResolvedValue("hashed-pw") };
+    prisma = makePrisma();
+    mail = makeMailService();
+    audit = makeAuditService();
+    passwordService = makePasswordService();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CustomerPortalProvisioningService,
-        { provide: PrismaService, useValue: prisma },
-        { provide: MailService, useValue: mail },
-        { provide: AuditService, useValue: audit },
-        { provide: PasswordService, useValue: passwordService },
+        { provide: PrismaService, useValue: asDependency<PrismaService>(prisma) },
+        { provide: MailService, useValue: asDependency<MailService>(mail) },
+        { provide: AuditService, useValue: asDependency<AuditService>(audit) },
+        { provide: PasswordService, useValue: asDependency<PasswordService>(passwordService) },
         {
           provide: ConfigService,
           useValue: {
@@ -142,7 +164,7 @@ describe("CustomerPortalProvisioningService", () => {
     it("rejects when the customer has no email on file", async () => {
       prisma.customer.findFirst.mockResolvedValue({ ...customer, email: null });
 
-      await expect(svc.createInvitation(input)).rejects.toThrow(CustomerPortalInvitationNotFoundError);
+      await expect(svc.createInvitation(input)).rejects.toThrow(CustomerPortalCustomerEmailMissingError);
     });
   });
 
@@ -197,7 +219,7 @@ describe("CustomerPortalProvisioningService", () => {
       const token = "a".repeat(43);
       prisma.customerPortalInvitation.findUnique.mockResolvedValue(withRelations);
       prisma.customerPortalInvitation.updateMany.mockResolvedValue({ count: 1 });
-      prisma.customerPortalInvitation.findUniqueOrThrow = jest.fn().mockResolvedValue(openInvitation);
+      prisma.customerPortalInvitation.findUniqueOrThrow.mockResolvedValue(openInvitation);
       prisma.customerPortalAccount.create.mockResolvedValue({
         id: "acc-1",
         customerId: "cust-1",
@@ -234,7 +256,15 @@ describe("CustomerPortalProvisioningService", () => {
       prisma.customerPortalAccount.updateMany.mockResolvedValue({ count: 0 });
 
       await expect(svc.suspendAccess("org-1", "cust-1", "user-1")).rejects.toThrow(
-        CustomerPortalInvitationNotFoundError,
+        CustomerPortalAccountNotFoundError,
+      );
+    });
+
+    it("throws not-found when there is no account to reactivate", async () => {
+      prisma.customerPortalAccount.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(svc.reactivateAccess("org-1", "cust-1", "user-1")).rejects.toThrow(
+        CustomerPortalAccountNotFoundError,
       );
     });
   });

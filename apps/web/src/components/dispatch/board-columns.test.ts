@@ -34,16 +34,25 @@ function dispatch(
 }
 
 describe('columns', () => {
-  it('has the seven dispatch states, in operational order', () => {
+  it('has all dispatch statuses, in operational order', () => {
     expect(BOARD_COLUMNS.map((c) => c.status)).toEqual([
       'DRAFT',
       'ASSIGNED',
       'EN_ROUTE_TO_PICKUP',
       'AT_PICKUP',
       'IN_TRANSIT',
+      'AT_STOP',
+      'ARRIVED_AT_DELIVERY',
       'DELIVERED',
       'CANCELLED',
+      'DELIVERY_FAILED',
     ]);
+  });
+
+  it('marks DELIVERY_FAILED as a terminal column', () => {
+    const col = BOARD_COLUMNS.find((c) => c.status === 'DELIVERY_FAILED');
+    expect(col).toBeDefined();
+    expect(col?.terminal).toBe(true);
   });
 
   it('places a card by its status and nothing else (R1)', () => {

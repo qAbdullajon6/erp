@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "DispatchStatus" ADD VALUE 'ARRIVED_AT_DELIVERY';

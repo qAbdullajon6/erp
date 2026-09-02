@@ -1,11 +1,15 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Res, UploadedFile, UseGuards, UseInterceptors } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import type { MembershipRole } from "@prisma/client";
+import type { Response } from "express";
+import { memoryStorage } from "multer";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
-import { DriversService } from "./drivers.service";
+import { RawResponse } from "../common/decorators/raw-response.decorator";
+import { DriversService, MAX_PHOTO_BYTES } from "./drivers.service";
 import { CreateDriverDto } from "./dto/create-driver.dto";
 import { LinkDriverUserDto } from "./dto/link-driver-user.dto";
 import { ListDriversQueryDto } from "./dto/list-drivers-query.dto";
@@ -29,13 +33,7 @@ export class DriversController {
     return this.driversService.list(user.organizationId, query);
   }
 
-  /// Must stay declared before the `:id` route below — Nest matches path
-  /// segments in declaration order, so `:id` would otherwise swallow `/me`.
-  @Roles("DRIVER")
-  @Get("me")
-  getMe(@CurrentUser() user: CurrentUserPayload) {
-    return this.driversService.getMe(user.organizationId, user.userId);
-  }
+  /// GET /drivers/me lives on DriverMeController (workspace profile + breaks/POD config).
 
   @Roles(...ROLES)
   @Post()
@@ -89,5 +87,37 @@ export class DriversController {
   @HttpCode(200)
   restore(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {
     return this.driversService.restore(user.organizationId, id, user);
+  }
+
+  @Roles(...ROLES)
+  @Post(":id/photo")
+  @UseInterceptors(FileInterceptor("file", { storage: memoryStorage(), limits: { fileSize: MAX_PHOTO_BYTES } }))
+  uploadPhoto(
+    @Param("id", ParseUUIDPipe) id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.driversService.uploadPhoto(user.organizationId, id, file, user);
+  }
+
+  @Roles(...ROLES)
+  @Delete(":id/photo")
+  @HttpCode(200)
+  removePhoto(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {
+    return this.driversService.removePhoto(user.organizationId, id, user);
+  }
+
+  @Roles(...ROLES)
+  @Get(":id/photo/file")
+  @RawResponse()
+  async servePhoto(
+    @Param("id", ParseUUIDPipe) id: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Res() res: Response,
+  ) {
+    const { mimeType, stream } = await this.driversService.servePhoto(user.organizationId, id);
+    res.setHeader("Content-Type", mimeType);
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    stream.pipe(res);
   }
 }

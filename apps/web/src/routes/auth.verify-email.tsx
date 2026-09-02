@@ -79,7 +79,7 @@ function VerifyEmailSuccessView() {
       description="Your email address has been confirmed. You're all set."
       action={
         <Button asChild className="h-11 w-full rounded-xl bg-gradient-brand text-brand-foreground hover:opacity-90">
-          <Link to="/auth/sign-in">Go to Sign In</Link>
+          <Link to="/login">Go to Sign In</Link>
         </Button>
       }
     />
@@ -95,7 +95,7 @@ function VerifyEmailFailedView() {
       description="We couldn't verify your email with this link. It may have already been used."
       action={<ResendVerificationButton />}
       secondary={
-        <Link to="/auth/sign-in" className="font-medium text-brand hover:underline">
+        <Link to="/login" className="font-medium text-brand hover:underline">
           Back to sign in
         </Link>
       }
@@ -124,7 +124,7 @@ function VerifyEmailInvalidView() {
       description="This verification link is missing or malformed."
       action={<ResendVerificationButton />}
       secondary={
-        <Link to="/auth/sign-in" className="font-medium text-brand hover:underline">
+        <Link to="/login" className="font-medium text-brand hover:underline">
           Back to sign in
         </Link>
       }

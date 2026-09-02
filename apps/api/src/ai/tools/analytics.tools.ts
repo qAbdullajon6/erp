@@ -92,7 +92,7 @@ export class AnalyticsTools {
         const [ordersByStatus, dispatchesByStatus, driversByStatus, vehiclesByStatus] =
           await Promise.all([
             this.prisma.order.groupBy({
-              by: ["status"], where: { organizationId }, _count: { _all: true },
+              by: ["status"], where: { organizationId, archivedAt: null }, _count: { _all: true },
             }),
             this.prisma.dispatch.groupBy({
               by: ["status"], where: { organizationId }, _count: { _all: true },

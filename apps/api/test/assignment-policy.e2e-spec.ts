@@ -10,7 +10,6 @@ import {
   DriverDoubleBookedError,
   DriverNotAssignableError,
   VehicleCapacityExceededError,
-  VehicleDoubleBookedError,
   VehicleNotAssignableError,
 } from "../src/dispatch/dispatch.errors";
 import { OrderWriter } from "../src/order-state/order-writer";
@@ -32,7 +31,30 @@ const prisma = new PrismaService();
 const queries = new AssignmentQueries(prisma);
 const policy = new AssignmentPolicy(prisma, queries);
 const audit = { log: jest.fn().mockResolvedValue(undefined) } as unknown as AuditService;
-const dispatches = new DispatchesService(prisma, audit, policy, new OrderWriter(), { emit: () => {} } as any, { endSessionsForDispatch: async () => 0, endSessionsOnVehicleReassign: async () => 0, endSessionsForUser: async () => 0 } as any);
+const workflowEvents = {
+  emit: jest.fn(),
+} as unknown as ConstructorParameters<typeof DispatchesService>[4];
+const tracking = {
+  endSessionsForDispatch: jest.fn().mockResolvedValue(0),
+  endSessionsOnVehicleReassign: jest.fn().mockResolvedValue(0),
+  endSessionsForUser: jest.fn().mockResolvedValue(0),
+} as unknown as ConstructorParameters<typeof DispatchesService>[5];
+const geofences = {
+  createForDispatch: jest.fn().mockResolvedValue(undefined),
+  archiveForDispatch: jest.fn().mockResolvedValue(undefined),
+  archiveIntermediateStopForDispatch: jest.fn().mockResolvedValue(undefined),
+  createForNextIntermediateStop: jest.fn().mockResolvedValue(undefined),
+  rotateIntermediateStopFence: jest.fn().mockResolvedValue(undefined),
+} as unknown as ConstructorParameters<typeof DispatchesService>[6];
+const dispatches = new DispatchesService(
+  prisma,
+  audit,
+  policy,
+  new OrderWriter(),
+  workflowEvents,
+  tracking,
+  geofences,
+);
 const board = new DispatchService(prisma, queries);
 
 const PICKUP = new Date("2033-09-01T08:00:00.000Z");
@@ -66,6 +88,11 @@ async function makeOrder(overrides: Record<string, unknown> = {}) {
       deliveryDate: DELIVERY,
       cargoDescription: "Pallets",
       price: "1000.00",
+      // DRAFT is the schema default, but a DRAFT order cannot reserve a driver
+      // or vehicle (createInTx) — every test here that goes on to call
+      // dispatches.create needs a dispatchable order, same as a real admin
+      // would need to move it to PENDING first.
+      status: "PENDING",
       ...overrides,
     },
   });
@@ -374,8 +401,8 @@ describe("AR4 — availability and the board ask the SAME question the policy as
       deliveryDate: DELIVERY.toISOString(),
     });
 
-    const offeredDriver = free.drivers[0]!.id;
-    const offeredVehicle = free.vehicles[0]!.id;
+    const offeredDriver = free.drivers[0].id;
+    const offeredVehicle = free.vehicles[0].id;
     await expect(
       dispatches.create(
         organizationId,

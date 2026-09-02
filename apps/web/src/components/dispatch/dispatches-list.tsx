@@ -15,11 +15,14 @@ import {
 import { useDispatches, useDispatchBoardSummary } from '@/lib/hooks/use-dispatches';
 import { useCurrentUser } from '@/lib/api/auth';
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
-import { LoadingState, ErrorState, EmptyState } from '@/components/shared/list-states';
+import { ErrorState, EmptyState, TableSkeleton } from '@/components/shared/list-states';
+import { PageHeader } from '@/components/shared/page-header';
 import { DispatchesCreateSheet } from '@/components/dispatch/dispatches-create-sheet';
 import { DispatchReassignDialog } from '@/components/dispatch/dispatch-reassign-dialog';
 import { PaginationBar } from '@/components/shared/pagination-bar';
 import { StatusBadge } from '@/components/shared/status-badge';
+import { FilterTabs } from '@/components/shared/filter-tabs';
+import { useMediaQuery } from '@/hooks/use-media-query';
 import { DISPATCH_WRITE_ROLES } from '@/lib/role-access';
 import type { MembershipRole } from '@/lib/api/organizations';
 import type { DispatchesSearch } from '@/routes/app.dispatches.index';
@@ -35,15 +38,16 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronRight,
-  LayoutGrid,
   MoreHorizontal,
   Phone,
   Route as RouteIcon,
   Timer,
   UserRoundCog,
   ExternalLink,
+  BarChart3,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { DispatchViewToggle } from '@/components/dispatch/dispatch-view-toggle';
 
 type WorkflowTab = 'action' | 'active' | 'in_transit' | 'delivered' | 'cancelled' | 'all';
 
@@ -140,7 +144,7 @@ function UrgencyBadge({ date, label: contextLabel }: { date: string; label: stri
   );
 }
 
-function RiskBadges({ dispatch }: { dispatch: ApiDispatch }) {
+function RiskBadges({ dispatch, align = 'end' }: { dispatch: ApiDispatch; align?: 'start' | 'end' }) {
   const delivery = getTimeUrgency(dispatch.deliveryDateScheduled);
   const chips: { key: string; label: string; className: string }[] = [];
 
@@ -165,7 +169,7 @@ function RiskBadges({ dispatch }: { dispatch: ApiDispatch }) {
   if (chips.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap justify-end gap-1">
+    <div className={cn('flex flex-wrap gap-1', align === 'end' ? 'justify-end' : 'justify-start')}>
       {chips.map((c) => (
         <span
           key={c.key}
@@ -276,6 +280,7 @@ export function DispatchesList() {
   const currentTab = searchState.tab || 'action';
   const page = searchState.page || 1;
   const search = searchState.search || '';
+  const isNarrow = useMediaQuery('(max-width: 639px)');
 
   const activeTabConfig = TAB_CONFIG.find((t) => t.key === currentTab) ?? TAB_CONFIG[0];
   const tabStatuses = activeTabConfig.statuses;
@@ -287,11 +292,15 @@ export function DispatchesList() {
   });
 
   /// Strip stats from a wider active slice + board (overloaded drivers). No fake fields.
-  const { data: activeSlice } = useDispatches(1, 100, { statuses: ACTIVE });
+  const { data: activeSlice, meta: activeMeta } = useDispatches(1, 100, { statuses: ACTIVE });
   const { data: board } = useDispatchBoardSummary({ enabled: true });
 
   const items = data ?? [];
   const stripItems = activeSlice ?? [];
+  /// The strip counts only the first 100 active dispatches — accurate for a
+  /// normal shift, but an org running 500+ shipments/day can have more active
+  /// dispatches than that. Say so rather than silently under-reporting.
+  const stripTruncated = (activeMeta?.total ?? 0) > 100;
 
   const overdueCount = useMemo(() => stripItems.filter(isDispatchLate).length, [stripItems]);
   const waitingPickupCount = useMemo(() => stripItems.filter(isWaitingPickup).length, [stripItems]);
@@ -409,14 +418,13 @@ export function DispatchesList() {
 
   return (
     <div className="flex h-full flex-col gap-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="font-display text-2xl font-bold text-foreground">Dispatches</h1>
-          <p className="text-sm text-muted-foreground">
-            {loading ? 'Loading...' : `${metaSafe.total} total dispatches`}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+      <PageHeader
+        title="Dispatch"
+        subtitle={
+          loading ? undefined : `${metaSafe.total} total dispatch${metaSafe.total === 1 ? '' : 'es'}`
+        }
+        action={
+          <>
           <div className="relative min-w-0 flex-1 sm:flex-none">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -429,18 +437,14 @@ export function DispatchesList() {
               data-testid="dispatches-search-input"
             />
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate({ to: '/app/dispatches/board' })}
-            data-testid="dispatch-board-button"
-          >
-            <LayoutGrid className="mr-1.5 h-3.5 w-3.5" />
-            Board
-          </Button>
+          <DispatchViewToggle current="list" />
           <Button variant="outline" size="sm" onClick={handleExport}>
             <Download className="mr-1.5 h-3.5 w-3.5" />
             Export page
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => navigate({ to: '/app/dispatches/analytics' })}>
+            <BarChart3 className="mr-1.5 h-3.5 w-3.5" />
+            Analytics
           </Button>
           {canWrite && (
             <Button
@@ -453,45 +457,17 @@ export function DispatchesList() {
               New Dispatch
             </Button>
           )}
-        </div>
-      </div>
+          </>
+        }
+      />
 
-      <div
-        role="tablist"
-        aria-label="Dispatch workflow"
-        className="flex items-center gap-1 overflow-x-auto border-b border-border scrollbar-thin"
-      >
-        {TAB_CONFIG.map((tab) => {
-          const isActive = currentTab === tab.key;
-          const count = tab.key === currentTab ? metaSafe.total : null;
-          return (
-            <button
-              key={tab.key}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              onClick={() => handleTabChange(tab.key)}
-              className={`relative shrink-0 px-4 py-2.5 text-sm font-medium transition-colors ${
-                isActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <span className="flex items-center gap-2">
-                {tab.label}
-                {count !== null && (
-                  <span
-                    className={`rounded-full px-1.5 py-0.5 text-xs ${
-                      isActive ? 'bg-brand/10 text-brand' : 'bg-muted text-muted-foreground'
-                    }`}
-                  >
-                    {count}
-                  </span>
-                )}
-              </span>
-              {isActive && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand" />}
-            </button>
-          );
-        })}
-      </div>
+      <FilterTabs
+        tabs={TAB_CONFIG}
+        value={currentTab}
+        onChange={handleTabChange}
+        label="Dispatch workflow"
+        activeCount={metaSafe.total}
+      />
 
       {showPriorityStrip && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-border bg-muted/20 px-4 py-2.5">
@@ -522,11 +498,16 @@ export function DispatchesList() {
               {waitingPickupCount} waiting pickup
             </button>
           )}
+          {stripTruncated && (
+            <span className="text-xs text-muted-foreground">
+              (counts from the first 100 active dispatches — more may be active)
+            </span>
+          )}
         </div>
       )}
 
       <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-surface">
-        {loading && <LoadingState label="Loading dispatches..." />}
+        {loading && <TableSkeleton columns={[3, 2, 2, 2, 2, 2]} label="Loading dispatches" />}
         {error && !loading && <ErrorState message={error} onRetry={refetch} />}
         {!loading && !error && items.length === 0 && search && (
           <EmptyState
@@ -571,7 +552,9 @@ export function DispatchesList() {
                 <TableRow className="border-b border-border bg-surface/95 backdrop-blur hover:bg-surface/95">
                   <TableHead className="w-8" />
                   <TableHead className="font-medium text-xs uppercase tracking-wider">Route</TableHead>
-                  <TableHead className="font-medium text-xs uppercase tracking-wider">Timeline</TableHead>
+                  {!isNarrow && (
+                    <TableHead className="font-medium text-xs uppercase tracking-wider">Timeline</TableHead>
+                  )}
                   <TableHead className="hidden font-medium text-xs uppercase tracking-wider md:table-cell">
                     Customer
                   </TableHead>
@@ -593,6 +576,25 @@ export function DispatchesList() {
                   const waiting = isWaitingPickup(dispatch);
                   const canReassign = canWrite && !TERMINAL.includes(dispatch.status);
                   const canCall = Boolean(dispatch.driver?.phone);
+                  // Its own column with room to breathe on a desktop; folded
+                  // under the route on a phone, where a separate column left it
+                  // wrapping over three lines and pushed Status off the screen.
+                  const timeline =
+                    dispatch.status === 'DELIVERED' || dispatch.status === 'CANCELLED' ? (
+                      <span className="text-xs text-muted-foreground">
+                        {dispatch.status === 'DELIVERED' ? 'Delivered' : 'Cancelled'}{' '}
+                        {formatDate(
+                          dispatch.deliveryDateActual ||
+                            dispatch.deliveryDateScheduled ||
+                            dispatch.updatedAt,
+                        )}
+                      </span>
+                    ) : (
+                      <>
+                        <UrgencyBadge date={dispatch.pickupDateScheduled} label="Pickup" />
+                        <UrgencyBadge date={dispatch.deliveryDateScheduled} label="Deliver" />
+                      </>
+                    );
 
                   return (
                     <Fragment key={dispatch.id}>
@@ -642,28 +644,20 @@ export function DispatchesList() {
                             <p className="font-mono text-xs text-muted-foreground">
                               {dispatch.dispatchNumber}
                             </p>
-                          </div>
-                        </TableCell>
-
-                        <TableCell className="py-3">
-                          <div className="space-y-0.5">
-                            {dispatch.status === 'DELIVERED' || dispatch.status === 'CANCELLED' ? (
-                              <span className="text-xs text-muted-foreground">
-                                {dispatch.status === 'DELIVERED' ? 'Delivered' : 'Cancelled'}{' '}
-                                {formatDate(
-                                  dispatch.deliveryDateActual ||
-                                    dispatch.deliveryDateScheduled ||
-                                    dispatch.updatedAt,
-                                )}
-                              </span>
-                            ) : (
+                            {isNarrow && (
                               <>
-                                <UrgencyBadge date={dispatch.pickupDateScheduled} label="Pickup" />
-                                <UrgencyBadge date={dispatch.deliveryDateScheduled} label="Deliver" />
+                                <div className="flex flex-wrap gap-x-3">{timeline}</div>
+                                <RiskBadges dispatch={dispatch} align="start" />
                               </>
                             )}
                           </div>
                         </TableCell>
+
+                        {!isNarrow && (
+                          <TableCell className="py-3">
+                            <div className="space-y-0.5">{timeline}</div>
+                          </TableCell>
+                        )}
 
                         <TableCell className="hidden py-3 md:table-cell">
                           <span className="text-sm text-foreground">
@@ -682,10 +676,10 @@ export function DispatchesList() {
                           </div>
                         </TableCell>
 
-                        <TableCell className="py-3 text-right">
+                        <TableCell className="py-3 text-right align-top">
                           <div className="flex flex-col items-end gap-1.5">
                             <StatusBadge status={dispatch.status} />
-                            <RiskBadges dispatch={dispatch} />
+                            {!isNarrow && <RiskBadges dispatch={dispatch} />}
                           </div>
                         </TableCell>
 

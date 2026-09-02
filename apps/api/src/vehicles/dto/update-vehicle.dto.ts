@@ -73,4 +73,40 @@ export class UpdateVehicleDto {
   @IsOptional()
   @IsDateString()
   inspectionExpiry?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  vin?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  engineNumber?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  odometer?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  fuelType?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  transmission?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(20)
+  axles?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  notes?: string;
 }

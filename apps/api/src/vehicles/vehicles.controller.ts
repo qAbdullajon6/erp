@@ -1,4 +1,15 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from "@nestjs/common";
 import type { MembershipRole } from "@prisma/client";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { Roles } from "../auth/decorators/roles.decorator";
@@ -32,14 +43,14 @@ export class VehiclesController {
 
   @Roles(...ROLES)
   @Get(":id")
-  getById(@Param("id") id: string, @CurrentUser() user: CurrentUserPayload) {
+  getById(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {
     return this.vehiclesService.getById(user.organizationId, id);
   }
 
   @Roles(...ROLES)
   @Patch(":id")
   update(
-    @Param("id") id: string,
+    @Param("id", ParseUUIDPipe) id: string,
     @Body() dto: UpdateVehicleDto,
     @CurrentUser() user: CurrentUserPayload,
   ) {
@@ -49,14 +60,14 @@ export class VehiclesController {
   @Roles(...ROLES)
   @Post(":id/archive")
   @HttpCode(200)
-  archive(@Param("id") id: string, @CurrentUser() user: CurrentUserPayload) {
+  archive(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {
     return this.vehiclesService.archive(user.organizationId, id, user);
   }
 
   @Roles(...ROLES)
   @Post(":id/restore")
   @HttpCode(200)
-  restore(@Param("id") id: string, @CurrentUser() user: CurrentUserPayload) {
+  restore(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {
     return this.vehiclesService.restore(user.organizationId, id, user);
   }
 }

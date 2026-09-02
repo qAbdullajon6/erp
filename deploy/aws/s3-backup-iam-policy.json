@@ -1,0 +1,36 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListBackupPrefix",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::flowerp-812063706887-eu-north-1-an",
+      "Condition": {
+        "ForAnyValue:StringLike": {
+          "s3:prefix": [
+            "backups",
+            "backups/*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "WriteEncryptedBackupObjects",
+      "Effect": "Allow",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::flowerp-812063706887-eu-north-1-an/backups/*",
+      "Condition": {
+        "StringEquals": {
+          "s3:x-amz-server-side-encryption": "AES256"
+        }
+      }
+    },
+    {
+      "Sid": "ReadAndVerifyBackupObjects",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::flowerp-812063706887-eu-north-1-an/backups/*"
+    }
+  ]
+}

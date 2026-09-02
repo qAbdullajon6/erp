@@ -43,7 +43,11 @@ export class GeotabProvider implements TelematicsProvider {
     const deviceId = device?.id ?? record.deviceId;
 
     return {
-      externalDeviceId: typeof deviceId === "string" ? deviceId : deviceId != null ? String(deviceId) : null,
+      externalDeviceId: typeof deviceId === "string"
+        ? deviceId
+        : typeof deviceId === "number" || typeof deviceId === "boolean"
+          ? String(deviceId)
+          : null,
       recordedAt: parseTimestamp(record.dateTime ?? record.time) ?? new Date(),
       latitude,
       longitude,

@@ -20,8 +20,8 @@ test.describe('Customers CRUD - Full Workflow', () => {
 
     await page.goto(`${FRONTEND_URL}/app/customers`, { waitUntil: 'domcontentloaded' });
 
-    await page.waitForURL('**/auth/sign-in', { timeout: 10000 });
-    expect(page.url()).toContain('/auth/sign-in');
+    await page.waitForURL('**/login', { timeout: 10000 });
+    expect(page.url()).toContain('/login');
   });
 
   // AUTHENTICATED TESTS - only run on authenticated project

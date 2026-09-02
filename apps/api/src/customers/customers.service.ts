@@ -1,9 +1,10 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { Customer, Prisma } from "@prisma/client";
+import { Customer, Prisma, UsageMetricType } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { PrismaService } from "../prisma/prisma.service";
 import { WorkflowEventService } from "../workflows/triggers/workflow-event.service";
+import { UsageMeteringService } from "../billing/usage-metering.service";
 import { generateUniqueCustomerCode, isValidCustomerCode } from "./customer-code.util";
 import { CreateCustomerDto } from "./dto/create-customer.dto";
 import { ListCustomersQueryDto } from "./dto/list-customers-query.dto";
@@ -15,6 +16,7 @@ export class CustomersService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly workflowEvents: WorkflowEventService,
+    private readonly usageMetering: UsageMeteringService,
   ) {}
 
   async list(organizationId: string, query: ListCustomersQueryDto) {
@@ -31,12 +33,17 @@ export class CustomersService {
               { email: { contains: query.search, mode: "insensitive" } },
               { phone: { contains: query.search, mode: "insensitive" } },
               { city: { contains: query.search, mode: "insensitive" } },
+              { taxId: { contains: query.search, mode: "insensitive" } },
+              { address: { contains: query.search, mode: "insensitive" } },
             ],
           }
         : {}),
     };
 
-    const [rows, total] = await Promise.all([
+    // $transaction, not Promise.all: the count and the page must agree on the
+    // same snapshot, or a concurrent write between the two reads can show a
+    // total that does not match the rows actually returned.
+    const [rows, total] = await this.prisma.$transaction([
       this.prisma.customer.findMany({
         where,
         orderBy: { [query.sortBy]: query.sortOrder },
@@ -63,26 +70,57 @@ export class CustomersService {
   }
 
   async create(organizationId: string, dto: CreateCustomerDto, actor: CurrentUserPayload) {
-    const customerCode = await this.resolveCodeForCreate(organizationId, dto.customerCode);
+    // Auto-generated codes are check-then-write: two concurrent creates can
+    // both compute the same "next" CUS-000N and race the unique constraint.
+    // A user-SUPPLIED code has already been existence-checked in
+    // resolveCodeForCreate, so a collision there is a real conflict, not a
+    // race to retry — only the auto-generated path retries.
+    await this.usageMetering.enforceLimit(organizationId, UsageMetricType.CUSTOMERS, 1);
 
-    const customer = await this.prisma.customer.create({
-      data: {
-        organizationId,
-        customerCode,
-        companyName: dto.companyName,
-        contactName: dto.contactName,
-        email: dto.email,
-        phone: dto.phone,
-        country: dto.country,
-        city: dto.city,
-        address: dto.address,
-        taxId: dto.taxId,
-        paymentTerms: dto.paymentTerms ?? "NET_30",
-        creditLimit: new Prisma.Decimal(dto.creditLimit ?? 0),
-        deliveryNotes: dto.deliveryNotes,
-        internalNotes: dto.internalNotes,
-      },
-    });
+    const isAutoCode = !dto.customerCode;
+    let customerCode = await this.resolveCodeForCreate(organizationId, dto.customerCode);
+
+    let customer: Customer | undefined;
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        customer = await this.prisma.customer.create({
+          data: {
+            organizationId,
+            customerCode,
+            companyName: dto.companyName,
+            contactName: dto.contactName ?? null,
+            email: dto.email,
+            phone: dto.phone,
+            country: dto.country,
+            city: dto.city,
+            lat: dto.cityLat != null ? new Prisma.Decimal(dto.cityLat) : null,
+            lng: dto.cityLng != null ? new Prisma.Decimal(dto.cityLng) : null,
+            geocodedAt: dto.cityLat != null ? new Date() : null,
+            address: dto.address,
+            postalCode: dto.postalCode,
+            taxId: dto.taxId,
+            paymentTerms: dto.paymentTerms ?? "NET_30",
+            // Store paymentTermsDays for CUSTOM terms; null it out for standard terms
+            // so it can never accidentally affect invoice calculations.
+            paymentTermsDays: dto.paymentTerms === "CUSTOM"
+              ? (dto.paymentTermsDays ?? null)
+              : null,
+            creditLimit: dto.creditLimit != null ? new Prisma.Decimal(dto.creditLimit) : null,
+            currency: dto.currency ?? null,
+            deliveryNotes: dto.deliveryNotes,
+            internalNotes: dto.internalNotes,
+          },
+        });
+        break;
+      } catch (err) {
+        const isCodeConflict = err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
+        if (!isCodeConflict) throw err;
+        if (!isAutoCode || attempt >= 2) {
+          throw new ConflictException("A customer with this customerCode already exists in this organization");
+        }
+        customerCode = await generateUniqueCustomerCode(this.prisma, organizationId);
+      }
+    }
 
     await this.auditService.log({
       organizationId,
@@ -93,7 +131,7 @@ export class CustomersService {
       metadata: { customerCode: customer.customerCode, companyName: customer.companyName },
     });
 
-    this.workflowEvents.emit(organizationId, "customer.created", { id: customer.id, customerCode: customer.customerCode, companyName: customer.companyName });
+    void this.workflowEvents.emit(organizationId, "customer.created", { id: customer.id, customerCode: customer.customerCode, companyName: customer.companyName });
 
     return this.toResponse(customer);
   }
@@ -119,10 +157,30 @@ export class CustomersService {
         phone: dto.phone,
         country: dto.country,
         city: dto.city,
+        // cityLat/Lng: undefined = leave existing; null = clear; number = set new
+        lat: dto.cityLat !== undefined
+          ? (dto.cityLat != null ? new Prisma.Decimal(dto.cityLat) : null)
+          : undefined,
+        lng: dto.cityLng !== undefined
+          ? (dto.cityLng != null ? new Prisma.Decimal(dto.cityLng) : null)
+          : undefined,
+        geocodedAt: dto.cityLat !== undefined
+          ? (dto.cityLat != null ? new Date() : null)
+          : undefined,
         address: dto.address,
+        postalCode: dto.postalCode,
         taxId: dto.taxId,
         paymentTerms: dto.paymentTerms,
-        creditLimit: dto.creditLimit !== undefined ? new Prisma.Decimal(dto.creditLimit) : undefined,
+        // When changing to CUSTOM, accept the supplied days; when changing away from CUSTOM,
+        // always clear paymentTermsDays so it cannot silently affect future invoice logic.
+        // undefined (field not in patch) → don't change the existing value.
+        paymentTermsDays: dto.paymentTerms !== undefined
+          ? (dto.paymentTerms === "CUSTOM" ? (dto.paymentTermsDays ?? null) : null)
+          : (dto.paymentTermsDays !== undefined ? dto.paymentTermsDays : undefined),
+        creditLimit: dto.creditLimit !== undefined
+          ? (dto.creditLimit != null ? new Prisma.Decimal(dto.creditLimit) : null)
+          : undefined,
+        currency: dto.currency,
         status: dto.status,
         deliveryNotes: dto.deliveryNotes,
         internalNotes: dto.internalNotes,
@@ -138,7 +196,7 @@ export class CustomersService {
       metadata: { changes: dto },
     });
 
-    this.workflowEvents.emit(organizationId, "customer.updated", { id, companyName: updated.companyName, changes: dto });
+    void this.workflowEvents.emit(organizationId, "customer.updated", { id, companyName: updated.companyName, changes: dto });
 
     return this.toResponse(updated);
   }
@@ -229,11 +287,18 @@ export class CustomersService {
       phone: customer.phone,
       country: customer.country,
       city: customer.city,
+      // Coordinates: number is safe for lat/lng (no monetary precision concern).
+      lat: customer.lat != null ? customer.lat.toNumber() : null,
+      lng: customer.lng != null ? customer.lng.toNumber() : null,
       address: customer.address,
+      postalCode: customer.postalCode,
       taxId: customer.taxId,
       paymentTerms: customer.paymentTerms,
+      paymentTermsDays: customer.paymentTermsDays,
       // Decimal -> string, deliberately not a JS number — see schema.prisma.
-      creditLimit: customer.creditLimit.toString(),
+      // null = no configured credit ceiling ("No credit limit").
+      creditLimit: customer.creditLimit != null ? customer.creditLimit.toString() : null,
+      currency: customer.currency,
       status: customer.status,
       deliveryNotes: customer.deliveryNotes,
       internalNotes: customer.internalNotes,

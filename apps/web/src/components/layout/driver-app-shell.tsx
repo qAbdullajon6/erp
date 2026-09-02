@@ -7,8 +7,8 @@ import { cn } from '@/lib/utils';
 import type { CurrentUser } from '@/lib/api/auth';
 
 const TABS = [
-  { to: '/app', label: 'Home', icon: LayoutDashboard, exact: true },
-  { to: '/app/my-deliveries', label: 'Jobs', icon: PackageCheck, exact: false },
+  { to: '/app/driver', label: 'Home', icon: LayoutDashboard, exact: true },
+  { to: '/app/driver', label: 'Jobs', icon: PackageCheck, exact: false },
   { to: '/app/settings', label: 'Account', icon: Settings, exact: false },
 ] as const;
 
@@ -57,11 +57,16 @@ export function DriverAppShell({
       >
         <div className="mx-auto grid max-w-lg grid-cols-3">
           {TABS.map((tab) => {
-            const active = tab.exact ? pathname === tab.to : pathname === tab.to || pathname.startsWith(`${tab.to}/`);
+            const onDriverHub = pathname === '/app/driver' || pathname.startsWith('/app/driver/');
+            const active = tab.label === 'Account'
+              ? pathname === tab.to || pathname.startsWith(`${tab.to}/`)
+              : tab.label === 'Home'
+                ? pathname === '/app/driver'
+                : onDriverHub;
             const Icon = tab.icon;
             return (
               <Link
-                key={tab.to}
+                key={tab.label}
                 to={tab.to}
                 className={cn(
                   'flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium transition-colors',

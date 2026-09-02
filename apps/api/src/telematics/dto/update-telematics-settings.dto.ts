@@ -93,4 +93,14 @@ export class UpdateTelematicsSettingsDto {
   @IsOptional()
   @IsBoolean()
   healthAlertsEnabled?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(50)
+  @Max(5_000)
+  arrivalGeofenceRadiusM?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  arrivalGeofenceEnabled?: boolean;
 }

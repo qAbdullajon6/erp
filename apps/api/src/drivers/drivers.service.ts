@@ -1,14 +1,24 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { DispatchStatus, Driver, Prisma } from "@prisma/client";
+import { DispatchStatus, Driver, DriverDocument, DriverEmergencyContact, Prisma, UsageMetricType } from "@prisma/client";
+import { createReadStream, existsSync, mkdirSync, unlinkSync } from "fs";
+import { writeFile } from "fs/promises";
+import { join, extname } from "path";
+import { randomUUID } from "crypto";
 import { AuditService } from "../audit/audit.service";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { isValidEntityCode } from "../common/sequential-code.util";
 import { PrismaService } from "../prisma/prisma.service";
 import { WorkflowEventService } from "../workflows/triggers/workflow-event.service";
+import { UsageMeteringService } from "../billing/usage-metering.service";
+import { matchesDeclaredMimeType } from "../orders/order-document-signature.util";
 import { generateUniqueDriverCode } from "./driver-code.util";
 import { CreateDriverDto } from "./dto/create-driver.dto";
 import { ListDriversQueryDto } from "./dto/list-drivers-query.dto";
 import { UpdateDriverDto } from "./dto/update-driver.dto";
+
+const PHOTO_UPLOAD_ROOT = join(process.cwd(), "uploads", "driver-photos");
+export const MAX_PHOTO_BYTES = 2 * 1024 * 1024;
+const ALLOWED_PHOTO_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 /// Must stay aligned with AssignmentQueries.ACTIVE_DISPATCH_STATUSES plus DRAFT
 /// (draft already reserves the driver under GiST). Duplicated here so Drivers
@@ -19,7 +29,18 @@ const LIVE_DISPATCH_STATUSES: DispatchStatus[] = [
   "EN_ROUTE_TO_PICKUP",
   "AT_PICKUP",
   "IN_TRANSIT",
+  "AT_STOP",
 ];
+
+type DriverWithRelations = Driver & {
+  emergencyContact: DriverEmergencyContact | null;
+  driverDocuments: DriverDocument[];
+};
+
+const DRIVER_INCLUDE = {
+  emergencyContact: true,
+  driverDocuments: { orderBy: { createdAt: "asc" as const } },
+} satisfies Prisma.DriverInclude;
 
 @Injectable()
 export class DriversService {
@@ -27,6 +48,7 @@ export class DriversService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly workflowEvents: WorkflowEventService,
+    private readonly usageMetering: UsageMeteringService,
   ) {}
 
   async list(organizationId: string, query: ListDriversQueryDto) {
@@ -47,7 +69,7 @@ export class DriversService {
         : {}),
     };
 
-    const [rows, total] = await Promise.all([
+    const [rows, total] = await this.prisma.$transaction([
       this.prisma.driver.findMany({
         where,
         orderBy: { [query.sortBy]: query.sortOrder },
@@ -58,7 +80,7 @@ export class DriversService {
     ]);
 
     return {
-      items: rows.map((row) => this.toResponse(row)),
+      items: rows.map((row) => this.toResponse(row as DriverWithRelations)),
       meta: {
         page: query.page,
         limit: query.limit,
@@ -69,7 +91,7 @@ export class DriversService {
   }
 
   async getById(organizationId: string, id: string) {
-    const driver = await this.findOrThrow(organizationId, id);
+    const driver = await this.findOrThrowWithRelations(organizationId, id);
     return this.toResponse(driver);
   }
 
@@ -85,6 +107,7 @@ export class DriversService {
     /// ghost session advancing live dispatches.
     const driver = await this.prisma.driver.findFirst({
       where: { organizationId, userId, archivedAt: null },
+      include: DRIVER_INCLUDE,
     });
     if (!driver) {
       throw new NotFoundException("No driver profile is linked to your account yet");
@@ -93,25 +116,76 @@ export class DriversService {
   }
 
   async create(organizationId: string, dto: CreateDriverDto, actor: CurrentUserPayload) {
-    const employeeCode = await this.resolveCodeForCreate(organizationId, dto.employeeCode);
+    // Auto-generated codes are check-then-write: two concurrent creates can
+    // both compute the same "next" EMP-000N and race the unique constraint.
+    // A user-SUPPLIED code has already been existence-checked in
+    // resolveCodeForCreate, so a collision there is a real conflict, not a
+    // race to retry — only the auto-generated path retries.
+    await this.usageMetering.enforceLimit(organizationId, UsageMetricType.DRIVERS, 1);
 
-    let driver: Driver;
-    try {
-      driver = await this.prisma.driver.create({
-        data: {
-          organizationId,
-          employeeCode,
-          firstName: dto.firstName,
-          lastName: dto.lastName,
-          phone: dto.phone,
-          email: dto.email,
-          licenseNumber: dto.licenseNumber,
-          licenseExpiry: dto.licenseExpiry ? new Date(dto.licenseExpiry) : undefined,
-        },
-      });
-    } catch (err) {
-      this.rethrowCodeConflict(err);
-      throw err;
+    const isAutoCode = !dto.employeeCode;
+    let employeeCode = await this.resolveCodeForCreate(organizationId, dto.employeeCode);
+
+    let driver: DriverWithRelations | undefined;
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        driver = await this.prisma.$transaction(async (tx) => {
+          const created = await tx.driver.create({
+            data: {
+              organizationId,
+              employeeCode,
+              firstName: dto.firstName,
+              lastName: dto.lastName,
+              phone: dto.phone,
+              email: dto.email,
+              profilePhotoUrl: dto.profilePhotoUrl,
+              licenseNumber: dto.licenseNumber,
+              licenseClass: dto.licenseClass,
+              licenseIssueDate: dto.licenseIssueDate ? new Date(dto.licenseIssueDate) : undefined,
+              licenseExpiry: dto.licenseExpiry ? new Date(dto.licenseExpiry) : undefined,
+              licenseEndorsements: dto.licenseEndorsements,
+              employmentType: dto.employmentType,
+              hireDate: dto.hireDate ? new Date(dto.hireDate) : undefined,
+              department: dto.department,
+              baseLocation: dto.baseLocation,
+              workShift: dto.workShift,
+              preferredRegions: dto.preferredRegions,
+              availableDays: dto.availableDays ?? undefined,
+              driverNotes: dto.driverNotes,
+              internalNotes: dto.internalNotes,
+            },
+            include: DRIVER_INCLUDE,
+          });
+
+          if (dto.emergencyContact) {
+            await tx.driverEmergencyContact.create({
+              data: {
+                driverId: created.id,
+                organizationId,
+                name: dto.emergencyContact.name,
+                relationship: dto.emergencyContact.relationship,
+                phone: dto.emergencyContact.phone,
+                alternatePhone: dto.emergencyContact.alternatePhone,
+                email: dto.emergencyContact.email,
+                address: dto.emergencyContact.address,
+              },
+            });
+          }
+
+          return tx.driver.findUniqueOrThrow({
+            where: { id: created.id },
+            include: DRIVER_INCLUDE,
+          });
+        });
+        break;
+      } catch (err) {
+        const isCodeConflict = err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
+        if (!isCodeConflict) throw err;
+        if (!isAutoCode || attempt >= 2) {
+          throw new ConflictException("A driver with this employeeCode already exists in this organization");
+        }
+        employeeCode = await generateUniqueDriverCode(this.prisma, organizationId);
+      }
     }
 
     await this.auditService.log({
@@ -119,13 +193,13 @@ export class DriversService {
       actorUserId: actor.userId,
       action: "driver.create",
       entityType: "Driver",
-      entityId: driver.id,
-      metadata: { employeeCode: driver.employeeCode },
+      entityId: driver!.id,
+      metadata: { employeeCode: driver!.employeeCode },
     });
 
-    this.workflowEvents.emit(organizationId, "driver.created", { id: driver.id, employeeCode: driver.employeeCode, firstName: driver.firstName, lastName: driver.lastName });
+    void this.workflowEvents.emit(organizationId, "driver.created", { id: driver!.id, employeeCode: driver!.employeeCode, firstName: driver!.firstName, lastName: driver!.lastName });
 
-    return this.toResponse(driver);
+    return this.toResponse(driver!);
   }
 
   async update(organizationId: string, id: string, dto: UpdateDriverDto, actor: CurrentUserPayload) {
@@ -139,20 +213,67 @@ export class DriversService {
       await this.assertCodeAvailable(organizationId, dto.employeeCode);
     }
 
-    let updated: Driver;
+    let updated: DriverWithRelations;
     try {
-      updated = await this.prisma.driver.update({
-        where: { id },
-        data: {
-          employeeCode: dto.employeeCode,
-          firstName: dto.firstName,
-          lastName: dto.lastName,
-          phone: dto.phone,
-          email: dto.email,
-          status: dto.status,
-          licenseNumber: dto.licenseNumber,
-          licenseExpiry: dto.licenseExpiry ? new Date(dto.licenseExpiry) : undefined,
-        },
+      updated = await this.prisma.$transaction(async (tx) => {
+        const d = await tx.driver.update({
+          where: { id },
+          data: {
+            employeeCode: dto.employeeCode,
+            firstName: dto.firstName,
+            lastName: dto.lastName,
+            phone: dto.phone,
+            email: dto.email,
+            status: dto.status,
+            profilePhotoUrl: dto.profilePhotoUrl,
+            licenseNumber: dto.licenseNumber,
+            licenseClass: dto.licenseClass,
+            licenseIssueDate: dto.licenseIssueDate ? new Date(dto.licenseIssueDate) : undefined,
+            licenseExpiry: dto.licenseExpiry ? new Date(dto.licenseExpiry) : undefined,
+            licenseEndorsements: dto.licenseEndorsements,
+            employmentType: dto.employmentType,
+            hireDate: dto.hireDate ? new Date(dto.hireDate) : undefined,
+            department: dto.department,
+            baseLocation: dto.baseLocation,
+            workShift: dto.workShift,
+            preferredRegions: dto.preferredRegions,
+            availableDays: dto.availableDays !== undefined ? (dto.availableDays as Prisma.InputJsonValue) : undefined,
+            driverNotes: dto.driverNotes,
+            internalNotes: dto.internalNotes,
+          },
+          include: DRIVER_INCLUDE,
+        });
+
+        if (dto.emergencyContact) {
+          await tx.driverEmergencyContact.upsert({
+            where: { driverId: id },
+            create: {
+              driverId: id,
+              organizationId,
+              name: dto.emergencyContact.name,
+              relationship: dto.emergencyContact.relationship,
+              phone: dto.emergencyContact.phone,
+              alternatePhone: dto.emergencyContact.alternatePhone,
+              email: dto.emergencyContact.email,
+              address: dto.emergencyContact.address,
+            },
+            update: {
+              name: dto.emergencyContact.name,
+              relationship: dto.emergencyContact.relationship,
+              phone: dto.emergencyContact.phone,
+              alternatePhone: dto.emergencyContact.alternatePhone,
+              email: dto.emergencyContact.email,
+              address: dto.emergencyContact.address,
+            },
+          });
+
+          return tx.driver.findUniqueOrThrow({
+            where: { id },
+            include: DRIVER_INCLUDE,
+          });
+        }
+
+        return d;
       });
     } catch (err) {
       this.rethrowCodeConflict(err);
@@ -182,7 +303,7 @@ export class DriversService {
       throw new ConflictException("This driver already has a login linked — unlink it first");
     }
     if (driver.userId === userId) {
-      return this.toResponse(driver);
+      return this.toResponse(driver as DriverWithRelations);
     }
 
     const membership = await this.prisma.membership.findFirst({
@@ -213,6 +334,7 @@ export class DriversService {
     const updated = await this.prisma.driver.update({
       where: { id },
       data: { userId },
+      include: DRIVER_INCLUDE,
     });
 
     await this.auditService.log({
@@ -230,7 +352,7 @@ export class DriversService {
   async unlinkUser(organizationId: string, id: string, actor: CurrentUserPayload) {
     const driver = await this.findOrThrow(organizationId, id);
     if (!driver.userId) {
-      return this.toResponse(driver);
+      return this.toResponse(driver as DriverWithRelations);
     }
 
     const liveDispatches = await this.prisma.dispatch.count({
@@ -249,6 +371,7 @@ export class DriversService {
     const updated = await this.prisma.driver.update({
       where: { id },
       data: { userId: null },
+      include: DRIVER_INCLUDE,
     });
 
     await this.auditService.log({
@@ -285,6 +408,7 @@ export class DriversService {
     const driver = await this.prisma.driver.update({
       where: { id },
       data: { archivedAt: new Date() },
+      include: DRIVER_INCLUDE,
     });
 
     await this.auditService.log({
@@ -307,6 +431,7 @@ export class DriversService {
     const driver = await this.prisma.driver.update({
       where: { id },
       data: { archivedAt: null },
+      include: DRIVER_INCLUDE,
     });
 
     await this.auditService.log({
@@ -318,6 +443,111 @@ export class DriversService {
     });
 
     return this.toResponse(driver);
+  }
+
+  async uploadPhoto(organizationId: string, id: string, file: Express.Multer.File, actor: CurrentUserPayload) {
+    if (!ALLOWED_PHOTO_MIME.has(file.mimetype)) {
+      throw new BadRequestException("Only JPEG, PNG, or WebP images are allowed");
+    }
+    if (file.size > MAX_PHOTO_BYTES) {
+      throw new BadRequestException("Photo must be 2 MB or smaller");
+    }
+    if (!matchesDeclaredMimeType(file.buffer, file.mimetype)) {
+      throw new BadRequestException("File content does not match its declared type");
+    }
+
+    const driver = await this.findOrThrow(organizationId, id);
+
+    const ext = file.mimetype === "image/png" ? ".png" : file.mimetype === "image/webp" ? ".webp" : ".jpg";
+    const dir = join(PHOTO_UPLOAD_ROOT, organizationId, id);
+    mkdirSync(dir, { recursive: true });
+    const fileName = `${randomUUID()}${ext}`;
+    const absolutePath = join(dir, fileName);
+
+    if (driver.profilePhotoUrl) {
+      const dir = join(PHOTO_UPLOAD_ROOT, organizationId, id);
+      if (existsSync(dir)) {
+        try {
+          const { readdirSync } = await import("fs");
+          for (const f of readdirSync(dir)) {
+            try { unlinkSync(join(dir, f)); } catch { /* best effort */ }
+          }
+        } catch { /* best effort */ }
+      }
+    }
+
+    await writeFile(absolutePath, file.buffer);
+
+    const serveUrl = `/api/drivers/${id}/photo/file`;
+    const updated = await this.prisma.driver.update({
+      where: { id },
+      data: { profilePhotoUrl: serveUrl },
+      include: DRIVER_INCLUDE,
+    });
+
+    await this.auditService.log({
+      organizationId,
+      actorUserId: actor.userId,
+      action: "driver.photo_upload",
+      entityType: "Driver",
+      entityId: id,
+      metadata: { fileName },
+    });
+
+    return this.toResponse(updated);
+  }
+
+  async removePhoto(organizationId: string, id: string, actor: CurrentUserPayload) {
+    const driver = await this.findOrThrow(organizationId, id);
+    if (!driver.profilePhotoUrl) {
+      return this.toResponse(driver as DriverWithRelations);
+    }
+
+    const dir = join(PHOTO_UPLOAD_ROOT, organizationId, id);
+    if (existsSync(dir)) {
+      const { readdirSync } = await import("fs");
+      for (const f of readdirSync(dir)) {
+        try { unlinkSync(join(dir, f)); } catch { /* best effort */ }
+      }
+    }
+
+    const updated = await this.prisma.driver.update({
+      where: { id },
+      data: { profilePhotoUrl: null },
+      include: DRIVER_INCLUDE,
+    });
+
+    await this.auditService.log({
+      organizationId,
+      actorUserId: actor.userId,
+      action: "driver.photo_remove",
+      entityType: "Driver",
+      entityId: id,
+    });
+
+    return this.toResponse(updated);
+  }
+
+  async servePhoto(organizationId: string, id: string): Promise<{ mimeType: string; stream: ReturnType<typeof createReadStream> }> {
+    await this.findOrThrow(organizationId, id);
+
+    const dir = join(PHOTO_UPLOAD_ROOT, organizationId, id);
+    if (!existsSync(dir)) {
+      throw new NotFoundException("No photo found for this driver");
+    }
+
+    const { readdirSync } = await import("fs");
+    const files = readdirSync(dir);
+    if (files.length === 0) {
+      throw new NotFoundException("No photo found for this driver");
+    }
+
+    const latestFile = files.sort().at(-1)!;
+    const filePath = join(dir, latestFile);
+    const ext = latestFile.split(".").at(-1)?.toLowerCase();
+    const mimeType = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
+
+    return { mimeType, stream: createReadStream(filePath) };
   }
 
   private async resolveCodeForCreate(organizationId: string, requestedCode?: string): Promise<string> {
@@ -342,9 +572,20 @@ export class DriversService {
 
   /// Scoped by organizationId in the query itself, so a driver id from
   /// another organization returns 404 — never leaking whether it exists
-  /// elsewhere. Exported for OrdersService's assignment validation.
-  async findOrThrow(organizationId: string, id: string): Promise<Driver> {
+  /// elsewhere.
+  private async findOrThrow(organizationId: string, id: string): Promise<Driver> {
     const driver = await this.prisma.driver.findFirst({ where: { id, organizationId } });
+    if (!driver) {
+      throw new NotFoundException("Driver not found");
+    }
+    return driver;
+  }
+
+  private async findOrThrowWithRelations(organizationId: string, id: string): Promise<DriverWithRelations> {
+    const driver = await this.prisma.driver.findFirst({
+      where: { id, organizationId },
+      include: DRIVER_INCLUDE,
+    });
     if (!driver) {
       throw new NotFoundException("Driver not found");
     }
@@ -357,7 +598,7 @@ export class DriversService {
     }
   }
 
-  private toResponse(driver: Driver) {
+  private toResponse(driver: DriverWithRelations | (Driver & { emergencyContact?: DriverEmergencyContact | null; driverDocuments?: DriverDocument[] })) {
     return {
       id: driver.id,
       organizationId: driver.organizationId,
@@ -367,8 +608,23 @@ export class DriversService {
       phone: driver.phone,
       email: driver.email,
       status: driver.status,
+      profilePhotoUrl: driver.profilePhotoUrl,
       licenseNumber: driver.licenseNumber,
+      licenseClass: driver.licenseClass,
+      licenseIssueDate: driver.licenseIssueDate,
       licenseExpiry: driver.licenseExpiry,
+      licenseEndorsements: driver.licenseEndorsements,
+      employmentType: driver.employmentType,
+      hireDate: driver.hireDate,
+      department: driver.department,
+      baseLocation: driver.baseLocation,
+      workShift: driver.workShift,
+      preferredRegions: driver.preferredRegions,
+      availableDays: driver.availableDays,
+      driverNotes: driver.driverNotes,
+      internalNotes: driver.internalNotes,
+      emergencyContact: "emergencyContact" in driver ? (driver.emergencyContact ?? null) : null,
+      driverDocuments: "driverDocuments" in driver ? (driver.driverDocuments ?? []) : [],
       /// Present so fleet admins can see whether a login is linked; linking
       /// itself is still a seed/admin path until a dedicated endpoint ships.
       userId: driver.userId,

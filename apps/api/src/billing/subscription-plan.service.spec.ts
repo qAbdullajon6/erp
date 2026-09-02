@@ -1,80 +1,109 @@
 import { NotFoundException } from "@nestjs/common";
+import type { SubscriptionPlan } from "@prisma/client";
+import { PrismaService } from "../prisma/prisma.service";
 import { SubscriptionPlanService } from "./subscription-plan.service";
+import { asDependency } from "./test-support/billing-spec.helpers";
 
-const PLANS = [
+const PLAN_TIMESTAMP = new Date("2026-01-01T00:00:00Z");
+
+const PLANS: SubscriptionPlan[] = [
   {
     id: "plan-free",
     name: "Free",
     slug: "free",
+    description: null,
     price: 0,
     annualPrice: 0,
+    currency: "USD",
     isActive: true,
     isFeatured: false,
     sortOrder: 0,
     features: { users: 5, vehicles: 5, orders_per_month: 50, custom_branding: false, sso: false },
+    createdAt: PLAN_TIMESTAMP,
+    updatedAt: PLAN_TIMESTAMP,
   },
   {
     id: "plan-starter",
     name: "Starter",
     slug: "starter",
+    description: null,
     price: 4900,
     annualPrice: 49000,
+    currency: "USD",
     isActive: true,
     isFeatured: false,
     sortOrder: 1,
     features: { users: 10, vehicles: 20, orders_per_month: 500, custom_branding: false, sso: false },
+    createdAt: PLAN_TIMESTAMP,
+    updatedAt: PLAN_TIMESTAMP,
   },
   {
     id: "plan-pro",
     name: "Professional",
     slug: "professional",
+    description: null,
     price: 14900,
     annualPrice: 149000,
+    currency: "USD",
     isActive: true,
     isFeatured: true,
     sortOrder: 2,
     features: { users: 25, vehicles: 50, orders_per_month: 5000, custom_branding: true, sso: false },
+    createdAt: PLAN_TIMESTAMP,
+    updatedAt: PLAN_TIMESTAMP,
   },
   {
     id: "plan-enterprise",
     name: "Enterprise",
     slug: "enterprise",
+    description: null,
     price: 49900,
     annualPrice: 499000,
+    currency: "USD",
     isActive: true,
     isFeatured: false,
     sortOrder: 3,
     features: { users: null, vehicles: null, orders_per_month: null, custom_branding: true, sso: true },
+    createdAt: PLAN_TIMESTAMP,
+    updatedAt: PLAN_TIMESTAMP,
   },
 ];
 
 function makePrisma() {
   return {
     subscriptionPlan: {
-      findMany: jest.fn().mockImplementation(({ where, orderBy }) => {
-        let result = [...PLANS];
-        if (where?.isActive) result = result.filter((p) => p.isActive);
-        if (orderBy?.sortOrder === "asc") result.sort((a, b) => a.sortOrder - b.sortOrder);
-        return Promise.resolve(result);
-      }),
-      findUnique: jest.fn().mockImplementation(({ where }) => {
+      findMany: jest.fn().mockImplementation(
+        ({
+          where,
+          orderBy,
+        }: {
+          where?: { isActive?: boolean };
+          orderBy?: { sortOrder?: "asc" | "desc" };
+        }) => {
+          let result = [...PLANS];
+          if (where?.isActive) result = result.filter((p) => p.isActive);
+          if (orderBy?.sortOrder === "asc") result.sort((a, b) => a.sortOrder - b.sortOrder);
+          return Promise.resolve(result);
+        },
+      ),
+      findUnique: jest.fn().mockImplementation(({ where }: { where: { id?: string; slug?: string } }) => {
         const plan = PLANS.find((p) => p.id === where.id || p.slug === where.slug);
         return Promise.resolve(plan ?? null);
       }),
-      findFirst: jest.fn().mockImplementation(({ where }) => {
+      findFirst: jest.fn().mockImplementation(({ where }: { where?: { isFeatured?: boolean } }) => {
         let result = PLANS.filter((p) => p.isActive);
         if (where?.isFeatured) result = result.filter((p) => p.isFeatured);
         return Promise.resolve(result[0] ?? null);
       }),
     },
-  } as any;
+  };
 }
 
 describe("SubscriptionPlanService", () => {
   let service: SubscriptionPlanService;
 
   beforeEach(() => {
-    service = new SubscriptionPlanService(makePrisma());
+    service = new SubscriptionPlanService(asDependency<PrismaService>(makePrisma()));
   });
 
   describe("listActivePlans()", () => {
@@ -118,25 +147,25 @@ describe("SubscriptionPlanService", () => {
 
   describe("isUpgrade()", () => {
     it("returns true when new plan has higher price", () => {
-      expect(service.isUpgrade(PLANS[0] as any, PLANS[2] as any)).toBe(true);
+      expect(service.isUpgrade(PLANS[0], PLANS[2])).toBe(true);
     });
 
     it("returns false when new plan has lower price", () => {
-      expect(service.isUpgrade(PLANS[2] as any, PLANS[0] as any)).toBe(false);
+      expect(service.isUpgrade(PLANS[2], PLANS[0])).toBe(false);
     });
 
     it("returns false when same plan", () => {
-      expect(service.isUpgrade(PLANS[1] as any, PLANS[1] as any)).toBe(false);
+      expect(service.isUpgrade(PLANS[1], PLANS[1])).toBe(false);
     });
   });
 
   describe("isDowngrade()", () => {
     it("returns true when new plan has lower price", () => {
-      expect(service.isDowngrade(PLANS[2] as any, PLANS[0] as any)).toBe(true);
+      expect(service.isDowngrade(PLANS[2], PLANS[0])).toBe(true);
     });
 
     it("returns false when new plan has higher price", () => {
-      expect(service.isDowngrade(PLANS[0] as any, PLANS[2] as any)).toBe(false);
+      expect(service.isDowngrade(PLANS[0], PLANS[2])).toBe(false);
     });
   });
 

@@ -13,6 +13,8 @@ const STEPS: { status: DispatchStatus; label: string }[] = [
   { status: 'EN_ROUTE_TO_PICKUP', label: 'To pickup' },
   { status: 'AT_PICKUP', label: 'At pickup' },
   { status: 'IN_TRANSIT', label: 'Transit' },
+  { status: 'AT_STOP', label: 'At stop' },
+  { status: 'ARRIVED_AT_DELIVERY', label: 'Arrived' },
   { status: 'DELIVERED', label: 'Delivered' },
 ];
 
@@ -22,8 +24,11 @@ const STEP_INDEX: Record<DispatchStatus, number> = {
   EN_ROUTE_TO_PICKUP: 2,
   AT_PICKUP: 3,
   IN_TRANSIT: 4,
-  DELIVERED: 5,
+  AT_STOP: 5,
+  ARRIVED_AT_DELIVERY: 6,
+  DELIVERED: 7,
   CANCELLED: -1,
+  DELIVERY_FAILED: -1,
 };
 
 interface DispatchTimelineProps {

@@ -9,6 +9,7 @@ import {
   useState,
   forwardRef,
   type Dispatch,
+  type RefObject,
   type SetStateAction,
 } from 'react';
 import mapboxgl from 'mapbox-gl';
@@ -30,6 +31,8 @@ import {
   vehicleDisplayName,
   writeMapView,
 } from '@/components/fleet-tracking/fleet-ops';
+import { fenceMapColor, hasRenderableGeometry } from '@/components/fleet-geofences/geofences-ops';
+import type { Geofence } from '@/lib/api/telematics-geofences';
 import {
   FleetMapToolbar,
   type FleetMapStyleOption,
@@ -42,19 +45,28 @@ import {
 } from '@/lib/mapbox';
 import { Maximize2, Minimize2, Focus, MapPin, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+  bindLayerHoverHandlers,
+  createSelectedMarkerClickHandler,
+  nextSseReconnectDelayMs,
+  reduceStreamStatus,
+} from '@/components/fleet-tracking/fleet-tracking-hardening';
 
 const FLEET_SOURCE = 'fleet-vehicles';
 const FLEET_CLUSTER = 'fleet-clusters';
 const FLEET_CLUSTER_COUNT = 'fleet-cluster-count';
 const FLEET_UNCLUSTERED = 'fleet-unclustered';
+const FLEET_HEADING = 'fleet-heading';
+const FLEET_HEADING_IMAGE = 'fleet-heading-arrow';
+const GEOFENCE_SOURCE = 'fleet-geofences';
+const GEOFENCE_FILL_LAYER = 'fleet-geofences-fill';
+const GEOFENCE_LINE_LAYER = 'fleet-geofences-line';
 const HISTORY_SOURCE = 'selected-history-route';
 const HISTORY_LAYER = 'selected-history-route-line';
 const DIRECTIONS_SOURCE = 'selected-directions-route';
 const DIRECTIONS_LAYER = 'selected-directions-route-line';
 const TRAFFIC_SOURCE = 'mapbox-traffic';
 const TRAFFIC_LAYER = 'mapbox-traffic-layer';
-const RECONNECT_BASE_MS = 1_500;
-const RECONNECT_MAX_MS = 20_000;
 
 export type FleetMapHandle = {
   fitAll: () => void;
@@ -70,6 +82,7 @@ interface FleetMapProps {
   vehicles: TrackingVehicle[];
   selectedIds: string[];
   selectedVehicleId: string | null;
+  geofences?: Geofence[];
   historyPoints?: TrackingHistoryPoint[];
   mapStyle: FleetMapStyleOption;
   clusters: boolean;
@@ -84,6 +97,8 @@ interface FleetMapProps {
   onVehiclesUpdate: Dispatch<SetStateAction<TrackingVehicle[]>>;
   onSelectVehicle: (vehicleId: string | null) => void;
   onStreamStatusChange?: (status: StreamStatus) => void;
+  /// When set, browser fullscreen targets this element (map + sidebar shell).
+  fullscreenRootRef?: RefObject<HTMLElement | null>;
   className?: string;
 }
 
@@ -97,6 +112,7 @@ export const FleetMap = forwardRef<FleetMapHandle, FleetMapProps>(function Fleet
     vehicles,
     selectedIds,
     selectedVehicleId,
+    geofences = [],
     historyPoints = [],
     mapStyle,
     clusters,
@@ -111,13 +127,17 @@ export const FleetMap = forwardRef<FleetMapHandle, FleetMapProps>(function Fleet
     onVehiclesUpdate,
     onSelectVehicle,
     onStreamStatusChange,
+    fullscreenRootRef,
     className,
   },
   ref,
 ) {
   const mapContainer = useRef<HTMLDivElement>(null);
+  const mapShell = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const selectedMarker = useRef<mapboxgl.Marker | null>(null);
+  const selectedVehicleIdRef = useRef<string | null>(selectedVehicleId);
+  const onSelectVehicleRef = useRef(onSelectVehicle);
   const startMarker = useRef<mapboxgl.Marker | null>(null);
   const endMarker = useRef<mapboxgl.Marker | null>(null);
   const popup = useRef<mapboxgl.Popup | null>(null);
@@ -134,6 +154,8 @@ export const FleetMap = forwardRef<FleetMapHandle, FleetMapProps>(function Fleet
 
   vehiclesRef.current = vehicles;
   selectedIdsRef.current = selectedIds;
+  selectedVehicleIdRef.current = selectedVehicleId;
+  onSelectVehicleRef.current = onSelectVehicle;
 
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
@@ -192,6 +214,7 @@ export const FleetMap = forwardRef<FleetMapHandle, FleetMapProps>(function Fleet
           label: vehicleDisplayName(vehicle),
           movementState: vehicle.movementState,
           heading: vehicle.heading ?? 0,
+          hasHeading: vehicle.heading != null && Number.isFinite(vehicle.heading) ? 1 : 0,
           offline: vehicle.isStale || vehicle.movementState === 'OFFLINE' ? 1 : 0,
           selected: selectedIdSet.has(vehicle.vehicleId) ? 1 : 0,
           color: movementMarkerColor(vehicle.movementState),
@@ -204,13 +227,33 @@ export const FleetMap = forwardRef<FleetMapHandle, FleetMapProps>(function Fleet
     return { type: 'FeatureCollection' as const, features };
   }, [vehicles, selectedVehicleId, selectedIdSet]);
 
+  // Same fill+line technique as the dedicated Geofences page — this map is a
+  // separate mapboxgl instance from that page's maplibregl one, so the layers
+  // can't be shared directly, but the GeoJSON shape and styling are the same.
+  const geofenceGeoJson = useMemo(() => {
+    const features = geofences.filter(hasRenderableGeometry).map((fence) => {
+      const color = fenceMapColor(fence, false);
+      const coordinates =
+        fence.type === 'CIRCLE'
+          ? [circlePolygon(fence.centerLng!, fence.centerLat!, fence.radiusM!)]
+          : [closedRing(fence.polygon!.map((v) => [v.lng, v.lat] as [number, number]))];
+      return {
+        type: 'Feature' as const,
+        properties: { id: fence.id, name: fence.name, color },
+        geometry: { type: 'Polygon' as const, coordinates },
+      };
+    });
+    return { type: 'FeatureCollection' as const, features };
+  }, [geofences]);
+
   useEffect(() => {
     const onChange = () => {
-      setFullscreen(document.fullscreenElement === mapContainer.current);
+      const target = fullscreenRootRef?.current ?? mapShell.current;
+      setFullscreen(document.fullscreenElement === target);
     };
     document.addEventListener('fullscreenchange', onChange);
     return () => document.removeEventListener('fullscreenchange', onChange);
-  }, []);
+  }, [fullscreenRootRef]);
 
   const fitAll = useCallback(() => {
     const mapInstance = map.current;
@@ -333,12 +376,13 @@ export const FleetMap = forwardRef<FleetMapHandle, FleetMapProps>(function Fleet
   }, [fitAll, vehicles]);
 
   const toggleFullscreen = useCallback(() => {
+    const target = fullscreenRootRef?.current ?? mapShell.current;
     if (!document.fullscreenElement) {
-      void mapContainer.current?.requestFullscreen();
+      void target?.requestFullscreen();
     } else {
       void document.exitFullscreen();
     }
-  }, []);
+  }, [fullscreenRootRef]);
 
   const getView = useCallback((): { center: [number, number]; zoom: number } => {
     const mapInstance = map.current;
@@ -438,12 +482,23 @@ export const FleetMap = forwardRef<FleetMapHandle, FleetMapProps>(function Fleet
       if (cancelled) return;
       setMapReady(true);
       setMapError(null);
+      ensureGeofenceLayer(instance);
       ensureFleetLayers(instance, clusters);
       labelLayerIdsRef.current = collectSymbolLayerIds(instance);
     });
 
+    const resizeTarget = mapShell.current ?? mapContainer.current;
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined' && resizeTarget
+        ? new ResizeObserver(() => {
+            instance.resize();
+          })
+        : null;
+    if (resizeObserver && resizeTarget) resizeObserver.observe(resizeTarget);
+
     return () => {
       cancelled = true;
+      resizeObserver?.disconnect();
       instance.off('error', onError);
       instance.off('moveend', persistView);
       popup.current?.remove();
@@ -461,6 +516,14 @@ export const FleetMap = forwardRef<FleetMapHandle, FleetMapProps>(function Fleet
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tokenOk]);
 
+  // Resize when workspace chrome changes (sidebar collapse, mobile panes, fullscreen).
+  useEffect(() => {
+    const mapInstance = map.current;
+    const shell = mapShell.current;
+    if (!mapInstance || !shell || !mapReady) return;
+    mapInstance.resize();
+  }, [mapReady, fullscreen]);
+
   // Style swap without destroying markers state.
   useEffect(() => {
     const mapInstance = map.current;
@@ -470,6 +533,7 @@ export const FleetMap = forwardRef<FleetMapHandle, FleetMapProps>(function Fleet
     setMapReady(false);
     mapInstance.setStyle(mapboxStyleUrl(mapStyle));
     mapInstance.once('style.load', () => {
+      ensureGeofenceLayer(mapInstance);
       ensureFleetLayers(mapInstance, clustersRef.current);
       labelLayerIdsRef.current = collectSymbolLayerIds(mapInstance);
       applyTrafficLayer(mapInstance, traffic);
@@ -522,32 +586,54 @@ export const FleetMap = forwardRef<FleetMapHandle, FleetMapProps>(function Fleet
     selectedVehicle,
   ]);
 
-  // SSE with reconnect / backoff.
+  // SSE with reconnect / backoff. Each connect() calls trackingAPI.streamLive,
+  // which reads a fresh access token from sessionManager — reconnects do not
+  // reuse a stale JWT from the first mount.
+  //
+  // Status semantics:
+  // - connecting / reconnecting → HTTP open in progress
+  // - connected_waiting → SSE open; keep-alive alone stays here
+  // - live → position/state data events arrived
   useEffect(() => {
     const controller = new AbortController();
     let attempt = 0;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let stopped = false;
+    let status: StreamStatus = 'disconnected';
+
+    const emit = (action: Parameters<typeof reduceStreamStatus>[1]) => {
+      status = reduceStreamStatus(status, action);
+      onStreamStatusChange?.(status);
+    };
 
     const connect = async () => {
       if (stopped || controller.signal.aborted) return;
-      onStreamStatusChange?.('connecting');
+      emit({ type: 'connect_start', attempt });
 
       try {
-        for await (const event of trackingAPI.streamLive(controller.signal)) {
+        for await (const event of trackingAPI.streamLive({
+          signal: controller.signal,
+          onOpen: () => {
+            if (stopped || controller.signal.aborted) return;
+            emit({ type: 'opened' });
+          },
+        })) {
           if (stopped) break;
           attempt = 0;
-          onStreamStatusChange?.('live');
+          emit({ type: 'data_event', eventType: event.type });
+          // Keep-alive comments never yield here. LIVE_DATA requires position/state.
           onVehiclesUpdate((prev) => applyTrackingEvent(prev, event));
         }
+        if (stopped || controller.signal.aborted) return;
+        emit({ type: 'stream_end' });
       } catch (err) {
         if (controller.signal.aborted || stopped) return;
         console.error('Tracking live stream error:', err);
+        emit({ type: 'stream_error' });
       }
 
       if (controller.signal.aborted || stopped) return;
-      onStreamStatusChange?.('disconnected');
-      const delay = Math.min(RECONNECT_BASE_MS * 2 ** attempt, RECONNECT_MAX_MS);
+      const delay = nextSseReconnectDelayMs(attempt);
       attempt += 1;
       reconnectTimer = setTimeout(() => {
         void connect();
@@ -560,11 +646,29 @@ export const FleetMap = forwardRef<FleetMapHandle, FleetMapProps>(function Fleet
       stopped = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       controller.abort();
-      onStreamStatusChange?.('disconnected');
+      emit({ type: 'cleanup' });
     };
   }, [onVehiclesUpdate, onStreamStatusChange]);
 
-  // Clustered fleet GeoJSON (excludes primary selected — uses HTML marker).
+  // Geofence overlay — static fill+line under the vehicle layers, refreshed
+  // whenever the geofences list changes (create/edit/archive) or the style
+  // swap wiped it.
+  useEffect(() => {
+    const mapInstance = map.current;
+    if (!mapInstance || !mapReady) return;
+
+    const source = mapInstance.getSource(GEOFENCE_SOURCE) as mapboxgl.GeoJSONSource | undefined;
+    if (source) {
+      source.setData(geofenceGeoJson);
+    } else {
+      ensureGeofenceLayer(mapInstance);
+      const created = mapInstance.getSource(GEOFENCE_SOURCE) as mapboxgl.GeoJSONSource | undefined;
+      created?.setData(geofenceGeoJson);
+    }
+  }, [geofenceGeoJson, mapReady]);
+
+  // Clustered fleet GeoJSON data only — never bind listeners here so SSE
+  // position ticks do not re-register mouseenter/click handlers.
   useEffect(() => {
     const mapInstance = map.current;
     if (!mapInstance || !mapReady) return;
@@ -578,12 +682,25 @@ export const FleetMap = forwardRef<FleetMapHandle, FleetMapProps>(function Fleet
       created?.setData(fleetGeoJson);
     }
 
+    if (!didFit.current && fleetGeoJson.features.length > 0 && !readMapView()) {
+      didFit.current = true;
+      fitAll();
+    }
+  }, [fleetGeoJson, mapReady, clusters, fitAll]);
+
+  // Fleet layer interactions — bind once per layer lifecycle (mapReady / cluster mode).
+  // Clicks read selection via onSelectVehicleRef so GeoJSON updates do not rebind.
+  useEffect(() => {
+    const mapInstance = map.current;
+    if (!mapInstance || !mapReady) return;
+    if (!mapInstance.getLayer(FLEET_UNCLUSTERED)) return;
+
     const onClickUnclustered = (event: mapboxgl.MapLayerMouseEvent) => {
       const feature = event.features?.[0] as
         | { properties?: { id?: unknown } }
         | undefined;
       const id = feature?.properties?.id;
-      if (typeof id === 'string') onSelectVehicle(id);
+      if (typeof id === 'string') onSelectVehicleRef.current(id);
     };
     const onClickCluster = (event: mapboxgl.MapLayerMouseEvent) => {
       const feature = event.features?.[0] as
@@ -593,7 +710,7 @@ export const FleetMap = forwardRef<FleetMapHandle, FleetMapProps>(function Fleet
           }
         | undefined;
       const clusterId = feature?.properties?.cluster_id;
-      const source = mapInstance.getSource(FLEET_SOURCE) as mapboxgl.GeoJSONSource;
+      const clusterSource = mapInstance.getSource(FLEET_SOURCE) as mapboxgl.GeoJSONSource;
       if (
         clusterId == null ||
         !feature?.geometry ||
@@ -603,7 +720,7 @@ export const FleetMap = forwardRef<FleetMapHandle, FleetMapProps>(function Fleet
         return;
       }
       const coords = feature.geometry.coordinates as [number, number];
-      source.getClusterExpansionZoom(clusterId, (err, zoom) => {
+      clusterSource.getClusterExpansionZoom(clusterId, (err, zoom) => {
         if (err || zoom == null) return;
         mapInstance.easeTo({
           center: coords,
@@ -613,33 +730,40 @@ export const FleetMap = forwardRef<FleetMapHandle, FleetMapProps>(function Fleet
       });
     };
 
+    const setPointer = () => {
+      mapInstance.getCanvas().style.cursor = 'pointer';
+    };
+    const clearPointer = () => {
+      mapInstance.getCanvas().style.cursor = '';
+    };
+
+    const hoverLayers = [FLEET_UNCLUSTERED, FLEET_CLUSTER];
+    if (mapInstance.getLayer(FLEET_HEADING)) hoverLayers.push(FLEET_HEADING);
+
     mapInstance.on('click', FLEET_UNCLUSTERED, onClickUnclustered);
     mapInstance.on('click', FLEET_CLUSTER, onClickCluster);
-    mapInstance.on('mouseenter', FLEET_UNCLUSTERED, () => {
-      mapInstance.getCanvas().style.cursor = 'pointer';
-    });
-    mapInstance.on('mouseleave', FLEET_UNCLUSTERED, () => {
-      mapInstance.getCanvas().style.cursor = '';
-    });
-    mapInstance.on('mouseenter', FLEET_CLUSTER, () => {
-      mapInstance.getCanvas().style.cursor = 'pointer';
-    });
-    mapInstance.on('mouseleave', FLEET_CLUSTER, () => {
-      mapInstance.getCanvas().style.cursor = '';
-    });
-
-    if (!didFit.current && fleetGeoJson.features.length > 0 && !readMapView()) {
-      didFit.current = true;
-      fitAll();
+    if (mapInstance.getLayer(FLEET_HEADING)) {
+      mapInstance.on('click', FLEET_HEADING, onClickUnclustered);
     }
+    const unbindHover = bindLayerHoverHandlers(
+      mapInstance,
+      hoverLayers,
+      setPointer,
+      clearPointer,
+    );
 
     return () => {
       mapInstance.off('click', FLEET_UNCLUSTERED, onClickUnclustered);
       mapInstance.off('click', FLEET_CLUSTER, onClickCluster);
+      if (mapInstance.getLayer(FLEET_HEADING)) {
+        mapInstance.off('click', FLEET_HEADING, onClickUnclustered);
+      }
+      unbindHover();
     };
-  }, [fleetGeoJson, mapReady, onSelectVehicle, fitAll, clusters]);
+  }, [mapReady, clusters]);
 
   // Selected vehicle marker — heading, movement color, offline opacity, smooth updates.
+  // Click uses refs so the listener always selects the CURRENT vehicleId.
   useEffect(() => {
     const mapInstance = map.current;
     if (!mapInstance || !mapReady) return;
@@ -667,13 +791,16 @@ export const FleetMap = forwardRef<FleetMapHandle, FleetMapProps>(function Fleet
         ? 'none'
         : 'transform 280ms ease-out, opacity 200ms ease';
       el.innerHTML = getMarkerSVG(selectedVehicle, true);
+      el.addEventListener(
+        'click',
+        createSelectedMarkerClickHandler(
+          () => selectedVehicleIdRef.current,
+          (id) => onSelectVehicleRef.current(id),
+        ),
+      );
       selectedMarker.current = new mapboxgl.Marker({ element: el, rotationAlignment: 'map' })
         .setLngLat(lngLat)
         .addTo(mapInstance);
-      el.addEventListener('click', (e) => {
-        e.stopPropagation();
-        onSelectVehicle(selectedVehicle.vehicleId);
-      });
     } else {
       selectedMarker.current.setLngLat(lngLat);
       const el = selectedMarker.current.getElement();
@@ -683,7 +810,7 @@ export const FleetMap = forwardRef<FleetMapHandle, FleetMapProps>(function Fleet
           : '1';
       el.innerHTML = getMarkerSVG(selectedVehicle, true);
     }
-  }, [selectedVehicle, mapReady, onSelectVehicle]);
+  }, [selectedVehicle, mapReady]);
 
   // History route + start / end markers.
   useEffect(() => {
@@ -794,7 +921,10 @@ export const FleetMap = forwardRef<FleetMapHandle, FleetMapProps>(function Fleet
   }
 
   return (
-    <div className={cn('relative min-h-[16rem] flex-1 bg-muted/20', className)}>
+    <div
+      ref={mapShell}
+      className={cn('relative min-h-[16rem] flex-1 bg-muted/20', className)}
+    >
       <div ref={mapContainer} className="h-full w-full" />
 
       {!mapReady && !mapError ? (
@@ -817,6 +947,7 @@ export const FleetMap = forwardRef<FleetMapHandle, FleetMapProps>(function Fleet
                 if (mapInstance) {
                   mapInstance.setStyle(mapboxStyleUrl(mapStyle));
                   mapInstance.once('style.load', () => {
+                    ensureGeofenceLayer(mapInstance);
                     ensureFleetLayers(mapInstance, clusters);
                     labelLayerIdsRef.current = collectSymbolLayerIds(mapInstance);
                     applyTrafficLayer(mapInstance, traffic);
@@ -896,11 +1027,80 @@ export const FleetMap = forwardRef<FleetMapHandle, FleetMapProps>(function Fleet
   );
 });
 
+function ensureGeofenceLayer(mapInstance: mapboxgl.Map): void {
+  if (mapInstance.getSource(GEOFENCE_SOURCE)) return;
+
+  mapInstance.addSource(GEOFENCE_SOURCE, {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: [] },
+  });
+
+  // Added before the fleet source's layers (via call order at every site
+  // that creates it) so vehicle markers always paint above the fences.
+  mapInstance.addLayer({
+    id: GEOFENCE_FILL_LAYER,
+    type: 'fill',
+    source: GEOFENCE_SOURCE,
+    paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.15 },
+  });
+  mapInstance.addLayer({
+    id: GEOFENCE_LINE_LAYER,
+    type: 'line',
+    source: GEOFENCE_SOURCE,
+    paint: { 'line-color': ['get', 'color'], 'line-width': 2, 'line-opacity': 0.8 },
+  });
+}
+
+/// Approximates a circle geofence as a polygon for Mapbox's fill/line layers
+/// — mirrors the identical helper in geofences-map.tsx (that page uses a
+/// separate maplibregl instance, so the function can't be imported directly).
+function circlePolygon(lng: number, lat: number, radiusM: number, steps = 64): [number, number][] {
+  const coords: [number, number][] = [];
+  const earth = 6378137;
+  for (let i = 0; i <= steps; i += 1) {
+    const bearing = (i / steps) * 2 * Math.PI;
+    const dx = (radiusM / earth) * Math.cos(bearing);
+    const dy = (radiusM / earth) * Math.sin(bearing);
+    const nextLat = lat + (dy * 180) / Math.PI;
+    const nextLng = lng + ((dx * 180) / Math.PI) / Math.cos((lat * Math.PI) / 180);
+    coords.push([nextLng, nextLat]);
+  }
+  return coords;
+}
+
+function closedRing(ring: [number, number][]): [number, number][] {
+  if (ring.length === 0) return ring;
+  const [firstLng, firstLat] = ring[0];
+  const [lastLng, lastLat] = ring[ring.length - 1];
+  return firstLng !== lastLng || firstLat !== lastLat ? [...ring, ring[0]] : ring;
+}
+
 function removeFleetLayers(mapInstance: mapboxgl.Map): void {
-  for (const id of [FLEET_UNCLUSTERED, FLEET_CLUSTER_COUNT, FLEET_CLUSTER]) {
+  for (const id of [FLEET_HEADING, FLEET_UNCLUSTERED, FLEET_CLUSTER_COUNT, FLEET_CLUSTER]) {
     if (mapInstance.getLayer(id)) mapInstance.removeLayer(id);
   }
   if (mapInstance.getSource(FLEET_SOURCE)) mapInstance.removeSource(FLEET_SOURCE);
+}
+
+function ensureHeadingArrowImage(mapInstance: mapboxgl.Map): void {
+  if (mapInstance.hasImage(FLEET_HEADING_IMAGE)) return;
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.clearRect(0, 0, size, size);
+  ctx.fillStyle = '#0f172a';
+  ctx.beginPath();
+  ctx.moveTo(size * 0.5, size * 0.12);
+  ctx.lineTo(size * 0.72, size * 0.78);
+  ctx.lineTo(size * 0.5, size * 0.62);
+  ctx.lineTo(size * 0.28, size * 0.78);
+  ctx.closePath();
+  ctx.fill();
+  const data = ctx.getImageData(0, 0, size, size);
+  mapInstance.addImage(FLEET_HEADING_IMAGE, data, { pixelRatio: 2 });
 }
 
 function ensureFleetLayers(mapInstance: mapboxgl.Map, cluster: boolean): void {
@@ -961,6 +1161,38 @@ function ensureFleetLayers(mapInstance: mapboxgl.Map, cluster: boolean): void {
       'circle-stroke-color': ['case', ['==', ['get', 'selected'], 1], '#0f172a', '#ffffff'],
     },
   });
+
+  // Additive symbol layer — rotates with `heading` without recreating DOM markers.
+  try {
+    ensureHeadingArrowImage(mapInstance);
+    mapInstance.addLayer({
+      id: FLEET_HEADING,
+      type: 'symbol',
+      source: FLEET_SOURCE,
+      filter: cluster
+        ? [
+            'all',
+            ['!', ['has', 'point_count']],
+            ['==', ['get', 'hasHeading'], 1],
+            ['!=', ['get', 'offline'], 1],
+          ]
+        : ['all', ['==', ['get', 'hasHeading'], 1], ['!=', ['get', 'offline'], 1]],
+      layout: {
+        'icon-image': FLEET_HEADING_IMAGE,
+        'icon-size': 0.45,
+        'icon-rotate': ['get', 'heading'],
+        'icon-rotation-alignment': 'map',
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+        'icon-offset': [0, -10],
+      },
+      paint: {
+        'icon-opacity': 0.85,
+      },
+    });
+  } catch {
+    // Heading layer is best-effort — circle markers remain the primary hit target.
+  }
 }
 
 function collectSymbolLayerIds(mapInstance: mapboxgl.Map): string[] {

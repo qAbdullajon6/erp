@@ -107,10 +107,20 @@ const PROJECTION: Record<DispatchStatus, OrderStatus | null> = {
   EN_ROUTE_TO_PICKUP: "ASSIGNED",
   AT_PICKUP: "PICKED_UP",
   IN_TRANSIT: "IN_TRANSIT",
+  // AT_STOP is an intermediate stop mid-transit. The order remains IN_TRANSIT
+  // from the customer's perspective — cargo is still moving toward delivery.
+  AT_STOP: "IN_TRANSIT",
+  ARRIVED_AT_DELIVERY: "IN_TRANSIT",
   DELIVERED: "DELIVERED",
-  // Handled by aggregate(), not here: one cancelled dispatch among several says
-  // nothing, but ALL of them cancelled means the order is back in the pool (R8).
+  // Handled by allTerminal(), not here: one cancelled/failed dispatch among
+  // several says nothing, but ALL of them terminal means the order is back in
+  // the pool (R8 — extended to cover DELIVERY_FAILED as well).
   CANCELLED: null,
+  // A failed delivery leaves the cargo still with the driver (still in transit).
+  // The order stays IN_TRANSIT so ops can see it needs re-dispatch. When the
+  // DELIVERY_FAILED dispatch is the only governing dispatch, allTerminal() fires
+  // below and releases the order back to PENDING.
+  DELIVERY_FAILED: "IN_TRANSIT",
 };
 
 /// The INVERSE of the projection table: the dispatch state that produces a given
@@ -145,7 +155,10 @@ export function dispatchPath(from: DispatchStatus, to: DispatchStatus): Dispatch
   if (start === -1 || end === -1 || end <= start) {
     return [];
   }
-  return DISPATCH_SEQUENCE.slice(start + 1, end + 1);
+  // AT_STOP is a driver-initiated optional detour, never an automatic step in an
+  // order-driven advance. The orders service must not push a dispatch into AT_STOP
+  // as a side effect of walking toward DELIVERED or ARRIVED_AT_DELIVERY.
+  return DISPATCH_SEQUENCE.slice(start + 1, end + 1).filter((s) => s !== "AT_STOP");
 }
 
 /// Selects the dispatch that governs the order (R2).
@@ -196,11 +209,13 @@ export function projectOrderStatus(
     return unchanged;
   }
 
-  // Every dispatch is cancelled: the resources are released and the order falls
-  // back into the unassigned pool (R8). Guarded by the commercial check above, so
-  // this can never resurrect a CANCELLED order.
-  const allCancelled = dispatches.every((d) => d.status === "CANCELLED");
-  if (allCancelled) {
+  // Every dispatch is in a terminal non-delivery state: the resources are
+  // released and the order falls back into the unassigned pool (R8 extended).
+  // DELIVERY_FAILED is treated the same as CANCELLED here — the driver no longer
+  // holds the dispatch, and the order needs re-dispatch. Guarded by the
+  // commercial check above so this can never resurrect a CANCELLED order.
+  const allTerminal = dispatches.every((d) => d.status === "CANCELLED" || d.status === "DELIVERY_FAILED");
+  if (allTerminal) {
     return settle(order, {
       status: "PENDING",
       driverId: null,

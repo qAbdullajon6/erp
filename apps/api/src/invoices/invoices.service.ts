@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { Invoice, InvoiceLineItem, Payment, Prisma } from "@prisma/client";
+import { CustomerPaymentTerms, Invoice, InvoiceLineItem, Payment, Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { isValidEntityCode } from "../common/sequential-code.util";
@@ -11,6 +11,46 @@ import { UpdateInvoiceDto } from "./dto/update-invoice.dto";
 import { generateUniqueInvoiceNumber } from "./invoice-number.util";
 
 type InvoiceWithRelations = Invoice & { lineItems?: InvoiceLineItem[]; payments?: Payment[] };
+
+/// Days-until-due for each named payment term.
+/// CUSTOM is handled separately via customer.paymentTermsDays.
+const PAYMENT_TERM_DAYS: Record<Exclude<CustomerPaymentTerms, "CUSTOM">, number> = {
+  DUE_ON_RECEIPT: 0,
+  NET_7: 7,
+  NET_15: 15,
+  NET_30: 30,
+  NET_45: 45,
+  NET_60: 60,
+  NET_90: 90,
+};
+
+/// Resolve the number of days until an invoice is due for a given customer.
+/// Falls back to NET_30 (30 days) only when paymentTerms is genuinely absent
+/// — i.e. the customer record could not be fetched (orphaned legacy data).
+function resolvePaymentDays(
+  paymentTerms: CustomerPaymentTerms | undefined | null,
+  paymentTermsDays: number | undefined | null,
+): number {
+  if (!paymentTerms) return 30; // legacy/unreachable fallback
+  if (paymentTerms === "CUSTOM") {
+    // CUSTOM without a stored days value is a data-integrity violation — it
+    // should have been rejected at the DTO level. Falling back silently here
+    // would create invisible billing bugs; throw so it surfaces immediately.
+    if (paymentTermsDays == null) {
+      throw new Error(
+        `Customer has paymentTerms=CUSTOM but no paymentTermsDays stored — data integrity violation`,
+      );
+    }
+    return paymentTermsDays;
+  }
+  return PAYMENT_TERM_DAYS[paymentTerms];
+}
+
+function addDays(from: Date, days: number): Date {
+  const to = new Date(from);
+  to.setDate(to.getDate() + days);
+  return to;
+}
 
 @Injectable()
 export class InvoicesService {
@@ -127,7 +167,7 @@ export class InvoicesService {
       metadata: { invoiceNumber, totalAmount: totalAmount.toString() },
     });
 
-    this.workflowEvents.emit(organizationId, "invoice.created", { id: invoice.id, invoiceNumber, customerId: invoice.customerId, totalAmount: totalAmount.toString() });
+    void this.workflowEvents.emit(organizationId, "invoice.created", { id: invoice.id, invoiceNumber, orderId: invoice.orderId, customerId: invoice.customerId, totalAmount: totalAmount.toString() });
 
     return this.toResponse(invoice);
   }
@@ -142,12 +182,29 @@ export class InvoicesService {
       0,
     );
 
+    // One-click invoicing left dueDate null, so the customer got an invoice with
+    // no deadline and the invoice could never go OVERDUE — that sweep needs a
+    // due date to compare against, which also made the Finance dashboard's
+    // overdue figure quietly wrong. The customer's payment terms already say
+    // when it is due; use them.
+    const issueDate = new Date();
+    const customer = await this.prisma.customer.findFirst({
+      where: { id: order.customerId, organizationId },
+      select: { paymentTerms: true, paymentTermsDays: true },
+    });
+    const dueDate = addDays(
+      issueDate,
+      resolvePaymentDays(customer?.paymentTerms, customer?.paymentTermsDays),
+    );
+
     const invoice = await this.prisma.invoice.create({
       data: {
         organizationId,
         invoiceNumber,
         customerId: order.customerId,
         orderId: order.id,
+        issueDate,
+        dueDate,
         currency: order.currency,
         subtotal,
         discountAmount: new Prisma.Decimal(0),
@@ -169,7 +226,7 @@ export class InvoicesService {
       metadata: { orderId, invoiceNumber },
     });
 
-    this.workflowEvents.emit(organizationId, "invoice.created", { id: invoice.id, invoiceNumber, orderId, customerId: order.customerId, totalAmount: totalAmount.toString() });
+    void this.workflowEvents.emit(organizationId, "invoice.created", { id: invoice.id, invoiceNumber, orderId, customerId: order.customerId, totalAmount: totalAmount.toString() });
 
     return this.toResponse(invoice);
   }
