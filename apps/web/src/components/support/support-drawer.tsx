@@ -132,12 +132,12 @@ function SupportChatPanel({
 
   useEffect(() => {
     onTicketChange(activeTicket?.id ?? null);
-  }, [activeTicket?.id]);
+  }, [activeTicket?.id, onTicketChange]);
 
   // Mark ticket as read when opened or when messages change
   useEffect(() => {
     if (fullTicket) markRead(fullTicket.id);
-  }, [fullTicket?.id, fullTicket?.messages?.length]);
+  }, [fullTicket, markRead]);
 
   const [message, setMessage] = useState('');
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
@@ -167,7 +167,7 @@ function SupportChatPanel({
 
   useEffect(() => {
     if (confirmationRequested) setDismissedConfirmation(false);
-  }, [fullTicket?.resolutionRequestedAt]);
+  }, [confirmationRequested]);
 
   useEffect(() => {
     setDismissedConfirmation(false);
@@ -178,8 +178,6 @@ function SupportChatPanel({
     (fullTicket?.status === 'OPEN' || fullTicket?.status === 'IN_PROGRESS') &&
     !dismissedConfirmation;
 
-  const isClosed =
-    fullTicket?.status === 'CLOSED' || fullTicket?.status === 'RESOLVED';
   const isLoading = listLoading || (!!activeTicket && ticketLoading);
   const isPending = creating || sending || uploading;
 

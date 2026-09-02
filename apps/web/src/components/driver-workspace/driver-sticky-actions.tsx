@@ -10,7 +10,7 @@ const ACTION_LABEL: Record<DriverActionableStatus, string> = {
   AT_PICKUP: 'Arrived',
   IN_TRANSIT: 'Loaded',
   AT_STOP: 'Arrived at stop',
-  ARRIVED_AT_DELIVERY: 'Arrived at delivery',
+  ARRIVED_AT_DELIVERY: 'At delivery',
   DELIVERED: 'Delivered',
 };
 
@@ -20,9 +20,6 @@ interface Props {
   isPending: boolean;
   onAdvance: (next: DriverActionableStatus) => void;
   extraActions?: ReactNode;
-  deliveredDisabled?: boolean;
-  currentStatus?: string;
-  onFailureReport?: () => void;
 }
 
 export function DriverStickyActions({
@@ -31,9 +28,6 @@ export function DriverStickyActions({
   isPending,
   onAdvance,
   extraActions,
-  deliveredDisabled,
-  currentStatus,
-  onFailureReport,
 }: Props) {
   return (
     <div className="fixed inset-x-0 bottom-[calc(3.75rem+env(safe-area-inset-bottom))] z-20 border-t border-border bg-surface/95 px-4 py-3 backdrop-blur">
@@ -45,24 +39,12 @@ export function DriverStickyActions({
             key={next}
             size="lg"
             onClick={() => onAdvance(next)}
-            disabled={isPending || (next === 'DELIVERED' && !!deliveredDisabled)}
-            className="w-full gap-2 bg-gradient-brand py-6 text-base text-brand-foreground hover:opacity-90 disabled:opacity-50"
+            disabled={isPending}
+            className="w-full gap-2 bg-gradient-brand py-6 text-base text-brand-foreground hover:opacity-90"
           >
-            {isPending ? 'Updating…' : (next === 'IN_TRANSIT' && currentStatus === 'AT_STOP' ? 'Continue' : ACTION_LABEL[next])}
+            {isPending ? 'Updating…' : ACTION_LABEL[next]}
           </Button>
         ))}
-        {currentStatus === 'AT_STOP' && onFailureReport ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={onFailureReport}
-            disabled={isPending}
-            className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
-          >
-            Can&apos;t complete this stop
-          </Button>
-        ) : null}
       </div>
     </div>
   );

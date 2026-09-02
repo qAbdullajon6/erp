@@ -381,88 +381,40 @@ export function OrderDocumentsPanel({
               </Button>
             </div>
           ) : (
-            <div className="flex items-center gap-3 rounded-lg border border-dashed border-border/60 px-3 py-3">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted">
-                <FileText className="h-4 w-4 text-muted-foreground" />
-              </span>
-              <p className="text-sm text-muted-foreground">
-                {orderStatus && orderStatus !== 'DELIVERED'
-                  ? 'No invoice yet — available once the order is delivered.'
-                  : 'No invoice yet — use Create Invoice in the actions above.'}
-              </p>
-            </div>
+            <p className="text-sm text-muted-foreground">
+              {orderStatus && orderStatus !== 'DELIVERED'
+                ? 'No invoice yet — an order can be invoiced once it is delivered.'
+                : 'No invoice yet — use Create Invoice in the order actions above.'}
+            </p>
           )}
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-
-        {/* Proof of delivery */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Proof of delivery
-            </div>
-            {pods.length > 0 && (
-              <Badge variant="outline" className="text-[10px]">
-                {pods.length} file{pods.length === 1 ? '' : 's'}
-              </Badge>
-            )}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Proof of delivery
           </div>
-          {loading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-14 w-full rounded-lg" />
-            </div>
-          ) : error ? (
-            <div className="flex items-center justify-between gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-              <span>{error}</span>
-              <Button size="sm" variant="outline" onClick={() => refetch()}>
-                Retry
-              </Button>
-            </div>
-          ) : (
-            <>
-              {pods.map((doc) => (
-                <DocumentRow
-                  key={doc.id}
-                  doc={doc}
-                  orderId={orderId}
-                  canWrite={canWrite}
-                  onPreview={setPreviewDoc}
-                  onDeleted={(id) => {
-                    setPreviewDoc((prev) => (prev?.id === id ? null : prev));
-                  }}
-                />
-              ))}
-              {pods.length === 0 &&
-                (canWrite ? (
-                  <DropZone
-                    label="Upload POD"
-                    accept="application/pdf,image/*"
-                    disabled={uploading}
-                    onFiles={(files) => handleUpload(files, 'POD')}
-                  />
-                ) : (
-                  <div className="flex flex-col items-center gap-1.5 rounded-lg border border-dashed border-border/60 py-5 text-center">
-                    <Upload className="h-4 w-4 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">No proof of delivery on file yet.</p>
-                  </div>
-                ))}
-            </>
+          {pods.length > 0 && (
+            <Badge variant="outline" className="text-[10px]">
+              {pods.length} file{pods.length === 1 ? '' : 's'}
+            </Badge>
           )}
         </div>
-
-        {/* Attachments */}
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Attachments
-          </div>
-          {loading ? (
+        {loading ? (
+          <div className="space-y-2">
             <Skeleton className="h-14 w-full rounded-lg" />
-          ) : error ? (
-            <p className="text-sm text-muted-foreground">Unable to load attachments.</p>
-          ) : (
-            attachments.map((doc) => (
+          </div>
+        ) : error ? (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+            <span>{error}</span>
+            <Button size="sm" variant="outline" onClick={() => refetch()}>
+              Retry
+            </Button>
+          </div>
+        ) : (
+          <>
+            {pods.map((doc) => (
               <DocumentRow
                 key={doc.id}
                 doc={doc}
@@ -473,18 +425,52 @@ export function OrderDocumentsPanel({
                   setPreviewDoc((prev) => (prev?.id === id ? null : prev));
                 }}
               />
-            ))
-          )}
-          {!loading && !error && canWrite && (
-            <DropZone
-              label="Add attachments"
-              multiple
-              disabled={uploading}
-              onFiles={(files) => handleUpload(files, 'ATTACHMENT')}
-            />
-          )}
-        </div>
+            ))}
+            {pods.length === 0 &&
+              (canWrite ? (
+                <DropZone
+                  label="Upload POD"
+                  accept="application/pdf,image/*"
+                  disabled={uploading}
+                  onFiles={(files) => handleUpload(files, 'POD')}
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground">No proof of delivery on file yet.</p>
+              ))}
+          </>
+        )}
+      </div>
 
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Attachments
+        </div>
+        {loading ? (
+          <Skeleton className="h-14 w-full rounded-lg" />
+        ) : error ? (
+          <p className="text-sm text-muted-foreground">Unable to load attachments.</p>
+        ) : (
+          attachments.map((doc) => (
+            <DocumentRow
+              key={doc.id}
+              doc={doc}
+              orderId={orderId}
+              canWrite={canWrite}
+              onPreview={setPreviewDoc}
+              onDeleted={(id) => {
+                setPreviewDoc((prev) => (prev?.id === id ? null : prev));
+              }}
+            />
+          ))
+        )}
+        {!loading && !error && canWrite && (
+          <DropZone
+            label="Add attachments"
+            multiple
+            disabled={uploading}
+            onFiles={(files) => handleUpload(files, 'ATTACHMENT')}
+          />
+        )}
       </div>
 
       <Dialog open={Boolean(previewDoc)} onOpenChange={() => setPreviewDoc(null)}>

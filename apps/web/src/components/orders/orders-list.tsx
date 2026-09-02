@@ -20,6 +20,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   ordersAPI,
@@ -30,16 +31,14 @@ import {
   type Order,
 } from '@/lib/api/orders';
 import { useCustomersList } from '@/lib/api/customers';
-import { useDashboardSummary, type DashboardSummary } from '@/lib/api/dashboard';
+import { useDashboardSummary } from '@/lib/api/dashboard';
 import { useCurrentUser } from '@/lib/api/auth';
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { ErrorState, EmptyState, TableSkeleton } from '@/components/shared/list-states';
 import { PageHeader } from '@/components/shared/page-header';
 import { OrdersCreateSheet } from '@/components/orders/orders-create-sheet';
-import { OrdersEditSheet } from '@/components/orders/orders-edit-sheet';
 import {
   OrdersFiltersPanel,
-  countActiveFilters,
   loadSavedFilters,
   loadVisibleColumns,
   persistSavedFilters,
@@ -57,8 +56,7 @@ import { useMediaQuery } from '@/hooks/use-media-query';
 import { ORDER_OPERATIONAL_ROLES, ORDER_WRITE_ROLES } from '@/lib/role-access';
 import type { MembershipRole } from '@/lib/api/organizations';
 import type { OrdersSearch } from '@/routes/app.orders.index';
-import { formatMoney, formatDate, formatStopTime } from '@/lib/format';
-import { cn } from '@/lib/utils';
+import { formatMoney, formatDate } from '@/lib/format';
 import { toCsv, downloadCsv } from '@/lib/csv';
 import { toExcelXml, downloadExcel } from '@/lib/excel';
 import {
@@ -67,10 +65,10 @@ import {
   Search,
   Download,
   Upload,
-  Filter,
-  RotateCcw,
   ArrowRight,
   AlertTriangle,
+  ChevronDown,
+  ChevronRight,
   Truck,
   Timer,
   Columns3,
@@ -78,20 +76,9 @@ import {
   MoreHorizontal,
   Copy,
   ExternalLink,
-  Eye,
   Archive,
   ArchiveRestore,
   Loader2,
-  CircleCheck,
-  DollarSign,
-  MapPin,
-  CalendarDays,
-  Clock,
-  Info,
-  Edit2,
-  Scale,
-  Ruler,
-  Box,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { describeError } from '@/lib/api/describe-error';
@@ -174,8 +161,9 @@ function getTimeUrgency(iso: string): { label: string; tone: string; urgent: boo
     }
     return { label: `${Math.ceil(hoursLate / 24)}d overdue`, tone: 'text-destructive', urgent: true };
   }
-  if (diffHours < 24) return { label: formatDate(iso), tone: 'text-warning', urgent: true };
-  if (diffDays <= 3) return { label: formatDate(iso), tone: 'text-warning', urgent: false };
+  if (diffHours < 24) return { label: 'Today', tone: 'text-warning', urgent: true };
+  if (diffHours < 48) return { label: 'Tomorrow', tone: 'text-warning', urgent: false };
+  if (diffDays <= 3) return { label: `${diffDays} days`, tone: 'text-muted-foreground', urgent: false };
   return { label: formatDate(iso), tone: 'text-muted-foreground', urgent: false };
 }
 
@@ -191,41 +179,10 @@ function RouteIndicator({ from, to }: { from: string; to: string }) {
 
 function UrgencyBadge({ date, label: contextLabel }: { date: string; label: string }) {
   const urgency = getTimeUrgency(date);
-  const Icon = contextLabel === 'Pickup' ? MapPin : Truck;
   return (
-    <div className={`flex items-center gap-1.5 text-xs ${urgency.tone}`}>
-      {urgency.urgent ? (
-        <AlertTriangle className="h-3 w-3 shrink-0" />
-      ) : (
-        <Icon className="h-3 w-3 shrink-0 text-muted-foreground" />
-      )}
+    <div className={`flex items-center gap-1 text-xs ${urgency.tone}`}>
+      {urgency.urgent && <AlertTriangle className="h-3 w-3" />}
       <span>{contextLabel}: {urgency.label}</span>
-    </div>
-  );
-}
-
-function CargoStat({
-  icon: Icon,
-  label,
-  value,
-  empty,
-  clamp,
-}: {
-  icon: React.ElementType;
-  label: string;
-  value: string;
-  empty?: boolean;
-  clamp?: boolean;
-}) {
-  return (
-    <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5">
-      <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-      <div className="min-w-0">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-        <p className={cn('mt-0.5 text-sm font-semibold', clamp ? 'line-clamp-1' : 'truncate', empty ? 'text-muted-foreground' : 'text-foreground')}>
-          {value}
-        </p>
-      </div>
     </div>
   );
 }
@@ -233,197 +190,65 @@ function CargoStat({
 function ExpandedOrderRow({
   order,
   customerName,
-  customerContactName,
   canOperate,
-  canWrite,
   colSpan,
-  onEdit,
 }: {
   order: Order;
   customerName: string;
-  customerContactName: string | null;
   canOperate: boolean;
-  canWrite: boolean;
   colSpan: number;
-  onEdit: (order: Order) => void;
 }) {
   const navigate = useNavigate();
   const needsAssign = canOperate && order.status === 'PENDING' && !order.driverId;
   const needsActivate = canOperate && order.status === 'DRAFT';
-  const canEdit = canWrite && order.status !== 'DELIVERED' && order.status !== 'CANCELLED' && !order.archivedAt;
-
-  const pickupTime = order.pickupWindowStart ? formatStopTime(order.pickupWindowStart) : null;
-  const deliveryTime = order.deliveryWindowStart ? formatStopTime(order.deliveryWindowStart) : null;
 
   return (
-    <tr className="bg-muted/[0.12]">
-      <td colSpan={colSpan} className="p-0">
-        <div className="grid grid-cols-1 gap-3 p-4">
-
-          {/* Cargo stats */}
-          <div className="grid grid-cols-2 gap-2 lg:grid-cols-[2fr_1fr_1fr_1fr_1fr]">
-            <CargoStat
-              icon={Package}
-              label="Cargo"
-              value={order.cargoDescription || 'Not set'}
-              empty={!order.cargoDescription}
-              clamp
-            />
-            <CargoStat
-              icon={Scale}
-              label="Weight"
-              value={order.cargoWeightKg ? `${order.cargoWeightKg} kg` : 'Not set'}
-              empty={!order.cargoWeightKg}
-            />
-            <CargoStat
-              icon={Ruler}
-              label="Volume"
-              value={order.cargoVolumeM3 ? `${order.cargoVolumeM3} m³` : 'Not set'}
-              empty={!order.cargoVolumeM3}
-            />
-            <CargoStat
-              icon={Truck}
-              label="Vehicle type"
-              value={
-                order.plannedVehicle
-                  ? order.plannedVehicle.type.toLowerCase().replace(/_/g, ' ')
-                  : 'Unassigned'
-              }
-              empty={!order.plannedVehicle}
-            />
-            <CargoStat
-              icon={Box}
-              label="Value"
-              value={formatMoney(order.price, order.currency)}
-            />
-          </div>
-
-          {/* Bottom row: route + customer + actions */}
-          <div className="flex flex-col gap-3 sm:flex-row">
-
-          {/* Pickup & Delivery */}
-          <div className="space-y-6 px-5 py-3 border border-border/70 rounded-xl flex-1">
-            <div className="space-y-1">
-              <div className="flex items-center gap-1.5">
-                <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
-                <p className="text-[10px] text-muted-foreground">Pickup</p>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
-                <p className="text-sm font-semibold text-foreground">{order.pickupAddress}</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground pt-1 pl-5">
-                <CalendarDays className="h-3 w-3 text-foreground" />
-                <span>{order.pickupCity}</span>
-                <span>·</span>
-                <CalendarDays className="h-3 w-3 text-foreground" />
-                <span>{formatDate(order.pickupDate)}</span>
-                {pickupTime && (
-                  <>
-                    <span>·</span>
-                    <Clock className="h-3 w-3" />
-                    <span>{pickupTime}</span>
-                  </>
-                )}
-              </div>
-            </div>
-            <div className="space-y-1">
-              <div className="flex items-center gap-1.5">
-                <Package className="h-3.5 w-3.5 text-muted-foreground" />
-                <p className="text-[10px] text-muted-foreground">Delivery</p>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Package className="h-3.5 w-3.5 text-muted-foreground" />
-                <p className="text-sm font-semibold text-foreground">{order.deliveryAddress}</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground pt-1 pl-5">
-                <CalendarDays className="h-3 w-3 text-foreground" />
-                <span>{order.deliveryCity}</span>
-                <span>·</span>
-                <CalendarDays className="h-3 w-3 text-foreground" />
-                <span>{formatDate(order.deliveryDate)}</span>
-                {deliveryTime && (
-                  <>
-                    <span>·</span>
-                    <Clock className="h-3 w-3 text-foreground" />
-                    <span>{deliveryTime}</span>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Customer */}
-          <div className="px-5 py-3 border border-border/70 rounded-xl flex-1">
-            <div className="mb-2 flex items-center gap-1.5">
-              <Package className="h-3.5 w-3.5 text-muted-foreground" />
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Customer</p>
-            </div>
-            <p className="text-sm font-semibold text-foreground">{customerName}</p>
-            <div className="mt-3 space-y-2">
-              <div>
-                <p className="text-[11px] text-muted-foreground">Contact</p>
-                <p className="text-sm font-semibold text-foreground">
-                  {(() => {
-                    const name = order.pickupContactName ?? customerContactName;
-                    const phone = order.pickupContactPhone ?? order.customer?.phone;
-                    const parts = [name, phone].filter(Boolean);
-                    return parts.length > 0 ? parts.join(' · ') : '—';
-                  })()}
-                </p>
-              </div>
-              {order.notes && (
-                <div>
-                  <p className="text-[11px] text-muted-foreground">Notes</p>
-                  <p className="text-sm text-foreground line-clamp-2">{order.notes}</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Value & Actions */}
-          <div className="flex min-w-[220px] flex-1 border border-border/70 rounded-xl flex-col justify-between px-5 py-3">
+    <TableRow className="bg-surface/50">
+      <TableCell colSpan={colSpan} className="p-0">
+        <div className="grid grid-cols-1 gap-6 border-t border-brand/5 px-4 py-4 sm:px-6 md:grid-cols-3">
+          <div className="space-y-3">
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Total Value</p>
-              <p className="mt-0.5 font-mono text-xl font-bold text-foreground">{formatMoney(order.price, order.currency)}</p>
-              {(order.freightCharge || order.fuelSurcharge || order.otherCharges) && (
-                <div className="mt-3 space-y-1.5 pt-2">
-                  
-                  {order.freightCharge && (
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">Freight</span>
-                      <span className="font-mono text-foreground">{formatMoney(order.freightCharge, order.currency)}</span>
-                    </div>
-                  )}
-                  {order.fuelSurcharge && (
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">Fuel Surcharge</span>
-                      <span className="font-mono text-foreground">{formatMoney(order.fuelSurcharge, order.currency)}</span>
-                    </div>
-                  )}
-                  {order.otherCharges && (
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">Other</span>
-                      <span className="font-mono text-foreground">{formatMoney(order.otherCharges, order.currency)}</span>
-                    </div>
-                  )}
-                </div>
-              )}
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Pickup</p>
+              <p className="mt-1 text-sm text-foreground">{order.pickupAddress}</p>
+              <p className="text-xs text-muted-foreground">{order.pickupCity} &middot; {formatDate(order.pickupDate)}</p>
             </div>
-            <div className="mt-3 flex items-center justify-end gap-1.5">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Delivery</p>
+              <p className="mt-1 text-sm text-foreground">{order.deliveryAddress}</p>
+              <p className="text-xs text-muted-foreground">{order.deliveryCity} &middot; {formatDate(order.deliveryDate)}</p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Cargo</p>
+              <p className="mt-1 text-sm text-foreground">{order.cargoDescription}</p>
+              <div className="mt-1 flex gap-3 text-xs text-muted-foreground">
+                {order.cargoWeightKg && <span>{order.cargoWeightKg} kg</span>}
+                {order.cargoVolumeM3 && <span>{order.cargoVolumeM3} m³</span>}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Customer</p>
+              <p className="mt-1 text-sm text-foreground">{customerName}</p>
+            </div>
+          </div>
+
+          <div className="flex flex-col items-stretch justify-between gap-3 md:items-end">
+            <div className="text-left md:text-right">
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Value</p>
+              <p className="mt-1 text-lg font-semibold text-foreground">{formatMoney(order.price, order.currency)}</p>
+            </div>
+            <div className="flex flex-wrap gap-2 md:justify-end">
               {needsAssign && (
-                <Button size="sm" onClick={() => navigate({ to: `/app/orders/${order.id}` })}>
-                  <Truck className="mr-1.5 h-3 w-3" />Assign
+                <Button size="sm" variant="default" onClick={() => navigate({ to: `/app/orders/${order.id}` })}>
+                  <Truck className="mr-1.5 h-3 w-3" />
+                  Assign
                 </Button>
               )}
               {needsActivate && (
-                <Button size="sm" onClick={() => navigate({ to: `/app/orders/${order.id}` })}>
-                  Confirm Order
-                </Button>
-              )}
-              {canEdit && (
-                <Button size="sm" variant="outline" onClick={() => onEdit(order)}>
-                  <Edit2 className="mr-1.5 h-3 w-3" />Edit
+                <Button size="sm" variant="default" onClick={() => navigate({ to: `/app/orders/${order.id}` })}>
+                  Confirm order
                 </Button>
               )}
               <Button size="sm" variant="outline" onClick={() => navigate({ to: `/app/orders/${order.id}` })}>
@@ -431,60 +256,9 @@ function ExpandedOrderRow({
               </Button>
             </div>
           </div>
-
-          </div>{/* end bottom row */}
-
         </div>
-      </td>
-    </tr>
-  );
-}
-
-function OrdersKpiStrip({ summary }: { summary: DashboardSummary | null }) {
-  const needsAction = summary?.ordersByStatus
-    .filter((r) => ['DRAFT', 'PENDING'].includes(r.status))
-    .reduce((sum, r) => sum + r.count, 0) ?? 0;
-  const active = summary?.totals.activeOrders ?? 0;
-  const completed = summary?.totals.deliveredOrders ?? 0;
-  const total = summary?.totals.totalOrders ?? 0;
-  const revenue = parseFloat(summary?.totals.totalRevenue ?? '0');
-  const currency = summary?.currency ?? 'USD';
-
-  const series = summary?.ordersTimeSeries ?? [];
-  const thisMonth = series[series.length - 1]?.orders ?? 0;
-  const lastMonth = series[series.length - 2]?.orders ?? 0;
-  const momPct = lastMonth > 0 ? Math.round(((thisMonth - lastMonth) / lastMonth) * 100) : null;
-  const momLabel = momPct === null
-    ? undefined
-    : momPct > 0
-      ? `+${momPct}% vs last month`
-      : momPct < 0
-        ? `${momPct}% vs last month`
-        : 'Same as last month';
-
-  const items = [
-    { label: 'Total Orders',     value: String(total),                  sub: momLabel,             icon: Package,      color: 'bg-brand/10 text-brand',                subTone: momPct !== null && momPct > 0 ? 'text-emerald-500' : momPct !== null && momPct < 0 ? 'text-destructive' : undefined },
-    { label: 'Needs Action',     value: String(needsAction),            sub: 'Requires attention', icon: AlertTriangle, color: 'bg-destructive/10 text-destructive',   subTone: undefined },
-    { label: 'Active Shipments', value: String(active),                 sub: 'In transit',         icon: Truck,        color: 'bg-blue-500/10 text-blue-500',          subTone: undefined },
-    { label: 'Completed',        value: String(completed),              sub: 'This month',         icon: CircleCheck,  color: 'bg-emerald-500/10 text-emerald-500',    subTone: undefined },
-    { label: 'Total Value',      value: formatMoney(revenue, currency), sub: 'This month',         icon: DollarSign,   color: 'bg-amber-500/10 text-amber-500',        subTone: undefined },
-  ];
-
-  return (
-    <div className="grid grid-cols-2 overflow-hidden gap-4 sm:grid-cols-5">
-      {items.map(({ label, value, sub, subTone, icon: Icon, color }) => (
-        <div key={label} className="flex items-center gap-3 bg-surface px-4 py-3 rounded-xl border border-border/70 bg-border/40">
-          <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg', color)}>
-            <Icon className="h-5 w-5" />
-          </span>
-          <div className="min-w-0">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-            <p className="mt-0.5 font-mono text-lg font-semibold tabular-nums leading-none text-foreground">{value}</p>
-            {sub && <p className={cn('mt-0.5 text-[11px]', subTone ?? 'text-muted-foreground')}>{sub}</p>}
-          </div>
-        </div>
-      ))}
-    </div>
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -547,8 +321,9 @@ export function OrdersList() {
 
   const [localSearch, setLocalSearch] = useState(search);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [filtersExpanded, setFiltersExpanded] = useState(false);
-  const activeFilterCount = countActiveFilters(filters);
+  const [filtersExpanded, setFiltersExpanded] = useState(
+    Boolean(filters.archivedOnly || filters.customerId || filters.driverId || filters.status),
+  );
   const [visibleColumns, setVisibleColumns] = useState<OrdersListColumn[]>(loadVisibleColumns);
   const [savedFilters, setSavedFilters] = useState<SavedOrdersFilter[]>(loadSavedFilters);
   const [saveFilterOpen, setSaveFilterOpen] = useState(false);
@@ -556,7 +331,6 @@ export function OrdersList() {
   // Deep-link support: /app/orders?create=true opens the sheet (the old
   // /app/orders/create route redirects here).
   const [createOpen, setCreateOpen] = useState(Boolean(searchState.create));
-  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [exportingAll, setExportingAll] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -596,10 +370,6 @@ export function OrdersList() {
   const { data: customers } = useCustomersList({ limit: 200, includeArchived: true });
   const customerNameById = useMemo(
     () => new Map(customers.map((c) => [c.id, c.companyName])),
-    [customers],
-  );
-  const customerContactById = useMemo(
-    () => new Map(customers.map((c) => [c.id, c.contactName ?? null])),
     [customers],
   );
 
@@ -934,39 +704,6 @@ export function OrdersList() {
               className="h-9 w-full pl-9 sm:w-72"
             />
           </div>
-
-          {/* Filters toggle — lives in the action row */}
-          <Button
-            type="button"
-            variant={filtersExpanded ? 'secondary' : 'outline'}
-            size="sm"
-            className="h-9 gap-1.5"
-            onClick={() => setFiltersExpanded((v) => !v)}
-            aria-expanded={filtersExpanded}
-            aria-label="Toggle filters"
-          >
-            <Filter className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Filters</span>
-            {activeFilterCount > 0 && (
-              <span className="rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-semibold text-brand-foreground">
-                {activeFilterCount}
-              </span>
-            )}
-          </Button>
-          {activeFilterCount > 0 && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-9 gap-1 text-muted-foreground"
-              onClick={handleClearFilters}
-              aria-label="Clear all filters"
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Clear</span>
-            </Button>
-          )}
-
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" disabled={exportingAll} aria-label="Export">
@@ -987,6 +724,61 @@ export function OrdersList() {
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleExportAllExcel}>
                 Export all matching filters (Excel)
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" aria-label="Columns">
+                <Columns3 className="h-3.5 w-3.5 sm:mr-1.5" />
+                <span className="hidden sm:inline">Columns</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {(
+                [
+                  ['route', 'Route'],
+                  ['timeline', 'Timeline'],
+                  ['customer', 'Customer'],
+                  ['value', 'Value'],
+                  ['status', 'Status'],
+                  ['orderNumber', 'Order #'],
+                  ['pickupDate', 'Pickup date'],
+                  ['deliveryDate', 'Delivery date'],
+                ] as [OrdersListColumn, string][]
+              ).map(([col, label]) => (
+                <DropdownMenuCheckboxItem
+                  key={col}
+                  checked={visibleColumns.includes(col)}
+                  onCheckedChange={(checked) => toggleColumn(col, checked === true)}
+                >
+                  {label}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" aria-label="Saved filters">
+                <Bookmark className="h-3.5 w-3.5 sm:mr-1.5" />
+                <span className="hidden sm:inline">Saved</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              {savedFilters.length === 0 && (
+                <DropdownMenuItem disabled>No saved filters</DropdownMenuItem>
+              )}
+              {savedFilters.map((sf) => (
+                <DropdownMenuItem
+                  key={sf.name}
+                  onClick={() => handleApplyFilters(sf.values)}
+                >
+                  {sf.name}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setSaveFilterOpen(true)}>
+                Save current filters…
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -1016,68 +808,13 @@ export function OrdersList() {
         }
       />
 
-      {/* Filter panel — only mounted when open; eager-fetches dropdown data */}
-      {filtersExpanded && (
-        <OrdersFiltersPanel
-          values={filters}
-          onChange={handleApplyFilters}
-          onClear={handleClearFilters}
-          footer={
-            <>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
-                    <Columns3 className="h-3.5 w-3.5" />
-                    Columns
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  {(
-                    [
-                      ['route', 'Route'],
-                      ['orderNumber', 'Order #'],
-                      ['timeline', 'Timeline'],
-                      ['customer', 'Customer'],
-                      ['value', 'Value'],
-                      ['status', 'Status'],
-                    ] as [OrdersListColumn, string][]
-                  ).map(([col, label]) => (
-                    <DropdownMenuCheckboxItem
-                      key={col}
-                      checked={visibleColumns.includes(col)}
-                      onCheckedChange={(checked) => toggleColumn(col, checked === true)}
-                    >
-                      {label}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
-                    <Bookmark className="h-3.5 w-3.5" />
-                    Saved filters
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-52">
-                  {savedFilters.length === 0 && (
-                    <DropdownMenuItem disabled>No saved filters</DropdownMenuItem>
-                  )}
-                  {savedFilters.map((sf) => (
-                    <DropdownMenuItem key={sf.name} onClick={() => handleApplyFilters(sf.values)}>
-                      {sf.name}
-                    </DropdownMenuItem>
-                  ))}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setSaveFilterOpen(true)}>
-                    Save current filters…
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </>
-          }
-        />
-      )}
+      <OrdersFiltersPanel
+        values={filters}
+        onChange={handleApplyFilters}
+        onClear={handleClearFilters}
+        expanded={filtersExpanded}
+        onToggleExpanded={() => setFiltersExpanded((v) => !v)}
+      />
 
       <FilterTabs
         tabs={TAB_CONFIG}
@@ -1086,8 +823,6 @@ export function OrdersList() {
         label="Order workflow"
         activeCount={meta.total}
       />
-
-      <OrdersKpiStrip summary={dashboardSummary} />
 
       {canOperateOrder && selectedIds.size > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border border-brand/30 bg-brand/5 px-4 py-2.5">
@@ -1156,7 +891,7 @@ export function OrdersList() {
       )}
 
       {/* Main content area */}
-      <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-border/70 bg-surface">
+      <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-surface">
         {/* Column widths follow whichever columns the user has switched on, so
             the skeleton is the shape of the table they are about to get. */}
         {loading && (
@@ -1187,33 +922,16 @@ export function OrdersList() {
         {!loading && !error && sortedData.length === 0 && !search && (
           <EmptyState
             icon={Package}
-            title={
-              currentTab === 'all' && meta.total === 0 && activeFilterCount === 0
-                ? 'No orders yet'
-                : currentTab === 'action'
-                  ? 'All caught up'
-                  : 'No orders here'
-            }
+            title={currentTab === 'action' ? 'All caught up' : 'No orders found'}
             description={
-              currentTab === 'all' && meta.total === 0 && activeFilterCount === 0
-                ? 'Create your first order to start managing shipments.'
-                : currentTab === 'action'
-                  ? 'No orders need your attention right now.'
-                  : 'No orders match this view.'
+              currentTab === 'action'
+                ? 'No orders need your attention right now.'
+                : 'Create an order to start moving cargo.'
             }
             action={
-              currentTab === 'all' && meta.total === 0 && activeFilterCount === 0 && canWriteOrder ? (
-                <Button
-                  onClick={() => setCreateOpen(true)}
-                  className="bg-gradient-brand text-brand-foreground hover:opacity-90"
-                >
-                  <Plus className="mr-1.5 h-3.5 w-3.5" />
-                  New Order
-                </Button>
-              ) : currentTab !== 'action' && canWriteOrder ? (
+              currentTab !== 'action' && canWriteOrder ? (
                 <Button onClick={() => setCreateOpen(true)} variant="outline">
-                  <Plus className="mr-1.5 h-3.5 w-3.5" />
-                  New Order
+                  Create order
                 </Button>
               ) : undefined
             }
@@ -1221,11 +939,11 @@ export function OrdersList() {
         )}
         {!loading && !error && sortedData.length > 0 && (
           <div className="max-h-[calc(100vh-20rem)] overflow-auto scrollbar-thin">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 z-10">
-                <tr className="border-b border-border bg-muted/30">
+            <Table>
+              <TableHeader className="sticky top-0 z-10 bg-surface">
+                <TableRow className="border-b border-border bg-surface/95 backdrop-blur hover:bg-surface/95">
                   {canOperateOrder && (
-                    <th className="w-8 py-3 pl-3 pr-0 sm:pl-4">
+                    <TableHead className="w-8 pl-3 pr-0 sm:pl-4">
                       <Checkbox
                         aria-label="Select all orders on this page"
                         checked={pageAllSelected ? true : pageSomeSelected ? 'indeterminate' : false}
@@ -1239,72 +957,89 @@ export function OrdersList() {
                           });
                         }}
                       />
-                    </th>
+                    </TableHead>
                   )}
+                  <TableHead className="w-8" />
                   {isNarrow ? (
                     <>
-                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Order</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-muted-foreground">Status</th>
+                      <TableHead>Order</TableHead>
+                      <TableHead className="text-right">
+                        <div className="flex justify-end">
+                          <SortHeader field="status" label="Status" {...sortProps} />
+                        </div>
+                      </TableHead>
                     </>
                   ) : (
                     <>
-                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Route</th>
+                      {visibleColumns.includes('route') && (
+                        <TableHead>Route</TableHead>
+                      )}
                       {visibleColumns.includes('orderNumber') && (
-                        <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Order #</th>
+                        <TableHead>
+                          <SortHeader field="orderNumber" label="Order #" {...sortProps} />
+                        </TableHead>
                       )}
                       {visibleColumns.includes('timeline') && (
-                        <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Timeline</th>
+                        <TableHead>Timeline</TableHead>
+                      )}
+                      {/* Secondary columns wait for `xl`, not `lg`: the sidebar
+                          rail comes back at `lg` and takes 15rem with it, so a
+                          1024px window is no roomier for the table than a
+                          768px one. Until then the row carries the route, the
+                          timeline and the status; the rest is in the expanded
+                          panel, one click away. */}
+                      {visibleColumns.includes('pickupDate') && (
+                        <TableHead className="hidden xl:table-cell">
+                          <SortHeader field="pickupDate" label="Pickup" {...sortProps} />
+                        </TableHead>
+                      )}
+                      {visibleColumns.includes('deliveryDate') && (
+                        <TableHead className="hidden xl:table-cell">
+                          <SortHeader field="deliveryDate" label="Delivery" {...sortProps} />
+                        </TableHead>
                       )}
                       {visibleColumns.includes('customer') && (
-                        <th className="hidden px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground xl:table-cell">Customer</th>
+                        <TableHead className="hidden xl:table-cell">Customer</TableHead>
                       )}
                       {visibleColumns.includes('value') && (
-                        <th className="hidden px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-muted-foreground xl:table-cell">
-                          <div className="flex justify-end">
-                            <SortHeader field="price" label="Value" {...sortProps} />
-                          </div>
-                        </th>
+                        <TableHead className="hidden xl:table-cell">
+                          <SortHeader field="price" label="Value" {...sortProps} />
+                        </TableHead>
                       )}
                       {visibleColumns.includes('status') && (
-                        <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        <TableHead className="text-right">
                           <div className="flex justify-end">
                             <SortHeader field="status" label="Status" {...sortProps} />
                           </div>
-                        </th>
+                        </TableHead>
                       )}
                     </>
                   )}
-                  <th className="w-20 px-2 py-3" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/50">
+                  <TableHead className="w-10" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {sortedData.map((order) => {
                   const isExpanded = expandedId === order.id;
                   const customerName = customerNameById.get(order.customerId) ?? '—';
-                  const customerContactName = customerContactById.get(order.customerId) ?? null;
                   const isOverdue = order.isDelayed;
                   const needsAssignment = order.status === 'PENDING' && !order.driverId;
                   const isHighlighted = highlightId === order.id;
 
                   return (
                     <Fragment key={order.id}>
-                      <tr
+                      <TableRow
                         data-testid="order-row"
                         tabIndex={0}
                         role="button"
                         aria-expanded={isExpanded}
                         aria-label={`Order ${order.orderNumber}, ${isExpanded ? 'collapse' : 'expand'} details`}
-                        className={cn(
-                          'group cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand',
-                          isHighlighted
-                            ? 'animate-pulse bg-brand/10 hover:bg-brand/15'
-                            : isOverdue
-                              ? 'bg-destructive/[0.03] hover:bg-destructive/[0.05]'
-                              : needsAssignment
-                                ? 'bg-warning/[0.03] hover:bg-warning/[0.05]'
-                                : 'hover:bg-muted/30',
-                          isExpanded && 'bg-muted/20',
-                        )}
+                        className={`cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand ${
+                          isHighlighted ? 'animate-pulse bg-brand/10 hover:bg-brand/15' :
+                          isOverdue ? 'bg-destructive/3 hover:bg-destructive/5' :
+                          needsAssignment ? 'bg-warning/3 hover:bg-warning/5' :
+                          'hover:bg-muted/50'
+                        } ${isExpanded ? 'bg-muted/30' : ''}`}
                         onClick={() => setExpandedId(isExpanded ? null : order.id)}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' || e.key === ' ') {
@@ -1314,23 +1049,30 @@ export function OrdersList() {
                         }}
                       >
                         {canOperateOrder && (
-                          <td className="py-2.5 pl-3 pr-0 sm:pl-4" onClick={(e) => e.stopPropagation()}>
+                          <TableCell className="py-3 pl-3 pr-0 sm:pl-4" onClick={(e) => e.stopPropagation()}>
                             <Checkbox
                               aria-label={`Select order ${order.orderNumber}`}
                               checked={selectedIds.has(order.id)}
                               onCheckedChange={(checked) => toggleSelected(order.id, checked === true)}
                             />
-                          </td>
+                          </TableCell>
                         )}
+                        <TableCell className="py-3 pl-2 pr-0 sm:pl-4">
+                          {isExpanded ? (
+                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </TableCell>
 
                         {isNarrow && (
                           <>
-                            <td className="px-4 py-2.5">
-                              <div className="space-y-0.5">
+                            <TableCell className="py-3">
+                              <div className="space-y-1">
                                 <RouteIndicator from={order.pickupCity} to={order.deliveryCity} />
-                                <p className="font-mono text-[11px] text-muted-foreground">{order.orderNumber}</p>
+                                <p className="font-mono text-xs text-muted-foreground">{order.orderNumber}</p>
                                 {order.status !== 'DELIVERED' && order.status !== 'CANCELLED' && (
-                                  <div className="flex flex-wrap gap-x-3 pt-0.5">
+                                  <div className="flex flex-wrap gap-x-3">
                                     <UrgencyBadge date={order.pickupDate} label="Pickup" />
                                     <UrgencyBadge date={order.deliveryDate} label="Deliver" />
                                   </div>
@@ -1338,42 +1080,43 @@ export function OrdersList() {
                                 {(order.archivedAt || needsAssignment) && (
                                   <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
                                     {order.archivedAt && (
-                                      <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">Archived</span>
+                                      <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                                        Archived
+                                      </span>
                                     )}
                                     {needsAssignment && (
                                       <span className="flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium text-warning">
-                                        <Timer className="h-3 w-3" />Unassigned
+                                        <Timer className="h-3 w-3" />
+                                        Unassigned
                                       </span>
                                     )}
                                   </div>
                                 )}
                               </div>
-                            </td>
-                            <td className="px-4 py-2.5 text-right align-top">
+                            </TableCell>
+                            <TableCell className="py-3 pr-0 text-right align-top">
                               <StatusBadge status={order.status} />
-                            </td>
+                            </TableCell>
                           </>
                         )}
 
-                        {!isNarrow && (
-                          <td className="px-4 py-2.5">
+                        {!isNarrow && visibleColumns.includes('route') && (
+                          <TableCell>
                             <div className="space-y-0.5">
                               <RouteIndicator from={order.pickupCity} to={order.deliveryCity} />
                               {!visibleColumns.includes('orderNumber') && (
-                                <p className="font-mono text-[11px] text-muted-foreground">{order.orderNumber}</p>
+                                <p className="font-mono text-xs text-muted-foreground">{order.orderNumber}</p>
                               )}
                             </div>
-                          </td>
+                          </TableCell>
                         )}
 
                         {!isNarrow && visibleColumns.includes('orderNumber') && (
-                          <td className="px-4 py-2.5">
-                            <p className="font-mono text-xs text-foreground">{order.orderNumber}</p>
-                          </td>
+                          <TableCell className="font-mono text-sm">{order.orderNumber}</TableCell>
                         )}
 
                         {!isNarrow && visibleColumns.includes('timeline') && (
-                          <td className="px-4 py-2.5">
+                          <TableCell>
                             <div className="space-y-0.5">
                               {order.status === 'DELIVERED' || order.status === 'CANCELLED' ? (
                                 <span className="text-xs text-muted-foreground">
@@ -1387,94 +1130,101 @@ export function OrdersList() {
                                 </>
                               )}
                             </div>
-                          </td>
+                          </TableCell>
+                        )}
+
+                        {!isNarrow && visibleColumns.includes('pickupDate') && (
+                          <TableCell className="hidden text-sm tabular-nums xl:table-cell">
+                            {formatDate(order.pickupDate)}
+                          </TableCell>
+                        )}
+
+                        {!isNarrow && visibleColumns.includes('deliveryDate') && (
+                          <TableCell className="hidden text-sm tabular-nums xl:table-cell">
+                            {formatDate(order.deliveryDate)}
+                          </TableCell>
                         )}
 
                         {!isNarrow && visibleColumns.includes('customer') && (
-                          <td className="hidden px-4 py-2.5 xl:table-cell">
+                          <TableCell className="hidden xl:table-cell">
                             <span className="text-sm text-foreground">{customerName}</span>
-                          </td>
+                          </TableCell>
                         )}
 
                         {!isNarrow && visibleColumns.includes('value') && (
-                          <td className="hidden px-4 py-2.5 text-right xl:table-cell">
-                            <span className="font-mono text-sm font-semibold text-foreground">
+                          <TableCell className="hidden xl:table-cell">
+                            <span className="font-mono text-sm font-medium text-foreground">
                               {formatMoney(order.price, order.currency)}
                             </span>
-                          </td>
+                          </TableCell>
                         )}
 
                         {!isNarrow && visibleColumns.includes('status') && (
-                          <td className="px-4 py-2.5 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-2">
                               {order.archivedAt && (
-                                <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">Archived</span>
+                                <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                                  Archived
+                                </span>
                               )}
                               {needsAssignment && (
-                                <span className="flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium text-warning">
-                                  <Timer className="h-3 w-3" />Unassigned
+                                <span className="flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
+                                  <Timer className="h-3 w-3" />
+                                  Unassigned
                                 </span>
                               )}
                               <StatusBadge status={order.status} />
                             </div>
-                          </td>
+                          </TableCell>
                         )}
 
-                        <td className="px-2 py-2.5" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <button
-                                  className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                                  aria-label="More actions"
-                                >
-                                  <MoreHorizontal className="h-3.5 w-3.5" />
-                                </button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => navigate({ to: `/app/orders/${order.id}` })}>
-                                  <ExternalLink className="mr-2 h-3.5 w-3.5" />
-                                  Open detail
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => copyOrderId(order.id)}>
-                                  <Copy className="mr-2 h-3.5 w-3.5" />
-                                  Copy order ID
-                                </DropdownMenuItem>
-                                {canOperateOrder && !order.archivedAt &&
-                                  (order.status === 'DELIVERED' || order.status === 'CANCELLED') && (
-                                    <DropdownMenuItem onClick={() => setArchiveTarget(order)}>
-                                      <Archive className="mr-2 h-3.5 w-3.5" />
-                                      Archive
-                                    </DropdownMenuItem>
-                                  )}
-                                {canOperateOrder && order.archivedAt && (
-                                  <DropdownMenuItem onClick={() => handleRestoreFromList(order)}>
-                                    <ArchiveRestore className="mr-2 h-3.5 w-3.5" />
-                                    Restore
+                        <TableCell className="py-3 pl-0 pr-1 text-right sm:pr-2" onClick={(e) => e.stopPropagation()}>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => navigate({ to: `/app/orders/${order.id}` })}>
+                                <ExternalLink className="mr-2 h-3.5 w-3.5" />
+                                Open detail
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => copyOrderId(order.id)}>
+                                <Copy className="mr-2 h-3.5 w-3.5" />
+                                Copy order ID
+                              </DropdownMenuItem>
+                              {canOperateOrder && !order.archivedAt &&
+                                (order.status === 'DELIVERED' || order.status === 'CANCELLED') && (
+                                  <DropdownMenuItem onClick={() => setArchiveTarget(order)}>
+                                    <Archive className="mr-2 h-3.5 w-3.5" />
+                                    Archive
                                   </DropdownMenuItem>
                                 )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        </td>
-                      </tr>
+                              {canOperateOrder && order.archivedAt && (
+                                <DropdownMenuItem onClick={() => handleRestoreFromList(order)}>
+                                  <ArchiveRestore className="mr-2 h-3.5 w-3.5" />
+                                  Restore
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
                       {isExpanded && (
                         <ExpandedOrderRow
                           key={`${order.id}-expanded`}
                           order={order}
                           customerName={customerName}
-                          customerContactName={customerContactName}
                           canOperate={canOperateOrder}
-                          canWrite={canWriteOrder}
-                          colSpan={99}
-                          onEdit={setEditingOrder}
+                          colSpan={(isNarrow ? 2 : visibleColumns.length) + 2 + (canOperateOrder ? 1 : 0)}
                         />
                       )}
                     </Fragment>
                   );
                 })}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         )}
       </div>
@@ -1496,20 +1246,6 @@ export function OrdersList() {
           onOpenChange={handleCreateOpenChange}
           onCreated={handleCreated}
           defaultCustomerId={searchState.customerId}
-        />
-      )}
-
-      {canWriteOrder && editingOrder && (
-        <OrdersEditSheet
-          open={editingOrder !== null}
-          onOpenChange={(open) => {
-            if (!open) setEditingOrder(null);
-          }}
-          order={editingOrder}
-          onUpdated={() => {
-            void refetch();
-            setEditingOrder(null);
-          }}
         />
       )}
 

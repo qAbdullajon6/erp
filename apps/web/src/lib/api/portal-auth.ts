@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { portalFetch } from './portal-fetch';
 import { portalSessionManager } from './portal-session';
 import { portalAuthKeys } from './portal-query-keys';

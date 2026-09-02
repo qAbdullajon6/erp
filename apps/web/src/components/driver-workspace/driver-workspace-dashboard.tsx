@@ -71,8 +71,8 @@ export function DriverWorkspaceDashboard() {
     void navigate({ to: '/app/driver/$dispatchId', params: { dispatchId: id } });
   };
 
-  const deliveries = deliveriesQ.data ?? [];
-  const expenses = expensesQ.data ?? [];
+  const deliveries = useMemo(() => deliveriesQ.data ?? [], [deliveriesQ.data]);
+  const expenses = useMemo(() => expensesQ.data ?? [], [expensesQ.data]);
 
   const buckets = useMemo(() => {
     const current: typeof deliveries = [];

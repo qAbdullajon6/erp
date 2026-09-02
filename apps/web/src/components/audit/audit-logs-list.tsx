@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
   Table,
@@ -16,7 +16,6 @@ import {
   type AuditLogEntry,
   type ListAuditLogsParams,
 } from "@/lib/api/audit-logs";
-import { PageHeader } from "@/components/shared/page-header";
 import { ListToolbar, FilterSelect } from "@/components/shared/list-toolbar";
 import {
   ErrorState,
@@ -80,7 +79,7 @@ export function AuditLogsList() {
   const sortBy = searchState.sortBy || "createdAt";
   const sortOrder = searchState.sortOrder || "desc";
 
-  const params: ListAuditLogsParams = {
+  const params: ListAuditLogsParams = useMemo(() => ({
     page,
     limit: 20,
     search: search || undefined,
@@ -88,7 +87,7 @@ export function AuditLogsList() {
     entityType: entityType || undefined,
     sortBy,
     sortOrder,
-  };
+  }), [page, search, action, entityType, sortBy, sortOrder]);
 
   const { data, meta, loading, error, refetch } = useAuditLogsList(params);
 
@@ -97,7 +96,7 @@ export function AuditLogsList() {
 
   useEffect(() => {
     refetch(params);
-  }, [page, search, action, entityType, sortBy, sortOrder, refetch]);
+  }, [params, refetch]);
 
   const updateSearch = (patch: Partial<ListSearchState>) => {
     navigate({
@@ -138,16 +137,6 @@ export function AuditLogsList() {
 
   return (
     <div className="space-y-6" data-testid="audit-logs-page">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium text-muted-foreground">
-          {loading
-            ? "Loading..."
-            : error
-              ? "Error loading audit logs"
-              : `${meta.total} entries`}
-        </h2>
-      </div>
-
       <ListToolbar
         searchValue={localSearch}
         onSearchChange={handleSearch}

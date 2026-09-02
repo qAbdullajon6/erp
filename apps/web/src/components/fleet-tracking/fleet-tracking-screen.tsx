@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
@@ -64,7 +64,6 @@ import {
   Truck,
   X,
   ZoomIn,
-  Satellite,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -605,14 +604,6 @@ export function FleetTrackingScreen() {
                     <Link to="/app/devices">
                       <Cpu className="mr-2 h-3.5 w-3.5" />
                       Devices
-                    </Link>
-                  </DropdownMenuItem>
-                ) : null}
-                {canManageDevices ? (
-                  <DropdownMenuItem asChild>
-                    <Link to="/app/providers">
-                      <Satellite className="mr-2 h-3.5 w-3.5" />
-                      GPS providers
                     </Link>
                   </DropdownMenuItem>
                 ) : null}

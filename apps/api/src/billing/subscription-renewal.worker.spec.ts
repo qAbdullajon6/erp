@@ -202,7 +202,7 @@ describe("SubscriptionRenewalWorker", () => {
 
       expect(lifecycle.cancelSubscription).toHaveBeenCalledWith(
         "org-1",
-        null,
+        expect.objectContaining({ userId: "system" }),
         expect.objectContaining({ immediate: true, reason: "scheduled_cancellation" }),
       );
     });

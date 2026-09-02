@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Bell } from 'lucide-react';
 import { toast } from 'sonner';
-import { PageHeader } from '@/components/shared/page-header';
 import { ErrorState, EmptyState, ListSkeleton } from '@/components/shared/list-states';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -155,10 +154,10 @@ export function NotificationsView() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">
           {pagination?.total ?? 0} notification{pagination?.total === 1 ? '' : 's'}
-        </h2>
+        </p>
         <Button onClick={handleMarkAllAsRead} variant="outline" size="sm">
           Mark All as Read
         </Button>
@@ -210,4 +209,3 @@ export function NotificationsView() {
     </div>
   );
 }
-

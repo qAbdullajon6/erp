@@ -12,7 +12,6 @@ import {
   type CreateDriverInput,
   type CreateEmergencyContactInput,
   type Driver,
-  type DriverLicenseClass,
   type EmploymentType,
   type WorkShift,
 } from '@/lib/api/drivers';

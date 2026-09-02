@@ -8,7 +8,7 @@ import { UsageTab } from './usage-tab';
 export function DeveloperView() {
   return (
     <div className="space-y-6">
-
+      <PageHeader title="Developer" subtitle="Manage API keys, webhooks, and view usage analytics" />
 
       <Tabs defaultValue="api-keys">
         <TabsList>

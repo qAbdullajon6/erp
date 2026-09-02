@@ -40,7 +40,7 @@ export function PlatformSearchDialog({
 
   const go = (to: string) => {
     onOpenChange(false);
-    navigate({ to: to as any });
+    navigate({ to: to as string });
   };
 
   const hasResults =

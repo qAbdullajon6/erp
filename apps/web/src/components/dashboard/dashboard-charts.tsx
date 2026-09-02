@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/chart";
 import { formatMoney } from "@/lib/format";
 import { chartAxisTickStyle, revenueExpensesChartConfig } from "@/lib/chart-theme";
+import { cn } from "@/lib/utils";
 import type { DashboardSummary } from "@/lib/api/dashboard";
 
 interface DashboardChartsProps {
@@ -21,13 +22,11 @@ const ordersChartConfig: ChartConfig = {
   orders: { label: "Orders", color: "var(--color-brand)" },
 };
 
-/// Fixed chart height — keeps the card at a predictable, compact size (~300px
-/// total) and prevents aspect-video from inflating the chart to card-width × 9/16.
-const CHART_H = "h-[180px]";
+const CHART_HEIGHT = "min-h-[280px]";
 
 export function DashboardCharts({ data, loading }: DashboardChartsProps) {
   if (loading) {
-    return <Skeleton className="h-[300px] w-full rounded-2xl" />;
+    return <Skeleton className={cn(CHART_HEIGHT, "w-full rounded-xl")} />;
   }
 
   if (!data) return null;
@@ -43,29 +42,24 @@ export function DashboardCharts({ data, loading }: DashboardChartsProps) {
   const hasExpenses = revenueVsExpensesTimeSeries.some((b) => b.expenses > 0);
 
   return (
-    <SurfaceCard className="p-4">
-      <div className="mb-2.5">
+    <SurfaceCard className="p-5">
+      <div className="mb-4">
         <h3 className="text-sm font-semibold text-foreground">Trends</h3>
         <p className="text-[11px] text-muted-foreground">Last 30 days</p>
       </div>
 
-      <Tabs defaultValue="orders" className="pb-1">
+      <Tabs defaultValue="orders">
         <TabsList>
           <TabsTrigger value="orders">Orders</TabsTrigger>
           <TabsTrigger value="revenue">Revenue</TabsTrigger>
           <TabsTrigger value="expenses">Expenses</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="orders" className="mt-3">
+        <TabsContent value="orders" className="mt-4">
           {hasOrders ? (
-            <ChartContainer config={ordersChartConfig} className={`${CHART_H} w-full`}>
-              <BarChart data={ordersTimeSeries} margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  vertical={false}
-                  stroke="var(--color-border)"
-                  opacity={0.4}
-                />
+            <ChartContainer config={ordersChartConfig} className={cn("h-[280px] w-full", CHART_HEIGHT)}>
+              <BarChart data={ordersTimeSeries} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" opacity={0.4} />
                 <XAxis
                   dataKey="bucket"
                   tickLine={false}
@@ -73,13 +67,7 @@ export function DashboardCharts({ data, loading }: DashboardChartsProps) {
                   minTickGap={32}
                   tick={chartAxisTickStyle}
                 />
-                <YAxis
-                  tickLine={false}
-                  axisLine={false}
-                  width={36}
-                  tick={chartAxisTickStyle}
-                  allowDecimals={false}
-                />
+                <YAxis tickLine={false} axisLine={false} width={40} tick={chartAxisTickStyle} allowDecimals={false} />
                 <ChartTooltip content={<ChartTooltipContent />} />
                 <Bar dataKey="orders" fill="var(--color-brand)" radius={[4, 4, 0, 0]} />
               </BarChart>
@@ -89,25 +77,17 @@ export function DashboardCharts({ data, loading }: DashboardChartsProps) {
           )}
         </TabsContent>
 
-        <TabsContent value="revenue" className="mt-3">
+        <TabsContent value="revenue" className="mt-4">
           {hasRevenue ? (
-            <ChartContainer config={revenueExpensesChartConfig} className={`${CHART_H} w-full`}>
-              <AreaChart
-                data={revenueVsExpensesTimeSeries}
-                margin={{ top: 4, right: 12, left: 0, bottom: 0 }}
-              >
+            <ChartContainer config={revenueExpensesChartConfig} className={cn("h-[280px] w-full", CHART_HEIGHT)}>
+              <AreaChart data={revenueVsExpensesTimeSeries} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="dashboardRevenueFill" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="var(--color-series-revenue)" stopOpacity={0.35} />
                     <stop offset="95%" stopColor="var(--color-series-revenue)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  vertical={false}
-                  stroke="var(--color-border)"
-                  opacity={0.4}
-                />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" opacity={0.4} />
                 <XAxis
                   dataKey="bucket"
                   tickLine={false}
@@ -115,10 +95,8 @@ export function DashboardCharts({ data, loading }: DashboardChartsProps) {
                   minTickGap={32}
                   tick={chartAxisTickStyle}
                 />
-                <YAxis tickLine={false} axisLine={false} width={52} tick={chartAxisTickStyle} />
-                <ChartTooltip
-                  content={<ChartTooltipContent formatter={(value) => money(Number(value))} />}
-                />
+                <YAxis tickLine={false} axisLine={false} width={56} tick={chartAxisTickStyle} />
+                <ChartTooltip content={<ChartTooltipContent formatter={(value) => money(Number(value))} />} />
                 <Area
                   type="monotone"
                   dataKey="revenue"
@@ -133,25 +111,17 @@ export function DashboardCharts({ data, loading }: DashboardChartsProps) {
           )}
         </TabsContent>
 
-        <TabsContent value="expenses" className="mt-3">
+        <TabsContent value="expenses" className="mt-4">
           {hasExpenses ? (
-            <ChartContainer config={revenueExpensesChartConfig} className={`${CHART_H} w-full`}>
-              <AreaChart
-                data={revenueVsExpensesTimeSeries}
-                margin={{ top: 4, right: 12, left: 0, bottom: 0 }}
-              >
+            <ChartContainer config={revenueExpensesChartConfig} className={cn("h-[280px] w-full", CHART_HEIGHT)}>
+              <AreaChart data={revenueVsExpensesTimeSeries} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="dashboardExpensesFill" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="var(--color-series-expenses)" stopOpacity={0.35} />
                     <stop offset="95%" stopColor="var(--color-series-expenses)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  vertical={false}
-                  stroke="var(--color-border)"
-                  opacity={0.4}
-                />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" opacity={0.4} />
                 <XAxis
                   dataKey="bucket"
                   tickLine={false}
@@ -159,10 +129,8 @@ export function DashboardCharts({ data, loading }: DashboardChartsProps) {
                   minTickGap={32}
                   tick={chartAxisTickStyle}
                 />
-                <YAxis tickLine={false} axisLine={false} width={52} tick={chartAxisTickStyle} />
-                <ChartTooltip
-                  content={<ChartTooltipContent formatter={(value) => money(Number(value))} />}
-                />
+                <YAxis tickLine={false} axisLine={false} width={56} tick={chartAxisTickStyle} />
+                <ChartTooltip content={<ChartTooltipContent formatter={(value) => money(Number(value))} />} />
                 <Area
                   type="monotone"
                   dataKey="expenses"
@@ -183,7 +151,7 @@ export function DashboardCharts({ data, loading }: DashboardChartsProps) {
 
 function EmptyChart({ message }: { message: string }) {
   return (
-    <div className={`${CHART_H} flex items-center justify-center text-sm text-muted-foreground`}>
+    <div className={cn("flex items-center justify-center text-sm text-muted-foreground", CHART_HEIGHT)}>
       {message}
     </div>
   );

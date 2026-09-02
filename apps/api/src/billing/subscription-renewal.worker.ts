@@ -1,8 +1,18 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { Cron, CronExpression } from "@nestjs/schedule";
+import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { PrismaService } from "../prisma/prisma.service";
 import { SubscriptionLifecycleService } from "./subscription-lifecycle.service";
 import { AuditService } from "../audit/audit.service";
+
+const SYSTEM_ACTOR: CurrentUserPayload = {
+  userId: "system",
+  membershipId: "system",
+  organizationId: "system",
+  role: "ADMIN",
+  email: "system@flowerp.internal",
+  isPlatformAdmin: true,
+};
 
 /// Subscription renewal worker - handles automatic subscription lifecycle events.
 ///
@@ -130,7 +140,7 @@ export class SubscriptionRenewalWorker {
         try {
           await this.lifecycle.cancelSubscription(
             subscription.organizationId,
-            null as any, // System action (no actor for cron worker)
+            SYSTEM_ACTOR,
             { immediate: true, reason: "scheduled_cancellation" },
           );
           cancelledCount++;

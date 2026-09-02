@@ -11,12 +11,11 @@ const labelsFor = (role: Parameters<typeof getNavForRole>[0]) =>
   getNavForRole(role, false, { devTools: false }).map((item) => item.label);
 
 describe("top-level navigation", () => {
-  it("offers an admin twelve destinations", () => {
+  it("offers an admin eleven destinations, not twenty-two", () => {
     expect(labelsFor("ADMIN")).toEqual([
       "Overview",
       "Orders",
       "Dispatch",
-      "Routes",
       "Customers",
       "Fleet Tracking",
       "Vehicles",

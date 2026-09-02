@@ -55,7 +55,7 @@ export class MetaPixelProvider {
         fbq.queue.push(args);
       }
     };
-    fbq.queue = [] as any[];
+    fbq.queue = [] as unknown[][];
     fbq.loaded = true;
     fbq.version = '2.0';
 

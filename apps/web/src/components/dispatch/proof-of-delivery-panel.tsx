@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Camera,
-  Loader2,
   MapPin,
   Gauge,
   Signature as SignatureIcon,

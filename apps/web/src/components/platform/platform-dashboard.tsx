@@ -30,7 +30,7 @@ function KpiCard({
     </div>
   );
   return href ? (
-    <Link to={href as any}>{body}</Link>
+    <Link to={href as string}>{body}</Link>
   ) : (
     body
   );

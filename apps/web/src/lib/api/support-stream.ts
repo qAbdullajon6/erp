@@ -127,7 +127,7 @@ export function useSupportStream({ enabled, openTicketId }: UseSupportStreamOpti
           headers: token ? { Authorization: `Bearer ${token}` } : {},
           signal: controller.signal,
         });
-      } catch (err) {
+      } catch {
         if (controller.signal.aborted || stopped) return;
         // Network / abort error — reconnect with backoff.
         scheduleReconnect();

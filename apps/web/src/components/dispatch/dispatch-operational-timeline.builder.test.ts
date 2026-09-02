@@ -43,7 +43,6 @@ const baseDispatch: ApiDispatch = {
   deliveryDateActual: null,
   notes: undefined,
   allowedTransitions: [],
-  routeContext: [],
   statusHistory: [],
   createdAt: '2026-07-29T09:00:00.000Z',
   updatedAt: '2026-07-29T09:00:00.000Z',
@@ -381,27 +380,6 @@ describe('filterTimelineEvents', () => {
     });
     const filtered = filterTimelineEvents(events, 'all', 'invoice');
     expect(filtered.some((e) => e.title.toLowerCase().includes('invoice'))).toBe(true);
-  });
-
-  it('maps dispatch.delivery_failed to a cancel-kind event with reason and notes', () => {
-    const events = buildDispatchOperationalTimeline({
-      dispatch: { ...baseDispatch, status: 'DELIVERY_FAILED' as const },
-      dispatchAuditLogs: [
-        audit({
-          action: 'dispatch.delivery_failed',
-          metadata: {
-            reason: 'CUSTOMER_UNAVAILABLE',
-            notes: 'No answer after three knocks',
-            dispatchNumber: 'DSP-001',
-          },
-        }),
-      ],
-    });
-    expect(events[0].title).toBe('Delivery failed');
-    expect(events[0].kind).toBe('cancel');
-    expect(events[0].subtitle).toBe('Customer unavailable');
-    expect(events[0].detail).toBe('No answer after three knocks');
-    expect(events[0].categories).toContain('status');
   });
 
   it('maps dispatch.conflict_detected audit metadata to timeline events', () => {

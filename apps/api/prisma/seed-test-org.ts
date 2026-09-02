@@ -57,6 +57,7 @@ async function main() {
       slug: TEST_ORG_SLUG,
       defaultCurrency: "USD",
       timezone: "Asia/Tashkent",
+      legalName: "Trans Logistik Uzbekistan LLC",
     },
   });
 

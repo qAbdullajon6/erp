@@ -97,7 +97,7 @@ export function CommandPalette({
 
   const go = (destination: Destination) => {
     onOpenChange(false);
-    navigate({ to: destination.path as any, search: (destination.search ?? {}) as any });
+    navigate({ to: destination.path as string, search: (destination.search ?? {}) as Record<string, string> });
   };
 
   const actions = QUICK_ACTIONS.filter((action) => {

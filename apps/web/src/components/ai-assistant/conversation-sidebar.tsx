@@ -26,7 +26,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { formatRelativeTime } from '@/lib/format';
-import { useAiConversations, useConversationActions, useCreateConversation } from '@/hooks/use-ai';
+import { useAiConversations, useConversationActions } from '@/hooks/use-ai';
 import type { AiConversation } from '@/lib/api/ai';
 
 interface ConversationSidebarProps {

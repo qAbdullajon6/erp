@@ -79,13 +79,13 @@ export function AppSidebar({ nav, navReady }: { nav: NavItem[]; navReady: boolea
                   // command palette lists them unconditionally, so they stay
                   // findable from anywhere.
                   const inSection = isNavSectionActive(location.pathname, item);
-                  const children = inSection ? (item.children ?? []).filter(c => !c.hideFromSidebar) : [];
+                  const children = inSection ? (item.children ?? []) : [];
                   return (
                     <SidebarMenuItem key={`${item.path}:${item.label}`}>
                       <SidebarMenuButton
                         isActive={active}
                         tooltip={item.label}
-                        onClick={() => navigate({ to: item.path as any })}
+                        onClick={() => navigate({ to: item.path as string })}
                         aria-current={active ? "page" : undefined}
                         className={cn(
                           "relative transition-colors duration-150 hover:bg-sidebar-accent/70",
@@ -111,7 +111,7 @@ export function AppSidebar({ nav, navReady }: { nav: NavItem[]; navReady: boolea
                                 <SidebarMenuSubButton asChild isActive={childActive}>
                                   <button
                                     type="button"
-                                    onClick={() => navigate({ to: child.path as any })}
+                                    onClick={() => navigate({ to: child.path as string })}
                                     aria-current={childActive ? "page" : undefined}
                                     className="w-full text-left"
                                   >

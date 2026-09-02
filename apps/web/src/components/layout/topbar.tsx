@@ -12,10 +12,8 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { NotificationBell } from "@/components/notifications/notification-bell";
-import { SupportButton } from "@/components/support/support-drawer";
 import { UserMenu } from "@/components/layout/user-menu";
 import { resolveBreadcrumbTrail } from "@/components/layout/nav-config";
-import { usePageLeaf } from "@/lib/page-title-context";
 import type { CurrentUser } from "@/lib/api/auth";
 
 export function Topbar({
@@ -29,10 +27,7 @@ export function Topbar({
 }) {
   const location = useLocation();
   const trail = resolveBreadcrumbTrail(location.pathname);
-  const contextLeaf = usePageLeaf();
-  const leaf = contextLeaf
-    ? { label: contextLeaf, path: location.pathname }
-    : trail.at(-1);
+  const leaf = trail.at(-1);
 
   return (
     <div className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -50,15 +45,15 @@ export function Topbar({
               stated, and the only way back up in one click. */}
           <Breadcrumb className="hidden min-w-0 md:block">
             <BreadcrumbList className="flex-nowrap">
-              {(trail.length > 1 || contextLeaf) ? (
+              {trail.length > 1 ? (
                 <>
                   <BreadcrumbItem>
                     <BreadcrumbLink asChild>
                       <Link
-                        to={trail[0]!.path}
+                        to={trail[0].path}
                         className="whitespace-nowrap text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
                       >
-                        {trail[0]!.label}
+                        {trail[0].label}
                       </Link>
                     </BreadcrumbLink>
                   </BreadcrumbItem>
@@ -90,7 +85,6 @@ export function Topbar({
           <Button variant="ghost" size="icon" onClick={onOpenCommandPalette} className="sm:hidden" aria-label="Search">
             <Search className="h-5 w-5" />
           </Button>
-          <SupportButton />
           <NotificationBell />
           <div className="mx-1 hidden h-6 w-px bg-border sm:block" />
           <UserMenu currentUser={currentUser} onSignOut={onSignOut} />

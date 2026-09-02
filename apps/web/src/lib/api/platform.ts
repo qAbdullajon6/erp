@@ -323,6 +323,7 @@ export interface PlatformSupportTicket {
   subject: string;
   body: string;
   status: SupportTicketStatus;
+  priority: SupportTicketPriority;
   /// Non-null while the tenant has a pending "did this solve it?" prompt.
   resolutionRequestedAt: string | null;
   organizationId: string | null;
@@ -337,6 +338,12 @@ export interface PlatformSupportTicket {
     status: OrganizationStatus;
   } | null;
   createdBy?: {
+    id: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+  } | null;
+  assignee?: {
     id: string;
     email: string;
     firstName: string;
@@ -362,10 +369,13 @@ export interface CreateSupportTicketInput {
   organizationId?: string;
   subject: string;
   body: string;
+  priority?: SupportTicketPriority;
 }
 
 export interface UpdateSupportTicketInput {
   status?: SupportTicketStatus;
+  priority?: SupportTicketPriority;
+  assigneeUserId?: string | null;
 }
 
 // ── Audit ──────────────────────────────────────────────────────────

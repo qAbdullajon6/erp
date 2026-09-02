@@ -3,9 +3,14 @@
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
-import { isValidCurrencyCode } from '@/lib/currencies';
 
-/// Shared between CustomersCreateSheet and CustomersEditSheet.
+/// Shared between CustomersCreateSheet and CustomersEditSheet — both sheets
+/// validate and render the same account fields (create additionally has
+/// `customerCode` free-typed with an "auto-generated if empty" placeholder;
+/// edit adds `status`). Previously each file hand-copied its own Field,
+/// validateField, and SectionTitle, which meant a validation-rule change made
+/// in one sheet and not the other was an easy miss — the same duplication
+/// Orders' create/edit sheets had before order-form-shared.tsx.
 
 export type CustomerSectionKey = 'company' | 'contact' | 'address' | 'credit' | 'notes';
 
@@ -19,16 +24,15 @@ export const CUSTOMER_FIELD_SECTION: Record<string, CustomerSectionKey> = {
   country: 'address',
   city: 'address',
   address: 'address',
-  postalCode: 'address',
   taxId: 'credit',
   paymentTerms: 'credit',
-  paymentTermsDays: 'credit',
   creditLimit: 'credit',
-  currency: 'credit',
   deliveryNotes: 'notes',
   internalNotes: 'notes',
 };
 
+/// The subset of CreateCustomerInput/UpdateCustomerInput this validator
+/// needs — both real input types satisfy this shape.
 export interface CustomerFormFields {
   customerCode?: string;
   companyName?: string;
@@ -38,18 +42,13 @@ export interface CustomerFormFields {
   country?: string | null;
   city?: string | null;
   address?: string | null;
-  postalCode?: string | null;
   taxId?: string | null;
-  paymentTerms?: string | null;
-  /** Required when paymentTerms = CUSTOM; NaN = CUSTOM selected but no days entered yet */
-  paymentTermsDays?: number | null;
-  /** null = no credit limit; 0 = $0 credit; positive = credit cap */
   creditLimit?: number | null;
-  currency?: string | null;
   deliveryNotes?: string | null;
   internalNotes?: string | null;
 }
 
+/// Mirrors CreateCustomerDto/UpdateCustomerDto (apps/api/src/customers/dto/*.ts).
 export function validateCustomerField(field: string, data: CustomerFormFields): string | null {
   switch (field) {
     case 'companyName':
@@ -57,9 +56,8 @@ export function validateCustomerField(field: string, data: CustomerFormFields): 
       if (data.companyName.length > 200) return 'Max 200 characters';
       return null;
     case 'contactName':
-      // Optional — but if provided must be non-empty meaningful text
-      if (data.contactName && !data.contactName.trim()) return 'Enter a name or leave blank';
-      if ((data.contactName?.length ?? 0) > 200) return 'Max 200 characters';
+      if (!data.contactName?.trim()) return 'Required';
+      if (data.contactName.length > 200) return 'Max 200 characters';
       return null;
     case 'customerCode':
       if (data.customerCode && !/^[A-Za-z0-9][A-Za-z0-9-]*$/.test(data.customerCode)) {
@@ -74,48 +72,20 @@ export function validateCustomerField(field: string, data: CustomerFormFields): 
       if ((data.phone?.length ?? 0) > 50) return 'Max 50 characters';
       return null;
     case 'country':
-      if (data.country && !/^[A-Z]{2}$/.test(data.country)) {
-        return 'Select a valid country';
-      }
-      return null;
     case 'city':
-      if (((data['city'] as string | null | undefined)?.length ?? 0) > 100) {
+      if (((data[field as 'country' | 'city'] as string | null | undefined)?.length ?? 0) > 100) {
         return 'Max 100 characters';
       }
       return null;
     case 'address':
       if ((data.address?.length ?? 0) > 300) return 'Max 300 characters';
       return null;
-    case 'postalCode':
-      if ((data.postalCode?.length ?? 0) > 20) return 'Max 20 characters';
-      return null;
     case 'taxId':
       if ((data.taxId?.length ?? 0) > 100) return 'Max 100 characters';
       return null;
-    case 'paymentTermsDays': {
-      // Only required and validated when paymentTerms = CUSTOM.
-      if (data.paymentTerms !== 'CUSTOM') return null;
-      if (data.paymentTermsDays == null || Number.isNaN(data.paymentTermsDays as number)) return 'Enter a number of days';
-      const d = data.paymentTermsDays as number;
-      if (d < 0) return 'Must be 0 or more';
-      if (!Number.isInteger(d)) return 'Must be a whole number';
-      return null;
-    }
-    case 'creditLimit': {
-      // null = "Unlimited" — always valid.
-      // 0    = "No credit" — always valid (explicit zero is intentional).
-      if (data.creditLimit == null) return null;
-      const limit = data.creditLimit as number;
-      if (limit === 0) return null; // No credit — valid
-      // NaN = "Limited" mode selected but no amount entered yet.
-      if (Number.isNaN(limit)) return 'Enter an amount';
-      if (limit < 0) return 'Amount cannot be negative';
-      if (limit > 99_999_999.99) return 'Amount too large';
-      return null;
-    }
-    case 'currency':
-      if (data.currency && !isValidCurrencyCode(data.currency)) {
-        return 'Select a valid currency';
+    case 'creditLimit':
+      if (data.creditLimit != null && (data.creditLimit < 0 || data.creditLimit > 999999.99)) {
+        return 'Must be between 0 and 999,999.99';
       }
       return null;
     case 'deliveryNotes':
@@ -179,12 +149,10 @@ export function SectionTitle({
   icon: Icon,
   title,
   errors,
-  action,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   title: string;
   errors: number;
-  action?: React.ReactNode;
 }) {
   return (
     <div className="flex items-center gap-2">
@@ -197,7 +165,6 @@ export function SectionTitle({
           {errors}
         </Badge>
       )}
-      {action && <div className="ml-auto">{action}</div>}
     </div>
   );
 }

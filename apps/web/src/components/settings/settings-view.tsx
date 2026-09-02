@@ -14,7 +14,6 @@ export function SettingsView() {
 
   const role = currentUser?.membership.role;
   const isAdmin = role === 'ADMIN';
-  const isDriver = role === 'DRIVER';
 
   /// A non-admin who follows a link to ?tab=members — or keeps a bookmark from
   /// before their role changed — would otherwise land on a section that renders

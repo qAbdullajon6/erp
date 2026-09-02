@@ -33,15 +33,6 @@ export function getEntityLink(entityType: string | null, entityId: string | null
         search: { tab: 'invoices', invoiceId: entityId },
         label: 'View Invoice',
       };
-    case 'SupportTicket':
-      // Handled by the Support drawer via the `openSupportTicket` search param.
-      // We point to the current shell route so the app stays in place.
-      return {
-        to: '/app',
-        params: {},
-        search: { openSupportTicket: entityId },
-        label: 'View Support Ticket',
-      };
     default:
       return null;
   }

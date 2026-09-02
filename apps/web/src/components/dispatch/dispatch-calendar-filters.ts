@@ -19,7 +19,6 @@ export type CalendarStatusFilter =
   | 'EN_ROUTE_TO_PICKUP'
   | 'AT_PICKUP'
   | 'IN_TRANSIT'
-  | 'ARRIVED_AT_DELIVERY'
   | 'DELIVERED'
   | 'CANCELLED';
 
@@ -46,7 +45,6 @@ export const CALENDAR_STATUS_OPTIONS: Array<{
   { value: 'EN_ROUTE_TO_PICKUP', label: 'To Pickup' },
   { value: 'AT_PICKUP', label: 'At Pickup' },
   { value: 'IN_TRANSIT', label: 'In Transit' },
-  { value: 'ARRIVED_AT_DELIVERY', label: 'Arrived' },
   { value: 'DELIVERED', label: 'Done' },
   { value: 'CANCELLED', label: 'Cancelled' },
 ];

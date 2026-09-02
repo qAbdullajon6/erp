@@ -145,7 +145,7 @@ export function DispatchCalendar() {
     if (!selected) return;
     const fresh = allEvents.find((e) => e.id === selected.id);
     if (fresh) setSelected(fresh);
-  }, [allEvents, selected?.id]);
+  }, [allEvents, selected]);
 
   const replaceSearch = useCallback((next: CalendarSearch) => {
     void navigate({

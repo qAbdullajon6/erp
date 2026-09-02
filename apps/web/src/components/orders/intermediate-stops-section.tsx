@@ -51,7 +51,6 @@ function StopCard({
   index,
   total,
   errors,
-  touched,
   onChange,
   onTouch,
   onRemove,

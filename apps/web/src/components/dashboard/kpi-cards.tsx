@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowDown,
@@ -5,9 +6,11 @@ import {
   ClipboardList,
   DollarSign,
   FileText,
+  Minus,
   Truck,
   Users,
 } from "lucide-react";
+import { MetricCard } from "@/components/ui/metric-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SurfaceCard } from "@/components/ui/surface-card";
 import { formatMoney } from "@/lib/format";
@@ -19,13 +22,10 @@ interface KpiCardsProps {
   loading: boolean;
 }
 
-function percentChange(
-  current: number,
-  previous: number,
-): { label: string; direction: "up" | "down" | "flat" } {
+function percentChange(current: number, previous: number): { label: string; direction: "up" | "down" | "flat" } {
   if (previous === 0) {
-    if (current === 0) return { label: "—", direction: "flat" };
-    return { label: "new", direction: "up" };
+    if (current === 0) return { label: "0%", direction: "flat" };
+    return { label: "—", direction: current > 0 ? "up" : "down" };
   }
   const pct = ((current - previous) / previous) * 100;
   const rounded = Math.abs(pct) < 0.05 ? 0 : Math.round(pct);
@@ -35,65 +35,57 @@ function percentChange(
   };
 }
 
-interface KpiTileProps {
+function ComparisonRow({
+  yesterdayLabel,
+  change,
+}: {
+  yesterdayLabel: string;
+  change: { label: string; direction: "up" | "down" | "flat" };
+}) {
+  const Icon = change.direction === "up" ? ArrowUp : change.direction === "down" ? ArrowDown : Minus;
+  return (
+    <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+      <span>Yesterday: {yesterdayLabel}</span>
+      <span
+        className={cn(
+          "inline-flex items-center gap-0.5 font-medium tabular-nums",
+          change.direction === "up" && "text-foreground",
+          change.direction === "down" && "text-foreground",
+          change.direction === "flat" && "text-muted-foreground",
+        )}
+      >
+        <Icon className="h-3 w-3" />
+        {change.label}
+      </span>
+    </p>
+  );
+}
+
+function HeroKpiCard({
+  label,
+  value,
+  icon: Icon,
+  comparison,
+}: {
   label: string;
   value: string;
   icon: LucideIcon;
-  /** Supporting context line below the value */
-  sub?: string;
-  /** Yesterday comparison delta */
-  delta?: { label: string; direction: "up" | "down" | "flat" };
-  /** Emphasise this tile: larger value, higher visual weight */
-  primary?: boolean;
-  /** Warn state: amber border when non-zero */
-  warn?: boolean;
-}
-
-function KpiTile({ label, value, icon: Icon, sub, delta, primary, warn }: KpiTileProps) {
-  const DeltaIcon = delta?.direction === "up" ? ArrowUp : delta?.direction === "down" ? ArrowDown : null;
-
+  comparison?: ReactNode;
+}) {
   return (
-    <SurfaceCard
-      className={cn(
-        "px-4 py-3.5",
-        warn && "border-warning/30",
-      )}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] font-medium text-muted-foreground/80">{label}</p>
-        <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground/25" />
-      </div>
-      <p
-        className={cn(
-          "mt-2 font-semibold leading-none tabular-nums text-foreground",
-          primary ? "text-2xl" : "text-xl",
-        )}
-      >
-        {value}
-      </p>
-      {(sub || delta) && (
-        <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          {delta && DeltaIcon ? (
-            <span
-              className={cn(
-                "inline-flex shrink-0 items-center gap-0.5 font-medium tabular-nums",
-                delta.direction === "up" && "text-success",
-                delta.direction === "down" && "text-destructive/70",
-              )}
-            >
-              <DeltaIcon className="h-2.5 w-2.5" />
-              {delta.label}
-            </span>
-          ) : delta ? (
-            <span className="tabular-nums text-muted-foreground">{delta.label}</span>
-          ) : null}
-          {sub && (
-            <span className={cn("truncate", delta && "text-muted-foreground/60")}>
-              {sub}
-            </span>
-          )}
+    <SurfaceCard className="p-6">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-muted-foreground">{label}</p>
+          <p className="mt-2 text-4xl font-semibold leading-none tabular-nums tracking-tight text-foreground">
+            {value}
+          </p>
+          {comparison}
         </div>
-      )}
+        <span className="shrink-0 rounded-xl bg-muted/60 p-3 text-muted-foreground">
+          <Icon className="h-5 w-5" />
+        </span>
+      </div>
     </SurfaceCard>
   );
 }
@@ -101,10 +93,17 @@ function KpiTile({ label, value, icon: Icon, sub, delta, primary, warn }: KpiTil
 export function KpiCards({ data, loading }: KpiCardsProps) {
   if (loading) {
     return (
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <Skeleton key={i} className="h-[84px] rounded-2xl" />
-        ))}
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 gap-4 min-[720px]:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-[120px] rounded-2xl" />
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-3 min-[720px]:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-[72px] rounded-xl" />
+          ))}
+        </div>
       </div>
     );
   }
@@ -127,47 +126,88 @@ export function KpiCards({ data, loading }: KpiCardsProps) {
     Number(yesterday.revenueYesterday),
   );
 
+  const secondaryCards = [
+    {
+      label: "Vehicles Active",
+      value: operational.activeVehicles.toLocaleString(),
+      icon: Truck,
+    },
+    {
+      label: "Drivers Working",
+      value: operational.workingDrivers.toLocaleString(),
+      icon: Users,
+    },
+    {
+      label: "Invoices Waiting",
+      value: operational.invoicesWaiting.toLocaleString(),
+      icon: FileText,
+      note:
+        operational.invoicesWaiting > 0
+          ? { icon: FileText, text: "Awaiting payment", tone: "neutral" as const }
+          : undefined,
+    },
+  ];
+
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-      <KpiTile
-        label="Today's Orders"
-        value={today.ordersCreatedToday.toLocaleString()}
-        icon={ClipboardList}
-        sub={`yday ${yesterday.ordersCreatedYesterday}`}
-        delta={ordersChange}
-        primary
-      />
-      <KpiTile
-        label="Today's Revenue"
-        value={formatMoney(today.revenueToday, currency)}
-        icon={DollarSign}
-        sub={`yday ${formatMoney(yesterday.revenueYesterday, currency)}`}
-        delta={revenueChange}
-        primary
-      />
-      <KpiTile
-        label="Pending Dispatches"
-        value={operational.pendingDispatches.toLocaleString()}
-        icon={Truck}
-        sub={operational.pendingDispatches > 0 ? "Need assignment" : "Queue clear"}
-      />
-      <KpiTile
-        label="Vehicles Active"
-        value={operational.activeVehicles.toLocaleString()}
-        icon={Truck}
-      />
-      <KpiTile
-        label="Drivers Working"
-        value={operational.workingDrivers.toLocaleString()}
-        icon={Users}
-      />
-      <KpiTile
-        label="Invoices Waiting"
-        value={operational.invoicesWaiting.toLocaleString()}
-        icon={FileText}
-        sub={operational.invoicesWaiting > 0 ? "Awaiting payment" : undefined}
-        warn={operational.invoicesWaiting > 0}
-      />
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-4 min-[720px]:grid-cols-3">
+        <HeroKpiCard
+          label="Today's Orders"
+          value={today.ordersCreatedToday.toLocaleString()}
+          icon={ClipboardList}
+          comparison={
+            <ComparisonRow
+              yesterdayLabel={yesterday.ordersCreatedYesterday.toLocaleString()}
+              change={ordersChange}
+            />
+          }
+        />
+        <HeroKpiCard
+          label="Today's Revenue"
+          value={formatMoney(today.revenueToday, currency)}
+          icon={DollarSign}
+          comparison={
+            <ComparisonRow
+              yesterdayLabel={formatMoney(yesterday.revenueYesterday, currency)}
+              change={revenueChange}
+            />
+          }
+        />
+        <HeroKpiCard
+          label="Pending Dispatches"
+          value={operational.pendingDispatches.toLocaleString()}
+          icon={Truck}
+          comparison={
+            <p className="mt-3 text-xs text-muted-foreground">
+              {operational.pendingDispatches > 0 ? "Awaiting assignment" : "Queue clear"}
+            </p>
+          }
+        />
+      </div>
+
+      {/* Three across on a 375px phone left ~110px a tile, which wrapped the
+          label onto two lines and cut the note down to "A…". Two across until
+          there is room for three, with the odd one out taking the full row. */}
+      <div className="grid grid-cols-2 gap-3 opacity-90 min-[720px]:grid-cols-3">
+        {secondaryCards.map((card, index) => (
+          <div
+            key={card.label}
+            className={cn(
+              index === secondaryCards.length - 1 && secondaryCards.length % 2 === 1
+                ? 'col-span-2 min-[720px]:col-span-1'
+                : undefined,
+            )}
+          >
+            <MetricCard
+              label={card.label}
+              value={card.value}
+              icon={card.icon}
+              size="sm"
+              note={card.note}
+            />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
