@@ -6,7 +6,7 @@ export class UpdateRouteStopDto {
   optimizationLocked?: boolean;
 
   @IsOptional()
-  @ValidateIf((o) => o.dispatchId !== null)
+  @ValidateIf((o: { dispatchId: unknown }) => o.dispatchId !== null)
   @IsUUID()
   dispatchId?: string | null;
 }

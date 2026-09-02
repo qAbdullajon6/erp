@@ -100,12 +100,12 @@ describe("Invoice due-date calculation via customer paymentTerms", () => {
   ): Promise<number> {
     const mod = await buildMockModule({ paymentTerms: terms, paymentTermsDays: termsDays });
     const service = mod.get<InvoicesService>(InvoicesService);
-    const prisma = mod.get(PrismaService) as ReturnType<typeof buildMockPrisma>;
+    const prisma = mod.get(PrismaService);
 
     const actor = { userId: "u1", organizationId: "org-1", role: "ADMIN", membershipId: "m1", sessionVersion: 0, typ: "staff" } as never;
 
     let capturedDueDate: Date | null = null;
-    prisma.invoice.create.mockImplementation(({ data }: { data: Record<string, unknown> }) => {
+    (prisma.invoice.create as jest.Mock).mockImplementation(({ data }: { data: Record<string, unknown> }) => {
       capturedDueDate = data.dueDate as Date;
       return {
         ...data,           // spread so Decimal fields survive toResponse()
@@ -121,7 +121,7 @@ describe("Invoice due-date calculation via customer paymentTerms", () => {
     if (!capturedDueDate) throw new Error("createFromOrder did not create an invoice");
 
     // Extract the captured issueDate from the create call
-    const createCall = prisma.invoice.create.mock.calls[0][0];
+    const createCall = (prisma.invoice.create as jest.Mock).mock.calls[0][0];
     const issueDate: Date = createCall.data.issueDate;
 
     return daysFromNow(issueDate, capturedDueDate);
@@ -196,17 +196,17 @@ describe("Invoice due-date calculation via customer paymentTerms", () => {
     // Service reads from the DB; mock returns paymentTermsDays=10 AND paymentTerms=NET_30
     const mod = await buildMockModule({ paymentTerms: "NET_30", paymentTermsDays: 10 });
     const service = mod.get<InvoicesService>(InvoicesService);
-    const prisma = mod.get(PrismaService) as ReturnType<typeof buildMockPrisma>;
+    const prisma = mod.get(PrismaService);
 
     const actor = { userId: "u1", organizationId: "org-1", role: "ADMIN", membershipId: "m1", sessionVersion: 0, typ: "staff" } as never;
     let capturedDueDate: Date | null = null;
-    prisma.invoice.create.mockImplementation(({ data }: { data: Record<string, unknown> }) => {
+    (prisma.invoice.create as jest.Mock).mockImplementation(({ data }: { data: Record<string, unknown> }) => {
       capturedDueDate = data.dueDate as Date;
       return { ...data, id: "inv-1", invoiceNumber: "INV-2026-0001", lineItems: [], payments: [] };
     });
 
     await service.createFromOrder("org-1", "order-1", actor);
-    const issueDate: Date = prisma.invoice.create.mock.calls[0][0].data.issueDate;
+    const issueDate: Date = (prisma.invoice.create as jest.Mock).mock.calls[0][0].data.issueDate;
     // NET_30 should drive the calculation, not paymentTermsDays=10
     expect(daysFromNow(issueDate, capturedDueDate!)).toBe(30);
   });
@@ -227,7 +227,7 @@ describe("CreateCustomerDto paymentTermsDays validation", () => {
   it("CUSTOM + valid days → no error", async () => {
     const dto = Object.assign(new CreateCustomerDto(), {
       companyName: "Acme",
-      paymentTerms: "CUSTOM" as CustomerPaymentTerms,
+      paymentTerms: "CUSTOM",
       paymentTermsDays: 45,
     });
     const errors = await validate(dto);
@@ -238,7 +238,7 @@ describe("CreateCustomerDto paymentTermsDays validation", () => {
   it("CUSTOM + paymentTermsDays=0 → no error (0 is valid)", async () => {
     const dto = Object.assign(new CreateCustomerDto(), {
       companyName: "Acme",
-      paymentTerms: "CUSTOM" as CustomerPaymentTerms,
+      paymentTerms: "CUSTOM",
       paymentTermsDays: 0,
     });
     const errors = await validate(dto);
@@ -248,7 +248,7 @@ describe("CreateCustomerDto paymentTermsDays validation", () => {
   it("CUSTOM + negative paymentTermsDays → rejected (Min(0))", async () => {
     const dto = Object.assign(new CreateCustomerDto(), {
       companyName: "Acme",
-      paymentTerms: "CUSTOM" as CustomerPaymentTerms,
+      paymentTerms: "CUSTOM",
       paymentTermsDays: -5,
     });
     const errors = await validate(dto);
@@ -258,7 +258,7 @@ describe("CreateCustomerDto paymentTermsDays validation", () => {
   it("CUSTOM + non-integer paymentTermsDays → rejected (IsInt)", async () => {
     const dto = Object.assign(new CreateCustomerDto(), {
       companyName: "Acme",
-      paymentTerms: "CUSTOM" as CustomerPaymentTerms,
+      paymentTerms: "CUSTOM",
       paymentTermsDays: 10.5,
     });
     const errors = await validate(dto);
@@ -268,7 +268,7 @@ describe("CreateCustomerDto paymentTermsDays validation", () => {
   it("NET_30 + no paymentTermsDays → valid (not required for non-CUSTOM)", async () => {
     const dto = Object.assign(new CreateCustomerDto(), {
       companyName: "Acme",
-      paymentTerms: "NET_30" as CustomerPaymentTerms,
+      paymentTerms: "NET_30",
     });
     const errors = await validate(dto);
     expect(errors.filter((e) => e.property === "paymentTermsDays")).toHaveLength(0);
@@ -277,7 +277,7 @@ describe("CreateCustomerDto paymentTermsDays validation", () => {
   it("NET_30 + valid paymentTermsDays → valid (accepted but ignored)", async () => {
     const dto = Object.assign(new CreateCustomerDto(), {
       companyName: "Acme",
-      paymentTerms: "NET_30" as CustomerPaymentTerms,
+      paymentTerms: "NET_30",
       paymentTermsDays: 30,
     });
     const errors = await validate(dto);
@@ -288,7 +288,7 @@ describe("CreateCustomerDto paymentTermsDays validation", () => {
 describe("UpdateCustomerDto paymentTermsDays validation", () => {
   it("CUSTOM + valid days → no error", async () => {
     const dto = Object.assign(new UpdateCustomerDto(), {
-      paymentTerms: "CUSTOM" as CustomerPaymentTerms,
+      paymentTerms: "CUSTOM",
       paymentTermsDays: 60,
     });
     expect((await validate(dto)).filter((e) => e.property === "paymentTermsDays")).toHaveLength(0);
@@ -296,7 +296,7 @@ describe("UpdateCustomerDto paymentTermsDays validation", () => {
 
   it("CUSTOM + negative days → rejected", async () => {
     const dto = Object.assign(new UpdateCustomerDto(), {
-      paymentTerms: "CUSTOM" as CustomerPaymentTerms,
+      paymentTerms: "CUSTOM",
       paymentTermsDays: -1,
     });
     expect((await validate(dto)).some((e) => e.property === "paymentTermsDays")).toBe(true);

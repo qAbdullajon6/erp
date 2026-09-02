@@ -343,7 +343,7 @@ export class DriverDispatchService {
         where: { dispatchId: id, stopType: "DELIVERY" },
         data: {
           failedAt: occurredAt,
-          failureReason: dto.reason as string,
+          failureReason: dto.reason,
           failureNotes: notes,
         },
       });
@@ -483,7 +483,7 @@ export class DriverDispatchService {
         },
         data: {
           failedAt,
-          failureReason: dto.reason as string,
+          failureReason: dto.reason,
           failureNotes: notes,
         },
       });

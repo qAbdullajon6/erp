@@ -1,5 +1,5 @@
 import { Transform } from "class-transformer";
-import { IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min, Max } from "class-validator";
+import { IsInt, IsOptional, IsString, Matches, MaxLength, Min, Max } from "class-validator";
 import { emptyToUndefined } from "../../common/query-transform.util";
 
 export class PlaceSuggestQueryDto {

@@ -233,7 +233,7 @@ export class SupportService {
   async closeTicket(
     organizationId: string,
     ticketId: string,
-    actor: CurrentUserPayload,
+    _actor: CurrentUserPayload,
   ) {
     const ticket = await this.prisma.supportTicket.findFirst({
       where: { id: ticketId, organizationId },

@@ -31,4 +31,19 @@ export default tseslint.config(
       "@typescript-eslint/no-unsafe-argument": "warn",
     },
   },
+  {
+    files: ["**/*.spec.ts"],
+    rules: {
+      "@typescript-eslint/no-unsafe-assignment": "off",
+      "@typescript-eslint/no-unsafe-member-access": "off",
+      "@typescript-eslint/no-unsafe-return": "off",
+      "@typescript-eslint/no-unsafe-call": "off",
+      "@typescript-eslint/unbound-method": "off",
+    },
+  },
+  {
+    rules: {
+      "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
+    },
+  },
 );

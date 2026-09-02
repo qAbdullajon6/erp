@@ -5,7 +5,6 @@
  * emails are sent correctly without touching a real SMTP server.
  */
 
-import { validate } from "class-validator";
 import type { SupportReplyEmailMessage } from "../mail/mail.service";
 import { renderSupportReplyEmail } from "../mail/templates/support-reply-email.template";
 import { DEFAULT_EMAIL_BRANDING } from "../mail/components/theme";

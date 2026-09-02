@@ -147,7 +147,7 @@ export function DriversCreateSheet({ open, onOpenChange, onCreated }: Props) {
     if (typeof value === 'string' && errors[field]) {
       const updated = { ...formData, [field]: value };
       const err = validateDriverField(field, updated);
-      setErrors((prev) => { const o = { ...prev }; err ? (o[field] = err) : delete o[field]; return o; });
+      setErrors((prev) => { const o = { ...prev }; if (err) { o[field] = err; } else { delete o[field]; } return o; });
     }
   };
 

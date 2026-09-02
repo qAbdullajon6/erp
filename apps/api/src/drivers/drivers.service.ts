@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { DispatchStatus, Driver, DriverDocument, DriverEmergencyContact, Prisma, UsageMetricType } from "@prisma/client";
 import { createReadStream, existsSync, mkdirSync, unlinkSync } from "fs";
 import { writeFile } from "fs/promises";
-import { join, extname } from "path";
+import { join } from "path";
 import { randomUUID } from "crypto";
 import { AuditService } from "../audit/audit.service";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
@@ -193,13 +193,13 @@ export class DriversService {
       actorUserId: actor.userId,
       action: "driver.create",
       entityType: "Driver",
-      entityId: driver!.id,
-      metadata: { employeeCode: driver!.employeeCode },
+      entityId: driver.id,
+      metadata: { employeeCode: driver.employeeCode },
     });
 
-    void this.workflowEvents.emit(organizationId, "driver.created", { id: driver!.id, employeeCode: driver!.employeeCode, firstName: driver!.firstName, lastName: driver!.lastName });
+    void this.workflowEvents.emit(organizationId, "driver.created", { id: driver.id, employeeCode: driver.employeeCode, firstName: driver.firstName, lastName: driver.lastName });
 
-    return this.toResponse(driver!);
+    return this.toResponse(driver);
   }
 
   async update(organizationId: string, id: string, dto: UpdateDriverDto, actor: CurrentUserPayload) {
@@ -303,7 +303,7 @@ export class DriversService {
       throw new ConflictException("This driver already has a login linked — unlink it first");
     }
     if (driver.userId === userId) {
-      return this.toResponse(driver as DriverWithRelations);
+      return this.toResponse(driver);
     }
 
     const membership = await this.prisma.membership.findFirst({
@@ -352,7 +352,7 @@ export class DriversService {
   async unlinkUser(organizationId: string, id: string, actor: CurrentUserPayload) {
     const driver = await this.findOrThrow(organizationId, id);
     if (!driver.userId) {
-      return this.toResponse(driver as DriverWithRelations);
+      return this.toResponse(driver);
     }
 
     const liveDispatches = await this.prisma.dispatch.count({
@@ -500,7 +500,7 @@ export class DriversService {
   async removePhoto(organizationId: string, id: string, actor: CurrentUserPayload) {
     const driver = await this.findOrThrow(organizationId, id);
     if (!driver.profilePhotoUrl) {
-      return this.toResponse(driver as DriverWithRelations);
+      return this.toResponse(driver);
     }
 
     const dir = join(PHOTO_UPLOAD_ROOT, organizationId, id);

@@ -223,7 +223,7 @@ export class RoutesService {
         where: {
           dispatchId: dto.dispatchId,
           routeId: { not: routeId },
-          route: { status: { not: "CANCELLED" as RouteStatus } },
+          route: { status: { not: "CANCELLED" } },
         },
         include: { route: { select: { routeNumber: true, status: true } } },
       });
@@ -393,10 +393,10 @@ export class RoutesService {
       await tx.route.update({
         where: { id: routeId },
         data: {
-          totalDistanceM: calc!.totalDistanceM,
-          totalDurationSec: calc!.totalDurationSec,
+          totalDistanceM: calc.totalDistanceM,
+          totalDurationSec: calc.totalDurationSec,
           calculatedAt: now,
-          calculationStatus: calc!.calculationStatus,
+          calculationStatus: calc.calculationStatus,
           geometry: geometryJson,
         },
       });
@@ -404,7 +404,7 @@ export class RoutesService {
       // Update per-stop metrics and ETAs
       let cumulativeDurationSec = 0;
       for (const stop of route.stops.sort((a, b) => a.sequence - b.sequence)) {
-        const leg = calc!.legs.find((l) => l.toSequence === stop.sequence);
+        const leg = calc.legs.find((l) => l.toSequence === stop.sequence);
         const isFirstWithCoords = stop.sequence === stopsWithCoords[0]?.sequence;
 
         const updateData: Prisma.RouteStopUpdateInput = {};

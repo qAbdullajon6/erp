@@ -200,7 +200,7 @@ describe("DriverDocumentsService.remove", () => {
     await svc.remove(ORG, DRV, DOC, ACTOR);
 
     expect(prisma.$transaction).toHaveBeenCalled();
-    const [deleteOp, updateOp] = (prisma.$transaction as jest.Mock).mock.calls[0][0];
+    const [deleteOp, updateOp] = (prisma.$transaction).mock.calls[0][0];
     // Both ops should be included in the transaction
     expect(deleteOp).toBeDefined();
     expect(updateOp).toBeDefined();

@@ -56,12 +56,12 @@ export class UpdateOrderDto {
   pickupCountryCode?: string;
 
   @IsOptional()
-  @Transform(({ value }) => (value == null ? value : Number(value)))
+  @Transform(({ value }: { value: unknown }) => (value == null ? value : Number(value)))
   @IsNumber()
   pickupLat?: number;
 
   @IsOptional()
-  @Transform(({ value }) => (value == null ? value : Number(value)))
+  @Transform(({ value }: { value: unknown }) => (value == null ? value : Number(value)))
   @IsNumber()
   pickupLng?: number;
 
@@ -120,12 +120,12 @@ export class UpdateOrderDto {
   deliveryCountryCode?: string;
 
   @IsOptional()
-  @Transform(({ value }) => (value == null ? value : Number(value)))
+  @Transform(({ value }: { value: unknown }) => (value == null ? value : Number(value)))
   @IsNumber()
   deliveryLat?: number;
 
   @IsOptional()
-  @Transform(({ value }) => (value == null ? value : Number(value)))
+  @Transform(({ value }: { value: unknown }) => (value == null ? value : Number(value)))
   @IsNumber()
   deliveryLng?: number;
 

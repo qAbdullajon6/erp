@@ -160,7 +160,7 @@ export function optimizeStopSequence(stops: OptimizableStop[]): OptimizationResu
     );
   }
 
-  const coordStops = sorted.filter(hasCoords) as CoordStop[];
+  const coordStops = sorted.filter(hasCoords);
   const currentDistanceM = Math.round(pathDistanceM(coordStops));
 
   if (eligible.length < 2) {

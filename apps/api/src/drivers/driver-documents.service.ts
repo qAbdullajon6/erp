@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { DriverDocumentType, DriverLicenseClass, Prisma } from "@prisma/client";
 import { createReadStream, existsSync, mkdirSync, unlinkSync } from "fs";
 import { writeFile } from "fs/promises";
-import { join, extname } from "path";
+import { join } from "path";
 import { randomUUID } from "crypto";
 import type { CurrentUserPayload } from "../auth/interfaces/current-user.interface";
 import { PrismaService } from "../prisma/prisma.service";

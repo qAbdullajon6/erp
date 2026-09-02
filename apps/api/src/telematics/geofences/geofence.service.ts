@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { DispatchStatus, Geofence, OrderStatus, Prisma } from "@prisma/client";
+import { DispatchStatus, Geofence, Prisma } from "@prisma/client";
 import { AuditService } from "../../audit/audit.service";
 import type { CurrentUserPayload } from "../../auth/interfaces/current-user.interface";
 import { PrismaService } from "../../prisma/prisma.service";

@@ -68,7 +68,7 @@ describe("GeocodingService.geocodeOrderLocations", () => {
         data: expect.objectContaining({ geocodeSource: "mapbox" }),
       }),
     );
-    const updateData = (prisma.order.update as jest.Mock).mock.calls[0][0].data;
+    const updateData = (prisma.order.update).mock.calls[0][0].data;
     expect(Number(updateData.pickupLat)).toBeCloseTo(MOCK_LAT);
     expect(Number(updateData.pickupLng)).toBeCloseTo(MOCK_LNG);
     expect(Number(updateData.deliveryLat)).toBeCloseTo(MOCK_LAT);
@@ -87,7 +87,7 @@ describe("GeocodingService.geocodeOrderLocations", () => {
 
     // Only delivery geocoded
     expect(mapbox.forwardGeocode).toHaveBeenCalledTimes(1);
-    const updateData = (prisma.order.update as jest.Mock).mock.calls[0][0].data;
+    const updateData = (prisma.order.update).mock.calls[0][0].data;
     expect(updateData.pickupLat).toBeUndefined();
     expect(Number(updateData.deliveryLat)).toBeCloseTo(MOCK_LAT);
   });
@@ -117,7 +117,7 @@ describe("GeocodingService.geocodeOrderLocations", () => {
 
     // update called with pickup result only
     expect(prisma.order.update).toHaveBeenCalled();
-    const updateData = (prisma.order.update as jest.Mock).mock.calls[0][0].data;
+    const updateData = (prisma.order.update).mock.calls[0][0].data;
     expect(Number(updateData.pickupLat)).toBeCloseTo(MOCK_LAT);
     expect(updateData.deliveryLat).toBeUndefined();
   });

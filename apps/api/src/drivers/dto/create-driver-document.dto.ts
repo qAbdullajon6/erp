@@ -1,5 +1,5 @@
 import { DriverDocumentType, DriverLicenseClass } from "@prisma/client";
-import { IsBoolean, IsDateString, IsEnum, IsOptional, IsString, MaxLength } from "class-validator";
+import { IsDateString, IsEnum, IsOptional, IsString, MaxLength } from "class-validator";
 
 export class CreateDriverDocumentDto {
   @IsEnum(DriverDocumentType)
