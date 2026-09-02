@@ -7,7 +7,7 @@ import { Capabilities } from "@/components/site/landing/Capabilities";
 import { HowItWorks } from "@/components/site/landing/HowItWorks";
 import { SocialProof } from "@/components/site/landing/SocialProof";
 import { Pricing } from "@/components/site/landing/Pricing";
-import { FAQ } from "@/components/site/landing/FAQ";
+import { FAQ } from "@/components/site/landing/Faq";
 import { Closing } from "@/components/site/landing/Closing";
 import { Footer } from "@/components/site/landing/Footer";
 import { MobileCTA } from "@/components/site/landing/MobileCTA";

@@ -6,7 +6,7 @@ import { SettingsLayout } from "@/components/settings/settings-layout";
 
 export const Route = createFileRoute("/app/audit-logs/")({
   head: () => ({
-    meta: [{ title: "Activity log — FlowERP AI" }],
+    meta: [{ title: "Activity log â€” FlowERP AI" }],
   }),
   component: AuditLogsPage,
 });

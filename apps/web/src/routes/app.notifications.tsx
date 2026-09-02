@@ -23,7 +23,7 @@ export type NotificationsSearch = {
 
 export const Route = createFileRoute("/app/notifications")({
   head: () => ({
-    meta: [{ title: "Notifications — FlowERP AI" }],
+    meta: [{ title: "Notifications â€” FlowERP AI" }],
   }),
   validateSearch: (search: Record<string, unknown>): NotificationsSearch => {
     const category = search.category;

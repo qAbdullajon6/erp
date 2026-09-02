@@ -44,7 +44,7 @@ import {
   type CreateDriverDocumentInput,
   type DriverDocumentType,
 } from '@/lib/api/driver-documents';
-import type { MembershipRole } from '@prisma/client';
+import type { MembershipRole } from '@/lib/api/organizations';
 import { apiFetch } from '@/lib/api/fetch';
 import { describeError } from '@/lib/api/describe-error';
 import { formatDate } from '@/lib/format';

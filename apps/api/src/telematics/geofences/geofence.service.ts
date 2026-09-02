@@ -764,7 +764,7 @@ export class GeofenceService {
         // AT_PICKUP projects order ASSIGNED → PICKED_UP.
         await tx.order.update({
           where: { id: dispatch.orderId },
-          data: { status: "PICKED_UP" as OrderStatus },
+          data: { status: "PICKED_UP" },
         });
       }
       transitioned = true;

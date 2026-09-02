@@ -6,7 +6,7 @@ import { SettingsLayout } from "@/components/settings/settings-layout";
 
 export const Route = createFileRoute("/app/import/")({
   head: () => ({
-    meta: [{ title: "Data import — FlowERP AI" }],
+    meta: [{ title: "Data import â€” FlowERP AI" }],
   }),
   component: ImportPage,
 });

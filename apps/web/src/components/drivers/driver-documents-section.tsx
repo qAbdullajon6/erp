@@ -18,7 +18,7 @@ import {
 } from '@/lib/api/driver-documents';
 import { apiFetch } from '@/lib/api/fetch';
 import { DriverDocumentSheet } from './driver-document-sheet';
-import type { MembershipRole } from '@prisma/client';
+import type { MembershipRole } from '@/lib/api/organizations';
 import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import {
