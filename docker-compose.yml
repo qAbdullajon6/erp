@@ -97,6 +97,8 @@ services:
       TELEMATICS_SSE_MAX_CONNECTIONS_GLOBAL: ${TELEMATICS_SSE_MAX_CONNECTIONS_GLOBAL:-500}
     expose:
       - "4000"
+    volumes:
+      - api-uploads:/repo/apps/api/uploads
 
   web:
     image: flowerp-web:local
@@ -200,6 +202,7 @@ services:
       - caddy_config:/config
 
 volumes:
+  api-uploads:
   postgres_data:
   caddy_data:
   caddy_config:

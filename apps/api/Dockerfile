@@ -46,6 +46,10 @@ COPY --from=build --chown=node:node /repo/apps/api/dist apps/api/dist
 COPY --from=build --chown=node:node /repo/apps/api/prisma apps/api/prisma
 COPY --from=build --chown=node:node /repo/node_modules/.prisma node_modules/.prisma
 COPY --from=build --chown=node:node /repo/node_modules/@prisma node_modules/@prisma
+# Ensure the uploads directory exists and is owned by the unprivileged node user
+# before USER node is set; a named volume mounts here so files persist across
+# container recreations.
+RUN mkdir -p /repo/apps/api/uploads/support && chown -R node:node /repo/apps/api/uploads
 
 WORKDIR /repo/apps/api
 USER node
