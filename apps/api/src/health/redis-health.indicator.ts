@@ -9,8 +9,13 @@ export class RedisHealthIndicator {
   constructor(private readonly healthIndicatorService: HealthIndicatorService) {
     const url = process.env.REDIS_URL;
     if (url) {
+      // Do NOT use lazyConnect:true here. Without it ioredis starts the TCP
+      // handshake during module construction (app bootstrap), so the connection
+      // is established before the first /health/ready probe fires. lazyConnect
+      // defers the connect until the first command, which races the probe and
+      // causes "Stream isn't writeable and enableOfflineQueue options is false"
+      // on every container start.
       this.redis = new Redis(url, {
-        lazyConnect: true,
         maxRetriesPerRequest: 1,
         enableOfflineQueue: false,
       });

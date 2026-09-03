@@ -38,7 +38,14 @@ wait_healthy() {
   done
   [[ "$ok" -eq 1 ]] || return 1
   log "liveness ok; checking /health/ready (database + configured Redis)"
-  health_ok "health/ready" || return 1
+  # Retry readiness — the ioredis connection may still be establishing on the
+  # first probe after a fresh container start. Allow up to 20 s (10 × 2 s).
+  local ready=0 j
+  for ((j = 1; j <= 10; j++)); do
+    if health_ok "health/ready"; then ready=1; break; fi
+    sleep 2
+  done
+  [[ "$ready" -eq 1 ]] || return 1
   log "dependency readiness ok"
   return 0
 }
